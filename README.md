@@ -7,30 +7,54 @@ druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
 gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt die fertige Karte aufs Papier.
 
+Das kann es schon (Version 0.1.0):
+
+- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4 oder A3;
+- in einem anderen Maßstab drucken, mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die
+  jüngsten Klassen mit Symbolen auf 133 %);
+- die Nordlinien der Karte immer mitdrucken.
+
 Geplant ist:
 
-- die Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF, später auch OCAD-Karten;
+- eine Projektdatei je Veranstaltung mit mehreren Layouts: Passepartout, Titel, Vereins- und Sponsorenlogos,
+  Kontrollstrecke zum Nachmessen und eine Fußzeile mit der Projektadresse; Nordlinien ergänzt das Programm, wenn
+  die Karte keine hat (M2, in Arbeit);
 - Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Purple Pen, Condes,
-  OCAD-Bahnlegung), mit Bahnaufdruck und Postenbeschreibung;
-- Passepartout, Titel, Vereins- und Sponsorenlogos, eine Kontrollstrecke zum Nachmessen;
-- Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet;
-- mehrere Layouts je Veranstaltung, etwa 1:4000 für die älteren Klassen und 1:3000 für die jüngsten, jeweils
-  mit den Symbolgrößen, die die Norm für den Maßstab vorschreibt;
-- Bedienung über einen Editor im Browser, über die Kommandozeile oder über einen KI-Assistenten (MCP).
+  OCAD-Bahnlegung), mit Bahnaufdruck und Postenbeschreibung (M3);
+- Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet (M4);
+- Bedienung über einen KI-Assistenten (MCP, M5) und einen Editor im Browser (M6), später auch OCAD-Karten.
 
-Die Nordlinien kommen aus der Karte und werden immer mitgedruckt. Fehlen sie in einer Karte, soll das Programm
-sie ab M2 nach der Norm ergänzen.
-
-Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
+Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows. Meldungen und Hilfe gibt es ab M2 auf
+Deutsch und Englisch.
 
 ## Status
 
-freemapper-print druckt seit Meilenstein M1 eine fertige OOM-Karte im exakten Maßstab als Vektor-PDF
-(`freemapper-print render`). Layouts mit Titel und Logos folgen in M2, Bahnen aus Purple Pen in M3, Abdeckungen
-für Fenster- und Korridor-OL in M4. Alles Weitere steht im
-[Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
-[Architekturentscheidungen](docs/adr/README.md). Die erste Version richtet sich an Vereinstrainings in Stadt und
-Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop.
+Aktuelle Version ist [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) vom
+8. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+OOM-Karte maßstabsgetreu (`freemapper-print render`). Gerade entsteht M2 mit Projektdatei, Layouts und
+Blattelementen. Danach folgen Bahnen aus Purple Pen (M3) und Abdeckungen für Fenster- und Korridor-OL (M4). Die
+erste Version richtet sich an Vereinstrainings in Stadt und Park: Sprintkarten auf A4, gedruckt am eigenen Drucker
+oder im Copyshop. Mehr steht im [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im
+[Glossar](docs/glossary.md) und in den [Architekturentscheidungen](docs/adr/README.md).
+
+## Installation
+
+freemapper-print ist ein einzelnes Programm ohne Installer:
+
+1. Auf der [Release-Seite](https://github.com/HenryJobst/freemapper-print/releases/latest) das Archiv für das
+   eigene System herunterladen:
+   - Windows: `freemapper-print-…-windows-x86_64.zip`
+   - macOS mit Apple-Chip (M1 und neuer): `freemapper-print-…-macos-arm64.tar.gz`
+   - macOS mit Intel-Prozessor: `freemapper-print-…-macos-x86_64.tar.gz`
+   - Linux: `freemapper-print-…-linux-x86_64.tar.gz` (ARM-Rechner: `linux-arm64`)
+2. Das Archiv entpacken. Der Ordner enthält `freemapper-print` bzw. `freemapper-print.exe`.
+3. Beim ersten Start warnt das System, weil das Programm nicht signiert ist. Unter Windows „Weitere
+   Informationen“ und dann „Trotzdem ausführen“ wählen. Unter macOS in „Systemeinstellungen › Datenschutz &
+   Sicherheit“ auf „Trotzdem öffnen“ klicken, oder im Terminal im entpackten Ordner
+   `xattr -d com.apple.quarantine freemapper-print` ausführen. Unter Linux reicht notfalls
+   `chmod +x freemapper-print`.
+4. Im Terminal im entpackten Ordner prüfen: `./freemapper-print --version` (Windows:
+   `.\freemapper-print.exe --version`).
 
 ## Selbst bauen (für Entwickler)
 
