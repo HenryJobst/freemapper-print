@@ -168,14 +168,21 @@ pub struct ElementSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_pt: Option<f64>,
     /// title_block, text: white box behind the text.
-    #[serde(default = "yes")]
-    pub box_white: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub box_white: Option<bool>,
     /// logo: image file, relative to the project file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<PathBuf>,
     /// logo: printed width in mm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width_mm: Option<f64>,
+}
+
+impl ElementSpec {
+    /// Whether a white box sits behind the text; true unless the file says otherwise.
+    pub fn box_white(&self) -> bool {
+        self.box_white.unwrap_or(true)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -368,8 +375,12 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             map: lp.map_path().display().to_string(),
         });
     }
+    if let Some(c) = p.map.contour_interval_m {
+        positive(file, "map.contour_interval_m".to_string(), c)?;
+    }
     let mut layout_ids = HashSet::new();
     for (i, l) in p.layouts.iter().enumerate() {
+        check_layout(file, i, l)?;
         if !layout_ids.insert(l.id.as_str()) {
             return Err(ProjectError::DuplicateId {
                 file: file.to_string(),
@@ -380,6 +391,7 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
     }
     let mut shared_ids = HashSet::new();
     for (i, e) in p.shared.iter().enumerate() {
+        check_element(file, &format!("shared[{i}]"), e)?;
         if !shared_ids.insert(e.id.as_str()) {
             return Err(ProjectError::DuplicateId {
                 file: file.to_string(),
@@ -387,11 +399,11 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
                 id: e.id.clone(),
             });
         }
-        check_element(file, &format!("shared[{i}]"), e)?;
     }
     for (i, l) in p.layouts.iter().enumerate() {
         let mut ids = shared_ids.clone();
         for (j, e) in l.elements.iter().enumerate() {
+            check_element(file, &format!("layouts[{i}].elements[{j}]"), e)?;
             if !ids.insert(e.id.as_str()) {
                 return Err(ProjectError::DuplicateId {
                     file: file.to_string(),
@@ -399,7 +411,6 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
                     id: e.id.clone(),
                 });
             }
-            check_element(file, &format!("layouts[{i}].elements[{j}]"), e)?;
         }
         for (j, h) in l.hide_shared.iter().enumerate() {
             if !shared_ids.contains(h.as_str()) {
@@ -421,8 +432,57 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
     Ok(())
 }
 
+fn positive(file: &str, field: String, v: f64) -> Result<(), ProjectError> {
+    if v.is_finite() && v > 0.0 {
+        Ok(())
+    } else {
+        Err(invalid(file, field, "must be a number larger than 0"))
+    }
+}
+
+fn non_empty(file: &str, field: String, v: &str) -> Result<(), ProjectError> {
+    if v.trim().is_empty() {
+        Err(invalid(file, field, "must not be empty"))
+    } else {
+        Ok(())
+    }
+}
+
 fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectError> {
-    if e.kind == ElementKind::Logo {
+    non_empty(file, format!("{at}.id"), &e.id)?;
+    for (i, v) in e.anchor.offset_mm.iter().enumerate() {
+        if !v.is_finite() {
+            return Err(invalid(
+                file,
+                format!("{at}.anchor.offset_mm[{i}]"),
+                "must be a finite number",
+            ));
+        }
+    }
+    let kind = serde_json_name(e.kind);
+    let text = matches!(e.kind, ElementKind::TitleBlock | ElementKind::Text);
+    let sized = text || matches!(e.kind, ElementKind::CreditLine | ElementKind::CopyrightLine);
+    let logo = e.kind == ElementKind::Logo;
+    let stray = [
+        ("lines", !e.lines.is_empty(), text),
+        ("size_pt", e.size_pt.is_some(), sized),
+        ("box_white", e.box_white.is_some(), text),
+        ("file", e.file.is_some(), logo),
+        ("width_mm", e.width_mm.is_some(), logo),
+    ];
+    for (name, present, allowed) in stray {
+        if present && !allowed {
+            return Err(invalid(
+                file,
+                format!("{at}.{name}"),
+                &format!("not valid for an element of kind `{kind}`"),
+            ));
+        }
+    }
+    if let Some(v) = e.size_pt {
+        positive(file, format!("{at}.size_pt"), v)?;
+    }
+    if logo {
         if e.file.is_none() {
             return Err(invalid(file, format!("{at}.file"), "a logo needs a `file`"));
         }
@@ -434,14 +494,47 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
                     "a logo needs a `width_mm`",
                 ));
             }
-            Some(w) if w <= 0.0 => {
+            Some(w) => positive(file, format!("{at}.width_mm"), w)?,
+        }
+    }
+    Ok(())
+}
+
+fn serde_json_name(k: ElementKind) -> &'static str {
+    match k {
+        ElementKind::TitleBlock => "title_block",
+        ElementKind::Text => "text",
+        ElementKind::Logo => "logo",
+        ElementKind::ScaleCheckBar => "scale_check_bar",
+        ElementKind::CreditLine => "credit_line",
+        ElementKind::CopyrightLine => "copyright_line",
+    }
+}
+
+fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError> {
+    non_empty(file, format!("layouts[{i}].id"), &l.id)?;
+    let f = &l.map_frame;
+    positive(
+        file,
+        format!("layouts[{i}].map_frame.margin_mm"),
+        f.margin_mm,
+    )?;
+    if !(f.border_mm.is_finite() && f.border_mm >= 0.0) {
+        return Err(invalid(
+            file,
+            format!("layouts[{i}].map_frame.border_mm"),
+            "must be a number of 0 or more",
+        ));
+    }
+    if let Some(c) = f.centre_map_mm {
+        for (k, v) in c.iter().enumerate() {
+            if !v.is_finite() {
                 return Err(invalid(
                     file,
-                    format!("{at}.width_mm"),
-                    "must be larger than 0",
+                    format!("layouts[{i}].map_frame.centre_map_mm[{k}]"),
+                    "must be a finite number",
                 ));
             }
-            Some(_) => {}
         }
     }
     Ok(())
@@ -624,6 +717,103 @@ mod tests {
         );
     }
 
+    /// Loads a project with one shared element given as TOML lines and one layout; returns the error text.
+    fn err_for(extra_head: &str, shared: &str, layout: &str) -> String {
+        let head = HEAD.replace(
+            "kind = \"forest\"\n",
+            &format!("kind = \"forest\"\n{extra_head}"),
+        );
+        let (_d, path) = temp_project(&format!(
+            "{head}\n[[layouts]]\nid = \"a\"\n{layout}\n{shared}"
+        ));
+        load(&path).unwrap_err().to_string()
+    }
+
+    fn shared(kind: &str, fields: &str) -> String {
+        format!(
+            "[[shared]]\nid=\"x\"\nkind=\"{kind}\"\n{fields}\n[shared.anchor]\nto=\"page\"\ncorner=\"top\"\n"
+        )
+    }
+
+    #[test]
+    fn fields_must_fit_the_kind() {
+        for (kind, field, line) in [
+            ("text", "width_mm", "width_mm = 5.0"),
+            ("text", "file", "file = \"a.png\""),
+            ("logo", "lines", "lines = [\"a\"]"),
+            ("logo", "size_pt", "size_pt = 9.0"),
+            ("logo", "box_white", "box_white = false"),
+            ("scale_check_bar", "size_pt", "size_pt = 9.0"),
+            ("scale_check_bar", "lines", "lines = [\"a\"]"),
+            ("credit_line", "lines", "lines = [\"a\"]"),
+            ("copyright_line", "box_white", "box_white = true"),
+            ("title_block", "width_mm", "width_mm = 5.0"),
+        ] {
+            let msg = err_for("", &shared(kind, line), "");
+            assert!(
+                msg.contains(&format!("shared[0].{field}")) && msg.contains(kind),
+                "{kind} {field}: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn numbers_are_checked() {
+        let cases: [(&str, String, &str); 9] = [
+            ("", shared("text", "size_pt = 0.0"), "shared[0].size_pt"),
+            ("", shared("text", "size_pt = nan"), "shared[0].size_pt"),
+            (
+                "",
+                shared("logo", "file=\"a.png\"\nwidth_mm = -1.0"),
+                "shared[0].width_mm",
+            ),
+            (
+                "",
+                shared("text", "")
+                    .replace("corner=\"top\"", "corner=\"top\"\noffset_mm=[1.0, inf]"),
+                "shared[0].anchor.offset_mm[1]",
+            ),
+            (
+                "contour_interval_m = 0.0\n",
+                shared("scale_check_bar", ""),
+                "map.contour_interval_m",
+            ),
+            (
+                "",
+                shared("text", "").replace("id=\"x\"", "id=\"\""),
+                "shared[0].id",
+            ),
+            ("", String::new(), "layouts[0].map_frame.margin_mm"),
+            ("", String::new(), "layouts[0].map_frame.border_mm"),
+            ("", String::new(), "layouts[0].id"),
+        ];
+        for (i, (head, sh, field)) in cases.iter().enumerate() {
+            let layout = match i {
+                6 => "[layouts.map_frame]\nmargin_mm = 0.0",
+                7 => "[layouts.map_frame]\nborder_mm = -0.1",
+                _ => "",
+            };
+            let msg = if i == 8 {
+                let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"\"\n"));
+                load(&path).unwrap_err().to_string()
+            } else {
+                err_for(head, sh, layout)
+            };
+            assert!(msg.contains(field), "{field}: {msg}");
+        }
+    }
+
+    #[test]
+    fn border_zero_and_empty_layout_elements_are_fine() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n[layouts.map_frame]\nborder_mm = 0.0\n"
+        ));
+        assert_eq!(
+            load(&path).unwrap().project.layouts[0].map_frame.border_mm,
+            0.0
+        );
+    }
+
     fn full_project() -> Project {
         let anchor = Anchor {
             to: AnchorTarget::MapFrame,
@@ -636,7 +826,7 @@ mod tests {
             anchor,
             lines: vec![],
             size_pt: None,
-            box_white: true,
+            box_white: None,
             file: None,
             width_mm: None,
         };
