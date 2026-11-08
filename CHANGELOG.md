@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Blätter tragen einen Titelblock und Texte mit Platzhaltern (`{event}`, `{date}`, `{print_scale}`, `{contour_interval}`, …), die Quellenangaben der Karte und unten links die Namensnennung „Erstellt mit freemapper-print“. Die Namensnennung lässt sich nicht abschalten; ein Element verschiebt sie nur. Zeigt ein Blatt weder Maßstab noch Äquidistanz, erscheint ein Hinweis.
 - Die Projektdatei `freemapper-print.toml` einer Veranstaltung wird gelesen und geprüft: Veranstaltung, Kartenquelle, gemeinsame Blattelemente und beliebig viele Layouts. Unbekannte Schlüssel melden Datei, Zeile und Namen.
 - Die Programmtexte gibt es auf Deutsch und Englisch: Hilfe, Zusammenfassung, Hinweise, Warnungen und Fehler.
   Die Sprache kommt aus `--lang de|en` (vor oder nach dem Befehl), dann aus `FREEMAPPER_LANG`, `LC_ALL`,

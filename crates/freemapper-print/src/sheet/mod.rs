@@ -5,6 +5,8 @@
 //! elements, each hung on an [`Anchor`](crate::project::Anchor) of the page or of the map frame.
 
 pub mod layout;
+pub mod placeholders;
+mod text;
 
 use std::borrow::Cow;
 
@@ -33,8 +35,13 @@ pub enum SheetNote {
     ElementOverlapsMap { id: String },
     /// The paper is larger than A3, which most office printers do not take.
     LargerThanA3,
-    /// No element of the layout shows the print scale or the contour interval.
-    MissingScaleOrContour,
+    /// No element of the layout shows the print scale or the contour interval, or the contour
+    /// interval is not set. `missing` names what: `{print_scale}`, `{contour_interval}`,
+    /// `map.contour_interval_m`.
+    MissingScaleOrContour {
+        layout: String,
+        missing: Vec<String>,
+    },
     /// The map had no north lines; this many were added (ADR 0023).
     NorthLinesAdded { count: usize },
     /// A logo was left out, and why.
@@ -132,9 +139,14 @@ pub fn render_sheet(
             page.sheet.extend(placed.items);
         }
     }
-    // Task 6 adds here what every sheet carries without an element: the credit line in its
-    // default footer place when no `credit_line` element moved it, and `MissingScaleOrContour`
-    // when no element shows `{print_scale}` or `{contour_interval}`.
+    page.sheet.extend(text::default_footer(&ctx));
+    let missing = text::missing_scale_or_contour(&ctx);
+    if !missing.is_empty() {
+        notes.push(SheetNote::MissingScaleOrContour {
+            layout: layout.id.clone(),
+            missing,
+        });
+    }
 
     Ok((page, SheetReport { print, notes }))
 }
@@ -160,15 +172,13 @@ fn place_element(
     spec: &ElementSpec,
     notes: &mut Vec<SheetNote>,
 ) -> Option<PlacedElement> {
-    // Each arm is filled in by a later task of M2; until then the element draws nothing.
-    let _ = (ctx, notes);
+    // Each arm after the text kinds is filled in by a later task of M2; until then the element
+    // draws nothing.
     match spec.kind {
-        // Task 6: text, title block (placeholders, `UnknownPlaceholder`), credit and copyright
-        // lines.
         ElementKind::TitleBlock
         | ElementKind::Text
         | ElementKind::CreditLine
-        | ElementKind::CopyrightLine => None,
+        | ElementKind::CopyrightLine => text::place_text_element(ctx, spec, notes),
         // Task 7: the scale check bar.
         ElementKind::ScaleCheckBar => None,
         // Task 8: logos (`LogoSkipped`).
@@ -340,15 +350,20 @@ mod tests {
     fn frame_border_drawn_on_the_sheet_layer() {
         let map = doc(4000, vec![("default part", vec![line((50_000, 0))])]);
         let (page, _) = sheet(&map, &a4());
-        let [SheetItem::Shape { colour, shape }] = &page.sheet[..] else {
+        let SheetItem::Shape { colour, shape } = &page.sheet[0] else {
             panic!("{:?}", page.sheet)
         };
         assert_eq!(*colour, DirectColour::BLACK);
         assert!(matches!(shape, Shape::Stroke { width, .. } if *width == 0.25));
+        // Only the footer is left without the frame line.
         let mut layout = a4();
         layout.map_frame.border_mm = 0.0;
         let (page, _) = sheet(&map, &layout);
-        assert!(page.sheet.is_empty());
+        assert!(
+            page.sheet
+                .iter()
+                .all(|i| texts(std::slice::from_ref(i)).len() == 1)
+        );
     }
 
     #[test]
@@ -380,12 +395,12 @@ mod tests {
         );
         let (page, report) = sheet(&map, &a4());
         assert_eq!(page.primitives.len(), 3);
-        assert!(report.notes.is_empty(), "{:?}", report.notes);
+        assert_eq!(without_missing(&report.notes), []);
         let mut layout = a4();
         layout.hide_parts = vec!["peripheral information".into()];
         let (page, report) = sheet(&map, &layout);
         assert_eq!(page.primitives.len(), 1);
-        assert!(report.notes.is_empty(), "{:?}", report.notes);
+        assert_eq!(without_missing(&report.notes), []);
     }
 
     #[test]
@@ -397,7 +412,7 @@ mod tests {
         let (page, report) = sheet(&map, &layout);
         assert_eq!(page.primitives.len(), 1);
         assert_eq!(
-            report.notes,
+            without_missing(&report.notes),
             [SheetNote::UnknownPart {
                 layout: "a4".into(),
                 name: "Default Part".into()
@@ -441,8 +456,25 @@ mod tests {
         let (page, report) = render_sheet(&lp, &map, layout).unwrap();
         assert_eq!(page.clip, crate::print::frame_box(page.page_mm, 8.0));
         assert_eq!(report.print.print_scale, 4000);
-        assert_eq!(page.sheet.len(), 1, "the frame line");
-        assert!(report.notes.is_empty(), "{:?}", report.notes);
+        assert!(matches!(
+            page.sheet[0],
+            SheetItem::Shape {
+                shape: Shape::Stroke { .. },
+                ..
+            }
+        ));
+        assert!(page.sheet.len() > 1, "the frame line and the footer");
+        assert_eq!(
+            report.notes,
+            [SheetNote::MissingScaleOrContour {
+                layout: "a4".into(),
+                missing: vec![
+                    "{print_scale}".into(),
+                    "{contour_interval}".into(),
+                    "map.contour_interval_m".into()
+                ]
+            }]
+        );
         let (pdf, _) =
             crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t")).unwrap();
         assert!(pdf.starts_with(b"%PDF-"));
@@ -479,5 +511,347 @@ mod tests {
             .map(|e| e.id.as_str())
             .collect();
         assert_eq!(ids, ["a", "c", "own"]);
+    }
+
+    fn without_missing(notes: &[SheetNote]) -> Vec<SheetNote> {
+        notes
+            .iter()
+            .filter(|n| !matches!(n, SheetNote::MissingScaleOrContour { .. }))
+            .cloned()
+            .collect()
+    }
+
+    type TextItem = (String, (f64, f64), f64, bool, DirectColour);
+
+    /// The text items of a sheet layer: (text, origin, size mm, bold, colour).
+    fn texts(items: &[SheetItem]) -> Vec<TextItem> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    colour,
+                    shape:
+                        Shape::Text {
+                            text,
+                            origin,
+                            size,
+                            bold,
+                            ..
+                        },
+                } => Some((text.clone(), *origin, *size, *bold, *colour)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pt_mm(pt: f64) -> f64 {
+        pt * 25.4 / 72.0
+    }
+
+    fn text_element(id: &str, kind: ElementKind, lines: &[&str], corner: Corner) -> ElementSpec {
+        ElementSpec {
+            kind,
+            lines: lines.iter().map(|l| l.to_string()).collect(),
+            anchor: Anchor {
+                to: AnchorTarget::Page,
+                corner,
+                offset_mm: [2.0, 1.0],
+            },
+            ..element(id)
+        }
+    }
+
+    fn sheet_of(lp: &LoadedProject, map: &MapDocument) -> (RenderedPage, SheetReport) {
+        render_sheet(lp, map, &lp.project.layouts[0]).unwrap()
+    }
+
+    fn empty_map() -> MapDocument {
+        doc(4000, vec![("default part", vec![line((50_000, 0))])])
+    }
+
+    #[test]
+    fn title_block_layout() {
+        use crate::render::fonts::{ASCENT, LINE_SPACING};
+        let mut layout = a4();
+        layout.elements = vec![text_element(
+            "title",
+            ElementKind::TitleBlock,
+            &["{event}", "1:{print_scale}"],
+            Corner::TopLeft,
+        )];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, report) = sheet_of(&lp, &empty_map());
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::UnknownPlaceholder { .. }))
+        );
+        // The frame line, a white box, two lines, then the footer.
+        let SheetItem::Shape { colour, shape } = &page.sheet[1] else {
+            panic!()
+        };
+        assert_eq!(*colour, DirectColour::WHITE);
+        let Shape::Fill { rings } = shape else {
+            panic!()
+        };
+        let (s1, s2) = (pt_mm(14.0), pt_mm(9.0));
+        let h = s1 * LINE_SPACING + s2 * LINE_SPACING + 2.0;
+        assert_eq!(rings[0][0], (2.0, 1.0));
+        assert!((rings[0][2].1 - (1.0 + h)).abs() < 1e-9, "{rings:?}");
+        let t = texts(&page.sheet);
+        assert_eq!(t[0].0, "T");
+        assert_eq!(t[1].0, "1:4000");
+        assert!(t[0].3 && !t[1].3, "first line bold, others regular");
+        assert_eq!((t[0].2, t[1].2), (s1, s2));
+        assert!((t[0].1.0 - 3.0).abs() < 1e-9);
+        assert!((t[0].1.1 - (2.0 + ASCENT * s1)).abs() < 1e-9);
+        assert!((t[1].1.1 - (2.0 + s1 * LINE_SPACING + ASCENT * s2)).abs() < 1e-9);
+        assert_eq!(t[0].4, DirectColour::BLACK);
+    }
+
+    #[test]
+    fn text_element_and_box_white() {
+        let mut spec = text_element("t", ElementKind::Text, &["x", "y"], Corner::BottomRight);
+        spec.box_white = Some(false);
+        spec.size_pt = Some(12.0);
+        let mut layout = a4();
+        layout.elements = vec![spec];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &empty_map());
+        let t = texts(&page.sheet);
+        // No box: the frame line comes straight before the text; all lines regular at 12 pt.
+        assert!(matches!(
+            &page.sheet[1],
+            SheetItem::Shape {
+                shape: Shape::Text { .. },
+                ..
+            }
+        ));
+        assert!(!t[0].3 && !t[1].3);
+        assert_eq!((t[0].2, t[1].2), (pt_mm(12.0), pt_mm(12.0)));
+        // Right edge 2 mm in from the page edge.
+        assert!(t[0].1.0 > 190.0 && t[0].1.0 < 208.0, "{:?}", t[0]);
+    }
+
+    #[test]
+    fn unknown_placeholder_noted_and_kept() {
+        let mut layout = a4();
+        layout.elements = vec![text_element(
+            "c",
+            ElementKind::Text,
+            &["Bahn {course}", "{layout}"],
+            Corner::TopLeft,
+        )];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, report) = sheet_of(&lp, &empty_map());
+        let t = texts(&page.sheet);
+        assert_eq!(t[0].0, "Bahn {course}");
+        assert_eq!(t[1].0, "a4");
+        // (The element also covers part of the map: noted as well.)
+        assert!(report.notes.contains(&SheetNote::UnknownPlaceholder {
+            id: "c".into(),
+            name: "course".into()
+        }));
+    }
+
+    fn footer_texts(page: &RenderedPage) -> Vec<TextItem> {
+        texts(&page.sheet)
+    }
+
+    #[test]
+    fn credit_line_footer() {
+        // No element in the project: the footer is there all the same.
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, _) = sheet_of(&lp, &empty_map());
+        let t = footer_texts(&page);
+        assert_eq!(t.len(), 1);
+        let (text, origin, size, bold, colour) = &t[0];
+        assert_eq!(
+            text,
+            "Erstellt mit freemapper-print – https://github.com/HenryJobst/freemapper-print"
+        );
+        assert!(text.contains('\u{2013}'));
+        assert!(text.ends_with(env!("CARGO_PKG_REPOSITORY")));
+        assert_eq!(*size, pt_mm(5.0));
+        assert!(!bold);
+        assert_eq!(*colour, DirectColour::BLACK);
+        // Below the frame (bottom edge 289 mm), baseline 4 mm above the paper edge, left edge
+        // at the frame's.
+        assert_eq!(*origin, (8.0, 293.0));
+        // English sheet.
+        let mut en = lp.clone();
+        en.project.event.lang = SheetLang::En;
+        let (page, _) = sheet_of(&en, &empty_map());
+        assert_eq!(
+            footer_texts(&page)[0].0,
+            "Created with freemapper-print – https://github.com/HenryJobst/freemapper-print"
+        );
+    }
+
+    #[test]
+    fn credit_line_inside_the_frame_when_the_margin_is_small() {
+        use crate::render::fonts::{ASCENT, LINE_SPACING};
+        let mut layout = a4();
+        layout.map_frame.margin_mm = 6.0;
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &empty_map());
+        let SheetItem::Shape {
+            colour,
+            shape: Shape::Fill { rings },
+        } = &page.sheet[1]
+        else {
+            panic!("{:?}", page.sheet)
+        };
+        assert_eq!(*colour, DirectColour::WHITE);
+        // Frame: 6..204 × 6..291. The box sits in its bottom left corner.
+        assert_eq!(rings[0][0].0, 6.0);
+        assert!((rings[0][2].1 - 291.0).abs() < 1e-9, "{rings:?}");
+        let s = pt_mm(5.0);
+        let top = 291.0 - (s * LINE_SPACING + 1.6);
+        assert!((rings[0][0].1 - top).abs() < 1e-9);
+        let t = footer_texts(&page);
+        assert!((t[0].1.0 - 6.8).abs() < 1e-9);
+        assert!((t[0].1.1 - (top + 0.8 + ASCENT * s)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tall_footer_goes_inside_the_frame() {
+        // Four lines do not fit into the 8 mm below the frame: the block moves onto a white box
+        // inside the frame instead of overlapping its line.
+        let mut map = empty_map();
+        map.notes = "a\nb\nc".into();
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, _) = sheet_of(&lp, &map);
+        let SheetItem::Shape {
+            colour,
+            shape: Shape::Fill { rings },
+        } = &page.sheet[1]
+        else {
+            panic!("{:?}", page.sheet)
+        };
+        assert_eq!(*colour, DirectColour::WHITE);
+        assert!((rings[0][2].1 - 289.0).abs() < 1e-9);
+        assert!(footer_texts(&page).iter().all(|t| t.1.1 < 289.0));
+    }
+
+    #[test]
+    fn credit_line_element_only_moves_it() {
+        let mut spec = text_element("credit", ElementKind::CreditLine, &[], Corner::BottomRight);
+        spec.size_pt = Some(7.0);
+        spec.anchor.offset_mm = [3.0, 2.0];
+        let mut layout = a4();
+        layout.elements = vec![spec];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &empty_map());
+        let t = footer_texts(&page);
+        // Exactly one credit line, at the element's place and size.
+        assert_eq!(t.len(), 1);
+        assert!(t[0].0.starts_with("Erstellt mit freemapper-print"));
+        assert_eq!(t[0].2, pt_mm(7.0));
+        assert!(t[0].1.0 > 100.0, "{:?}", t[0]);
+    }
+
+    #[test]
+    fn copyright_from_notes() {
+        let mut map = empty_map();
+        map.notes = "© OpenStreetMap contributors, ODbL\n\n  \nCreated with freemapper – https://github.com/HenryJobst/freemapper\n".into();
+        // A wide passe-partout, so that the whole block fits below the frame.
+        let mut layout = a4();
+        layout.map_frame.margin_mm = 15.0;
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &map);
+        let t = footer_texts(&page);
+        let names: Vec<&str> = t.iter().map(|x| x.0.as_str()).collect();
+        assert_eq!(names[0], "© OpenStreetMap contributors, ODbL");
+        assert_eq!(
+            names[1],
+            "Created with freemapper – https://github.com/HenryJobst/freemapper"
+        );
+        assert!(names[2].starts_with("Erstellt mit freemapper-print"));
+        assert_eq!(names.len(), 3);
+        // One stacked block: same size, same left edge, the credit line at the bottom.
+        assert!(t.iter().all(|x| x.2 == pt_mm(5.0) && x.1.0 == 15.0));
+        assert!((t[2].1.1 - 293.0).abs() < 1e-9);
+        let step = pt_mm(5.0) * crate::render::fonts::LINE_SPACING;
+        assert!((t[1].1.1 - (293.0 - step)).abs() < 1e-9);
+        assert!((t[0].1.1 - (293.0 - 2.0 * step)).abs() < 1e-9);
+
+        // `print.copyright` replaces the notes.
+        let mut own = lp.clone();
+        own.project.print.copyright = Some("Karte: Ich\nDaten: Du".into());
+        let (page, _) = sheet_of(&own, &map);
+        let names: Vec<String> = footer_texts(&page).into_iter().map(|x| x.0).collect();
+        assert_eq!(&names[..2], ["Karte: Ich", "Daten: Du"]);
+        assert_eq!(names.len(), 3);
+    }
+
+    #[test]
+    fn copyright_line_element_moves_the_copyright_part() {
+        let mut map = empty_map();
+        map.notes = "Quelle".into();
+        let mut layout = a4();
+        layout.elements = vec![text_element(
+            "src",
+            ElementKind::CopyrightLine,
+            &[],
+            Corner::TopRight,
+        )];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &map);
+        let t = footer_texts(&page);
+        assert_eq!(t.len(), 2);
+        let src = t.iter().find(|x| x.0 == "Quelle").unwrap();
+        assert!(src.1.1 < 20.0 && src.1.0 > 100.0, "{src:?}");
+        let credit = t.iter().find(|x| x.0.starts_with("Erstellt")).unwrap();
+        assert_eq!(credit.1, (8.0, 293.0));
+    }
+
+    #[test]
+    fn missing_scale_or_contour_noted() {
+        let mut layout = a4();
+        layout.elements = vec![text_element(
+            "s",
+            ElementKind::Text,
+            &["1:{print_scale}"],
+            Corner::TopLeft,
+        )];
+        let mut lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (_, report) = sheet_of(&lp, &empty_map());
+        let missing = |r: &SheetReport| {
+            r.notes.iter().find_map(|n| match n {
+                SheetNote::MissingScaleOrContour { missing, .. } => Some(missing.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            missing(&report).unwrap(),
+            ["{contour_interval}", "map.contour_interval_m"]
+        );
+        // Both shown and the interval set: nothing to note.
+        lp.project.layouts[0].elements[0]
+            .lines
+            .push("{contour_interval}".into());
+        lp.project.map.contour_interval_m = Some(2.5);
+        let (page, report) = sheet_of(&lp, &empty_map());
+        assert_eq!(missing(&report), None);
+        let t = texts(&page.sheet);
+        assert_eq!((t[0].0.as_str(), t[1].0.as_str()), ("1:4000", "2,5 m"));
+        // A shared element counts unless the layout hides it.
+        lp.project.layouts[0].elements.clear();
+        lp.project.shared = vec![text_element(
+            "sh",
+            ElementKind::Text,
+            &["1:{print_scale} {contour_interval}"],
+            Corner::TopLeft,
+        )];
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert_eq!(missing(&report), None);
+        lp.project.layouts[0].hide_shared = vec!["sh".into()];
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert_eq!(
+            missing(&report).unwrap(),
+            ["{print_scale}", "{contour_interval}"]
+        );
     }
 }

@@ -1,0 +1,284 @@
+//! Text blocks of the sheet layer: the title block, texts, and the footer with the copyright
+//! and credit lines (design §5.2). Sizes come in pt, the page is in mm.
+
+use crate::project::{Anchor, AnchorTarget, Corner, ElementKind, ElementSpec};
+use crate::render::fonts::{ASCENT, LINE_SPACING, face, text_width};
+use crate::render::page::{DirectColour, PaperBox, Pt, Shape, SheetItem};
+
+use super::placeholders::{PlaceholderValues, fill};
+use super::{PlacedElement, SheetContext, SheetNote, layout, layout_elements};
+
+/// 1 pt in mm.
+const MM_PER_PT: f64 = 25.4 / 72.0;
+/// Title block: size of the first line, bold, when the element gives none (pt).
+const TITLE_PT: f64 = 14.0;
+/// Title block lines after the first, and the lines of a text (pt).
+const BODY_PT: f64 = 9.0;
+/// Footer: size of the copyright and credit lines when no element gives one (pt).
+const FOOTER_PT: f64 = 5.0;
+/// White box behind a title block or text, around the text (mm).
+const BOX_PADDING_MM: f64 = 1.0;
+/// Footer on a white box inside the map frame: padding (mm).
+const FOOTER_BOX_PADDING_MM: f64 = 0.8;
+/// Footer below the map frame: baseline of the last line above the paper edge (mm).
+const FOOTER_BASELINE_MM: f64 = 4.0;
+/// The footer goes below the frame only if the passe-partout there is at least this wide (mm):
+/// the baseline distance plus the descent of a 5 pt line and some air.
+const FOOTER_MIN_MARGIN_MM: f64 = 6.5;
+
+/// One line of a text block.
+#[derive(Debug, Clone, PartialEq)]
+struct Line {
+    text: String,
+    size_mm: f64,
+    bold: bool,
+}
+
+/// Lines of text stacked top down, with an optional white box behind.
+#[derive(Debug, Clone, PartialEq)]
+struct Block {
+    lines: Vec<Line>,
+    /// Padding between the text and the edge of the block (mm); the white box has this margin.
+    padding_mm: f64,
+    white_box: bool,
+}
+
+impl Block {
+    /// Width and height in mm, padding included.
+    fn size(&self) -> (f64, f64) {
+        let width = self
+            .lines
+            .iter()
+            .map(|l| text_width(&l.text, face(l.bold, false)) * l.size_mm)
+            .fold(0.0, f64::max);
+        let height: f64 = self.lines.iter().map(|l| l.size_mm * LINE_SPACING).sum();
+        (
+            width + 2.0 * self.padding_mm,
+            height + 2.0 * self.padding_mm,
+        )
+    }
+
+    /// The items for the block with its top-left corner at `top_left`: the white box, then
+    /// the lines in black; and the box they cover.
+    fn place(&self, top_left: Pt) -> PlacedElement {
+        let (w, h) = self.size();
+        let rect = PaperBox {
+            min: top_left,
+            max: (top_left.0 + w, top_left.1 + h),
+        };
+        let mut items = Vec::new();
+        if self.white_box {
+            items.push(SheetItem::Shape {
+                colour: DirectColour::WHITE,
+                shape: Shape::Fill {
+                    rings: vec![vec![
+                        rect.min,
+                        (rect.max.0, rect.min.1),
+                        rect.max,
+                        (rect.min.0, rect.max.1),
+                    ]],
+                },
+            });
+        }
+        let mut top = top_left.1 + self.padding_mm;
+        for l in &self.lines {
+            items.push(SheetItem::Shape {
+                colour: DirectColour::BLACK,
+                shape: Shape::Text {
+                    origin: (top_left.0 + self.padding_mm, top + ASCENT * l.size_mm),
+                    size: l.size_mm,
+                    bold: l.bold,
+                    italic: false,
+                    text: l.text.clone(),
+                    rotation: 0.0,
+                    stroke: None,
+                },
+            });
+            top += l.size_mm * LINE_SPACING;
+        }
+        PlacedElement { items, rect }
+    }
+
+    /// The block hung on `anchor` of the page or frame.
+    fn place_on(&self, anchor: &Anchor, ctx: &SheetContext<'_>) -> PlacedElement {
+        let top_left = layout::anchor_point(anchor, ctx.page, ctx.frame, self.size());
+        self.place(top_left)
+    }
+}
+
+fn plain_lines(lines: &[String], size_pt: f64) -> Vec<Line> {
+    lines
+        .iter()
+        .map(|t| Line {
+            text: t.clone(),
+            size_mm: size_pt * MM_PER_PT,
+            bold: false,
+        })
+        .collect()
+}
+
+/// Draws a `title_block`, `text`, `credit_line` or `copyright_line` element. A placeholder that
+/// does not exist adds [`SheetNote::UnknownPlaceholder`]. `None` for a copyright line without
+/// any source.
+pub(super) fn place_text_element(
+    ctx: &SheetContext<'_>,
+    spec: &ElementSpec,
+    notes: &mut Vec<SheetNote>,
+) -> Option<PlacedElement> {
+    let block = match spec.kind {
+        ElementKind::TitleBlock | ElementKind::Text => {
+            let values = values(ctx);
+            let lines = spec
+                .lines
+                .iter()
+                .map(|template| {
+                    let (text, unknown) = fill(template, &values);
+                    for name in unknown {
+                        let note = SheetNote::UnknownPlaceholder {
+                            id: spec.id.clone(),
+                            name,
+                        };
+                        if !notes.contains(&note) {
+                            notes.push(note);
+                        }
+                    }
+                    text
+                })
+                .collect::<Vec<_>>();
+            let lines = if spec.kind == ElementKind::TitleBlock {
+                let first = spec.size_pt.unwrap_or(TITLE_PT) * MM_PER_PT;
+                lines
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, text)| Line {
+                        text,
+                        size_mm: if i == 0 { first } else { BODY_PT * MM_PER_PT },
+                        bold: i == 0,
+                    })
+                    .collect()
+            } else {
+                plain_lines(&lines, spec.size_pt.unwrap_or(BODY_PT))
+            };
+            Block {
+                lines,
+                padding_mm: if spec.box_white() {
+                    BOX_PADDING_MM
+                } else {
+                    0.0
+                },
+                white_box: spec.box_white(),
+            }
+        }
+        ElementKind::CreditLine => Block {
+            lines: plain_lines(&[credit_text(ctx)], spec.size_pt.unwrap_or(FOOTER_PT)),
+            padding_mm: 0.0,
+            white_box: false,
+        },
+        ElementKind::CopyrightLine => Block {
+            lines: plain_lines(&copyright_lines(ctx), spec.size_pt.unwrap_or(FOOTER_PT)),
+            padding_mm: 0.0,
+            white_box: false,
+        },
+        _ => return None,
+    };
+    if block.lines.is_empty() {
+        return None;
+    }
+    Some(block.place_on(&spec.anchor, ctx))
+}
+
+/// The footer parts no element moved, in their default place: the copyright lines above the
+/// credit line, one block (design §5.2). Every sheet has the credit line; it cannot be switched
+/// off, and a `credit_line` element only moves it.
+///
+/// Below the map frame, left-aligned with it, the last baseline 4 mm above the paper edge. If the
+/// passe-partout is too narrow for that (under 6.5 mm, or too narrow for all the lines), inside the frame at its bottom left on a white box.
+pub(super) fn default_footer(ctx: &SheetContext<'_>) -> Vec<SheetItem> {
+    let has = |kind| layout_elements(ctx.project, ctx.layout).any(|e| e.kind == kind);
+    let mut text = Vec::new();
+    if !has(ElementKind::CopyrightLine) {
+        text.extend(copyright_lines(ctx));
+    }
+    if !has(ElementKind::CreditLine) {
+        text.push(credit_text(ctx));
+    }
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let mut block = Block {
+        lines: plain_lines(&text, FOOTER_PT),
+        padding_mm: 0.0,
+        white_box: false,
+    };
+    let margin = ctx.page.max.1 - ctx.frame.max.1;
+    let (_, h) = block.size();
+    // The last baseline: the block's bottom less the descent part of the last line.
+    let size = block.lines.last().map_or(0.0, |l| l.size_mm);
+    let bottom = ctx.page.max.1 - FOOTER_BASELINE_MM + (size * LINE_SPACING - ASCENT * size);
+    // Below the frame only if the whole block fits there, not just the last line.
+    if margin >= FOOTER_MIN_MARGIN_MM && bottom - h >= ctx.frame.max.1 {
+        block.place((ctx.frame.min.0, bottom - h)).items
+    } else {
+        block.padding_mm = FOOTER_BOX_PADDING_MM;
+        block.white_box = true;
+        let anchor = Anchor {
+            to: AnchorTarget::MapFrame,
+            corner: Corner::BottomLeft,
+            offset_mm: [0.0, 0.0],
+        };
+        block.place_on(&anchor, ctx).items
+    }
+}
+
+fn values(ctx: &SheetContext<'_>) -> PlaceholderValues {
+    PlaceholderValues::new(
+        ctx.project,
+        &ctx.layout.id,
+        ctx.print.print_scale,
+        ctx.map.georef.scale_denominator,
+    )
+}
+
+fn credit_text(ctx: &SheetContext<'_>) -> String {
+    crate::credit_line(ctx.project.project.event.lang).to_string()
+}
+
+/// One source per line: `print.copyright` if set, otherwise the notes of the map; split at line
+/// breaks, trimmed, empty lines dropped.
+fn copyright_lines(ctx: &SheetContext<'_>) -> Vec<String> {
+    let source = ctx
+        .project
+        .project
+        .print
+        .copyright
+        .as_deref()
+        .unwrap_or(&ctx.map.notes);
+    source
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// What the text elements of the layout leave out: `{print_scale}`, `{contour_interval}`, the
+/// contour interval of the project. Empty when nothing is missing.
+pub(super) fn missing_scale_or_contour(ctx: &SheetContext<'_>) -> Vec<String> {
+    use super::placeholders::mentions;
+    let lines: Vec<&String> = layout_elements(ctx.project, ctx.layout)
+        .filter(|e| matches!(e.kind, ElementKind::TitleBlock | ElementKind::Text))
+        .flat_map(|e| &e.lines)
+        .collect();
+    let shows = |name| lines.iter().any(|l| mentions(l, name));
+    let mut missing = Vec::new();
+    if !shows("print_scale") {
+        missing.push("{print_scale}".to_string());
+    }
+    if !shows("contour_interval") {
+        missing.push("{contour_interval}".to_string());
+    }
+    if ctx.project.project.map.contour_interval_m.is_none() {
+        missing.push("map.contour_interval_m".to_string());
+    }
+    missing
+}
