@@ -12,7 +12,8 @@ training sheet, not only a feature list.
 
 `examples/` holds finished events built on maps from freemapper's examples: a project file, the course file
 (`.ppen` or IOF XML), the generated PDFs and a preview image. The map itself is referenced or copied from
-freemapper. The first example is a sprint training with a window and a corridor variant.
+freemapper. The first example is a sprint training with a window and a corridor variant on
+freemapper's Lübeck old town map, as the freemapper session recommended.
 
 ## Consequences
 

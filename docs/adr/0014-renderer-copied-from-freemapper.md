@@ -12,7 +12,7 @@ every renderer change a commit in two repositories plus a version bump.
 ## Decision
 
 The renderer is copied into `crates/freemapper-print` and developed further here. The copy records the
-freemapper commit it came from. freemapper switches to this renderer later, in a separate step.
+freemapper commit it came from (`743ce4b`). freemapper reports every later fix to its renderer. freemapper switches to this renderer later, in a separate step.
 
 ## Consequences
 

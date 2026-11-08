@@ -135,6 +135,14 @@ Workspace with two crates, as in freemapper:
 - `.omap`/`.xmap` reader for colours, symbols, objects, georeferencing and the map scale. freemapper only reads
   symbol sets from `.omap` today, so the object reader is new. The MIT crate `omap` (omap-rs) and freemapper's
   `omap/model.rs` are candidates to start from *(Claude's call: the builder chooses)*.
+- **Maps made by freemapper** *(agreed with the freemapper session, 2026-11-08)*. freemapper puts north lines
+  and an information block (title, scale, scale bar, sources, credit) into the map part "peripheral
+  information", tagged `freemapper:source=sheet`. freemapper guarantees that tag and part name stay stable.
+  freemapper-print hides objects with that tag by default, because it draws its own sheet elements. The data
+  sources for the copyright line come from the map notes (`<notes>`): one source per line, the last line is
+  freemapper's credit. The notes are English. The map kind comes from `map_kind` in a `freemapper.toml` next to
+  the map when there is one; otherwise `init` infers it from the map scale and the symbol set, and the user
+  confirms it either way.
 - `.ocd` reader later. OCAD 6–12 is documented in the OCAD wiki; OCAD 2018 and newer is not. Test early with
   real files.
 
@@ -145,7 +153,8 @@ with caps, joins and dash patterns, borders, mid/start/end symbols, point symbol
 following `docs/render/oom-render-reference.md`. Missing there and needed here: area patterns (line and point
 hatching), pointed caps, dash symbols, text framing, embedded fonts, raster and vector images.
 
-The renderer is copied from freemapper into this project and developed further here *(user, ADR 0014)*.
+The renderer is copied from freemapper (commit `743ce4b`) into this project and developed further here
+*(user, ADR 0014)*. freemapper reports every later fix to its renderer.
 freemapper moves onto it later. The copy keeps a note of the freemapper commit it came from, so fixes can be
 carried across until then. Since both projects are GPL-3.0, the builder may consult and port OOM's rendering
 code (`src/core/renderables/`, `src/core/symbols/`) where the reference document falls short.
@@ -391,7 +400,9 @@ too awkward.
 - Whether to start the `.omap` reader from omap-rs or from freemapper's model.
 - How the editor draws masks (polygon tool, buffer around legs, or both).
 - Font choice for sheet elements among openly licensed fonts.
-- Which freemapper example and which training format the first example project shows.
+- The first example uses freemapper's Lübeck old town (`examples/schleswig-holstein-luebeck`), Quedlinburg as
+  the alternative *(freemapper session's recommendation)*. freemapper regenerates all examples after its
+  `water` branch is merged and reports the commit; take the map from that commit or later.
 
 ## 9. Questions answered after the review
 
