@@ -1,0 +1,142 @@
+name: Release
+
+# A tag "v<version>" (matching the version in Cargo.toml) builds freemapper-print for every platform and
+# publishes a GitHub release with the archives and their SHA-256 checksums.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and release, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macos-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            # Built on an Apple Silicon runner, so it cannot be started there for the smoke test.
+            cross: true
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Actions pinned to commits; the comment names the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      # The toolchain comes from rust-toolchain.toml; the target is added to it.
+      - run: rustup target add ${{ matrix.target }}
+      - name: Check that the tag matches the version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match version $version in Cargo.toml" >&2
+            exit 1
+          fi
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --release --locked -p freemapper-print-cli --target ${{ matrix.target }}
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        run: target/${{ matrix.target }}/release/freemapper-print --version
+      - name: Package
+        run: |
+          dir="freemapper-print-$TAG-${{ matrix.name }}"
+          mkdir "$dir"
+          exe=""
+          if [ "${{ runner.os }}" = "Windows" ]; then exe=".exe"; fi
+          cp "target/${{ matrix.target }}/release/freemapper-print$exe" "$dir/"
+          cp README.md README.en.md LICENSE "$dir/"
+          # The user manual with its images, at the path the READMEs link to.
+          mkdir -p "$dir/docs"
+          cp -R docs/manual "$dir/docs/"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a -tzip "$dir.zip" "$dir" > /dev/null
+            archive="$dir.zip"
+          else
+            tar -czf "$dir.tar.gz" "$dir"
+            archive="$dir.tar.gz"
+          fi
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            freemapper-print-*.tar.gz
+            freemapper-print-*.zip
+            freemapper-print-*.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          # The release body starts with this version's section of CHANGELOG.en.md.
+          version="${TAG#v}"
+          awk -v head="## [$version]" '
+            index($0, head) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found
+          ' CHANGELOG.en.md > changelog-section.md
+          if [ ! -s changelog-section.md ]; then
+            echo "No section for $version in CHANGELOG.en.md" >&2
+          fi
+          install_text="Download the archive for your system, unpack it and start \`freemapper-print\`
+          (Windows: \`freemapper-print.exe\`) from a terminal or register it with your AI assistant.
+          Installation and first steps: see README.md (Deutsch) / README.en.md (English) in the
+          archive or https://github.com/HenryJobst/freemapper-print#readme
+
+          - Windows: freemapper-print-$TAG-windows-x86_64.zip
+          - macOS Apple Silicon (M1 and newer): freemapper-print-$TAG-macos-arm64.tar.gz
+          - macOS Intel: freemapper-print-$TAG-macos-x86_64.tar.gz
+          - Linux: freemapper-print-$TAG-linux-x86_64.tar.gz (ARM: linux-arm64)"
+          { cat changelog-section.md; echo; echo "$install_text"; } > release-notes.md
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" \
+              --title "freemapper-print $TAG" --notes-file release-notes.md --generate-notes
+          fi

@@ -1,0 +1,6 @@
+/target
+.DS_Store
+.worktrees/
+.superpowers/
+# Examples: generated PDFs and previews are kept; downloaded map data is not.
+/examples/*/data/
