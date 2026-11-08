@@ -155,8 +155,27 @@ fn number_attr<T: std::str::FromStr + Default>(
     }
 }
 
+/// A numeric attribute that must be finite: `NaN` and `inf` parse as numbers but are broken.
 fn float_attr(e: &BytesStart<'_>, name: &str) -> Result<f64, OmapError> {
-    number_attr(e, name)
+    let v: f64 = number_attr(e, name)?;
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(invalid_number(e, name, v))
+    }
+}
+
+fn invalid_number(e: &BytesStart<'_>, name: &str, v: f64) -> OmapError {
+    OmapError::Xml(format!("invalid number {name}=\"{v}\" in <{}>", name_of(e)))
+}
+
+/// A box size attribute: finite and not negative.
+fn size_attr(e: &BytesStart<'_>, name: &str) -> Result<f64, OmapError> {
+    let v = float_attr(e, name)?;
+    if v < 0.0 {
+        return Err(invalid_number(e, name, v));
+    }
+    Ok(v)
 }
 
 fn int_attr(e: &BytesStart<'_>, name: &str) -> Result<i32, OmapError> {
@@ -296,7 +315,7 @@ impl State {
             }
             ("text", Some("object")) => self.start_collect(Collect::Text),
             ("size", Some("object")) => {
-                let size = (float_attr(e, "width")?, float_attr(e, "height")?);
+                let size = (size_attr(e, "width")?, size_attr(e, "height")?);
                 if let MapObjectKind::Text { box_size, .. } = &mut self.current().kind {
                     *box_size = Some(size);
                 }
@@ -375,7 +394,6 @@ impl State {
                 Collect::Coords => {
                     let coords = parse_coords(&text)?;
                     self.current().coords.extend(coords);
-                    self.legacy_box_size();
                 }
                 Collect::Text => {
                     if let MapObjectKind::Text { text: t, .. } = &mut self.current().kind {
@@ -384,7 +402,10 @@ impl State {
                 }
                 Collect::Tag(key) => self.current().tags.push((key, text)),
             }
-            return Ok(());
+        }
+        // After both forms of coordinates: the text form, and `<coord>` elements.
+        if tag == "coords" && parent.as_deref() == Some("object") && self.object.is_some() {
+            self.legacy_box_size();
         }
         if tag == "object"
             && parent.as_deref() == Some("objects")
@@ -485,6 +506,30 @@ mod tests {
         );
         assert_eq!(text(&legacy), Some((40_000.0, 20_000.0)));
         assert_eq!(legacy.coords, vec![c(5, 6, 0)], "only the anchor stays");
+        // The same in the older element form of coordinates.
+        let elements = one(
+            r#"<object type="4" symbol="0"><coords><coord x="5" y="6"/><coord x="40000" y="20000"/></coords><text>a</text></object>"#,
+        );
+        assert_eq!(text(&elements), Some((40_000.0, 20_000.0)));
+        assert_eq!(elements.coords, vec![c(5, 6, 0)], "only the anchor stays");
+    }
+
+    #[test]
+    fn rejects_broken_box_sizes_and_rotations() {
+        for object in [
+            r#"<object type="4" symbol="0"><coords count="1">0 0;</coords><size width="NaN" height="1"/></object>"#,
+            r#"<object type="4" symbol="0"><coords count="1">0 0;</coords><size width="1" height="inf"/></object>"#,
+            r#"<object type="4" symbol="0"><coords count="1">0 0;</coords><size width="-1" height="1"/></object>"#,
+            r#"<object type="4" symbol="0" rotation="NaN"><coords count="1">0 0;</coords></object>"#,
+            r#"<object type="0" symbol="0" rotation="-inf"><coords count="1">0 0;</coords></object>"#,
+            r#"<object type="1" symbol="0"><coords count="1">0 0;</coords><pattern rotation="inf"><coord x="0" y="0"/></pattern></object>"#,
+        ] {
+            let err = read_map(&map_with(object, r#"<georeferencing scale="4000"/>"#)).unwrap_err();
+            assert!(
+                matches!(&err, OmapError::Xml(m) if m.contains("invalid number")),
+                "{object}: {err}"
+            );
+        }
     }
 
     #[test]
