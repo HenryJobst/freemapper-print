@@ -61,8 +61,8 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
   application's data model crate. Its number positions use the same form as §5.7 (direction, gap in print mm).
 - Course overprint for team orienteering: mandatory and free controls drawn and described differently. Needs
   the course-setting application's format.
-- Maps for control-placer tours: open whether freemapper-print prints them with a layout of their own or the
-  course-setting application prints them *(the course-setting session clarifies with the user)*.
+- **Control-placer tour sheets** *(proposal agreed between the two sessions on 2026-11-08; user review
+  pending)*. freemapper-print prints them, so there is one renderer with exact scale. Details in §5.8.
 - Maps from the author's own future map editor (separate project, not part of this design) *(user)*.
 
 **Non-goals**
@@ -336,6 +336,26 @@ it over once extracted.
 crossing point, a forbidden route or an out-of-bounds area. `check` warns when such an object lies inside a
 masked area, because the runner then sees it without the map underneath *(Claude's call)*.
 
+### 5.8 Control-placer tour sheets (later)
+
+A second sheet kind besides the course sheet. Course setting builds the tours from all controls of an event,
+planned beforehand or split on the day. It delivers data only; freemapper-print decides everything on the sheet.
+
+- **Course setting delivers** per tour: ordered controls (code, position in map coordinates of the same map,
+  description symbols, material such as stand or SI unit, remark), start and end point, optionally a suggested
+  route as a line. It delivers no scale, paper size, map frame or number positions.
+- **freemapper-print prints** one sheet per tour: controls numbered in tour order with the control code next to
+  the number, start and end marked, the route in a style that cannot be mistaken for a course leg, and a
+  checklist table (order, code, description, material, tick box). A second variant prints the tour in reverse
+  order for collecting. No passe-partout and no logos by default.
+- **Without the editor.** On competition day course setting calls `freemapper-print` by CLI or MCP and gets one
+  PDF with all tour sheets at once. A built-in tour layout therefore works without a project file and without
+  manual work: it fits the map frame to the tour's extent, picks orientation and the largest print scale from
+  the standard's table that fits the paper (ADR 0012), and places numbers with the placement module (§5.7).
+  An event project file, if given, adds shared elements and overrides the defaults.
+- **Prerequisites.** Course overprint, description rendering and the placement module (M3), and the
+  course-setting application's data model crate. New sheet element: table.
+
 ## 6. Testing and quality
 
 - Readers (`.omap`, IOF XML, `.ppen`) test-first with small fixtures and real files from Purple Pen, Condes and
@@ -359,7 +379,8 @@ masked area, because the runner then sees it without the map underneath *(Claude
 5. **M4** Mask variants and assignments.
 6. **M5** MCP server.
 7. **M6** Browser editor.
-8. **Later** OCAD reader, press PDF, symbol group hiding.
+8. **Later** OCAD reader, press PDF, symbol group hiding, course source from the course-setting application,
+   team orienteering overprint, control-placer tour sheets (§5.8).
 
 The builder may reorder M5 and M6 or start the editor earlier if layout placement through the CLI turns out
 too awkward.
