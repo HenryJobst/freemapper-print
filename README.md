@@ -12,11 +12,14 @@ Geplant ist:
 - die Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF, später auch OCAD-Karten;
 - Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Purple Pen, Condes,
   OCAD-Bahnlegung), mit Bahnaufdruck und Postenbeschreibung;
-- Passepartout, Titel, Nordlinien, Vereins- und Sponsorenlogos, eine Kontrollstrecke zum Nachmessen;
+- Passepartout, Titel, Vereins- und Sponsorenlogos, eine Kontrollstrecke zum Nachmessen;
 - Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet;
-- mehrere Layouts je Veranstaltung, etwa 1:4000 für die Älteren und 1:5000 für die Jüngeren, wobei die Symbole
-  ihre vorgeschriebene Größe behalten;
+- mehrere Layouts je Veranstaltung, etwa 1:4000 für die älteren Klassen und 1:3000 für die jüngsten, jeweils mit
+  den Symbolgrößen, die die Norm für den Maßstab vorschreibt;
 - Bedienung über einen Editor im Browser, über die Kommandozeile oder über einen KI-Assistenten (MCP).
+
+Die Nordlinien kommen aus der Karte und werden immer mitgedruckt. Fehlen sie in einer Karte, soll das Programm
+sie ab M2 nach der Norm ergänzen.
 
 Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 
@@ -43,26 +46,29 @@ prüft [lefthook](https://github.com/evilmartians/lefthook) Formatierung und cli
 ## Benutzung
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-5000-a4.pdf --paper a4 --scale 5000
+freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
-Das schreibt die Karte als PDF auf eine A4-Seite im Maßstab 1:5000. Die wichtigsten Optionen:
+Das schreibt die Sprintkarte als PDF auf eine A3-Seite im Maßstab 1:3000. Die wichtigsten Optionen:
 
 - `--paper a4|a3` wählt das Papier (Standard A4), `--orientation auto|portrait|landscape` die Ausrichtung. Bei
   `auto` nimmt das Programm die Ausrichtung, die weniger von der Karte abschneidet.
 - `--scale <Zahl>` setzt den Druckmaßstab, zum Beispiel 4000 für 1:4000. Ohne die Option gilt der Maßstab der
-  Karte.
+  Karte. Bei einem größeren Maßstab wachsen die Symbole so, wie es die Norm vorschreibt: eine Sprintkarte in
+  1:3000 auf 133 %, eine Waldkarte in 1:10000 auf 150 %. Einen kleineren Maßstab als den der Norm (Sprint
+  1:5000) druckt das Programm mit Symbolen in Normgröße und warnt, dass der Druck nur fürs Training taugt.
 - `--kind sprint|schoolyard|forest` gibt die Kartenart vor, falls das Programm sie weder aus `freemapper.toml`
   noch aus der Kartendatei erkennt.
-- `--show-sheet-objects` zeichnet auch die Nordlinien und den Informationsblock der Karte.
+- `--show-sheet-objects` druckt auch den Informationsblock von freemapper: Titel, Maßstab, Maßstabsleiste und
+  Namensnennung. Die Nordlinien gehören zur Karte und stehen immer im PDF.
 
 Passt die Karte nicht auf die Seite, schreibt das Programm das PDF trotzdem und meldet, wie viele Millimeter
 fehlen. Es nennt auch Objekte, die es nicht oder nur vereinfacht gezeichnet hat.
 
 Drucken Sie das PDF in Originalgröße (100 %, "Tatsächliche Größe") und schalten Sie "An Seite anpassen"
-aus. Sonst stimmt der Maßstab nicht. Ein fertiges Beispiel mit denselben Seiten in 1:4000 und 1:5000 liegt in
-[examples/luebeck-scales](examples/luebeck-scales/README.md). Das Handbuch erklärt das Drucken im Kapitel
-[Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
+aus. Sonst stimmt der Maßstab nicht. Ein fertiges Beispiel mit derselben Karte in 1:4000 auf A4 und 1:3000 auf
+A3 liegt in [examples/luebeck-scales](examples/luebeck-scales/README.md). Das Handbuch erklärt das Drucken im
+Kapitel [Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
 
 ## Mit einem KI-Agenten
 

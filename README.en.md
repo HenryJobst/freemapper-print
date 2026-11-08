@@ -12,11 +12,14 @@ Planned:
 - the map from OOM (`.omap`) at the exact print scale as a vector PDF, OCAD maps later;
 - courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Purple Pen, Condes, OCAD
   course setting), with course overprint and control descriptions;
-- passe-partout, title, north lines, club and sponsor logos, and a scale check bar to measure against;
+- passe-partout, title, club and sponsor logos, and a scale check bar to measure against;
 - masks for window and corridor orienteering, in variants assigned to single courses;
-- several layouts per event, for example 1:4000 for the older classes and 1:5000 for the younger ones, with
-  symbols kept at the size the standard sets;
+- several layouts per event, for example 1:4000 for the older classes and 1:3000 for the youngest, each with
+  the symbol sizes the standard sets for its scale;
 - use through an editor in the browser, the command line or an AI assistant (MCP).
+
+North lines come from the map and are always printed. Where a map has none, the program is to add them as the
+standard sets from M2 on.
 
 The program needs no OCAD and runs on macOS, Linux and Windows.
 
@@ -43,25 +46,28 @@ cargo build --release
 ## Usage
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-5000-a4.pdf --paper a4 --scale 5000
+freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
-This writes the map as a PDF on an A4 page at 1:5000. The main options:
+This writes the sprint map as a PDF on an A3 page at 1:3000. The main options:
 
 - `--paper a4|a3` picks the paper (default A4), `--orientation auto|portrait|landscape` the orientation. With
   `auto` the program takes the orientation that cuts off less of the map.
 - `--scale <number>` sets the print scale, for example 4000 for 1:4000. Without it the scale of the map applies.
+  At a larger scale the symbols grow as the standard sets: a sprint map at 1:3000 to 133 %, a forest map at
+  1:10000 to 150 %. A scale smaller than the standard's base (sprint 1:5000) keeps the symbols at their
+  standard size, and the program warns that the print is for training only.
 - `--kind sprint|schoolyard|forest` sets the map kind if the program can tell it neither from `freemapper.toml`
   nor from the map file.
-- `--show-sheet-objects` also draws the north lines and the information block of the map.
+- `--show-sheet-objects` also prints freemapper's information block: title, scale, scale bar and credits.
+  North lines belong to the map and are always in the PDF.
 
 If the map does not fit on the page, the program writes the PDF anyway and says how many millimetres are
 missing. It also lists objects it did not draw, or drew in simplified form.
 
 Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. A finished
-example with the same pages at 1:4000 and 1:5000 is in
-[examples/luebeck-scales](examples/luebeck-scales/README.en.md).
-The manual explains printing in the chapter
+example with the same map at 1:4000 on A4 and 1:3000 on A3 is in
+[examples/luebeck-scales](examples/luebeck-scales/README.en.md). The manual explains printing in the chapter
 [Printing](docs/manual/en.md#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop).
 
 ## With an AI agent
