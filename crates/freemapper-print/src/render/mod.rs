@@ -4,5 +4,6 @@
 pub mod draw;
 pub mod geometry;
 pub(crate) mod metrics;
+mod pattern;
 pub mod pdf;
 pub mod symbols;

@@ -2,6 +2,8 @@
 //! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted by colour priority, texts in
 //! the standard fonts Helvetica / Helvetica-Bold with WinAnsi encoding.
 
+use std::sync::Arc;
+
 use pdf_writer::types::{LineCapStyle, LineJoinStyle};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
@@ -63,9 +65,18 @@ fn shape_bounds(shape: &Shape) -> Option<PaperBox> {
         }
         // What is painted lies inside both the clip and the inner shape.
         Shape::Clipped { rings, inner } => {
-            let a = shape_bounds(&Shape::Fill {
-                rings: rings.clone(),
-            })?;
+            let mut points = rings.iter().flatten();
+            let first = *points.next()?;
+            let (a_min, a_max) = points.fold((first, first), |(min, max), q| {
+                (
+                    (min.0.min(q.0), min.1.min(q.1)),
+                    (max.0.max(q.0), max.1.max(q.1)),
+                )
+            });
+            let a = PaperBox {
+                min: a_min,
+                max: a_max,
+            };
             let b = shape_bounds(inner)?;
             let min = (a.min.0.max(b.min.0), a.min.1.max(b.min.1));
             let max = (a.max.0.min(b.max.0), a.max.1.min(b.max.1));
@@ -239,13 +250,18 @@ pub fn write_pdf(
     // One clip block for each run of consecutive map primitives, and nested in it one for each
     // run of shapes clipped to the same rings (the lines of one area pattern).
     let mut clipping = false;
-    let mut pattern_clip: Option<&[Vec<Pt>]> = None;
+    let mut pattern_clip: Option<&Arc<[Vec<Pt>]>> = None;
     for (primitive, clipped) in items {
         let (rings, shape) = match &primitive.shape {
-            Shape::Clipped { rings, inner } => (Some(rings.as_slice()), &**inner),
+            Shape::Clipped { rings, inner } => (Some(rings), &**inner),
             shape => (None, shape),
         };
-        if pattern_clip.is_some() && (clipped != clipping || pattern_clip != rings) {
+        // The pattern shapes of one area share their rings: compare pointers first.
+        let same_clip = match (pattern_clip, rings) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
+            _ => false,
+        };
+        if pattern_clip.is_some() && (clipped != clipping || !same_clip) {
             content.restore_state();
             pattern_clip = None;
         }
@@ -412,7 +428,7 @@ mod tests {
         Primitive {
             priority: 2,
             shape: Shape::Clipped {
-                rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
+                rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]].into(),
                 inner: Box::new(Shape::Stroke {
                     path: vec![(5.0, y), (25.0, y)],
                     closed: false,

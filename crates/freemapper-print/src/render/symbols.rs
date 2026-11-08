@@ -109,7 +109,7 @@ pub enum Part {
 /// Lines run at `angle_rad` (counter-clockwise on paper from east), `spacing` apart, shifted by
 /// `offset` along their normal. A point pattern places `symbol` every `distance` along those lines,
 /// starting at `offset_along`. `rotatable`: the object's pattern rotation and origin apply.
-/// `no_clipping`: not clipped to the area outline (any of OOM's `no_clipping` modes).
+/// `clipping`: how the pattern is cut at the area outline.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Lines {
@@ -119,7 +119,7 @@ pub enum Pattern {
         offset: f64,
         color: i32,
         width: f64,
-        no_clipping: bool,
+        clipping: Clipping,
     },
     Points {
         angle_rad: f64,
@@ -129,9 +129,29 @@ pub enum Pattern {
         offset_along: f64,
         distance: f64,
         symbol: Box<PointDef>,
-        no_clipping: bool,
+        clipping: Clipping,
     },
 }
+
+/// How an area pattern meets the area outline: OOM's `no_clipping` attribute masked with 0x03
+/// (`AreaSymbol::FillPattern::Option`, reference §4.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clipping {
+    /// 0, `Default`: clipped to the outline.
+    Clip,
+    /// 1, `NoClippingIfCompletelyInside`: unclipped points drawn only where completely inside.
+    NoClippingIfCompletelyInside,
+    /// 2, `NoClippingIfCenterInside`: unclipped points drawn where their centre is inside.
+    NoClippingIfCentreInside,
+    /// 3, `NoClippingIfPartiallyInside`: unclipped points drawn where partly inside.
+    NoClippingIfPartlyInside,
+}
+
+/// Smallest `line_spacing` and `point_distance` (µm) a pattern may have: anything denser is
+/// dropped when the symbols are read (OOM itself only skips values ≤ 0). 0.05 mm is far below
+/// any printable pattern and keeps a broken or hostile file from asking for billions of lines
+/// or points.
+pub const MIN_PATTERN_STEP: f64 = 50.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Symbol {
@@ -346,35 +366,54 @@ fn point_def(node: &Node) -> PointDef {
     }
 }
 
-/// One `<pattern>` of an area symbol [AS `FillPattern::load`]; `None` for an unknown type or a
-/// point pattern without a point symbol (OOM draws nothing for it).
+/// One `<pattern>` of an area symbol [AS `FillPattern::load`]; `None` for an unknown type, a
+/// point pattern without a point symbol (OOM draws nothing for it), a non-finite number or a
+/// spacing or point distance below [`MIN_PATTERN_STEP`].
 fn pattern(node: &Node) -> Option<Pattern> {
     let angle_rad = node.num("angle");
     let rotatable = node.flag("rotatable");
     let spacing = node.num("line_spacing");
     let offset = node.num("line_offset");
-    // `no_clipping` holds one of OOM's three clipping alternatives (bits 0x03).
-    let no_clipping = (node.num("no_clipping") as i32) & 0x03 != 0;
+    let clipping = match (node.num("no_clipping") as i32) & 0x03 {
+        1 => Clipping::NoClippingIfCompletelyInside,
+        2 => Clipping::NoClippingIfCentreInside,
+        3 => Clipping::NoClippingIfPartlyInside,
+        _ => Clipping::Clip,
+    };
+    let usable = |numbers: &[f64], steps: &[f64]| {
+        numbers.iter().chain(steps).all(|v| v.is_finite())
+            && steps.iter().all(|&v| v >= MIN_PATTERN_STEP)
+    };
     match node.num("type") as i32 {
-        1 => Some(Pattern::Lines {
-            angle_rad,
-            rotatable,
-            spacing,
-            offset,
-            color: node.color("color"),
-            width: node.num("line_width"),
-            no_clipping,
-        }),
-        2 => Some(Pattern::Points {
-            angle_rad,
-            rotatable,
-            spacing,
-            offset,
-            offset_along: node.num("offset_along_line"),
-            distance: node.num("point_distance"),
-            symbol: Box::new(point_def(node.child("symbol")?.child("point_symbol")?)),
-            no_clipping,
-        }),
+        1 => {
+            let width = node.num("line_width");
+            usable(&[angle_rad, offset, width], &[spacing]).then(|| Pattern::Lines {
+                angle_rad,
+                rotatable,
+                spacing,
+                offset,
+                color: node.color("color"),
+                width,
+                clipping,
+            })
+        }
+        2 => {
+            let offset_along = node.num("offset_along_line");
+            let distance = node.num("point_distance");
+            let symbol = Box::new(point_def(node.child("symbol")?.child("point_symbol")?));
+            usable(&[angle_rad, offset, offset_along], &[spacing, distance]).then_some(
+                Pattern::Points {
+                    angle_rad,
+                    rotatable,
+                    spacing,
+                    offset,
+                    offset_along,
+                    distance,
+                    symbol,
+                    clipping,
+                },
+            )
+        }
         _ => None,
     }
 }
@@ -578,7 +617,7 @@ mod tests {
     fn parses_line_and_point_patterns() {
         let xml = r#"<symbol type="4" id="7"><area_symbol inner_color="-1" min_area="0" patterns="2">
             <pattern type="1" angle="0.785" rotatable="true" line_spacing="1000" line_offset="0" offset_along_line="0" color="3" line_width="100"/>
-            <pattern type="2" angle="0" line_spacing="2000" line_offset="500" offset_along_line="250" point_distance="1500">
+            <pattern type="2" angle="0" no_clipping="3" line_spacing="2000" line_offset="500" offset_along_line="250" point_distance="1500">
                 <symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="0" outer_color="-1" elements="0"/></symbol>
             </pattern>
         </area_symbol></symbol>"#;
@@ -595,7 +634,7 @@ mod tests {
                 offset: 0.0,
                 color: 3,
                 width: 100.0,
-                no_clipping: false,
+                clipping: Clipping::Clip,
             }
         );
         let Pattern::Points {
@@ -606,7 +645,7 @@ mod tests {
             offset_along,
             distance,
             symbol,
-            no_clipping,
+            clipping,
         } = &patterns[1]
         else {
             panic!("{:?}", patterns[1])
@@ -623,7 +662,69 @@ mod tests {
             (0.0, false, 2000.0, 500.0, 250.0, 1500.0)
         );
         assert_eq!(symbol.dot, Some((5, 100.0)));
-        assert!(!no_clipping);
+        assert_eq!(*clipping, Clipping::NoClippingIfPartlyInside);
+    }
+
+    /// The patterns of an area symbol holding `pattern`.
+    fn patterns_of(pattern: &str) -> Vec<Pattern> {
+        let xml = format!(
+            r#"<symbol type="4" id="1"><area_symbol inner_color="-1" patterns="1">{pattern}</area_symbol></symbol>"#
+        );
+        match symbol(&parse(&xml).children[0]) {
+            Some(Symbol::Area { patterns, .. }) => patterns,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    const DOT: &str = r#"<symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="0" outer_color="-1"/></symbol>"#;
+
+    #[test]
+    fn nan_angle_pattern_dropped() {
+        for angle in ["NaN", "inf", "-inf"] {
+            let line = format!(
+                r#"<pattern type="1" angle="{angle}" line_spacing="1000" line_offset="0" color="3" line_width="100"/>"#
+            );
+            assert!(patterns_of(&line).is_empty(), "{angle}");
+            let points = format!(
+                r#"<pattern type="2" angle="{angle}" line_spacing="1000" line_offset="0" offset_along_line="0" point_distance="1000">{DOT}</pattern>"#
+            );
+            assert!(patterns_of(&points).is_empty(), "{angle}");
+        }
+        // Other non-finite numbers too.
+        let width = r#"<pattern type="1" angle="0" line_spacing="1000" line_offset="0" color="3" line_width="NaN"/>"#;
+        assert!(patterns_of(width).is_empty());
+        let along = format!(
+            r#"<pattern type="2" angle="0" line_spacing="1000" line_offset="0" offset_along_line="inf" point_distance="1000">{DOT}</pattern>"#
+        );
+        assert!(patterns_of(&along).is_empty());
+    }
+
+    #[test]
+    fn tiny_spacing_pattern_dropped() {
+        let line = |spacing: &str| {
+            patterns_of(&format!(
+                r#"<pattern type="1" angle="0" line_spacing="{spacing}" line_offset="0" color="3" line_width="100"/>"#
+            ))
+            .len()
+        };
+        assert_eq!(
+            (line("49"), line("50"), line("0"), line("-1000")),
+            (0, 1, 0, 0)
+        );
+        let points = |spacing: &str, distance: &str| {
+            patterns_of(&format!(
+                r#"<pattern type="2" angle="0" line_spacing="{spacing}" line_offset="0" offset_along_line="0" point_distance="{distance}">{DOT}</pattern>"#
+            ))
+            .len()
+        };
+        assert_eq!(
+            (
+                points("50", "50"),
+                points("49", "1000"),
+                points("1000", "49")
+            ),
+            (1, 0, 0)
+        );
     }
 
     #[test]

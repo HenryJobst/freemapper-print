@@ -452,9 +452,15 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   The negations make `delta_along_line_offset = dir · origin` for the line direction dir in
   every case, so point positions satisfy `dir · (p − origin) ≡ offset_along_line` (mod
   `point_distance`).
+- OOM computes the first line's start and end with two separate `ceil` calls,
+  `⌈(left − offset_x)/dist_x⌉` and `⌈(top − offset_y)/dist_y⌉` (`bottom` for r > π/2), which are
+  equal in exact arithmetic. When the canvas corner lies on a pattern line, rounding can make
+  them k and k + 1 and tilt every line by one spacing. freemapper-print takes k from the start
+  formula for both ends, and computes line k and point j from their index instead of adding
+  `dist_x`, `dist_y` or `point_distance` up step by step.
 - Line pattern: each line is a `LineRenderable` of two points in `color`, width `line_width`,
   flat caps [AS `createLine<LinePattern>`].
-- Example (pinned in `draw.rs` tests): 10 × 10 mm square, horizontal lines, spacing 1 mm, width
+- Example (pinned in `draw.rs` tests, code in `pattern.rs`): 10 × 10 mm square, horizontal lines, spacing 1 mm, width
   0.1 mm: canvas y ∈ [−0.05, 10.05], lines y = 0, 1, …, 10 = **11** lines.
 
 ### 4.4 Point positions on a line [AS `createPointPatternLine`]
@@ -477,15 +483,37 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
 - Default (`no_clipping` 0): the outline's painter path (all parts, OddEvenFill) is the clip
   path of every pattern renderable; OOM intersects it with any clip already active (the print
   area) [RN `PainterConfig::activate`]. PDF: `q`, the rings, `W* n`, the shapes, `Q`.
-- `no_clipping` 1–3 on a point pattern: no clip path; each point is drawn only if completely
-  inside (1), if its centre lies inside (2; elements by the centre of their coordinates), or if
-  partially inside (3; dot/ring tested at four points of their radius) [PS
-  `createRenderablesIfCompletelyInside`, `…IfCenterInside`, `…IfPartiallyInside`].
+- `no_clipping` 1–3 on a point pattern: no clip path; each part of the point symbol is tested
+  against the outline (`QPainterPath::contains`, even-odd) and drawn unclipped or left out
+  [PS `createRenderablesIfCompletelyInside`, `…IfCenterInside`, `…IfPartiallyInside`,
+  `createPrimitivesIfCompletelyInside`, `createPrimitivesIfPartiallyInside`]:
+  - 1 `NoClippingIfCompletelyInside` (`Clipping::NoClippingIfCompletelyInside`): dot if all four
+    points (x ± r_in, y) and (x, y ± r_in) are inside; ring likewise with r = r_in + w/2; a point
+    element only gets its own dot and ring, tested the same way at its transformed coordinate
+    (no nested elements); any other element is drawn if all its transformed coordinates are
+    inside.
+  - 2 `NoClippingIfCenterInside` (`Clipping::NoClippingIfCentreInside`): dot and ring if the
+    point's centre is inside; each element (point elements included, drawn in full) if the mean of
+    its transformed coordinates is inside.
+  - 3 `NoClippingIfPartiallyInside` (`Clipping::NoClippingIfPartlyInside`): as 1 with "any of
+    the four points" and "any coordinate".
 - `no_clipping` on a line pattern: no clip path, lines span the whole canvas
   (`createLine<LinePattern>` ignores the flag).
-- freemapper-print: `no_clipping` is one flag; unclipped points are kept when their centre lies
-  inside the outline (even-odd), which is mode 2 for dots and rings and an approximation of modes
-  1 and 3.
+
+### 4.6 freemapper-print limits (not in OOM)
+
+- Patterns with a non-finite `angle`, `line_spacing`, `line_offset`, `line_width`,
+  `offset_along_line` or `point_distance`, or with `line_spacing` (or, for point patterns,
+  `point_distance`) below 50 µm, are dropped when the symbols are read
+  (`symbols::MIN_PATTERN_STEP`). OOM only skips values ≤ 0. A pattern whose combined rotation is
+  not finite (broken object rotation) draws nothing.
+- One budget of 250 000 units per map object (`draw::MAX_PRIMITIVES_PER_OBJECT`), shared by every
+  nested symbol, pattern line, point placement and point symbol: each primitive costs one unit,
+  each step that draws nothing (a line without points, a placement left out, a symbol call
+  without output) costs one too. When it is spent drawing stops and `primitives_counted` reports
+  the object as cut.
+- All pattern shapes of one area hold the same outline (`Arc`); the PDF writer opens one clip
+  block per run of shapes with the same outline.
 
 ---
 

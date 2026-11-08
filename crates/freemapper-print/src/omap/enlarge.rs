@@ -228,6 +228,31 @@ mod tests {
     }
 
     #[test]
+    fn enlarge_scales_patterns() {
+        let xml = r#"<symbols><symbol type="4" id="0"><area_symbol inner_color="-1" min_area="0" patterns="2"><pattern type="1" angle="0.5" rotatable="true" line_spacing="1000" line_offset="100" offset_along_line="200" color="3" line_width="250"/><pattern type="2" angle="0.785398" line_spacing="2000" line_offset="500" offset_along_line="250" point_distance="1500"><symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="40" outer_color="6" elements="1"><element><symbol type="2" code=""><line_symbol color="2" line_width="50"/></symbol><object type="1"><coords count="2">0 0;200 0;</coords></object></element></point_symbol></symbol></pattern></area_symbol></symbol></symbols>"#;
+        let out = enlarge_symbols(xml, 1.5).unwrap();
+        // Line pattern: spacing, offsets and width; angle and colour unchanged.
+        assert!(
+            out.contains(r#"<pattern type="1" angle="0.5" rotatable="true" line_spacing="1500" line_offset="150" offset_along_line="300" color="3" line_width="375"/>"#),
+            "{out}"
+        );
+        // Point pattern and its nested point symbol: dot, ring, element line and coordinates.
+        assert!(
+            out.contains(r#"<pattern type="2" angle="0.785398" line_spacing="3000" line_offset="750" offset_along_line="375" point_distance="2250">"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"<point_symbol inner_radius="150" inner_color="5" outer_width="60" outer_color="6" elements="1">"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"<line_symbol color="2" line_width="75"/>"#),
+            "{out}"
+        );
+        assert!(out.contains("0 0;300 0;"), "{out}");
+    }
+
+    #[test]
     fn font_size_min_10() {
         let xml = r#"<symbols><symbol type="8" id="0"><text_symbol icon_text="375"><font family="Arial" size="4"/><text color="8"/><framing color="1" mode="1" line_half_width="100" shadow_x_offset="200" shadow_y_offset="200"/></text_symbol></symbol><symbol type="8" id="1"><text_symbol><font family="Arial" size="2117"/></text_symbol></symbol></symbols>"#;
         let out = enlarge(xml);

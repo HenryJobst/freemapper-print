@@ -3,10 +3,13 @@
 //!
 //! Paper millimetres with y down.
 
+use std::sync::Arc;
+
 use super::geometry::{self, Part, Pt};
 use super::metrics::{ASCENT, LINE_SPACING, text_width};
+use super::pattern::area_pattern;
 use super::symbols::{
-    Cap, Join, LineDef, Part as SymbolPart, Pattern, PointDef, RenderSymbols, Symbol, TextDef,
+    Cap, Element, Join, LineDef, Part as SymbolPart, PointDef, RenderSymbols, Symbol, TextDef,
 };
 use crate::omap::{MapCoord, MapObject, MapObjectKind, PatternOrigin};
 
@@ -28,9 +31,10 @@ pub enum Shape {
         bold: bool,
         text: String,
     },
-    /// `inner` painted inside the even-odd clip of the closed `rings` (area patterns).
+    /// `inner` painted inside the even-odd clip of the closed `rings` (area patterns). All
+    /// pattern shapes of one area share the same `rings`.
     Clipped {
-        rings: Vec<Vec<Pt>>,
+        rings: Arc<[Vec<Pt>]>,
         inner: Box<Shape>,
     },
 }
@@ -55,21 +59,99 @@ fn circle(centre: Pt, radius: f64) -> Vec<Pt> {
 }
 
 /// OOM 0.001 mm → mm.
-fn mm(v: f64) -> f64 {
+pub(super) fn mm(v: f64) -> f64 {
     v / 1000.0
+}
+
+/// Most primitives drawn for one map object, and at the same time the most units of work: a
+/// step that draws nothing (a pattern line or point placement without output, a symbol call)
+/// costs one unit too. Guards against hostile or broken files (dense patterns, symbols nested
+/// into each other); real objects stay far below it.
+pub const MAX_PRIMITIVES_PER_OBJECT: usize = 250_000;
+
+/// Collects the primitives of one drawing call within a budget.
+pub(super) struct Sink {
+    pub(super) out: Vec<Primitive>,
+    left: usize,
+    /// The budget ran out and output was dropped.
+    pub(super) cut: bool,
+}
+
+impl Sink {
+    pub(super) fn new(budget: usize) -> Self {
+        Self {
+            out: Vec::new(),
+            left: budget,
+            cut: false,
+        }
+    }
+
+    pub(super) fn push(&mut self, primitive: Primitive) {
+        if self.stop() {
+            return;
+        }
+        self.left -= 1;
+        self.out.push(primitive);
+    }
+
+    pub(super) fn extend(&mut self, primitives: impl IntoIterator<Item = Primitive>) {
+        for p in primitives {
+            self.push(p);
+        }
+    }
+
+    /// True (and marks the output cut) once the budget is spent; drawing loops stop then.
+    pub(super) fn stop(&mut self) -> bool {
+        if self.left == 0 {
+            self.cut = true;
+        }
+        self.left == 0
+    }
+
+    /// Units left.
+    pub(super) fn left(&self) -> usize {
+        self.left
+    }
+
+    /// Charges `units` of work that drew nothing.
+    pub(super) fn charge(&mut self, units: usize) {
+        if units > self.left {
+            self.cut = true;
+        }
+        self.left = self.left.saturating_sub(units);
+    }
+
+    /// Charges one unit if nothing was drawn since the output had `len` primitives.
+    pub(super) fn settle(&mut self, len: usize) {
+        if self.out.len() == len {
+            self.charge(1);
+        }
+    }
 }
 
 /// The primitives of one map object; none when its symbol is unknown or its geometry unusable.
 pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive> {
+    primitives_counted(object, symbols).0
+}
+
+/// The primitives of one map object and whether [`MAX_PRIMITIVES_PER_OBJECT`] cut them short.
+pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<Primitive>, bool) {
     let Some(symbol) = symbols.symbols.get(&object.symbol_id) else {
-        return Vec::new();
+        return (Vec::new(), false);
     };
-    let mut out = Vec::new();
+    let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
     match &object.kind {
         MapObjectKind::Point { rotation_rad } => {
             if let (Symbol::Point(def), Some(c)) = (symbol, object.coords.first()) {
                 let r = if def.rotatable { -rotation_rad } else { 0.0 };
-                out = point_symbol(def, (mm(f64::from(c.x)), mm(f64::from(c.y))), r, symbols, 0);
+                point_symbol(
+                    def,
+                    (mm(f64::from(c.x)), mm(f64::from(c.y))),
+                    r,
+                    symbols,
+                    &mut sink,
+                    0,
+                );
             }
         }
         MapObjectKind::Path => path_symbol(
@@ -77,7 +159,7 @@ pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive>
             &object.coords,
             object.pattern.as_ref(),
             symbols,
-            &mut out,
+            &mut sink,
             0,
         ),
         MapObjectKind::Text {
@@ -93,14 +175,15 @@ pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive>
                     *h_align,
                     *v_align,
                     (mm(f64::from(c.x)), mm(f64::from(c.y))),
-                    &mut out,
+                    &mut sink,
                 );
             }
         }
     }
+    let Sink { mut out, cut, .. } = sink;
     // A colour missing from the colour table is not drawn (as in OOM).
     out.retain(|p| symbols.colour(p.priority).is_some());
-    out
+    (out, cut)
 }
 
 /// Nesting depth of symbols (combined parts, point elements) beyond which drawing stops: a
@@ -109,42 +192,42 @@ const MAX_DEPTH: u32 = 8;
 
 /// A symbol drawn on path coordinates (map objects and point symbol elements); `pattern` is the
 /// object's pattern rotation and origin.
-fn path_symbol(
+pub(super) fn path_symbol(
     symbol: &Symbol,
     coords: &[MapCoord],
     pattern: Option<&PatternOrigin>,
     symbols: &RenderSymbols,
-    out: &mut Vec<Primitive>,
+    sink: &mut Sink,
     depth: u32,
 ) {
-    if depth > MAX_DEPTH {
+    if depth > MAX_DEPTH || sink.stop() {
         return;
     }
+    let len = sink.out.len();
     match symbol {
         Symbol::Area { color, patterns } => {
             let parts = geometry::parts(coords);
             // The fill and the patterns' clip path need more than two points in the first part.
-            if !parts.first().is_some_and(|p| p.points.len() > 2) {
-                return;
-            }
-            let rings: Vec<Vec<Pt>> = parts
-                .into_iter()
-                .map(|p| p.points)
-                .filter(|r| r.len() > 2)
-                .collect();
-            if *color >= 0 {
-                out.push(Primitive {
-                    priority: *color,
-                    shape: Shape::Fill {
-                        rings: rings.clone(),
-                    },
-                });
-            }
-            for p in patterns {
-                area_pattern(p, &rings, pattern, symbols, out, depth);
+            if parts.first().is_some_and(|p| p.points.len() > 2) {
+                let rings: Arc<[Vec<Pt>]> = parts
+                    .into_iter()
+                    .map(|p| p.points)
+                    .filter(|r| r.len() > 2)
+                    .collect();
+                if *color >= 0 {
+                    sink.push(Primitive {
+                        priority: *color,
+                        shape: Shape::Fill {
+                            rings: rings.to_vec(),
+                        },
+                    });
+                }
+                for p in patterns {
+                    area_pattern(p, &rings, pattern, symbols, sink, depth);
+                }
             }
         }
-        Symbol::Line(def) => line(def, coords, symbols, out, depth),
+        Symbol::Line(def) => line(def, coords, symbols, sink, depth),
         Symbol::Combined(parts) => {
             for part in parts {
                 let part_symbol = match part {
@@ -152,332 +235,29 @@ fn path_symbol(
                     SymbolPart::Inline(symbol) => Some(&**symbol),
                 };
                 if let Some(part_symbol) = part_symbol {
-                    path_symbol(part_symbol, coords, pattern, symbols, out, depth + 1);
+                    path_symbol(part_symbol, coords, pattern, symbols, sink, depth + 1);
                 }
             }
         }
         // A point symbol element on a point object: drawn at its coordinate, unrotated.
         Symbol::Point(def) => {
             if let Some(c) = coords.first() {
-                out.extend(point_symbol(
+                point_symbol(
                     def,
                     (mm(f64::from(c.x)), mm(f64::from(c.y))),
                     0.0,
                     symbols,
+                    sink,
                     depth + 1,
-                ));
+                );
             }
         }
         Symbol::Text(_) => {}
     }
+    sink.settle(len);
 }
 
-/// Most lines one pattern draws in one area: a guard against absurd spacings, far beyond any
-/// real map (a 1 m area with 0.1 mm spacing needs 10 000).
-const MAX_PATTERN_LINES: usize = 100_000;
-
-/// The rectangle a pattern fills (mm): the area's extent grown by the extent of what is drawn
-/// on each line.
-#[derive(Debug, Clone, Copy)]
-struct Canvas {
-    left: f64,
-    top: f64,
-    right: f64,
-    bottom: f64,
-}
-
-/// Lower-left and upper-right corner of `points` (mm), grown by `extra`.
-fn extent<'a>(points: impl IntoIterator<Item = &'a Pt>, extra: f64) -> Option<(Pt, Pt)> {
-    let mut points = points.into_iter();
-    let first = *points.next()?;
-    let (min, max) = points.fold((first, first), |(min, max), q| {
-        (
-            (min.0.min(q.0), min.1.min(q.1)),
-            (max.0.max(q.0), max.1.max(q.1)),
-        )
-    });
-    Some((
-        (min.0 - extra, min.1 - extra),
-        (max.0 + extra, max.1 + extra),
-    ))
-}
-
-/// The extent of what `shapes` paint (texts left out), relative to the point they were drawn at.
-fn shapes_extent(shapes: &[Primitive]) -> Option<(Pt, Pt)> {
-    fn of(shape: &Shape) -> Option<(Pt, Pt)> {
-        match shape {
-            Shape::Fill { rings } => extent(rings.iter().flatten(), 0.0),
-            Shape::Stroke { path, width, .. } => extent(path, width / 2.0),
-            Shape::Text { .. } => None,
-            Shape::Clipped { inner, .. } => of(inner),
-        }
-    }
-    shapes.iter().filter_map(|p| of(&p.shape)).reduce(|a, b| {
-        (
-            (a.0.0.min(b.0.0), a.0.1.min(b.0.1)),
-            (a.1.0.max(b.1.0), a.1.1.max(b.1.1)),
-        )
-    })
-}
-
-/// Even-odd test of `p` against closed `rings`.
-fn inside(rings: &[Vec<Pt>], p: Pt) -> bool {
-    let mut inside = false;
-    for ring in rings {
-        for (i, &a) in ring.iter().enumerate() {
-            let b = ring[(i + 1) % ring.len()];
-            if (a.1 > p.1) != (b.1 > p.1) && p.0 < a.0 + (p.1 - a.1) * (b.0 - a.0) / (b.1 - a.1) {
-                inside = !inside;
-            }
-        }
-    }
-    inside
-}
-
-/// The pattern lines through `canvas` as (first, second) points, and the along-line shift that
-/// the pattern origin adds (reference §4.3) [AS `FillPattern::createRenderables<T>`].
-///
-/// Lines are `n · (p − origin) = offset + k · spacing` with the normal `n = (sin r, cos r)`
-/// (paper, y down); the cases and the direction from `first` to `second` follow OOM exactly.
-fn pattern_lines(
-    c: Canvas,
-    rotation: f64,
-    spacing: f64,
-    line_offset: f64,
-    origin: Pt,
-) -> (Vec<(Pt, Pt)>, f64) {
-    use std::f64::consts::FRAC_PI_2;
-    let (sin, cos) = rotation.sin_cos();
-    let mut delta_along = cos * origin.0 - sin * origin.1;
-    let offset = line_offset + sin * origin.0 + cos * origin.1;
-    let mut lines = Vec::new();
-    if (rotation - FRAC_PI_2).abs() < 0.0001 {
-        // Vertical lines, drawn downwards.
-        delta_along = -delta_along;
-        let mut cur = offset + ((c.left - offset) / spacing).ceil() * spacing;
-        while cur < c.right && lines.len() < MAX_PATTERN_LINES {
-            lines.push(((cur, c.top), (cur, c.bottom)));
-            cur += spacing;
-        }
-    } else if rotation.abs() < 0.0001 {
-        // Horizontal lines, drawn eastwards.
-        let mut cur = offset + ((c.top - offset) / spacing).ceil() * spacing;
-        while cur < c.bottom && lines.len() < MAX_PATTERN_LINES {
-            lines.push(((c.left, cur), (c.right, cur)));
-            cur += spacing;
-        }
-    } else {
-        let (dist_x, dist_y) = (spacing / sin, spacing / cos);
-        let (mut offset_x, mut offset_y) = (offset / sin, offset / cos);
-        let tan = rotation.tan();
-        if rotation < FRAC_PI_2 {
-            // From the top edge (start) to the left edge (end), first line at the upper left.
-            delta_along = -delta_along;
-            offset_x -= c.top / tan;
-            offset_y -= c.left * tan;
-            let mut start = (
-                offset_x + ((c.left - offset_x) / dist_x).ceil() * dist_x,
-                c.top,
-            );
-            let mut end = (
-                c.left,
-                offset_y + ((c.top - offset_y) / dist_y).ceil() * dist_y,
-            );
-            while lines.len() < MAX_PATTERN_LINES {
-                if start.0 > c.right {
-                    start.1 += (start.0 - c.right) / dist_x * dist_y;
-                    start.0 = c.right;
-                }
-                if end.1 > c.bottom {
-                    end.0 += (end.1 - c.bottom) / dist_y * dist_x;
-                    end.1 = c.bottom;
-                }
-                if start.1 > c.bottom {
-                    break;
-                }
-                lines.push((start, end));
-                start.0 += dist_x;
-                end.1 += dist_y;
-            }
-        } else {
-            // From the bottom edge (start) to the left edge (end), first line at the lower left.
-            offset_x -= c.bottom / tan;
-            offset_y -= c.left * tan;
-            let mut start = (
-                offset_x + ((c.left - offset_x) / dist_x).ceil() * dist_x,
-                c.bottom,
-            );
-            let mut end = (
-                c.left,
-                offset_y + ((c.bottom - offset_y) / dist_y).ceil() * dist_y,
-            );
-            while lines.len() < MAX_PATTERN_LINES {
-                if start.0 > c.right {
-                    start.1 += (start.0 - c.right) / dist_x * dist_y;
-                    start.0 = c.right;
-                }
-                if end.1 < c.top {
-                    end.0 += (end.1 - c.top) / dist_y * dist_x;
-                    end.1 = c.top;
-                }
-                if start.1 < c.top {
-                    break;
-                }
-                lines.push((start, end));
-                start.0 += dist_x;
-                end.1 += dist_y;
-            }
-        }
-    }
-    (lines, delta_along)
-}
-
-/// The lines or point placements of one area pattern, clipped to the area's `rings` unless the
-/// pattern says otherwise (reference §4.2–4.5) [AS `FillPattern::createRenderables`,
-/// `createPointPatternLine`].
-fn area_pattern(
-    pattern: &Pattern,
-    rings: &[Vec<Pt>],
-    object: Option<&PatternOrigin>,
-    symbols: &RenderSymbols,
-    out: &mut Vec<Primitive>,
-    depth: u32,
-) {
-    let (angle, rotatable, spacing, offset, no_clipping) = match pattern {
-        Pattern::Lines {
-            angle_rad,
-            rotatable,
-            spacing,
-            offset,
-            no_clipping,
-            ..
-        }
-        | Pattern::Points {
-            angle_rad,
-            rotatable,
-            spacing,
-            offset,
-            no_clipping,
-            ..
-        } => (*angle_rad, *rotatable, *spacing, *offset, *no_clipping),
-    };
-    let Some((min, max)) = extent(rings.iter().flatten(), 0.0) else {
-        return;
-    };
-    if spacing <= 0.0 {
-        return;
-    }
-    // The object's pattern rotation and origin count only for a rotatable pattern.
-    let (delta, origin) = match object {
-        Some(o) if rotatable => (
-            o.rotation_rad,
-            (mm(f64::from(o.origin.x)), mm(f64::from(o.origin.y))),
-        ),
-        _ => (0.0, (0.0, 0.0)),
-    };
-    let mut rotation = (angle + delta) % std::f64::consts::PI;
-    if rotation < 0.0 {
-        rotation += std::f64::consts::PI;
-    }
-    let clip = |shape: Shape| {
-        if no_clipping {
-            shape
-        } else {
-            Shape::Clipped {
-                rings: rings.to_vec(),
-                inner: Box::new(shape),
-            }
-        }
-    };
-    // The canvas grows by the extent (lo, hi) of what one line or point paints around its
-    // centre: left − hi.x, top − hi.y, right − lo.x, bottom − lo.y.
-    let canvas = |(lo, hi): (Pt, Pt)| Canvas {
-        left: min.0 - hi.0,
-        top: min.1 - hi.1,
-        right: max.0 - lo.0,
-        bottom: max.1 - lo.1,
-    };
-    match pattern {
-        Pattern::Lines { color, width, .. } => {
-            let width = mm(*width);
-            let m = width / 2.0;
-            let (lines, _) = pattern_lines(
-                canvas(((-m, -m), (m, m))),
-                rotation,
-                mm(spacing),
-                mm(offset),
-                origin,
-            );
-            for (first, second) in lines {
-                if let Some(p) = stroke(
-                    *color,
-                    vec![first, second],
-                    false,
-                    width,
-                    Cap::Flat,
-                    Join::Miter,
-                ) {
-                    out.push(Primitive {
-                        priority: p.priority,
-                        shape: clip(p.shape),
-                    });
-                }
-            }
-        }
-        Pattern::Points {
-            offset_along,
-            distance,
-            symbol,
-            ..
-        } => {
-            if *distance <= 0.0 {
-                return;
-            }
-            // Extent of the point object at (0, 0) with the object's pattern rotation.
-            let at_origin = point_symbol(
-                symbol,
-                (0.0, 0.0),
-                if symbol.rotatable { -delta } else { 0.0 },
-                symbols,
-                depth + 1,
-            );
-            let point_extent = shapes_extent(&at_origin).unwrap_or(((0.0, 0.0), (0.0, 0.0)));
-            let (lines, delta_along) = pattern_lines(
-                canvas(point_extent),
-                rotation,
-                mm(spacing),
-                mm(offset),
-                origin,
-            );
-            let step = mm(*distance);
-            for (first, second) in lines {
-                let length = (second.0 - first.0).hypot(second.1 - first.1);
-                if length <= 0.0 {
-                    continue;
-                }
-                let dir = ((second.0 - first.0) / length, (second.1 - first.1) / length);
-                let along = dir.0 * first.0 + dir.1 * first.1 - mm(*offset_along) - delta_along;
-                let mut cur = (along / step).ceil() * step - along;
-                while cur < length {
-                    let at = (first.0 + dir.0 * cur, first.1 + dir.1 * cur);
-                    cur += step;
-                    // Unclipped points are kept only when their centre lies in the area.
-                    if no_clipping && !inside(rings, at) {
-                        continue;
-                    }
-                    for p in point_symbol(symbol, at, -delta, symbols, depth + 1) {
-                        out.push(Primitive {
-                            priority: p.priority,
-                            shape: clip(p.shape),
-                        });
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn stroke(
+pub(super) fn stroke(
     color: i32,
     path: Vec<Pt>,
     closed: bool,
@@ -497,13 +277,7 @@ fn stroke(
     })
 }
 
-fn line(
-    def: &LineDef,
-    coords: &[MapCoord],
-    symbols: &RenderSymbols,
-    out: &mut Vec<Primitive>,
-    depth: u32,
-) {
+fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut Sink, depth: u32) {
     let parts: Vec<Part> = geometry::parts(coords)
         .into_iter()
         .filter(|p| p.points.len() >= 2 && geometry::length(&p.points) > 0.0)
@@ -516,7 +290,7 @@ fn line(
                 let dashes = geometry::dashes(part, dash);
                 let solid = dashes.len() == 1 && dashes[0] == part.points;
                 for d in dashes {
-                    out.extend(stroke(
+                    sink.extend(stroke(
                         def.color,
                         d,
                         solid && part.closed,
@@ -526,7 +300,7 @@ fn line(
                     ));
                 }
             }
-            None => out.extend(stroke(
+            None => sink.extend(stroke(
                 def.color,
                 part.points.clone(),
                 part.closed,
@@ -557,7 +331,7 @@ fn line(
             for (piece, closed) in pieces {
                 for side in [-1.0, 1.0] {
                     let path = geometry::offset(&piece, closed, side * shift);
-                    out.extend(stroke(
+                    sink.extend(stroke(
                         border.color,
                         path,
                         closed,
@@ -571,8 +345,11 @@ fn line(
         // Mid symbols, local +y to the right of travel.
         if let Some(mid) = &def.mid {
             for (at, angle) in geometry::mid_positions(part, mid) {
+                if sink.stop() {
+                    return;
+                }
                 let r = if mid.symbol.rotatable { angle } else { 0.0 };
-                out.extend(point_symbol(&mid.symbol, at, r, symbols, depth + 1));
+                point_symbol(&mid.symbol, at, r, symbols, sink, depth + 1);
             }
         }
     }
@@ -584,13 +361,7 @@ fn line(
         } else {
             0.0
         };
-        out.extend(point_symbol(
-            start,
-            first.points[0],
-            angle,
-            symbols,
-            depth + 1,
-        ));
+        point_symbol(start, first.points[0], angle, symbols, sink, depth + 1);
     }
     if let (Some(end), Some(last)) = (&def.end, parts.last()) {
         let angle = if end.rotatable {
@@ -599,7 +370,7 @@ fn line(
             0.0
         };
         let at = *last.points.last().expect("parts have two points");
-        out.extend(point_symbol(end, at, angle, symbols, depth + 1));
+        point_symbol(end, at, angle, symbols, sink, depth + 1);
     }
 }
 
@@ -610,56 +381,71 @@ pub fn point_primitives(
     rotation: f64,
     symbols: &RenderSymbols,
 ) -> Vec<Primitive> {
-    point_symbol(def, at, rotation, symbols, 0)
+    let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+    point_symbol(def, at, rotation, symbols, &mut sink, 0);
+    sink.out
 }
 
-fn point_symbol(
+/// The filled dot of a point symbol at `at`, if it has one.
+pub(super) fn dot(def: &PointDef, at: Pt) -> Option<Primitive> {
+    def.dot.map(|(color, radius)| Primitive {
+        priority: color,
+        shape: Shape::Fill {
+            rings: vec![circle(at, mm(radius))],
+        },
+    })
+}
+
+/// The stroked ring of a point symbol at `at`, if it has one.
+pub(super) fn ring(def: &PointDef, at: Pt) -> Option<Primitive> {
+    let (color, radius, width) = def.ring?;
+    stroke(
+        color,
+        circle(at, mm(radius)),
+        true,
+        mm(width),
+        Cap::Flat,
+        Join::Miter,
+    )
+}
+
+/// An element's coordinates rotated about the point centre `at` and moved there, back in
+/// 0.001 mm.
+pub(super) fn element_coords(element: &Element, at: Pt, rotation: f64) -> Vec<MapCoord> {
+    let (sin, cos) = rotation.sin_cos();
+    element
+        .coords
+        .iter()
+        .map(|c| {
+            let (ox, oy) = (f64::from(c.x), f64::from(c.y));
+            MapCoord {
+                x: (ox * cos - oy * sin + at.0 * 1000.0).round() as i32,
+                y: (oy * cos + ox * sin + at.1 * 1000.0).round() as i32,
+                flags: c.flags,
+            }
+        })
+        .collect()
+}
+
+pub(super) fn point_symbol(
     def: &PointDef,
     at: Pt,
     rotation: f64,
     symbols: &RenderSymbols,
+    sink: &mut Sink,
     depth: u32,
-) -> Vec<Primitive> {
-    let mut out = Vec::new();
-    if depth > MAX_DEPTH {
-        return out;
+) {
+    if depth > MAX_DEPTH || sink.stop() {
+        return;
     }
-    if let Some((color, radius)) = def.dot {
-        out.push(Primitive {
-            priority: color,
-            shape: Shape::Fill {
-                rings: vec![circle(at, mm(radius))],
-            },
-        });
-    }
-    if let Some((color, radius, width)) = def.ring {
-        out.extend(stroke(
-            color,
-            circle(at, mm(radius)),
-            true,
-            mm(width),
-            Cap::Flat,
-            Join::Miter,
-        ));
-    }
-    let (sin, cos) = rotation.sin_cos();
+    let len = sink.out.len();
+    sink.extend(dot(def, at));
+    sink.extend(ring(def, at));
     for element in &def.elements {
-        // Element coordinates rotated about the centre and moved there, back in 0.001 mm.
-        let coords: Vec<MapCoord> = element
-            .coords
-            .iter()
-            .map(|c| {
-                let (ox, oy) = (f64::from(c.x), f64::from(c.y));
-                MapCoord {
-                    x: (ox * cos - oy * sin + at.0 * 1000.0).round() as i32,
-                    y: (oy * cos + ox * sin + at.1 * 1000.0).round() as i32,
-                    flags: c.flags,
-                }
-            })
-            .collect();
-        path_symbol(&element.symbol, &coords, None, symbols, &mut out, depth + 1);
+        let coords = element_coords(element, at, rotation);
+        path_symbol(&element.symbol, &coords, None, symbols, sink, depth + 1);
     }
-    out
+    sink.settle(len);
 }
 
 /// One text primitive per line, laid out per reference §6 (no rotation: the sheet texts are not
@@ -670,7 +456,7 @@ fn text_primitives(
     h_align: u8,
     v_align: u8,
     anchor: Pt,
-    out: &mut Vec<Primitive>,
+    sink: &mut Sink,
 ) {
     if def.color < 0 {
         return;
@@ -692,7 +478,7 @@ fn text_primitives(
             _ => 0.0,
         };
         if !line.is_empty() {
-            out.push(Primitive {
+            sink.push(Primitive {
                 priority: def.color,
                 shape: Shape::Text {
                     origin: (anchor.0 + x, anchor.1 + y),
@@ -708,7 +494,7 @@ fn text_primitives(
 
 #[cfg(test)]
 mod tests {
-    use super::super::symbols::Pattern;
+    use super::super::symbols::{Clipping, Pattern};
     use super::*;
     use crate::omap::coord::{FLAG_CLOSE, FLAG_HOLE};
     use crate::omap::{PatternOrigin, SymbolSet, closed_ring};
@@ -1042,15 +828,15 @@ mod tests {
             offset: 0.0,
             color: 3,
             width: 100.0,
-            no_clipping: false,
+            clipping: Clipping::Clip,
         }
     }
 
     /// The clip rings and inner shape of every primitive, which must all be clipped.
-    fn clipped(p: &[Primitive]) -> Vec<(&Vec<Vec<Pt>>, &Shape)> {
+    fn clipped(p: &[Primitive]) -> Vec<(&[Vec<Pt>], &Shape)> {
         p.iter()
             .map(|p| match &p.shape {
-                Shape::Clipped { rings, inner } => (rings, &**inner),
+                Shape::Clipped { rings, inner } => (&**rings, &**inner),
                 other => panic!("not clipped: {other:?}"),
             })
             .collect()
@@ -1064,7 +850,7 @@ mod tests {
         assert!(p.iter().all(|p| p.priority == 3));
         let mut ys = Vec::new();
         for (rings, inner) in clipped(&p) {
-            assert_eq!(rings, &square_mm());
+            assert_eq!(rings, square_mm().as_slice());
             let Shape::Stroke {
                 path, width, cap, ..
             } = inner
@@ -1126,7 +912,7 @@ mod tests {
             offset_along: 0.0,
             distance: 2_000.0,
             symbol: Box::new(dot),
-            no_clipping: false,
+            clipping: Clipping::Clip,
         };
         let p = patterned_square(pattern, None);
         // Canvas = square grown by the dot extent (0.1 mm): lines y = 0, 2, …, 10, points
@@ -1135,7 +921,7 @@ mod tests {
         let mut centres: Vec<(i64, i64)> = clipped(&p)
             .into_iter()
             .map(|(rings, inner)| {
-                assert_eq!(rings, &square_mm());
+                assert_eq!(rings, square_mm().as_slice());
                 let Shape::Fill { rings } = inner else {
                     panic!("{inner:?}")
                 };
@@ -1151,81 +937,6 @@ mod tests {
             .flat_map(|x| (0..=5).map(move |y| (2 * x, 2 * y)))
             .collect();
         assert_eq!(centres, expected);
-    }
-
-    #[test]
-    fn diagonal_lines_keep_spacing_and_cover_the_square() {
-        use std::f64::consts::FRAC_PI_4;
-        // Corner projections on n = (sin r, cos r) of the canvas [−0.05, 10.05]²: k = 0..=14
-        // for π/4 and k = −7..=7 for 3π/4.
-        for (angle, ks) in [(FRAC_PI_4, 0..=14), (3.0 * FRAC_PI_4, -7..=7)] {
-            let pattern = Pattern::Lines {
-                angle_rad: angle,
-                rotatable: false,
-                spacing: 1_000.0,
-                offset: 0.0,
-                color: 3,
-                width: 100.0,
-                no_clipping: false,
-            };
-            let p = patterned_square(pattern, None);
-            let (sin, cos) = angle.sin_cos();
-            let mut ks_seen = Vec::new();
-            for (_, inner) in clipped(&p) {
-                let Shape::Stroke { path, .. } = inner else {
-                    panic!()
-                };
-                let c: Vec<f64> = path.iter().map(|q| sin * q.0 + cos * q.1).collect();
-                assert!((c[0] - c[1]).abs() < 1e-9, "{angle}: {path:?}");
-                assert!((c[0] - c[0].round()).abs() < 1e-9, "spacing 1 mm: {c:?}");
-                // Counter-clockwise on paper: direction ± (cos r, −sin r).
-                let d = (path[1].0 - path[0].0, path[1].1 - path[0].1);
-                assert!((d.0 * sin + d.1 * cos).abs() < 1e-9);
-                ks_seen.push(c[0].round() as i32);
-            }
-            ks_seen.sort_unstable();
-            assert_eq!(ks_seen, ks.collect::<Vec<_>>(), "{angle}");
-        }
-    }
-
-    #[test]
-    fn point_pattern_starts_at_pattern_origin() {
-        let pattern = Pattern::Points {
-            angle_rad: 0.0,
-            rotatable: true,
-            spacing: 2_000.0,
-            offset: 0.0,
-            offset_along: 0.0,
-            distance: 2_000.0,
-            symbol: Box::new(PointDef {
-                rotatable: false,
-                dot: Some((3, 100.0)),
-                ring: None,
-                elements: Vec::new(),
-            }),
-            no_clipping: false,
-        };
-        let origin = PatternOrigin {
-            rotation_rad: 0.0,
-            origin: MapCoord::new(500, 500),
-        };
-        let p = patterned_square(pattern, Some(origin));
-        // Lines y = 0.5, 2.5, …, 8.5 and points x = 0.5, 2.5, …, 8.5.
-        assert_eq!(p.len(), 25);
-        for (_, inner) in clipped(&p) {
-            let Shape::Fill { rings } = inner else {
-                panic!()
-            };
-            let (x, y) = rings[0][CIRCLE_SEGMENTS / 4];
-            // The quarter-circle point lies 0.1 mm below the centre.
-            let (cx, cy) = (x, y - 0.1);
-            assert!(
-                [cx, cy]
-                    .iter()
-                    .all(|v| ((v - 0.5) / 2.0 - ((v - 0.5) / 2.0).round()).abs() < 1e-9),
-                "({cx}, {cy})"
-            );
-        }
     }
 
     #[test]
