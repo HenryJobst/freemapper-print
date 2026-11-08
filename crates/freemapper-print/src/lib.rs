@@ -6,3 +6,4 @@
 
 pub mod omap;
 pub mod render;
+pub mod scale;
