@@ -72,7 +72,8 @@ fn inside(rings: &[Vec<Pt>], p: Pt) -> bool {
 
 /// At most `max_lines` pattern lines through `canvas` as (first, second) points, and the
 /// along-line shift that the pattern origin adds (reference §4.3) [AS
-/// `FillPattern::createRenderables<T>`].
+/// `FillPattern::createRenderables<T>`]. Callers ask for one line more than they may draw, to
+/// see whether the cap cut the pattern ([`capped_lines`]).
 ///
 /// Lines are `n · (p − origin) = offset + k · spacing` with the normal `n = (sin r, cos r)`
 /// (paper, y down); the cases and the direction from `first` to `second` follow OOM. Unlike OOM,
@@ -165,6 +166,32 @@ fn pattern_lines(
     (lines, delta_along)
 }
 
+/// The pattern lines through `canvas` that the budget left in `sink` allows; when there would be
+/// more, the sink is marked cut.
+fn capped_lines(
+    c: Canvas,
+    rotation: f64,
+    spacing: f64,
+    line_offset: f64,
+    origin: Pt,
+    sink: &mut Sink,
+) -> (Vec<(Pt, Pt)>, f64) {
+    let max = sink.left();
+    let (mut lines, delta_along) = pattern_lines(
+        c,
+        rotation,
+        spacing,
+        line_offset,
+        origin,
+        max.saturating_add(1),
+    );
+    if lines.len() > max {
+        lines.truncate(max);
+        sink.mark_cut();
+    }
+    (lines, delta_along)
+}
+
 /// `shape` clipped to `rings`, or as it is for the `no_clipping` modes.
 fn clip(clipping: Clipping, rings: &Arc<[Vec<Pt>]>, shape: Shape) -> Shape {
     match clipping {
@@ -243,13 +270,13 @@ pub(super) fn area_pattern(
                 return;
             }
             let m = width / 2.0;
-            let (lines, _) = pattern_lines(
+            let (lines, _) = capped_lines(
                 canvas(((-m, -m), (m, m))),
                 rotation,
                 mm(spacing),
                 mm(offset),
                 origin,
-                sink.left(),
+                sink,
             );
             for (first, second) in lines {
                 if sink.stop() {
@@ -288,13 +315,13 @@ pub(super) fn area_pattern(
             let Some(point_extent) = shapes_extent(&probe) else {
                 return;
             };
-            let (lines, delta_along) = pattern_lines(
+            let (lines, delta_along) = capped_lines(
                 canvas(point_extent),
                 rotation,
                 mm(spacing),
                 mm(offset),
                 origin,
-                sink.left(),
+                sink,
             );
             let step = mm(*distance);
             let outline = Outline {
@@ -605,6 +632,35 @@ mod tests {
             tested += 1;
         }
         assert!(tested > 300);
+    }
+
+    /// The primitives of `pattern` in a 10 mm square drawn into a sink of `budget` units, and
+    /// whether the sink was cut.
+    fn with_budget(pattern: &Pattern, budget: usize) -> (usize, bool) {
+        let rings: Arc<[Vec<Pt>]> = vec![vec![
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+            (0.0, 0.0),
+        ]]
+        .into();
+        let mut sink = Sink::new(budget);
+        area_pattern(pattern, &rings, None, &render_symbols(), &mut sink, 0);
+        (sink.out.len(), sink.cut)
+    }
+
+    #[test]
+    fn line_cap_marks_the_cut() {
+        // 11 lines (y = 0..=10 mm) fill the square.
+        let pattern = lines(0.0, false, 0.0, Clipping::Clip);
+        assert_eq!(with_budget(&pattern, 11), (11, false));
+        assert_eq!(
+            with_budget(&pattern, 10),
+            (10, true),
+            "the cap dropped a line"
+        );
+        assert_eq!(with_budget(&pattern, 1), (1, true));
     }
 
     #[test]
