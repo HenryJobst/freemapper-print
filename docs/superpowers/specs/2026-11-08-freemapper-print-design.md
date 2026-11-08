@@ -93,6 +93,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 | First target | club training, office print PDF | ADR 0011 |
 | Scale change | symbols keep their printed size | ADR 0012 |
 | Course setting vs. sheet | course setting decides what is the same on every sheet, freemapper-print the rest | ADR 0015 |
+| AI features | optional, active only with a configured model; the program is fully usable without; the MCP server calls no model *(user, suite rule)* | ADR 0016 |
 | User texts | unslop and humanizer skills on READMEs, manual, changelog, ADRs and long messages | `CLAUDE.md` |
 
 ## 4. Concepts
@@ -401,6 +402,24 @@ planned beforehand or split on the day. It delivers data only; freemapper-print 
 
 The builder may reorder M5 and M6 or start the editor earlier if layout placement through the CLI turns out
 too awkward.
+
+**Example projects** *(user, 2026-11-08)*. Each milestone adds an example for every kind of event its
+features make possible, one example per kind, built on freemapper's example maps (ADR 0013):
+
+| Milestone | Example | Shows |
+|---|---|---|
+| M1 | `luebeck-scales` | the same sprint map printed at 1:4000 and 1:5000: exact scale, symbols at their printed size |
+| M2 | `luebeck-competition-layouts` | one competition, two layouts (A4 1:4000 for older classes, A4 1:5000 for younger ones) with passe-partout, title, north lines, logos, scale check bar |
+| M2 | `schoolyard` | a schoolyard map at 1:1000 on A4 |
+| M3 | `luebeck-competition-courses` | the same competition with courses from a Purple Pen project, control descriptions and number placement, plus the same courses as IOF XML 3.0 without descriptions |
+| M4 | `luebeck-training-window` | window orienteering with a mask variant |
+| M4 | `luebeck-training-corridor` | corridor orienteering with a mask variant |
+| Later | tour sheets, team orienteering, forest map | once those features exist |
+
+Course files for the examples are written by the builder in Purple Pen's `.ppen` format and IOF XML 3.0, with
+controls on real features of the map; the user checks them once in Purple Pen. Every example has a project
+file, its inputs, the generated PDFs and a preview image, and is regenerated when freemapper's example maps
+change.
 
 ## 8. Left to the builder
 
