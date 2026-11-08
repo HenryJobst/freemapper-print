@@ -377,7 +377,7 @@ for each section [A, B] (between dash points; normally the whole part):
 - `<pattern rotation="…"><coord x y/></pattern>` inside a path `<object>` is the PathObject's
   fill-pattern rotation (stored as the object's rotation) and pattern origin [OBJ `Object::load`,
   `PathObject::getPatternRotation/Origin`]. It only affects area symbols with **rotatable fill
-  patterns** [AS `FillPattern::createRenderables`]. All listed elements have none: ignore it.
+  patterns** [AS `FillPattern::createRenderables`]; see §4.2.
 - `elements="N"` is only a reservation hint; the actual `<element>` children count [PS `loadImpl`].
 
 ---
@@ -394,14 +394,98 @@ for each section [A, B] (between dash points; normally the whole part):
   `PathObject::isAreaTooSmall`].
 - `rotatable` on the area symbol: whether the object rotation is loaded; patterns have their own
   `rotatable` flag [AS `loadImpl`, `FillPattern::load`].
-- Patterns (none in the listed symbols): `<pattern type="1"` line pattern / `type="2"` point
-  pattern [AS `FillPattern`]. Rotation = `angle` (+ object pattern rotation if the pattern is
-  rotatable), reduced to [0, π); lines at that angle measured **counter-clockwise on paper** from
-  east, spaced `line_spacing` perpendicular, offset `line_offset` (+ projection of the pattern
-  origin if rotatable), line colour `color`, width `line_width`, flat caps; point patterns place the
-  point symbol every `point_distance` along those lines starting at `offset_along_line`, rotated by
-  -rotation. Patterns are clipped to the area outline unless `no_clipping` [AS
-  `FillPattern::createRenderables`, `createPointPatternLine`].
+- The area renderable is created even without a fill colour (`inner_color="-1"`): its path is
+  the clip path of the patterns [AS `createRenderablesNormal`]. Patterns are drawn in file order
+  after the fill, each with its own colour priority.
+
+### 4.1 Pattern attributes [AS `FillPattern::load`, `FillPattern::FillPattern`]
+
+Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symbol.cpp`,
+`point_symbol.cpp`, `objects/object.cpp`).
+
+- `<pattern>` children of `<area_symbol>`, any number (`patterns="N"` is a hint).
+- `type`: 1 = line pattern, 2 = point pattern.
+- `angle` (radians, read as `float`), `rotatable="true"` (flag `Rotatable`), `no_clipping` (int,
+  masked with 0x03: 0 clip, 1 no clipping if completely inside, 2 if centre inside, 3 if
+  partially inside), `line_spacing`, `line_offset`, `offset_along_line` (all µm).
+- Line pattern: `color` (index, −1 none), `line_width` (µm).
+- Point pattern: `point_distance` (µm) and a nested `<symbol>` (a point symbol). Without it the
+  pattern draws nothing [AS `FillPattern::createRenderables`: `if (point && point_distance > 0)`].
+- Missing attributes read as 0 (the constructor defaults 5 mm / 0.2 mm are overwritten by
+  `load`).
+- `scale(factor)` scales `line_spacing`, `line_width`, `line_offset`, `offset_along_line`,
+  `point_distance` and the nested point symbol [AS `FillPattern::scale`].
+
+### 4.2 Rotation and origin [AS `FillPattern::createRenderables(outline, delta_rotation, pattern_origin, output)`, `createRenderablesNormal`; OBJ `Object::load`]
+
+- `line_spacing <= 0`: no pattern.
+- `delta_rotation` = the object's pattern rotation (`<pattern rotation>` of the object, default
+  0); set to 0 when the pattern is not `rotatable`.
+- `rotation = fmod(angle + delta_rotation, π)`, plus π if negative: in [0, π).
+- Pattern origin = the object's `<pattern><coord/>` (default (0, 0), the map origin). It counts
+  only for a `rotatable` pattern: with the normal n = (sin r, cos r) and tangent
+  t = (cos r, −sin r) (paper, y down; OOM: `(0,−1)` resp. `(1,0)` rotated by r, then y negated),
+  `delta_line_offset = n · origin`, `delta_along_line_offset = t · origin`, both 0 when not
+  rotatable [AS `createRenderables<T>`].
+
+### 4.3 Pattern lines [AS `createRenderables<T>`]
+
+- Lines are `n · p = offset + k · line_spacing` for integer k, with
+  `offset = line_offset + delta_line_offset`: at angle r **counter-clockwise on paper** from
+  east, through the origin when `line_offset = 0`.
+- Canvas = extent of the area outline (flattened path) grown by the extent of what one line or
+  point paints: `canvas.adjust(-e.right, -e.bottom, -e.left, -e.top)` with e = half the line
+  width on each side for lines, the extent of the point symbol object at (0, 0) with rotation
+  `delta_rotation` for point patterns (`PointObject::setRotation`, so −delta if the point symbol is
+  rotatable, else 0) [AS `FillPattern::createRenderables`].
+- Lines run across the canvas from edge to edge; the first is the smallest k with the line at or
+  past the canvas corner of minimal n · p. Cases (first → second point):
+  - |r − π/2| < 0.0001, vertical: x = offset + ⌈(left − offset)/s⌉·s, step s, while x < right;
+    from (x, top) to (x, bottom); `delta_along_line_offset` negated.
+  - |r| < 0.0001, horizontal: y from ⌈(top − offset)/s⌉, while y < bottom; from (left, y) to
+    (right, y).
+  - 0 < r < π/2: from the top edge (or the right edge once past it) to the left edge (or the
+    bottom edge), first line through the upper left corner region; stops when the start point
+    passes below the bottom; `delta_along_line_offset` negated.
+  - π/2 < r < π: from the bottom edge (or the right edge) to the left edge (or the top edge),
+    first line at the lower left; stops when the start point passes above the top.
+  The negations make `delta_along_line_offset = dir · origin` for the line direction dir in
+  every case, so point positions satisfy `dir · (p − origin) ≡ offset_along_line` (mod
+  `point_distance`).
+- Line pattern: each line is a `LineRenderable` of two points in `color`, width `line_width`,
+  flat caps [AS `createLine<LinePattern>`].
+- Example (pinned in `draw.rs` tests): 10 × 10 mm square, horizontal lines, spacing 1 mm, width
+  0.1 mm: canvas y ∈ [−0.05, 10.05], lines y = 0, 1, …, 10 = **11** lines.
+
+### 4.4 Point positions on a line [AS `createPointPatternLine`]
+
+- `dir` = unit vector first → second, `length` = |second − first|,
+  `offset = dir · first − offset_along_line − delta_along_line_offset`,
+  `start = ⌈offset / point_distance⌉ · point_distance − offset`; points at
+  `first + dir · cur` for `cur = start, start + point_distance, …` while `cur < length`.
+- Each point symbol is drawn with rotation **−delta_rotation** (the object's pattern rotation if
+  the pattern is rotatable, not the pattern angle), via `createRenderablesScaled`, which applies
+  the rotation whether or not the point symbol is rotatable [AS `createLine<PointPattern>`
+  passes `delta_rotation`; PS `createRenderablesScaled`].
+- Example (pinned in `draw.rs` tests): 10 × 10 mm square, horizontal point pattern, spacing =
+  distance = 2 mm, a dot of radius 0.1 mm: canvas [−0.1, 10.1]², lines y = 0, 2, …, 10 (10 <
+  10.1) and on each points x = 0, 2, …, 10 (cur = 0.1 … 10.1 < 10.2) = **36** placements. A point
+  symbol with zero extent gives 25 (the canvas is the square itself and 10 < 10 fails).
+
+### 4.5 Clipping [AS `FillPattern::createRenderables`, `createPointPatternLine`; RN `PainterConfig::activate`; PS `createRenderablesIf*Inside`]
+
+- Default (`no_clipping` 0): the outline's painter path (all parts, OddEvenFill) is the clip
+  path of every pattern renderable; OOM intersects it with any clip already active (the print
+  area) [RN `PainterConfig::activate`]. PDF: `q`, the rings, `W* n`, the shapes, `Q`.
+- `no_clipping` 1–3 on a point pattern: no clip path; each point is drawn only if completely
+  inside (1), if its centre lies inside (2; elements by the centre of their coordinates), or if
+  partially inside (3; dot/ring tested at four points of their radius) [PS
+  `createRenderablesIfCompletelyInside`, `…IfCenterInside`, `…IfPartiallyInside`].
+- `no_clipping` on a line pattern: no clip path, lines span the whole canvas
+  (`createLine<LinePattern>` ignores the flag).
+- freemapper-print: `no_clipping` is one flag; unclipped points are kept when their centre lies
+  inside the outline (even-odd), which is mode 2 for dots and rings and an approximation of modes
+  1 and 3.
 
 ---
 
@@ -560,7 +644,8 @@ last coordinate of the object is harmless.
 4. Path objects: split into parts at HolePoint; closed = ClosePoint on the part's last coord;
    flatten Béziers (≤ 1 mm chords, ≤ 0.005 mm error) for lengths and positions, keep the
    original Béziers for the strokes/fills.
-5. Area symbol: one even-odd fill of all parts in `inner_color` (no pattern work needed here).
+5. Area symbol: one even-odd fill of all parts in `inner_color`, then each fill pattern (§4.2–4.5)
+   clipped to the same parts.
 6. Line symbol, per part:
    1. start symbol at the first coord of the first part, end symbol at the last coord of the last
       part (oriented by outgoing/incoming tangent if rotatable);

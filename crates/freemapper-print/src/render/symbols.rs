@@ -104,10 +104,43 @@ pub enum Part {
     Inline(Box<Symbol>),
 }
 
+/// An area fill pattern (`<pattern>` of an area symbol, reference §4.2).
+///
+/// Lines run at `angle_rad` (counter-clockwise on paper from east), `spacing` apart, shifted by
+/// `offset` along their normal. A point pattern places `symbol` every `distance` along those lines,
+/// starting at `offset_along`. `rotatable`: the object's pattern rotation and origin apply.
+/// `no_clipping`: not clipped to the area outline (any of OOM's `no_clipping` modes).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Lines {
+        angle_rad: f64,
+        rotatable: bool,
+        spacing: f64,
+        offset: f64,
+        color: i32,
+        width: f64,
+        no_clipping: bool,
+    },
+    Points {
+        angle_rad: f64,
+        rotatable: bool,
+        spacing: f64,
+        offset: f64,
+        offset_along: f64,
+        distance: f64,
+        symbol: Box<PointDef>,
+        no_clipping: bool,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Symbol {
     Line(LineDef),
-    Area { color: i32 },
+    /// Fill colour (−1: none) and fill patterns, painted after the fill.
+    Area {
+        color: i32,
+        patterns: Vec<Pattern>,
+    },
     Point(PointDef),
     Text(TextDef),
     Combined(Vec<Part>),
@@ -313,6 +346,39 @@ fn point_def(node: &Node) -> PointDef {
     }
 }
 
+/// One `<pattern>` of an area symbol [AS `FillPattern::load`]; `None` for an unknown type or a
+/// point pattern without a point symbol (OOM draws nothing for it).
+fn pattern(node: &Node) -> Option<Pattern> {
+    let angle_rad = node.num("angle");
+    let rotatable = node.flag("rotatable");
+    let spacing = node.num("line_spacing");
+    let offset = node.num("line_offset");
+    // `no_clipping` holds one of OOM's three clipping alternatives (bits 0x03).
+    let no_clipping = (node.num("no_clipping") as i32) & 0x03 != 0;
+    match node.num("type") as i32 {
+        1 => Some(Pattern::Lines {
+            angle_rad,
+            rotatable,
+            spacing,
+            offset,
+            color: node.color("color"),
+            width: node.num("line_width"),
+            no_clipping,
+        }),
+        2 => Some(Pattern::Points {
+            angle_rad,
+            rotatable,
+            spacing,
+            offset,
+            offset_along: node.num("offset_along_line"),
+            distance: node.num("point_distance"),
+            symbol: Box::new(point_def(node.child("symbol")?.child("point_symbol")?)),
+            no_clipping,
+        }),
+        _ => None,
+    }
+}
+
 fn symbol(node: &Node) -> Option<Symbol> {
     match node.num("type") as u32 {
         1 => node
@@ -321,6 +387,12 @@ fn symbol(node: &Node) -> Option<Symbol> {
         2 => node.child("line_symbol").map(|l| Symbol::Line(line_def(l))),
         4 => node.child("area_symbol").map(|a| Symbol::Area {
             color: a.color("inner_color"),
+            patterns: a
+                .children
+                .iter()
+                .filter(|c| c.name == "pattern")
+                .filter_map(pattern)
+                .collect(),
         }),
         8 => {
             let t = node.child("text_symbol")?;
@@ -499,7 +571,84 @@ mod tests {
         assert!(
             matches!(&paved[1], Part::Inline(p) if matches!(**p, Symbol::Line(ref l) if l.color == 15))
         );
-        assert!(matches!(s.0.symbols[&143], Symbol::Area { color: 9 }));
+        assert!(matches!(s.0.symbols[&143], Symbol::Area { color: 9, .. }));
+    }
+
+    #[test]
+    fn parses_line_and_point_patterns() {
+        let xml = r#"<symbol type="4" id="7"><area_symbol inner_color="-1" min_area="0" patterns="2">
+            <pattern type="1" angle="0.785" rotatable="true" line_spacing="1000" line_offset="0" offset_along_line="0" color="3" line_width="100"/>
+            <pattern type="2" angle="0" line_spacing="2000" line_offset="500" offset_along_line="250" point_distance="1500">
+                <symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="0" outer_color="-1" elements="0"/></symbol>
+            </pattern>
+        </area_symbol></symbol>"#;
+        let Some(Symbol::Area { color, patterns }) = symbol(&parse(xml).children[0]) else {
+            panic!()
+        };
+        assert_eq!(color, -1);
+        assert_eq!(
+            patterns[0],
+            Pattern::Lines {
+                angle_rad: 0.785,
+                rotatable: true,
+                spacing: 1000.0,
+                offset: 0.0,
+                color: 3,
+                width: 100.0,
+                no_clipping: false,
+            }
+        );
+        let Pattern::Points {
+            angle_rad,
+            rotatable,
+            spacing,
+            offset,
+            offset_along,
+            distance,
+            symbol,
+            no_clipping,
+        } = &patterns[1]
+        else {
+            panic!("{:?}", patterns[1])
+        };
+        assert_eq!(
+            (
+                *angle_rad,
+                *rotatable,
+                *spacing,
+                *offset,
+                *offset_along,
+                *distance
+            ),
+            (0.0, false, 2000.0, 500.0, 250.0, 1500.0)
+        );
+        assert_eq!(symbol.dot, Some((5, 100.0)));
+        assert!(!no_clipping);
+    }
+
+    #[test]
+    fn forest_sample_patterns_parse() {
+        let doc = crate::omap::read::read_map_file(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/maps/forest-sample.omap"
+        )))
+        .unwrap();
+        let r = RenderSymbols::from_set(&doc.symbol_set);
+        let patterned: Vec<&Vec<Pattern>> = r
+            .symbols
+            .values()
+            .filter_map(|s| match s {
+                Symbol::Area { patterns, .. } if !patterns.is_empty() => Some(patterns),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(patterned.len(), 20);
+        let all: Vec<&Pattern> = patterned.into_iter().flatten().collect();
+        let points = all
+            .iter()
+            .filter(|p| matches!(p, Pattern::Points { .. }))
+            .count();
+        assert_eq!((all.len(), points), (23, 9));
     }
 
     #[test]

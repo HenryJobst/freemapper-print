@@ -39,7 +39,11 @@ pub fn page_size(width: f64, height: f64) -> (f64, f64) {
 
 /// The box around everything a primitive paints (mm), widened by half a stroke.
 fn bounds(p: &Primitive) -> Option<PaperBox> {
-    let (points, extra): (Vec<Pt>, f64) = match &p.shape {
+    shape_bounds(&p.shape)
+}
+
+fn shape_bounds(shape: &Shape) -> Option<PaperBox> {
+    let (points, extra): (Vec<Pt>, f64) = match shape {
         Shape::Fill { rings } => (rings.iter().flatten().copied().collect(), 0.0),
         Shape::Stroke { path, width, .. } => (path.clone(), width / 2.0),
         Shape::Text {
@@ -56,6 +60,16 @@ fn bounds(p: &Primitive) -> Option<PaperBox> {
                 ],
                 0.0,
             )
+        }
+        // What is painted lies inside both the clip and the inner shape.
+        Shape::Clipped { rings, inner } => {
+            let a = shape_bounds(&Shape::Fill {
+                rings: rings.clone(),
+            })?;
+            let b = shape_bounds(inner)?;
+            let min = (a.min.0.max(b.min.0), a.min.1.max(b.min.1));
+            let max = (a.max.0.min(b.max.0), a.max.1.min(b.max.1));
+            return (min.0 <= max.0 && min.1 <= max.1).then_some(PaperBox { min, max });
         }
     };
     let first = *points.first()?;
@@ -107,13 +121,31 @@ fn path(content: &mut Content, t: &Transform, points: &[Pt], close: bool) {
     }
 }
 
-fn paint(content: &mut Content, t: &Transform, p: &Primitive, colours: &[RenderColour]) {
+/// Opens a clip block: `q`, the rings, `W* n` (even-odd, as the area fill).
+fn begin_clip(content: &mut Content, t: &Transform, rings: &[Vec<Pt>]) {
+    content.save_state();
+    for ring in rings {
+        path(content, t, ring, true);
+    }
+    content.clip_even_odd();
+    content.end_path();
+}
+
+/// Paints `shape` in the colour of `priority`. A clipped shape gets its own clip block here;
+/// [`write_pdf`] shares one block among consecutive shapes with the same clip instead.
+fn paint(
+    content: &mut Content,
+    t: &Transform,
+    priority: i32,
+    shape: &Shape,
+    colours: &[RenderColour],
+) {
     let [c, m, y, k] = colours
         .iter()
-        .find(|c| c.priority == p.priority)
+        .find(|c| c.priority == priority)
         .map_or([0.0, 0.0, 0.0, 1.0], |c| c.cmyk)
         .map(|v| v as f32);
-    match &p.shape {
+    match shape {
         Shape::Fill { rings } => {
             content.set_fill_cmyk(c, m, y, k);
             for ring in rings {
@@ -162,6 +194,11 @@ fn paint(content: &mut Content, t: &Transform, p: &Primitive, colours: &[RenderC
             content.show(Str(&bytes));
             content.end_text();
         }
+        Shape::Clipped { rings, inner } => {
+            begin_clip(content, t, rings);
+            paint(content, t, priority, inner, colours);
+            content.restore_state();
+        }
     }
 }
 
@@ -199,9 +236,19 @@ pub fn write_pdf(
     let mut content = Content::new();
     let (cx0, cy0) = t.pt((clip.min.0, clip.max.1));
     let (cx1, cy1) = t.pt((clip.max.0, clip.min.1));
-    // One clip block for each run of consecutive map primitives.
+    // One clip block for each run of consecutive map primitives, and nested in it one for each
+    // run of shapes clipped to the same rings (the lines of one area pattern).
     let mut clipping = false;
+    let mut pattern_clip: Option<&[Vec<Pt>]> = None;
     for (primitive, clipped) in items {
+        let (rings, shape) = match &primitive.shape {
+            Shape::Clipped { rings, inner } => (Some(rings.as_slice()), &**inner),
+            shape => (None, shape),
+        };
+        if pattern_clip.is_some() && (clipped != clipping || pattern_clip != rings) {
+            content.restore_state();
+            pattern_clip = None;
+        }
         if clipped && !clipping {
             content.save_state();
             content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
@@ -211,7 +258,14 @@ pub fn write_pdf(
             content.restore_state();
         }
         clipping = clipped;
-        paint(&mut content, &t, primitive, colours);
+        if let (None, Some(rings)) = (pattern_clip, rings) {
+            begin_clip(&mut content, &t, rings);
+            pattern_clip = Some(rings);
+        }
+        paint(&mut content, &t, primitive.priority, shape, colours);
+    }
+    if pattern_clip.is_some() {
+        content.restore_state();
     }
     if clipping {
         content.restore_state();
@@ -352,6 +406,55 @@ mod tests {
         assert!(find(&pdf, b"1 J").is_some(), "round cap");
         assert!(find(&pdf, b"2.236068 M").is_some(), "miter limit");
         assert!(find(&pdf, b"0.992126 w").is_some(), "0.35 mm in points");
+    }
+
+    fn clipped_line(y: f64) -> Primitive {
+        Primitive {
+            priority: 2,
+            shape: Shape::Clipped {
+                rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
+                inner: Box::new(Shape::Stroke {
+                    path: vec![(5.0, y), (25.0, y)],
+                    closed: false,
+                    width: 0.1,
+                    cap: Cap::Flat,
+                    join: Join::Miter,
+                }),
+            },
+        }
+    }
+
+    #[test]
+    fn clipped_shape_uses_clip_path() {
+        let pdf = content_of(&write_pdf(
+            &[clipped_line(15.0)],
+            &[],
+            clip(),
+            &colours(),
+            "Test",
+        ));
+        let after = |from: usize, needle: &[u8]| {
+            find(&pdf[from..], needle)
+                .map(|i| from + i)
+                .unwrap_or_else(|| panic!("{} after {from}", String::from_utf8_lossy(needle)))
+        };
+        // The page clip block comes first, then the pattern clip block nested in it.
+        let page_clip = after(0, b"re\nW\nn\n");
+        let save = after(page_clip, b"q\n");
+        let ring = after(save, b" m\n");
+        let clip = after(ring, b"h\nW*\nn\n");
+        let stroke = after(clip, b"S\n");
+        let restore = after(stroke, b"Q\n");
+        assert!(save < ring && ring < clip && clip < stroke && stroke < restore);
+    }
+
+    #[test]
+    fn clipped_shapes_with_one_outline_share_a_clip_block() {
+        let lines: Vec<Primitive> = (0..5).map(|i| clipped_line(11.0 + f64::from(i))).collect();
+        let pdf = content_of(&write_pdf(&lines, &[], clip(), &colours(), "Test"));
+        let clips = pdf.windows(4).filter(|w| w == b"W*\nn").count();
+        let strokes = pdf.windows(2).filter(|w| w == b"S\n").count();
+        assert_eq!((clips, strokes), (1, 5));
     }
 
     #[test]
