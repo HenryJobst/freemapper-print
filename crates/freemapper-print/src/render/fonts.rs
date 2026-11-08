@@ -100,6 +100,7 @@ pub fn char_width(c: char, face: FontFace) -> f64 {
 /// line gap 67 at 2048 units per em, the same as Arial (reference §6; test
 /// `metrics_follow_the_hhea_table`).
 pub const ASCENT: f64 = 1854.0 / 2048.0;
+pub const DESCENT: f64 = 434.0 / 2048.0;
 pub const LINE_SPACING: f64 = (1854.0 + 434.0 + 67.0) / 2048.0;
 
 /// Families Arimo matches metrically, compared without regard to case.
@@ -374,6 +375,7 @@ mod tests {
             let f = face.parsed();
             let em = face.units_per_em();
             assert!((f64::from(f.ascender()) / em - ASCENT).abs() < 1e-9);
+            assert!((-f64::from(f.descender()) / em - DESCENT).abs() < 1e-9);
             let spacing = f64::from(f.ascender() - f.descender() + f.line_gap()) / em;
             assert!((spacing - LINE_SPACING).abs() < 1e-9);
         }

@@ -197,8 +197,21 @@ pub(crate) fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Pri
 }
 
 /// The primitives of one map object and whether [`MAX_PRIMITIVES_PER_OBJECT`] cut them short.
-pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<Primitive>, bool) {
-    let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+#[cfg(test)]
+pub(crate) fn primitives_counted(
+    object: &MapObject,
+    symbols: &RenderSymbols,
+) -> (Vec<Primitive>, bool) {
+    primitives_within(object, symbols, MAX_PRIMITIVES_PER_OBJECT)
+}
+
+/// The primitives of one map object within `budget` units, and whether a limit cut them short.
+pub(crate) fn primitives_within(
+    object: &MapObject,
+    symbols: &RenderSymbols,
+    budget: usize,
+) -> (Vec<Primitive>, bool) {
+    let mut sink = Sink::new(budget);
     draw_object(object, symbols, &mut sink);
     let Sink { mut out, cut, .. } = sink;
     // A colour missing from the colour table is not drawn (as in OOM).
@@ -253,9 +266,9 @@ pub(super) fn draw_object(object: &MapObject, symbols: &RenderSymbols, sink: &mu
     }
 }
 
-/// Nesting depth of symbols (combined parts, point elements) beyond which drawing stops: a
-/// symbol set that refers to itself must not overflow the stack.
-const MAX_DEPTH: u32 = 8;
+/// Nesting depth of symbols (combined parts, point elements) beyond which drawing stops and the
+/// object counts as cut short: a symbol set that refers to itself must not overflow the stack.
+pub(super) const MAX_DEPTH: u32 = 8;
 
 /// A symbol drawn on path coordinates (map objects and point symbol elements); `pattern` is the
 /// object's pattern rotation and origin.
@@ -267,7 +280,11 @@ pub(super) fn path_symbol(
     sink: &mut Sink,
     depth: u32,
 ) {
-    if depth > MAX_DEPTH || sink.stop() {
+    if depth > MAX_DEPTH {
+        sink.mark_cut();
+        return;
+    }
+    if sink.stop() {
         return;
     }
     let len = sink.out.len();
@@ -425,7 +442,11 @@ pub(super) fn point_symbol_scaled(
     sink: &mut Sink,
     depth: u32,
 ) {
-    if depth > MAX_DEPTH || sink.stop() {
+    if depth > MAX_DEPTH {
+        sink.mark_cut();
+        return;
+    }
+    if sink.stop() {
         return;
     }
     let len = sink.out.len();
@@ -658,7 +679,7 @@ mod tests {
 
     fn set() -> (RenderSymbols, SymbolSet) {
         let set = SymbolSet::issprom_2019().with_sheet_symbols();
-        (RenderSymbols::from_set(&set), set)
+        (RenderSymbols::from_set(&set).unwrap(), set)
     }
 
     fn object(
@@ -1177,14 +1198,16 @@ mod tests {
         let id = s.id_for_code("521").unwrap();
         r.symbols
             .insert(id, Symbol::Combined(vec![SymbolPart::Ref(id)]));
-        let p = primitives(&object(&s, "521", MapObjectKind::Path, square(10_000)), &r);
+        let (p, cut) =
+            primitives_counted(&object(&s, "521", MapObjectKind::Path, square(10_000)), &r);
         assert!(p.is_empty());
+        assert!(cut, "the depth limit counts as cut short");
     }
 
     #[test]
     fn end_bars_of_a_closed_line_follow_their_segments() {
         let set = SymbolSet::school_2019();
-        let r = RenderSymbols::from_set(&set);
+        let r = RenderSymbols::from_set(&set).unwrap();
         let bench = object(&set, "543", MapObjectKind::Path, closed_square(5_000));
         let p = primitives(&bench, &r);
         // Bars along local y, 0.8 mm (enlarged 125 % in the school set? no: school additions are

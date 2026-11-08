@@ -1,7 +1,7 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
 //! Symbol enlargement with the same rules as OOM's `Symbol::scale`.
 
-use super::OmapError;
+use super::{MAX_XML_DEPTH, OmapError, too_deep};
 
 const LINE_SYMBOL_ATTRS: &[&str] = &[
     "line_width",
@@ -104,6 +104,9 @@ pub fn enlarge_symbols(symbols_xml: &str, factor: f64) -> Result<String, OmapErr
                 }
                 out.push_str(&tag_text);
                 if is_start {
+                    if stack.len() >= MAX_XML_DEPTH {
+                        return Err(too_deep());
+                    }
                     stack.push(tag);
                 }
             }

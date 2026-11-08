@@ -94,6 +94,17 @@ Der Test prüft Bilder, nicht Papier. Ob der Maßstab auf dem Drucker wirklich s
 Eine Maßstabsleiste gibt es erst mit M2, deshalb misst du eine bekannte Strecke nach. Der Test
 `probedruck_distances_match_readme` rechnet die Zahlen unten aus der Karte nach, sie veralten also nicht still.
 
+Gemessen wird zwischen den Westspitzen zweier großer Gebäude (Symbol 521) am linken und am rechten Kartenrand.
+Die Westspitze ist der Eckpunkt, der am weitesten links liegt; bei beiden Gebäuden ist das genau ein Punkt.
+
+| Gebäude | Lage | Westspitze (Karten-Koordinate) |
+|---|---|---|
+| P | am linken Rand, etwa 11 × 14 mm groß | -89,453 / 0,633 mm |
+| Q | am rechten Rand, etwa 9 × 17 mm groß | 109,319 / 5,093 mm |
+
+Soll-Abstand P-Q: 198,8 mm auf dem Papier, bei 1 : 4000 sind das 795,3 m in der Natur. Du brauchst ein Lineal
+von mindestens 20 cm.
+
 ### Variante A4 (Standard)
 
 1. PDF erzeugen:
@@ -102,40 +113,34 @@ Eine Maßstabsleiste gibt es erst mit M2, deshalb misst du eine bekannte Strecke
    freemapper-print render tests/fixtures/maps/luebeck.omap --out luebeck-a4.pdf --paper a4
    ```
 
-   Das Programm warnt, dass die Karte 3,9 mm zu hoch für den bedruckbaren Bereich ist, und schreibt das PDF trotzdem. Das ist erwartet und kein Fehler. Die
-   Karte ist etwas höher als ein A4-Blatt, der Rand wird abgeschnitten. Die beiden Messpunkte liegen
-   innerhalb des bedruckten Bereichs.
+   Das Programm warnt, dass die Karte 4,0 mm zu hoch für den bedruckbaren Bereich ist, und schreibt das PDF
+   trotzdem. Das ist erwartet: Die Karte ist etwas höher als ein A4-Blatt, oben und unten fehlen je 2 mm. Die
+   beiden Messpunkte liegen innerhalb des bedruckten Bereichs.
 2. In 100 % ausdrucken, "An Seite anpassen" aus (im Druckdialog von macOS "Tatsächliche Größe"). Quer, A4.
-3. Zwei Gebäudeecken suchen und den Abstand messen. Es sind die ersten Eckpunkte zweier Gebäude (Symbol 521)
-   aus `luebeck.omap`. Lage auf dem Blatt, von der linken und der oberen Papierkante gemessen:
+3. Die Westspitzen liegen hier, von der linken und der oberen Papierkante gemessen:
 
-   | Ecke | von links | von oben |
+   | Punkt | von links | von oben |
    |---|---|---|
-   | P (Karten-Koordinate -114,203 / -65,073 mm) | 34,8 mm | 40,1 mm |
-   | Q (Karten-Koordinate 116,555 / 3,974 mm) | 265,6 mm | 109,1 mm |
-
-   Soll-Abstand P-Q: 240,9 mm auf dem Papier, bei 1 : 4000 sind das 963,5 m in der Natur. Du brauchst ein
-   Lineal oder Maßband von mindestens 25 cm. Die Gebäude sind etwa 3 mm groß. Findest du die Ecken nicht
-   genau, miss von der linken Papierkante bis zu den Gebäuden P (Soll 34,8 mm) und Q (Soll 265,6 mm). Das
-   Ergebnis ist dasselbe.
+   | P | 59,5 mm | 105,8 mm |
+   | Q | 258,3 mm | 110,2 mm |
 
 ### Variante A3 (falls ein A3-Drucker da ist)
 
 1. PDF mit `--paper a3 --orientation portrait` erzeugen, dann in 100 % auf A3 hoch drucken.
-2. Lage der Ecken:
+2. Lage der Westspitzen:
 
-   | Ecke | von links | von oben |
+   | Punkt | von links | von oben |
    |---|---|---|
-   | A (Karten-Koordinate -80,780 / 20,866 mm) | 68,2 mm | 231,0 mm |
-   | B (Karten-Koordinate -107,548 / -71,778 mm) | 41,5 mm | 138,3 mm |
-
-   Soll-Abstand A-B: 96,4 mm auf dem Papier, das sind 385,7 m in der Natur.
+   | P | 59,5 mm | 210,8 mm |
+   | Q | 258,3 mm | 215,2 mm |
 
 ### Ergebnis eintragen
 
-Eine Abweichung bis etwa 0,5 mm ist Messung und Drucker. Mehr deutet auf Skalierung im Druckdialog hin.
+Die Spitzen lassen sich auf etwa 0,5 mm genau anlegen, und der Papiervorschub eines Druckers weicht oft um
+einige Zehntelprozent ab. Bis etwa 1,5 mm Abweichung vom Soll (198,8 mm) ist deshalb in Ordnung. Ein Ausdruck
+mit "An Seite anpassen" ist um einige Prozent kleiner, bei 199 mm also um mehrere Millimeter.
 
 - Datum:
 - Drucker und Papier:
-- Variante (A4 oder A3) und gemessener Abstand (Soll 240,9 mm bzw. 96,4 mm):
+- Variante (A4 oder A3) und gemessener Abstand:
 - Bemerkung:

@@ -3,9 +3,9 @@
 //!
 //! Lengths stay in OOM units (0.001 mm); colours are indices = priorities.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::omap::{MapCoord, SymbolSet};
+use crate::omap::{MAX_XML_DEPTH, MapCoord, OmapError, SymbolSet, too_deep};
 
 /// A colour of the map: its priority (0 is on top), CMYK for print, RGB for a screen and its
 /// opacity, all 0..1 as OOM stores them (`<color c m y k opacity><rgb r g b/>`).
@@ -266,6 +266,32 @@ pub enum Symbol {
 pub struct RenderSymbols {
     pub colours: Vec<RenderColour>,
     pub symbols: HashMap<u32, Symbol>,
+    /// Ids of the symbols that lost an area pattern when read, because it broke a limit
+    /// ([`MIN_PATTERN_STEP`], non-finite numbers); also combined symbols with such a part.
+    pub dropped_patterns: HashSet<u32>,
+}
+
+/// Whether a `<symbol>` element holds an area pattern of a known type that [`pattern`] drops for
+/// breaking a limit.
+fn drops_a_pattern(node: &Node) -> bool {
+    node.children.iter().any(|c| {
+        (node.name == "area_symbol"
+            && c.name == "pattern"
+            && matches!(c.num("type") as i32, 1 | 2)
+            && !pattern_within_limits(c))
+            || drops_a_pattern(c)
+    })
+}
+
+/// Whether a combined symbol refers to one of `ids`.
+fn refers_to(symbol: &Symbol, ids: &HashSet<u32>) -> bool {
+    match symbol {
+        Symbol::Combined(parts) => parts.iter().any(|p| match p {
+            Part::Ref(id) => ids.contains(id),
+            Part::Inline(inner) => refers_to(inner, ids),
+        }),
+        _ => false,
+    }
 }
 
 /// A parsed XML element.
@@ -302,8 +328,10 @@ impl Node {
     }
 }
 
-/// The element tree of an XML fragment (one synthetic root holding the top-level elements).
-fn parse(xml: &str) -> Node {
+/// The element tree of an XML fragment (one synthetic root holding the top-level elements). A
+/// fragment nested deeper than [`MAX_XML_DEPTH`] is an error, so the tree (and dropping it) stays
+/// shallow.
+fn parse(xml: &str) -> Result<Node, OmapError> {
     use quick_xml::events::{BytesStart, Event};
     fn node(e: &BytesStart<'_>) -> Node {
         Node {
@@ -327,7 +355,12 @@ fn parse(xml: &str) -> Node {
     let mut stack = vec![Node::default()];
     while let Ok(event) = reader.read_event() {
         match event {
-            Event::Start(e) => stack.push(node(&e)),
+            Event::Start(e) => {
+                if stack.len() > MAX_XML_DEPTH {
+                    return Err(too_deep());
+                }
+                stack.push(node(&e));
+            }
             Event::Empty(e) => {
                 let n = node(&e);
                 stack.last_mut().expect("root").children.push(n);
@@ -351,7 +384,7 @@ fn parse(xml: &str) -> Node {
         let n = stack.pop().expect("checked");
         stack.last_mut().expect("root").children.push(n);
     }
-    stack.pop().expect("root")
+    Ok(stack.pop().expect("root"))
 }
 
 /// `x y [flags];` coordinates of an OOM `<coords>` element.
@@ -534,14 +567,13 @@ fn pattern(node: &Node, version: u32) -> Option<Pattern> {
         3 => Clipping::NoClippingIfPartlyInside,
         _ => Clipping::Clip,
     };
-    let usable = |numbers: &[f64], steps: &[f64]| {
-        numbers.iter().chain(steps).all(|v| v.is_finite())
-            && steps.iter().all(|&v| v >= MIN_PATTERN_STEP)
-    };
+    if !pattern_within_limits(node) {
+        return None;
+    }
     match node.num("type") as i32 {
         1 => {
             let width = node.num("line_width");
-            usable(&[angle_rad, offset, width], &[spacing]).then(|| Pattern::Lines {
+            Some(Pattern::Lines {
                 angle_rad,
                 rotatable,
                 spacing,
@@ -558,20 +590,39 @@ fn pattern(node: &Node, version: u32) -> Option<Pattern> {
                 node.child("symbol")?.child("point_symbol")?,
                 version,
             ));
-            usable(&[angle_rad, offset, offset_along], &[spacing, distance]).then_some(
-                Pattern::Points {
-                    angle_rad,
-                    rotatable,
-                    spacing,
-                    offset,
-                    offset_along,
-                    distance,
-                    symbol,
-                    clipping,
-                },
-            )
+            Some(Pattern::Points {
+                angle_rad,
+                rotatable,
+                spacing,
+                offset,
+                offset_along,
+                distance,
+                symbol,
+                clipping,
+            })
         }
         _ => None,
+    }
+}
+
+/// Whether a `<pattern>`'s numbers are finite and its spacing (and, for points, distance) at
+/// least [`MIN_PATTERN_STEP`].
+fn pattern_within_limits(node: &Node) -> bool {
+    let finite = ["angle", "line_offset", "line_spacing"]
+        .iter()
+        .all(|a| node.num(a).is_finite());
+    let spacing = node.num("line_spacing") >= MIN_PATTERN_STEP;
+    match node.num("type") as i32 {
+        1 => finite && spacing && node.num("line_width").is_finite(),
+        2 => {
+            let distance = node.num("point_distance");
+            finite
+                && spacing
+                && node.num("offset_along_line").is_finite()
+                && distance.is_finite()
+                && distance >= MIN_PATTERN_STEP
+        }
+        _ => true,
     }
 }
 
@@ -671,23 +722,53 @@ fn symbol(node: &Node, version: u32) -> Option<Symbol> {
 }
 
 impl RenderSymbols {
-    pub fn from_set(set: &SymbolSet) -> Self {
-        let colours = parse(&set.colors_xml)
+    pub fn from_set(set: &SymbolSet) -> Result<Self, OmapError> {
+        let colours = parse(&set.colors_xml)?
             .children
             .iter()
             .flat_map(|c| c.children.iter().chain(std::iter::once(c)))
             .filter(|c| c.name == "color")
             .map(colour)
             .collect();
-        let root = parse(&set.symbols_xml);
-        let symbols = root
+        let root = parse(&set.symbols_xml)?;
+        let mut symbols = HashMap::new();
+        let mut dropped_patterns = HashSet::new();
+        let top_level = root
             .children
             .iter()
             .flat_map(|s| s.children.iter().chain(std::iter::once(s)))
-            .filter(|s| s.name == "symbol")
-            .filter_map(|s| Some((s.attr("id")?.parse().ok()?, symbol(s, set.version)?)))
-            .collect();
-        Self { colours, symbols }
+            .filter(|s| s.name == "symbol");
+        for node in top_level {
+            let Some(id) = node.attr("id").and_then(|v| v.parse::<u32>().ok()) else {
+                continue;
+            };
+            let Some(parsed) = symbol(node, set.version) else {
+                continue;
+            };
+            if drops_a_pattern(node) {
+                dropped_patterns.insert(id);
+            }
+            symbols.insert(id, parsed);
+        }
+        // A combined symbol whose parts lost a pattern lost it too (as deep as drawing goes).
+        for _ in 0..=super::draw::MAX_DEPTH {
+            let more: Vec<u32> = symbols
+                .iter()
+                .filter(|(id, s)| {
+                    !dropped_patterns.contains(*id) && refers_to(s, &dropped_patterns)
+                })
+                .map(|(id, _)| *id)
+                .collect();
+            if more.is_empty() {
+                break;
+            }
+            dropped_patterns.extend(more);
+        }
+        Ok(Self {
+            colours,
+            symbols,
+            dropped_patterns,
+        })
     }
 
     pub fn colour(&self, priority: i32) -> Option<&RenderColour> {
@@ -701,7 +782,7 @@ mod tests {
 
     fn symbols() -> (RenderSymbols, SymbolSet) {
         let set = SymbolSet::issprom_2019().with_sheet_symbols();
-        (RenderSymbols::from_set(&set), set)
+        (RenderSymbols::from_set(&set).unwrap(), set)
     }
 
     fn by_code<'a>(s: &'a (RenderSymbols, SymbolSet), code: &str) -> &'a Symbol {
@@ -727,13 +808,22 @@ mod tests {
     }
 
     #[test]
+    fn deep_symbol_xml_is_an_error() {
+        let deep = format!("{}{}", "<a>".repeat(100_000), "</a>".repeat(100_000));
+        let err = parse(&deep).unwrap_err();
+        assert!(err.to_string().contains("nesting too deep"), "{err}");
+        let fine = format!("{}{}", "<a>".repeat(200), "</a>".repeat(200));
+        assert!(parse(&fine).is_ok());
+    }
+
+    #[test]
     fn colour_opacity_and_rgb_fallback() {
         let half = parse(
             r#"<color priority="4" c="0" m="1" y="0" k="0" opacity="0.5"><rgb r="1" g="0" b="1"/></color>"#,
-        );
+        ).unwrap();
         let c = colour(&half.children[0]);
         assert_eq!((c.priority, c.rgb, c.opacity), (4, [1.0, 0.0, 1.0], 0.5));
-        let bare = parse(r#"<color priority="3" c="0.2" m="0" y="1" k="0.5"/>"#);
+        let bare = parse(r#"<color priority="3" c="0.2" m="0" y="1" k="0.5"/>"#).unwrap();
         let c = colour(&bare.children[0]);
         assert_eq!((c.rgb, c.opacity), ([0.4, 0.5, 0.0], 1.0));
     }
@@ -785,7 +875,7 @@ mod tests {
     #[test]
     fn start_and_end_symbols() {
         let set = SymbolSet::school_2019();
-        let s = (RenderSymbols::from_set(&set), set);
+        let s = (RenderSymbols::from_set(&set).unwrap(), set);
         let l = line(&s, "543");
         assert!(l.start.is_some() && l.end.is_some());
         assert!(l.start.as_ref().unwrap().rotatable);
@@ -833,7 +923,8 @@ mod tests {
                 <symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="0" outer_color="-1" elements="0"/></symbol>
             </pattern>
         </area_symbol></symbol>"#;
-        let Some(Symbol::Area { color, patterns }) = symbol(&parse(xml).children[0], 9) else {
+        let Some(Symbol::Area { color, patterns }) = symbol(&parse(xml).unwrap().children[0], 9)
+        else {
             panic!()
         };
         assert_eq!(color, -1);
@@ -882,7 +973,7 @@ mod tests {
         let xml = format!(
             r#"<symbol type="4" id="1"><area_symbol inner_color="-1" patterns="1">{pattern}</area_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0], 9) {
+        match symbol(&parse(&xml).unwrap().children[0], 9) {
             Some(Symbol::Area { patterns, .. }) => patterns,
             other => panic!("{other:?}"),
         }
@@ -946,7 +1037,7 @@ mod tests {
             "/../../tests/fixtures/maps/forest-sample.omap"
         )))
         .unwrap();
-        let r = RenderSymbols::from_set(&doc.symbol_set);
+        let r = RenderSymbols::from_set(&doc.symbol_set).unwrap();
         let patterned: Vec<&Vec<Pattern>> = r
             .symbols
             .values()
@@ -968,7 +1059,7 @@ mod tests {
         let xml = format!(
             r#"<symbol type="2" id="1"><line_symbol color="2" line_width="300" {attrs}>{children}</line_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0], 9) {
+        match symbol(&parse(&xml).unwrap().children[0], 9) {
             Some(Symbol::Line(l)) => l,
             other => panic!("{other:?}"),
         }
@@ -1052,7 +1143,7 @@ mod tests {
         let xml = format!(
             r#"<symbol type="8" id="1"><text_symbol {rotatable}><font family="Arial" size="3000"/><text color="2" line_spacing="1"/>{children}</text_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0], 9) {
+        match symbol(&parse(&xml).unwrap().children[0], 9) {
             Some(Symbol::Text(t)) => t,
             other => panic!("{other:?}"),
         }
@@ -1065,7 +1156,7 @@ mod tests {
                 r#"<symbol type="8" id="1"><text_symbol><font family="Arial" size="3000"/><text color="2" line_spacing="1" paragraph_spacing="700"/>{children}</text_symbol></symbol>"#
             )
         };
-        let spacing = |xml: &str| match symbol(&parse(xml).children[0], 9) {
+        let spacing = |xml: &str| match symbol(&parse(xml).unwrap().children[0], 9) {
             Some(Symbol::Text(t)) => t.paragraph_spacing,
             other => panic!("{other:?}"),
         };
@@ -1122,7 +1213,7 @@ mod tests {
                 r#"<map version="{version}"><georeferencing scale="10000"/><colors count="1"><color priority="0" c="0" m="0" y="0" k="1"/></colors><barrier><symbols count="1" id="x"><symbol type="8" id="0" code="1"><text_symbol><font family="Arial" size="3000"/><text color="0"/></text_symbol></symbol></symbols></barrier></map>"#
             );
             let set = SymbolSet::from_omap_xml(&map).unwrap();
-            match &RenderSymbols::from_set(&set).symbols[&0] {
+            match &RenderSymbols::from_set(&set).unwrap().symbols[&0] {
                 Symbol::Text(t) => t.rotatable,
                 other => panic!("{other:?}"),
             }
@@ -1139,7 +1230,7 @@ mod tests {
             "/../../tests/fixtures/maps/forest-sample.omap"
         )))
         .unwrap();
-        let r = RenderSymbols::from_set(&doc.symbol_set);
+        let r = RenderSymbols::from_set(&doc.symbol_set).unwrap();
         let lines: Vec<&LineDef> = r
             .symbols
             .values()

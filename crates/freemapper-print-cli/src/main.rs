@@ -293,10 +293,28 @@ fn report_lines(
             objects(report.skipped_objects, "is", "are")
         ));
     }
+    if report.unknown_type_objects > 0 {
+        lines.push(format!(
+            "Note: {} not drawn because the program does not know their object type.",
+            objects(report.unknown_type_objects, "is", "are")
+        ));
+    }
     if report.truncated_objects > 0 {
         lines.push(format!(
             "Note: {} simplified or cut short because the file asks for more detail than the renderer draws.",
             objects(report.truncated_objects, "was", "were")
+        ));
+    }
+    if report.objects_not_drawn_page_limit > 0 {
+        lines.push(format!(
+            "Note: {} not drawn because the page reached its drawing limit.",
+            objects(report.objects_not_drawn_page_limit, "is", "are")
+        ));
+    }
+    if report.dropped_pattern_objects > 0 {
+        lines.push(format!(
+            "Note: {} drawn without an area pattern whose spacing is below 0.05 mm or not a number.",
+            objects(report.dropped_pattern_objects, "is", "are")
         ));
     }
     if !report.substituted_fonts.is_empty() {
@@ -355,7 +373,10 @@ mod tests {
             non_standard_scale: false,
             overflow_mm: None,
             skipped_objects: 0,
+            unknown_type_objects: 0,
             truncated_objects: 0,
+            objects_not_drawn_page_limit: 0,
+            dropped_pattern_objects: 0,
             substituted_fonts: vec![],
             missing_glyphs: vec![],
         }
@@ -411,6 +432,24 @@ mod tests {
         assert!(l[4].contains("Comic Sans, Papyrus"), "{l:?}");
         assert!(l[5].contains("no glyph") && l[5].contains("Ж 猫"), "{l:?}");
         assert!(l[6].contains("actual size"), "{l:?}");
+    }
+
+    #[test]
+    fn limit_notes_name_their_cause() {
+        let r = PrintReport {
+            unknown_type_objects: 2,
+            objects_not_drawn_page_limit: 17,
+            dropped_pattern_objects: 1,
+            ..report()
+        };
+        let l = lines(&r, PaperArg::A4);
+        assert_eq!(l.len(), 5, "{l:?}");
+        assert!(l[1].contains("2 objects are not drawn") && l[1].contains("object type"));
+        assert!(l[2].contains("17 objects are not drawn") && l[2].contains("drawing limit"));
+        assert!(
+            l[3].contains("1 object is drawn without an area pattern"),
+            "{l:?}"
+        );
     }
 
     #[test]

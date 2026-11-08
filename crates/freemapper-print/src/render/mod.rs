@@ -4,6 +4,7 @@
 //! The public part is [`page`] (what every backend draws), [`pdf`] (the PDF backend) and
 //! [`fonts`] (text metrics for layouts); symbol parsing and drawing stay inside the crate.
 
+pub(crate) mod bounds;
 mod dash;
 pub(crate) mod draw;
 pub mod fonts;

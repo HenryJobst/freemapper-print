@@ -71,7 +71,8 @@ pub struct TemplateRef {
     pub behind_map: bool,
 }
 
-/// Georeferencing of an OOM map as read from the file.
+/// Georeferencing of an OOM map as read from the file. freemapper-print's own type: it is only
+/// read, never written back as in freemapper, and printing uses the scale of it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapGeoref {
     pub scale_denominator: u32,
@@ -89,6 +90,8 @@ pub struct MapDocument {
     pub symbol_set: SymbolSet,
     pub parts: Vec<MapPart>,
     pub templates: Vec<TemplateRef>,
+    /// Objects of a type the reader does not know (not point, path or text), left out.
+    pub unknown_objects: usize,
 }
 
 /// Builds one closed ring: drops a duplicate closing input point, then repeats the first point

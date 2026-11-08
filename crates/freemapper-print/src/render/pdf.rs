@@ -1,5 +1,5 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
-//! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted by colour priority, texts in
+//! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted in the page's order, texts in
 //! embedded subsets of Arimo (ADR 0017).
 
 use std::collections::BTreeSet;
@@ -190,10 +190,8 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> (Vec<u8>, PdfInfo) {
     };
     let colours = &page.colours;
 
-    // Highest priority first: priority 0 is painted last, on top. Stable, so objects keep their
-    // order within a colour.
-    let mut items: Vec<_> = page.primitives.iter().collect();
-    items.sort_by_key(|p| std::cmp::Reverse(p.priority));
+    // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
+    let items = &page.primitives;
 
     let mut content = Content::new();
     let mut fonts = PageFonts::new();
@@ -208,7 +206,7 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> (Vec<u8>, PdfInfo) {
         content.end_path();
     }
     let mut pattern_clip: Option<&Arc<[Vec<Pt>]>> = None;
-    for primitive in &items {
+    for primitive in items {
         let (rings, shape) = match &primitive.shape {
             Shape::Clipped { rings, inner } => (Some(rings), &**inner),
             shape => (None, shape),
@@ -346,14 +344,12 @@ mod tests {
     }
 
     #[test]
-    fn primitives_are_painted_by_priority() {
+    fn primitives_are_painted_in_the_given_order() {
+        // `render_page` sorts by priority; the writer keeps the order it gets.
         let pdf = content_of(&write(&[square(2), square(9)]));
         let black = find(&pdf, b"0 0 0 1 k").expect("black fill");
         let grey = find(&pdf, b"0 0 0 0.6 k").expect("grey fill");
-        assert!(
-            grey < black,
-            "priority 9 is painted before 2, so 2 is on top"
-        );
+        assert!(black < grey, "the first primitive is painted first");
         assert!(find(&pdf, b"f*").is_some(), "even-odd fill");
         assert!(
             find(&pdf, b"re\nW\nn").is_some(),

@@ -27,6 +27,7 @@ fn map(scale: u32, objects: Vec<MapObject>) -> MapDocument {
             objects,
         }],
         templates: Vec::new(),
+        unknown_objects: 0,
     }
 }
 
@@ -209,7 +210,9 @@ fn overflow_is_reported_not_shrunk() {
     let (dx, dy) = report
         .overflow_mm
         .expect("a 300 mm map overflows A4 portrait");
-    assert!(close(dx, 100.0, 1e-9), "{dx}");
+    // The painted line: 300 mm plus half its 0.1 mm width at each end, on 200 mm of printable
+    // width.
+    assert!(close(dx, 100.1, 1e-9), "{dx}");
     assert!(close(dy, 0.0, 1e-9), "{dy}");
     assert_eq!(
         page.clip,

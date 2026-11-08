@@ -325,7 +325,7 @@ mod tests {
     }
 
     fn draw(def: LineDef, coords: Vec<MapCoord>) -> Vec<Primitive> {
-        let mut r = RenderSymbols::from_set(&SymbolSet::issprom_2019());
+        let mut r = RenderSymbols::from_set(&SymbolSet::issprom_2019()).unwrap();
         r.symbols.insert(LINE, Symbol::Line(def));
         let object = MapObject {
             symbol_id: LINE,
@@ -687,7 +687,7 @@ mod tests {
 
     /// The primitives of `def` on `coords`, whether they were cut, and the work units spent.
     fn counted(def: LineDef, coords: Vec<MapCoord>) -> (usize, bool, usize) {
-        let mut r = RenderSymbols::from_set(&SymbolSet::issprom_2019());
+        let mut r = RenderSymbols::from_set(&SymbolSet::issprom_2019()).unwrap();
         r.symbols.insert(LINE, Symbol::Line(def));
         let object = MapObject {
             symbol_id: LINE,

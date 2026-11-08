@@ -306,26 +306,48 @@ fn pgm_helpers_work() {
     assert!((share - 0.5).abs() < 1e-9);
 }
 
-/// Where the first vertex of the building that starts at `corner` (map units) lies on the page (mm).
-/// Found through the building's own first edge, which is unique enough among the page's fills.
-fn corner_on_page(
-    doc: &freemapper_print::omap::MapDocument,
-    page: &RenderedPage,
-    corner: (i32, i32),
-) -> (f64, f64) {
-    let c = |x: i32| f64::from(x) / 1000.0;
-    let coords = doc
+/// The building (symbol 521) whose outline starts at `first` (map units), and its westernmost
+/// vertex, which must be unique, in map millimetres.
+fn west_tip(doc: &freemapper_print::omap::MapDocument, first: (i32, i32)) -> (f64, f64) {
+    let code = |id: u32| doc.symbol_set.code_of(id);
+    let coords = &doc
         .parts
         .iter()
         .flat_map(|p| &p.objects)
-        .map(|o| &o.coords)
-        .find(|k| k.len() >= 2 && (k[0].x, k[0].y) == corner)
-        .expect("a building starts at this corner");
+        .find(|o| code(o.symbol_id) == Some("521") && (o.coords[0].x, o.coords[0].y) == first)
+        .expect("a building starts at this vertex")
+        .coords;
+    let west = coords.iter().map(|c| c.x).min().unwrap();
+    let mut tips: Vec<(i32, i32)> = coords
+        .iter()
+        .filter(|c| c.x == west)
+        .map(|c| (c.x, c.y))
+        .collect();
+    tips.dedup();
+    assert_eq!(tips.len(), 1, "the west tip of {first:?} is not one vertex");
+    (f64::from(tips[0].0) / 1000.0, f64::from(tips[0].1) / 1000.0)
+}
+
+/// Where map millimetres land on the page: found through the fill ring of the building that
+/// starts at `first`, whose first edge is unique enough among the page's fills.
+fn map_to_page(
+    doc: &freemapper_print::omap::MapDocument,
+    page: &RenderedPage,
+    first: (i32, i32),
+) -> (f64, f64) {
+    let c = |x: i32| f64::from(x) / 1000.0;
+    let coords = &doc
+        .parts
+        .iter()
+        .flat_map(|p| &p.objects)
+        .find(|o| o.coords.len() >= 2 && (o.coords[0].x, o.coords[0].y) == first)
+        .expect("a building starts at this vertex")
+        .coords;
     let edge = (c(coords[1].x - coords[0].x), c(coords[1].y - coords[0].y));
     let mut found = Vec::new();
     for primitive in &page.primitives {
         if let Shape::Fill { rings } = &primitive.shape {
-            for r in rings.iter().filter(|r| (4..=5).contains(&r.len())) {
+            for r in rings.iter().filter(|r| r.len() >= 2) {
                 let d = (r[1].0 - r[0].0, r[1].1 - r[0].1);
                 if (d.0 - edge.0).abs() < 0.002 && (d.1 - edge.1).abs() < 0.002 {
                     found.push(r[0]);
@@ -339,32 +361,35 @@ fn corner_on_page(
         1,
         "the building is not unique on the page: {found:?}"
     );
-    found[0]
+    (found[0].0 - c(first.0), found[0].1 - c(first.1))
 }
 
 /// The distances quoted in `tests/fixtures/oom/README.md` (Probedruck) follow from the fixture and
-/// the layout, and both corners lie inside the clip rectangle.
+/// the layout, and both measuring points lie inside the clip rectangle. The points are the west
+/// tips (westernmost vertices) of two large buildings near the left and right edge of the map.
 #[test]
 fn probedruck_distances_match_readme() {
     let map = root().join("tests/fixtures/maps/luebeck.omap");
     let doc = read_map_file(&map).unwrap();
     let readme = std::fs::read_to_string(root().join("tests/fixtures/oom/README.md")).unwrap();
     let kind = infer_kind(&doc, &map).unwrap();
-    let cases = [
-        (
-            Paper::A4,
-            Orientation::Auto,
-            (-114_203, -65_073),
-            (116_555, 3_974),
-        ),
-        (
-            Paper::A3,
-            Orientation::Portrait,
-            (-80_780, 20_866),
-            (-107_548, -71_778),
-        ),
-    ];
-    for (paper, orientation, a, b) in cases {
+    // First vertices of the two buildings.
+    let (p, q) = ((-89_189, 9_252), (110_082, 22_000));
+    let (wp, wq) = (west_tip(&doc, p), west_tip(&doc, q));
+    let map_mm = (wq.0 - wp.0).hypot(wq.1 - wp.1);
+    let german = |v: f64| format!("{v:.1}").replace('.', ",");
+    // Print scale equals map scale, so paper millimetres times the scale are metres.
+    let metres = map_mm * f64::from(doc.georef.scale_denominator) / 1000.0;
+    for needle in [
+        format!("{} mm", german(map_mm)),
+        format!("{} m", german(metres)),
+    ] {
+        assert!(readme.contains(&needle), "README lacks \"{needle}\"");
+    }
+    for (paper, orientation) in [
+        (Paper::A4, Orientation::Auto),
+        (Paper::A3, Orientation::Portrait),
+    ] {
         let options = PrintOptions {
             print_scale: None,
             kind,
@@ -374,42 +399,30 @@ fn probedruck_distances_match_readme() {
             show_sheet_objects: false,
         };
         let (page, _) = render_page(&doc, &options).unwrap();
-        let pa = corner_on_page(&doc, &page, a);
-        let pb = corner_on_page(&doc, &page, b);
-        for p in [pa, pb] {
+        let offset = map_to_page(&doc, &page, p);
+        assert_eq!(
+            offset,
+            map_to_page(&doc, &page, q),
+            "one offset for the page"
+        );
+        let on_page = |w: (f64, f64)| (w.0 + offset.0, w.1 + offset.1);
+        let (pp, pq) = (on_page(wp), on_page(wq));
+        for pt in [pp, pq] {
             assert!(
-                p.0 > page.clip.min.0
-                    && p.0 < page.clip.max.0
-                    && p.1 > page.clip.min.1
-                    && p.1 < page.clip.max.1,
-                "{paper:?}: {p:?} lies outside the clip {:?}",
+                pt.0 > page.clip.min.0
+                    && pt.0 < page.clip.max.0
+                    && pt.1 > page.clip.min.1
+                    && pt.1 < page.clip.max.1,
+                "{paper:?}: {pt:?} lies outside the clip {:?}",
                 page.clip
             );
         }
-        let mm = (pa.0 - pb.0).hypot(pa.1 - pb.1);
-        // Print scale equals map scale, so paper millimetres times the scale are metres.
-        let metres = mm * f64::from(doc.georef.scale_denominator) / 1000.0;
-        let german = |v: f64| format!("{v:.1}").replace('.', ",");
-        let a_mm = f64::from(a.0 - b.0).hypot(f64::from(a.1 - b.1)) / 1000.0;
-        assert!(
-            (mm - a_mm).abs() < 1e-6,
-            "page distance {mm} vs map distance {a_mm}"
-        );
-        for needle in [
-            format!("{} mm", german(mm)),
-            format!("{} m", german(metres)),
-        ] {
+        let pos = |pt: (f64, f64)| format!("{} mm | {} mm", german(pt.0), german(pt.1));
+        for pt in [pp, pq] {
             assert!(
-                readme.contains(&needle),
-                "{paper:?}: README lacks \"{needle}\""
-            );
-        }
-        let pos = |p: (f64, f64)| format!("{} mm | {} mm", german(p.0), german(p.1));
-        for p in [pa, pb] {
-            assert!(
-                readme.contains(&pos(p)),
+                readme.contains(&pos(pt)),
                 "{paper:?}: README lacks page position {}",
-                pos(p)
+                pos(pt)
             );
         }
     }

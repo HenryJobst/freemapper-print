@@ -11,8 +11,8 @@ use quick_xml::{Reader, XmlVersion};
 
 use super::symbol_set::attribute;
 use super::{
-    MapCoord, MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, OmapError, PatternOrigin,
-    SymbolSet,
+    MAX_XML_DEPTH, MapCoord, MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, OmapError,
+    PatternOrigin, SymbolSet, too_deep,
 };
 
 const BINARY_FORMAT_MESSAGE: &str = "This file is in the old binary format of OpenOrienteering Mapper, which this program cannot read. Open it in Mapper and save it again as a current .omap or .xmap file.";
@@ -23,6 +23,21 @@ pub fn read_map(xml: &str) -> Result<MapDocument, OmapError> {
         return Err(OmapError::Unsupported(BINARY_FORMAT_MESSAGE.into()));
     }
     let symbol_set = SymbolSet::from_omap_xml(xml)?;
+    let state = read_state(xml)?;
+    let mut georef = state.georef;
+    georef.scale_denominator = symbol_set.scale_denominator;
+    Ok(MapDocument {
+        notes: state.notes,
+        georef,
+        symbol_set,
+        parts: state.parts,
+        templates: Vec::new(),
+        unknown_objects: state.unknown_objects,
+    })
+}
+
+/// Objects, georeferencing and notes of a map's XML text.
+fn read_state(xml: &str) -> Result<State, OmapError> {
     let mut state = State::default();
     let mut reader = Reader::from_str(xml);
     loop {
@@ -53,15 +68,7 @@ pub fn read_map(xml: &str) -> Result<MapDocument, OmapError> {
             _ => {}
         }
     }
-    let mut georef = state.georef;
-    georef.scale_denominator = symbol_set.scale_denominator;
-    Ok(MapDocument {
-        notes: state.notes,
-        georef,
-        symbol_set,
-        parts: state.parts,
-        templates: Vec::new(),
-    })
+    Ok(state)
 }
 
 /// Reads a `.omap` or `.xmap` file.
@@ -97,6 +104,10 @@ struct ObjectBuilder {
 
 struct State {
     stack: Vec<String>,
+    /// How many `<parts>` elements are open (objects are read only inside one).
+    parts_depth: usize,
+    /// Objects of a type the reader does not know, skipped with their children.
+    unknown_objects: usize,
     notes: String,
     georef: MapGeoref,
     parts: Vec<MapPart>,
@@ -111,6 +122,8 @@ impl Default for State {
     fn default() -> Self {
         Self {
             stack: Vec::new(),
+            parts_depth: 0,
+            unknown_objects: 0,
             notes: String::new(),
             georef: MapGeoref {
                 scale_denominator: 0,
@@ -128,16 +141,26 @@ impl Default for State {
     }
 }
 
+/// A numeric attribute: 0 when missing, an error when present but not a number (the same policy
+/// as for the text form of coordinates).
+fn number_attr<T: std::str::FromStr + Default>(
+    e: &BytesStart<'_>,
+    name: &str,
+) -> Result<T, OmapError> {
+    match attribute(e, name)? {
+        None => Ok(T::default()),
+        Some(v) => v.trim().parse().map_err(|_| {
+            OmapError::Xml(format!("invalid number {name}=\"{v}\" in <{}>", name_of(e)))
+        }),
+    }
+}
+
 fn float_attr(e: &BytesStart<'_>, name: &str) -> Result<f64, OmapError> {
-    Ok(attribute(e, name)?
-        .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(0.0))
+    number_attr(e, name)
 }
 
 fn int_attr(e: &BytesStart<'_>, name: &str) -> Result<i32, OmapError> {
-    Ok(attribute(e, name)?
-        .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(0))
+    number_attr(e, name)
 }
 
 fn coord_from_attrs(e: &BytesStart<'_>) -> Result<MapCoord, OmapError> {
@@ -182,10 +205,16 @@ impl State {
     }
 
     fn begin(&mut self, e: &BytesStart<'_>) -> Result<(), OmapError> {
+        if self.stack.len() >= MAX_XML_DEPTH {
+            return Err(too_deep());
+        }
         let tag = name_of(e);
         let parent = self.parent().map(str::to_owned);
         let parent = parent.as_deref();
-        let in_parts = self.stack.iter().any(|t| t == "parts");
+        let in_parts = self.parts_depth > 0;
+        if tag == "parts" {
+            self.parts_depth += 1;
+        }
         if self.skipping {
             self.stack.push(tag);
             return Ok(());
@@ -234,6 +263,7 @@ impl State {
             },
             _ => {
                 self.skipping = true;
+                self.unknown_objects += 1;
                 return Ok(());
             }
         };
@@ -327,6 +357,9 @@ impl State {
 
     fn end(&mut self, tag: &str) -> Result<(), OmapError> {
         self.stack.pop();
+        if tag == "parts" {
+            self.parts_depth = self.parts_depth.saturating_sub(1);
+        }
         let parent = self.parent().map(str::to_owned);
         if self.skipping {
             if tag == "object" && parent.as_deref() == Some("objects") {
@@ -510,6 +543,111 @@ mod tests {
             r#"<georeferencing scale="4000"/>"#,
         );
         assert!(matches!(read_map(&bad), Err(OmapError::Xml(_))));
+    }
+
+    #[test]
+    fn rejects_unparseable_numbers_like_bad_coords() {
+        for object in [
+            r#"<object type="1" symbol="0"><coords><coord x="abc" y="0"/></coords></object>"#,
+            r#"<object type="0" symbol="0" rotation="left"><coords count="1">0 0;</coords></object>"#,
+            r#"<object type="4" symbol="0"><coords count="1">0 0;</coords><size width="wide" height="1"/></object>"#,
+        ] {
+            let err = read_map(&map_with(object, r#"<georeferencing scale="4000"/>"#)).unwrap_err();
+            assert!(
+                matches!(&err, OmapError::Xml(m) if m.contains("invalid number")),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn flags_keep_the_low_byte() {
+        // OOM stores flags in 8 bits; higher bits are dropped in both coordinate forms.
+        let o = one(
+            r#"<object type="1" symbol="0"><coords count="2">0 0 274;1 1 18;</coords></object>"#,
+        );
+        assert_eq!(o.coords, vec![c(0, 0, 18), c(1, 1, 18)]);
+        let o = one(
+            r#"<object type="1" symbol="0"><coords><coord x="0" y="0" flags="290"/></coords></object>"#,
+        );
+        assert_eq!(o.coords, vec![c(0, 0, 34)]);
+    }
+
+    #[test]
+    fn unknown_object_type_is_skipped_with_its_children_and_counted() {
+        let doc = read_map(&map_with(
+            r#"<object type="9" symbol="0"><coords count="1">7 7;</coords><text>x</text><object type="1" symbol="0"/></object><object type="1" symbol="0"><coords count="1">1 2;</coords></object>"#,
+            r#"<georeferencing scale="4000"/>"#,
+        ))
+        .unwrap();
+        assert_eq!(doc.unknown_objects, 1);
+        assert_eq!(doc.parts[0].objects.len(), 1);
+        assert_eq!(doc.parts[0].objects[0].coords, vec![c(1, 2, 0)]);
+    }
+
+    #[test]
+    fn reads_parts_inside_barrier_and_several_parts() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<map xmlns="http://openorienteering.org/apps/mapper/xml/v2" version="9">
+<georeferencing scale="4000"/>
+<colors count="0"></colors>
+<barrier version="6" required="0.6.0">
+<symbols count="1" id="Test"><symbol type="1" id="0" code="1" name="x"><point_symbol/></symbol></symbols>
+<parts count="2" current="0"><part name="a"><objects count="1"><object type="0" symbol="0"><coords count="1">1 1;</coords></object></objects></part><part name="b"><objects count="2"><object type="0" symbol="0"><coords count="1">2 2;</coords></object><object type="0" symbol="0"><coords count="1">3 3;</coords></object></objects></part></parts>
+</barrier>
+</map>"#;
+        let doc = read_map(xml).unwrap();
+        let counts: Vec<(&str, usize)> = doc
+            .parts
+            .iter()
+            .map(|p| (p.name.as_str(), p.objects.len()))
+            .collect();
+        assert_eq!(counts, [("a", 1), ("b", 2)]);
+    }
+
+    #[test]
+    fn reads_a_file_with_byte_order_mark() {
+        let xml = format!(
+            "\u{feff}{}",
+            map_with(
+                r#"<object type="1" symbol="0"><coords count="1">0 0;</coords></object>"#,
+                r#"<georeferencing scale="4000"/>"#
+            )
+        );
+        let doc = read_map(&xml).unwrap();
+        assert_eq!(doc.parts[0].objects.len(), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bom.omap");
+        std::fs::write(&path, xml).unwrap();
+        assert_eq!(read_map_file(&path).unwrap().parts[0].objects.len(), 1);
+    }
+
+    /// `depth` nested `<a>` elements.
+    fn nested(depth: usize) -> String {
+        format!("{}{}", "<a>".repeat(depth), "</a>".repeat(depth))
+    }
+
+    #[test]
+    fn deep_nesting_is_an_error_not_a_stack_overflow() {
+        let too_deep = |r: Result<(), OmapError>| matches!(r, Err(OmapError::Xml(m)) if m.contains("nesting too deep"));
+        let deep = nested(100_000);
+        // Inside the parts, where the object reader sees it.
+        let in_parts = format!("<map><parts><part name=\"p\">{deep}</part></parts></map>");
+        assert!(too_deep(read_state(&in_parts).map(|_| ())));
+        // The whole file: the symbol set reader sees it first.
+        let map = map_with(&deep, r#"<georeferencing scale="4000"/>"#);
+        assert!(too_deep(read_map(&map).map(|_| ())));
+        assert!(too_deep(SymbolSet::from_omap_xml(&map).map(|_| ())));
+        let symbols = format!("<symbols>{deep}</symbols>");
+        assert!(too_deep(
+            crate::omap::enlarge::enlarge_symbols(&symbols, 1.5).map(|_| ())
+        ));
+        // 256 levels are fine.
+        let ok = format!(
+            "<map><parts><part name=\"p\">{}</part></parts></map>",
+            nested(250)
+        );
+        assert!(read_state(&ok).is_ok());
     }
 
     #[test]

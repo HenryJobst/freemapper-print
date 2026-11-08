@@ -7,6 +7,7 @@
 use std::f64::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 
+use super::bounds::{extent, painted_bounds};
 use super::draw::{self, Primitive, Shape, Sink, mm};
 use super::geometry::Pt;
 use super::symbols::{Cap, Clipping, Join, Pattern, PointDef, RenderSymbols, Symbol};
@@ -20,40 +21,6 @@ struct Canvas {
     top: f64,
     right: f64,
     bottom: f64,
-}
-
-/// Lower-left and upper-right corner of `points` (mm), grown by `extra`.
-fn extent<'a>(points: impl IntoIterator<Item = &'a Pt>, extra: f64) -> Option<(Pt, Pt)> {
-    let mut points = points.into_iter();
-    let first = *points.next()?;
-    let (min, max) = points.fold((first, first), |(min, max), q| {
-        (
-            (min.0.min(q.0), min.1.min(q.1)),
-            (max.0.max(q.0), max.1.max(q.1)),
-        )
-    });
-    Some((
-        (min.0 - extra, min.1 - extra),
-        (max.0 + extra, max.1 + extra),
-    ))
-}
-
-/// The extent of what `shapes` paint (texts left out), relative to the point they were drawn at.
-fn shapes_extent(shapes: &[Primitive]) -> Option<(Pt, Pt)> {
-    fn of(shape: &Shape) -> Option<(Pt, Pt)> {
-        match shape {
-            Shape::Fill { rings } => extent(rings.iter().flatten(), 0.0),
-            Shape::Stroke { path, width, .. } => extent(path, width / 2.0),
-            Shape::Text { .. } => None,
-            Shape::Clipped { inner, .. } => of(inner),
-        }
-    }
-    shapes.iter().filter_map(|p| of(&p.shape)).reduce(|a, b| {
-        (
-            (a.0.0.min(b.0.0), a.0.1.min(b.0.1)),
-            (a.1.0.max(b.1.0), a.1.1.max(b.1.1)),
-        )
-    })
 }
 
 /// Even-odd test of `p` against closed `rings` (OOM's `QPainterPath::contains`, OddEvenFill).
@@ -312,7 +279,7 @@ pub(super) fn area_pattern(
             let saved = std::mem::take(&mut sink.out);
             draw::point_symbol(symbol, (0.0, 0.0), probe_rotation, symbols, sink, depth + 1);
             let probe = std::mem::replace(&mut sink.out, saved);
-            let Some(point_extent) = shapes_extent(&probe) else {
+            let Some(point_extent) = painted_bounds(&probe) else {
                 return;
             };
             let (lines, delta_along) = capped_lines(
@@ -485,7 +452,7 @@ mod tests {
         static SYMBOLS: std::sync::OnceLock<RenderSymbols> = std::sync::OnceLock::new();
         SYMBOLS
             .get_or_init(|| {
-                RenderSymbols::from_set(&SymbolSet::issprom_2019().with_sheet_symbols())
+                RenderSymbols::from_set(&SymbolSet::issprom_2019().with_sheet_symbols()).unwrap()
             })
             .clone()
     }

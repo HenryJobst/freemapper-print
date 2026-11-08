@@ -1,8 +1,10 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
 //! Symbol sets: colours and symbols copied verbatim from OOM symbol set files.
 
-use super::OmapError;
+use std::collections::BTreeSet;
+
 use super::enlarge::enlarge_symbols;
+use super::{MAX_XML_DEPTH, OmapError, too_deep};
 
 /// Symbol number of a norm, e.g. "521" or "501.5".
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +23,7 @@ pub struct SymbolSet {
     /// text symbols are rotatable by default before version 9 [TS `loadImpl`].
     pub version: u32,
     codes: Vec<(SymbolCode, u32)>,
-    hidden: Vec<u32>,
+    hidden: BTreeSet<u32>,
 }
 
 const SCHOOL_2019_ADDITIONS: &str =
@@ -51,7 +53,7 @@ impl SymbolSet {
         let (mut colors, mut symbols, mut grid) = (None, None, None);
         let (mut colors_start, mut symbols_start) = (0, 0);
         let mut codes = Vec::new();
-        let mut hidden = Vec::new();
+        let mut hidden = BTreeSet::new();
 
         loop {
             let before = position(&reader);
@@ -92,7 +94,7 @@ impl SymbolSet {
                     let id = attribute(&e, "id")?.and_then(|v| v.parse::<u32>().ok());
                     let code = attribute(&e, "code")?;
                     if let (Some(id), Some("true")) = (id, attribute(&e, "is_hidden")?.as_deref()) {
-                        hidden.push(id);
+                        hidden.insert(id);
                     }
                     if let (Some(id), Some(code)) = (id, code) {
                         codes.push((SymbolCode(code), id));
@@ -102,6 +104,9 @@ impl SymbolSet {
                 _ => {}
             }
             if is_start {
+                if stack.len() >= MAX_XML_DEPTH {
+                    return Err(too_deep());
+                }
                 stack.push(tag);
             }
         }
