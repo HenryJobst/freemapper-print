@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- Sheets carry logos from PNG, JPEG or SVG files, `width_mm` wide, with the height from the aspect ratio. PNG and JPEG keep their transparency. SVG prints as fills and lines in CMYK; gradients print in their first colour, transparency prints opaque, embedded images and text are left out, and the program reports each of these simplifications. A missing, broken or oversized file (over 10 MB, over 25 megapixels, over 20 000 path segments) is left out with a note, and the rest of the sheet still prints.
 - Sheets carry a scale check bar: a bar of round length (5 m to 1000 m, at most 50 mm when printed), labelled like "200 m = 50 mm". A ruler on the printout shows whether the printer scaled the page.
 - Sheets carry a title block and texts with placeholders (`{event}`, `{date}`, `{print_scale}`, `{contour_interval}`, …), the source lines of the map and the credit line "Created with freemapper-print" at the bottom left. The credit line cannot be switched off; an element only moves it. At most six source lines are shown (the rest is counted) and long ones are cut to the frame width. A sheet that shows neither scale nor contour interval gets a note.
 - The event project file `freemapper-print.toml` is read and checked: event, map source, shared sheet elements and any number of layouts. Unknown keys report file, line and name.

@@ -32,6 +32,13 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - A page has 500 000 units (`MAX_UNITS_PER_PAGE`). Each object takes the units it used from the page, and
   the objects after the page runs out are not drawn. Clipped shapes keep sharing their outlines when the
   page is moved into place, and the PDF writes each outline once per run, also inside another clip.
+- Logo files (ADR 0026) are read only if they are regular files of at most 10 MB. A PNG or JPEG may have at most
+  25 megapixels, checked on the header before any pixel is decoded, and the decoder may allocate at most 116 MB.
+  An SVG is checked on its XML before `usvg` resolves it: at most 200 000 nodes, nesting at most 256 levels
+  deep with `use` resolved, entity references that cannot expand beyond about 50 MB, and at most 1 000 000
+  units of work once every `use` and every marker copy is counted (one unit per element plus one per two bytes
+  of path data). Then at most 20 000 path segments and 500 000 points after flattening. A logo that breaks a
+  limit is left out whole with `SheetNote::LogoSkipped`; none is drawn in part.
 - The report counts what the limits changed: objects cut short (`truncated_objects`), objects not drawn for
   the page limit, objects whose symbol lost a pattern, objects of unknown type. The CLI prints a note for
   each, and map text reaches the terminal with control and format characters escaped.
@@ -51,4 +58,4 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - Cost if wrong: an extreme but real map loses detail. The notes name the count, and the constants can grow.
 
 Source: security reviews of M1 Tasks 4, 5 and 8, final review of M1 and its security review, controller
-rulings 2026-11-08.
+rulings 2026-11-08, M2 Task 8 (logos).

@@ -5,6 +5,7 @@
 //! elements, each hung on an [`Anchor`](crate::project::Anchor) of the page or of the map frame.
 
 pub mod layout;
+mod logo;
 pub mod placeholders;
 mod scale_bar;
 mod text;
@@ -54,6 +55,10 @@ pub enum SheetNote {
     },
     /// A logo was left out, and why.
     LogoSkipped { id: String, reason: String },
+    /// An SVG logo uses something the sheet cannot draw as written: a gradient, transparency,
+    /// an embedded image, text, dashes, a clip path, mask or filter. `reason` says what and how
+    /// it is drawn instead. One note per kind and logo.
+    LogoSimplified { id: String, reason: String },
     /// A text names a placeholder that does not exist; it is printed as written.
     UnknownPlaceholder { id: String, name: String },
     /// `hide_parts` of the layout names a map part the map does not have.
@@ -190,16 +195,13 @@ fn place_element(
     spec: &ElementSpec,
     notes: &mut Vec<SheetNote>,
 ) -> Option<PlacedElement> {
-    // Each arm after the text kinds is filled in by a later task of M2; until then the element
-    // draws nothing.
     match spec.kind {
         ElementKind::TitleBlock
         | ElementKind::Text
         | ElementKind::CreditLine
         | ElementKind::CopyrightLine => text::place_text_element(ctx, spec, notes),
         ElementKind::ScaleCheckBar => Some(scale_bar::place_scale_bar(ctx, spec)),
-        // Task 8: logos (`LogoSkipped`).
-        ElementKind::Logo => None,
+        ElementKind::Logo => logo::place_logo(ctx, spec, notes),
     }
 }
 
@@ -297,7 +299,7 @@ mod tests {
         }
     }
 
-    fn a4() -> LayoutSpec {
+    pub(super) fn a4() -> LayoutSpec {
         LayoutSpec {
             id: "a4".into(),
             paper: Paper::A4,
@@ -311,7 +313,11 @@ mod tests {
         }
     }
 
-    fn project(kind: MapKind, shared: Vec<ElementSpec>, layout: &LayoutSpec) -> LoadedProject {
+    pub(super) fn project(
+        kind: MapKind,
+        shared: Vec<ElementSpec>,
+        layout: &LayoutSpec,
+    ) -> LoadedProject {
         LoadedProject {
             path: PathBuf::from("freemapper-print.toml"),
             dir: PathBuf::from("/nowhere"),
@@ -503,7 +509,7 @@ mod tests {
         assert!(pdf.starts_with(b"%PDF-"));
     }
 
-    fn element(id: &str) -> ElementSpec {
+    pub(super) fn element(id: &str) -> ElementSpec {
         ElementSpec {
             id: id.into(),
             kind: ElementKind::ScaleCheckBar,
@@ -584,11 +590,11 @@ mod tests {
         }
     }
 
-    fn sheet_of(lp: &LoadedProject, map: &MapDocument) -> (RenderedPage, SheetReport) {
+    pub(super) fn sheet_of(lp: &LoadedProject, map: &MapDocument) -> (RenderedPage, SheetReport) {
         render_sheet(lp, map, &lp.project.layouts[0]).unwrap()
     }
 
-    fn empty_map() -> MapDocument {
+    pub(super) fn empty_map() -> MapDocument {
         doc(4000, vec![("default part", vec![line((50_000, 0))])])
     }
 
