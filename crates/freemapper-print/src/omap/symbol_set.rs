@@ -18,6 +18,7 @@ pub struct SymbolSet {
     pub symbols_xml: String,
     pub grid_xml: String,
     codes: Vec<(SymbolCode, u32)>,
+    hidden: Vec<u32>,
 }
 
 const SCHOOL_2019_ADDITIONS: &str =
@@ -42,6 +43,7 @@ impl SymbolSet {
         let (mut colors, mut symbols, mut grid) = (None, None, None);
         let (mut colors_start, mut symbols_start) = (0, 0);
         let mut codes = Vec::new();
+        let mut hidden = Vec::new();
 
         loop {
             let before = position(&reader);
@@ -78,6 +80,9 @@ impl SymbolSet {
                 ("symbol", Some("symbols")) => {
                     let id = attribute(&e, "id")?.and_then(|v| v.parse::<u32>().ok());
                     let code = attribute(&e, "code")?;
+                    if let (Some(id), Some("true")) = (id, attribute(&e, "is_hidden")?.as_deref()) {
+                        hidden.push(id);
+                    }
                     if let (Some(id), Some(code)) = (id, code) {
                         codes.push((SymbolCode(code), id));
                     }
@@ -98,7 +103,13 @@ impl SymbolSet {
             symbols_xml: symbols.ok_or(OmapError::MissingElement("symbols"))?,
             grid_xml: grid.unwrap_or_default(),
             codes,
+            hidden,
         })
+    }
+
+    /// Whether the symbol is marked `is_hidden="true"` in the file (not drawn by OOM).
+    pub fn is_hidden(&self, id: u32) -> bool {
+        self.hidden.contains(&id)
     }
 
     /// ISSprOM 2019 at 1:4000 as shipped with OOM.

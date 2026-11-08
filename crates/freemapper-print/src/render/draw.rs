@@ -72,6 +72,7 @@ pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive>
             text,
             h_align,
             v_align,
+            ..
         } => {
             if let (Symbol::Text(def), Some(c)) = (symbol, object.coords.first()) {
                 text_primitives(
@@ -400,6 +401,7 @@ mod tests {
             kind,
             coords,
             tags: Vec::new(),
+            pattern: None,
         }
     }
 
@@ -525,6 +527,7 @@ mod tests {
                     text: "Maßstab".into(),
                     h_align,
                     v_align: 0,
+                    rotation_rad: 0.0,
                 },
                 vec![MapCoord::new(50_000, 20_000)],
             )

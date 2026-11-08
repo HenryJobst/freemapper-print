@@ -16,7 +16,16 @@ pub enum MapObjectKind {
         text: String,
         h_align: u8,
         v_align: u8,
+        /// Rotation in radians as stored by OOM (counter-clockwise on the map).
+        rotation_rad: f64,
     },
+}
+
+/// Origin and rotation of an object's area pattern (`<pattern>` in OOM).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PatternOrigin {
+    pub rotation_rad: f64,
+    pub origin: MapCoord,
 }
 
 /// A single map object with symbol, geometry and tags.
@@ -26,6 +35,8 @@ pub struct MapObject {
     pub kind: MapObjectKind,
     pub coords: Vec<MapCoord>,
     pub tags: Vec<(String, String)>,
+    /// Pattern rotation and origin of area objects, when the file stores them.
+    pub pattern: Option<PatternOrigin>,
 }
 
 /// A group of map objects (OOM part).

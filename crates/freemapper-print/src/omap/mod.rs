@@ -4,12 +4,13 @@
 pub mod coord;
 pub mod enlarge;
 pub mod model;
+pub mod read;
 pub mod symbol_set;
 
 pub use coord::MapCoord;
 pub use model::{
-    MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, TemplateKind, TemplateRef,
-    closed_ring,
+    MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, PatternOrigin, TemplateKind,
+    TemplateRef, closed_ring,
 };
 pub use symbol_set::{SymbolCode, SymbolSet};
 
@@ -21,4 +22,6 @@ pub enum OmapError {
     MissingElement(&'static str),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Unsupported(String),
 }
