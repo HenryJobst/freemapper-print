@@ -906,4 +906,30 @@ mod tests {
         assert!(cut);
         assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
     }
+
+    #[test]
+    fn clustered_points_with_mid_symbols_on_a_solid_line() {
+        // A solid line with a mid symbol every 0.5 mm, zigzagging 300 000 times inside 0.01 mm:
+        // the line is about 3 m long, and every position search runs through the cluster. The
+        // searches are charged, so the budget stops the object instead of running for minutes.
+        let solid = LineDef {
+            mid: Some(Mid {
+                symbol: dot(3),
+                segment: 500.0,
+                end: 0.0,
+                per_spot: 1,
+                distance: 0.0,
+                at_least_one: true,
+                placement: MidPlacement::CentreOfDash,
+            }),
+            ..plain(200.0)
+        };
+        let (_, cut, work) = counted(solid.clone(), cluster(300_000, 10));
+        assert!(cut);
+        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // Identical points: the line is 4 mm long and gets its few mid symbols, uncut.
+        let (n, cut, work) = counted(solid, cluster(300_000, 0));
+        assert!(!cut && n > 1 && n < 20, "{n}");
+        assert!(work < 20_000, "{work}");
+    }
 }

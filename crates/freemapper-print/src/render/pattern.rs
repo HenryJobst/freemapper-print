@@ -221,6 +221,11 @@ pub(super) fn area_pattern(
     if !rotation.is_finite() {
         return;
     }
+    // A clipped pattern shares one outline among its shapes, and the PDF writes it once per run
+    // of them: charge its points once per pattern ([`draw::POINTS_PER_UNIT`]).
+    if clipping == Clipping::Clip {
+        sink.charge_points(rings.iter().map(Vec::len).sum());
+    }
     // The canvas grows by the extent (lo, hi) of what one line or point paints around its
     // centre: left − hi.x, top − hi.y, right − lo.x, bottom − lo.y.
     let canvas = |(lo, hi): (Pt, Pt)| Canvas {
@@ -615,6 +620,48 @@ mod tests {
         let mut sink = Sink::new(budget);
         area_pattern(pattern, &rings, None, &render_symbols(), &mut sink, 0);
         (sink.out.len(), sink.cut)
+    }
+
+    #[test]
+    fn a_clip_outline_is_charged_by_its_points() {
+        // A 10 mm square traced with 64 000 points: clipping a pattern to it costs at least
+        // 64 000 / 64 units, also when the pattern has a single line.
+        let n = 16_000;
+        let side: Vec<Pt> = (0..n).map(|i| (10.0 * i as f64 / n as f64, 0.0)).collect();
+        let mut ring = side.clone();
+        ring.extend(side.iter().map(|&(x, _)| (10.0, x)));
+        ring.extend(side.iter().map(|&(x, _)| (10.0 - x, 10.0)));
+        ring.extend(side.iter().map(|&(x, _)| (0.0, 10.0 - x)));
+        let rings: Arc<[Vec<Pt>]> = vec![ring].into();
+        let one_line = |clipping| Pattern::Lines {
+            angle_rad: 0.0,
+            rotatable: false,
+            spacing: 100_000.0,
+            offset: 5_000.0,
+            color: 3,
+            width: 100.0,
+            clipping,
+        };
+        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        area_pattern(
+            &one_line(Clipping::Clip),
+            &rings,
+            None,
+            &render_symbols(),
+            &mut sink,
+            0,
+        );
+        assert_eq!(sink.out.len(), 1);
+        assert!(
+            sink.spent() >= 4 * n / draw::POINTS_PER_UNIT,
+            "{}",
+            sink.spent()
+        );
+        // Unclipped modes do not pay for it.
+        let unclipped = one_line(Clipping::NoClippingIfCentreInside);
+        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        area_pattern(&unclipped, &rings, None, &render_symbols(), &mut sink, 0);
+        assert!(sink.spent() < 10, "{}", sink.spent());
     }
 
     #[test]
