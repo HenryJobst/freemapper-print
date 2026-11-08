@@ -16,7 +16,7 @@ toml (for `freemapper.toml`), ttf-parser and subsetter (new), fonts Arimo (Apach
 Arial).
 
 **Spec:** `docs/superpowers/specs/2026-11-08-freemapper-print-design.md` (§2, §5.1, §5.2, §5.4, §6, §7 M1).
-Source of the copied code: `/Users/henryprivat/Documents/gitrepos/freemapper` at commit `743ce4b`.
+Source of the copied code: freemapper (`../freemapper`, https://github.com/HenryJobst/freemapper) at commit `743ce4b`.
 
 ## Global Constraints
 

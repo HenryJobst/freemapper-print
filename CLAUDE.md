@@ -1,6 +1,9 @@
 # freemapper-print: working rules
 
-Sibling project of freemapper (`../freemapper`, https://github.com/HenryJobst/freemapper). Read
+Sibling project of freemapper (`../freemapper`, https://github.com/HenryJobst/freemapper).
+Remotes: `origin` = https://gitlab.jobst-server.de/henry/freemapper-print.git (private), `github` =
+https://github.com/HenryJobst/freemapper-print.git (public). Push at own discretion, never force-push; nothing
+secret or private goes into the repository. Read
 `docs/superpowers/specs/2026-11-08-freemapper-print-design.md`, `docs/glossary.md` and `docs/adr/README.md`
 before changing code.
 
