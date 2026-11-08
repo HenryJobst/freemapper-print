@@ -507,6 +507,25 @@ mod tests {
     }
 
     #[test]
+    fn sheet_tagged_north_line_variants_are_drawn() {
+        // A variant 601.x (601.5, the blue north line) is a north line too (ADR 0023); a code
+        // that only starts with the digits is not.
+        let set = SymbolSet::issprom_2019().with_additions(
+            r#"<symbol type="2" id="@" code="6011" name="other"><line_symbol color="2" line_width="100"/></symbol>"#,
+        );
+        let sheet = |code: &str| MapObject {
+            tags: vec![(SHEET_TAG.0.into(), SHEET_TAG.1.into())],
+            ..line(set.id_for_code(code).unwrap(), (25_000, 0))
+        };
+        let doc = map(4000, set.clone(), vec![sheet("601.5")]);
+        let (page, _) = render(&doc, &options(Orientation::Portrait));
+        assert_eq!(page.primitives.len(), 1);
+        let doc = map(4000, set.clone(), vec![sheet("6011")]);
+        let (page, _) = render(&doc, &options(Orientation::Portrait));
+        assert!(page.primitives.is_empty());
+    }
+
+    #[test]
     fn hidden_symbols_are_skipped() {
         let set = SymbolSet::issprom_2019().with_additions(
             r#"<symbol type="2" id="@" code="999.1" name="hidden" is_hidden="true"><line_symbol color="2" line_width="100"/></symbol>"#,
