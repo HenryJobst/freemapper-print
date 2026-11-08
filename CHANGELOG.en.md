@@ -11,7 +11,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 - Project skeleton modelled on freemapper: Rust workspace with a library and the `freemapper-print` program
   (only `--version` and `--help` so far), CI for Linux, macOS and Windows, release workflow.
-- Design, glossary and the first 15 architecture decisions.
+- Design, glossary and architecture decisions.
 - `freemapper-print render <map> --out <pdf>` prints an OOM map as an exact-scale PDF. You choose the paper
   (A4, A3), the orientation and the print scale, `--kind` sets the map kind, and `--show-sheet-objects` also
   prints freemapper's information block. North lines belong to the map and are always in the PDF. The program
@@ -36,4 +36,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   centred on it too.
 - Broken or overloaded map files no longer stall the program: XML nested too deep is an error, and a page has
   a drawing limit. The program reports objects it leaves out or draws only in part because of that, objects of
-  unknown type, dropped area patterns and a broken `freemapper.toml`.
+  unknown type, dropped area patterns and a broken `freemapper.toml`. The limit counts every point a page
+  keeps, so a crafted map file needs at most about 200 MB of memory.
+- A box size or rotation that is not a finite number, and a negative box size, are read errors. Old box texts
+  whose coordinates are stored as `<coord>` elements keep their box.

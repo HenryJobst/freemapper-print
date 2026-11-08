@@ -634,28 +634,32 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   `point_distance`) below 50 µm, are dropped when the symbols are read
   (`symbols::MIN_PATTERN_STEP`). OOM only skips values ≤ 0. A pattern whose combined rotation is
   not finite (broken object rotation) draws nothing.
-- One budget of 250 000 units per map object (`draw::MAX_PRIMITIVES_PER_OBJECT`), shared by every
-  nested symbol, pattern line, point placement and point symbol: each primitive costs one unit,
-  each step that draws nothing (a line without points, a placement left out, a symbol call
-  without output) costs one too. Copying an element's coordinates for a placement and testing a
-  point against the outline in the `no_clipping` modes cost one unit per 64 points
-  (`draw::POINTS_PER_UNIT`, rounded down). The extent probe of a point pattern draws into the
+- One budget of 250 000 units per map object (`draw::MAX_UNITS_PER_OBJECT`), shared by every
+  nested symbol, pattern line, point placement and point symbol: each primitive costs one unit
+  plus one per 8 points it keeps (`draw::KEPT_POINTS_PER_UNIT`, rounded down), each step that
+  draws nothing (a line without points, a placement left out, a symbol call without output)
+  costs one too. Copying an element's or an object's coordinates and testing a point against the
+  outline in the `no_clipping` modes cost one unit per 64 points (`draw::POINTS_PER_UNIT`,
+  rounded down). The extent probe of a point pattern draws into the
   same budget. When the budget is spent drawing stops and `primitives_counted` reports the object
   as cut.
 - Dashes (§2.2) and mid symbols (§2.4) of a part are computed only up to the units left. A part
   that needs more than 100 000 of them (`geometry::MAX_REPEATS`) is drawn solid or without mid
   symbols. Both cases also report the object as cut. A main line or border without colour or
   width is skipped before its dashes are computed (it draws nothing in OOM either).
-- All pattern shapes of one area hold the same outline (`Arc`); the PDF writer opens one clip
-  block per run of shapes with the same outline. A clipped pattern charges its outline points
-  once (`POINTS_PER_UNIT`).
+- All pattern shapes of one area hold the same outline (`Arc`), also after the page is moved into
+  place. The PDF writer keeps a stack of clip blocks and opens one per run of shapes with the same
+  outline, at each nesting level (a pattern inside a pattern). An outline costs one unit per 8
+  points, rounded up, once per colour it clips (`Sink::charge_outline`): after sorting by colour
+  the PDF writes it once per colour. A clipped shape whose outline no longer fits is dropped.
 - A pattern asks for one line more than the units left; if it gets it, the extra line is dropped
   and the object reported as cut.
 - Symbol nesting deeper than 8 (`draw::MAX_DEPTH`) stops drawing and reports the object as cut.
 - Symbols that lost a pattern to these limits are listed (`RenderSymbols::dropped_patterns`, also
   combined symbols with such a part); the print report counts their path objects.
-- A page holds at most 2 000 000 primitives (`print::MAX_PRIMITIVES_PER_PAGE`): each object gets
-  the rest of the page budget at most, the objects after it are counted, not drawn (ADR 0019).
+- A page has 500 000 units (`print::MAX_UNITS_PER_PAGE`): each object gets the rest of the page
+  budget at most and takes the units it used from it; the objects after it are counted, not
+  drawn (ADR 0019).
 - The XML readers refuse nesting deeper than 256 elements (`omap::MAX_XML_DEPTH`).
 
 ---

@@ -95,9 +95,9 @@ own yet; it follows with M2 and the layouts.
 
 - "not drawn because the symbol is unknown or hidden": objects whose symbol the map file hides or does not
   know. They are missing in the PDF.
-- "simplified or cut short": an object needs more drawing commands than the program allows per object. It
+- "simplified or cut short": an object needs more drawing work than the program allows per object. It
   appears simplified or cut off.
-- "not drawn because the page reached its drawing limit": the whole page needs more drawing commands than the
+- "not drawn because the page reached its drawing limit": the whole page needs more drawing work than the
   program allows per page. Only broken or deliberately overloaded files get there.
 - "not drawn because the program does not know their object type": the file holds objects of a kind OOM does
   not write. They are missing in the PDF.

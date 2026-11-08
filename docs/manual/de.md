@@ -97,9 +97,9 @@ Kontrollstrecke; sie folgt mit M2 und den Layouts.
 
 - "not drawn because the symbol is unknown or hidden": Objekte, deren Symbol die Kartendatei ausblendet oder
   nicht kennt. Sie fehlen im PDF.
-- "simplified or cut short": Ein Objekt braucht mehr Zeichenbefehle, als das Programm je Objekt zulässt. Es
+- "simplified or cut short": Ein Objekt braucht mehr Zeichenarbeit, als das Programm je Objekt zulässt. Es
   erscheint vereinfacht oder abgeschnitten.
-- "not drawn because the page reached its drawing limit": Die ganze Seite braucht mehr Zeichenbefehle, als das
+- "not drawn because the page reached its drawing limit": Die ganze Seite braucht mehr Zeichenarbeit, als das
   Programm je Seite zulässt. Das passiert nur bei kaputten oder absichtlich überladenen Dateien.
 - "not drawn because the program does not know their object type": Die Datei enthält Objekte einer Art, die
   OOM nicht schreibt. Sie fehlen im PDF.
