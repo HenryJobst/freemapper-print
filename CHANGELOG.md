@@ -10,4 +10,4 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 - Projektgerüst nach dem Vorbild von freemapper: Rust-Workspace mit Bibliothek und Programm `freemapper-print`
   (bisher nur `--version` und `--help`), CI für Linux, macOS und Windows, Release-Workflow.
-- Design, Glossar und die ersten 13 Architekturentscheidungen.
+- Design, Glossar und die ersten 14 Architekturentscheidungen.

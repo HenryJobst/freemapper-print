@@ -1,6 +1,6 @@
 # freemapper-print – Design
 
-Status: for review · Date: 2026-11-08 · Terms follow [`docs/glossary.md`](../../glossary.md).
+Status: for approval · Date: 2026-11-08 · Terms follow [`docs/glossary.md`](../../glossary.md).
 
 Decisions are recorded as ADRs in `docs/adr/`. Statements marked *(user)* were decided by the user in the
 brainstorming on 2026-11-08. Statements marked *(Claude's call)* are proposals the user has not confirmed yet.
@@ -52,6 +52,8 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
   print paths are used)*.
 - Hiding symbol groups (for example a contour-only exercise) *(Claude's call: deferred)*.
 - Legibility warnings for symbols that move too close after a scale change *(Claude's call: deferred)*.
+- Entering control descriptions for courses imported from IOF XML *(user: `.ppen` only at first)*.
+- freemapper switching to this project's renderer *(user)*.
 - Maps from the author's own future map editor (separate project, not part of this design) *(user)*.
 
 **Non-goals**
@@ -77,6 +79,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 | Toolchain | pinned in `rust-toolchain.toml` | ADR 0007 |
 | Project file | one file for editor, CLI and MCP | ADR 0008 |
 | Renderer | own renderer, conformant to ISSprOM/ISOM, not pixel-identical | ADR 0009 |
+| Renderer origin | copied from freemapper, developed here, freemapper moves onto it later | ADR 0014 |
 | Courses | IOF XML 3.0 plus `.ppen`, masks owned by freemapper-print | ADR 0010 |
 | First target | club training, office print PDF | ADR 0011 |
 | Scale change | symbols keep their printed size | ADR 0012 |
@@ -132,11 +135,10 @@ with caps, joins and dash patterns, borders, mid/start/end symbols, point symbol
 following `docs/render/oom-render-reference.md`. Missing there and needed here: area patterns (line and point
 hatching), pointed caps, dash symbols, text framing, embedded fonts, raster and vector images.
 
-*(Claude's call)* Move the renderer into a crate that both projects use, inside the freemapper workspace, and
-consume it from freemapper-print as a git dependency pinned to a commit. The reason is that one renderer serves
-freemapper's training PDF, this program and a later map editor. Since both projects are GPL-3.0, the builder
-may consult and port OOM's rendering code (`src/core/renderables/`, `src/core/symbols/`) where the reference
-document falls short.
+The renderer is copied from freemapper into this project and developed further here *(user, ADR 0014)*.
+freemapper moves onto it later. The copy keeps a note of the freemapper commit it came from, so fixes can be
+carried across until then. Since both projects are GPL-3.0, the builder may consult and port OOM's rendering
+code (`src/core/renderables/`, `src/core/symbols/`) where the reference document falls short.
 
 Rendering rules:
 
@@ -179,8 +181,9 @@ Research on 2026-11-08 found:
 
 Hence:
 
-- IOF XML 3.0 is the common import *(user)*. For courses from it, the user enters or edits the control
-  descriptions in freemapper-print *(Claude's call)*.
+- IOF XML 3.0 is the common import *(user)*. In the first version, control descriptions come only from
+  `.ppen` *(user)*. Courses from IOF XML print without a description box, and `check` says so. Entering
+  descriptions in freemapper-print comes later.
 - `.ppen` is a second import with descriptions, specials and bends *(Claude's call)*. Its white-out objects
   become mask variants.
 - **Live link** *(Claude's call)*. The project file names the course file; `check` and `export` read it
@@ -299,8 +302,7 @@ too awkward.
 - Font choice for sheet elements among openly licensed fonts.
 - Which freemapper example and which training format the first example project shows.
 
-## 9. Open questions for the user
+## 9. Questions answered after the review
 
-- Where the shared renderer crate lives and whether freemapper's training PDF moves onto it (§5.2).
-- Whether IOF XML imports without `.ppen` need control description entry in the editor in the first version,
-  or whether `.ppen` is enough for the start (§5.3).
+- Renderer location: copied into this project, freemapper moves onto it later (§5.2, ADR 0014).
+- Control descriptions in the first version: only from `.ppen` (§5.3).

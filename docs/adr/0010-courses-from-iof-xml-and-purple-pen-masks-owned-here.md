@@ -20,7 +20,7 @@ file is open XML and contains all of it.
 
 ## Consequences
 
-- Courses from IOF XML need their control descriptions from somewhere else (see the design, open question).
+- In the first version, courses from IOF XML print without control descriptions; entering them comes later.
 - The `.ppen` reader follows Purple Pen's format, which can change between Purple Pen versions.
 - Cost if wrong: if Condes or OCAD users need descriptions from their own files, a third reader is needed.
 

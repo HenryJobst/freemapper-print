@@ -54,3 +54,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0011](0011-club-training-first.md) | Club training first | Accepted | 2026-11-08 |
 | [0012](0012-symbols-keep-their-printed-size.md) | Symbols keep the printed size the standard sets | Accepted | 2026-11-08 |
 | [0013](0013-example-projects-built-on-freemapper-examples.md) | Example projects built on freemapper's examples | Accepted | 2026-11-08 |
+| [0014](0014-renderer-copied-from-freemapper.md) | The renderer is copied from freemapper and developed here | Accepted | 2026-11-08 |
