@@ -7,6 +7,9 @@ use toml::value::Date;
 use crate::project::{LoadedProject, SheetLang};
 
 /// The grouping space of scale denominators: U+202F, the narrow no-break space.
+/// Longest text between braces that counts as a placeholder name.
+const MAX_NAME_CHARS: usize = 40;
+
 const THIN_SPACE: char = '\u{202f}';
 
 /// What each placeholder stands for on one sheet.
@@ -59,8 +62,9 @@ impl PlaceholderValues {
 }
 
 /// `template` with its placeholders filled, and the names of the unknown ones (each once, in
-/// order of appearance). An unknown placeholder stays in the text as written. Braces around
-/// anything that is no name (`{}`, `{a b}`) are plain text.
+/// order of appearance). Any `{…}` that is no known name is unknown (`{Event}`, `{print-scale}`)
+/// and stays in the text as written. Braces around something with whitespace, nothing, or more
+/// than 40 characters are plain text.
 pub fn fill(template: &str, values: &PlaceholderValues) -> (String, Vec<String>) {
     let mut out = String::with_capacity(template.len());
     let mut unknown: Vec<String> = Vec::new();
@@ -68,10 +72,14 @@ pub fn fill(template: &str, values: &PlaceholderValues) -> (String, Vec<String>)
     while let Some(open) = rest.find('{') {
         out.push_str(&rest[..open]);
         let after = &rest[open + 1..];
-        let name_len = after
-            .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
-            .unwrap_or(after.len());
-        if name_len > 0 && after[name_len..].starts_with('}') {
+        // A name runs to the next `}`; whitespace, another `{` or more than 40 characters make
+        // it plain text.
+        let name_len = after.find('}').filter(|&n| {
+            n > 0
+                && after[..n].chars().count() <= MAX_NAME_CHARS
+                && !after[..n].contains(|c: char| c.is_whitespace() || c == '{')
+        });
+        if let Some(name_len) = name_len {
             let name = &after[..name_len];
             match values.get(name) {
                 Some(v) => out.push_str(v),
@@ -129,9 +137,9 @@ pub fn format_date(date: Date, lang: SheetLang) -> String {
     }
 }
 
-/// `2,5 m` on German sheets, `2.5 m` on English ones; whole metres without decimals.
+/// `2,5 m` on German sheets, `2.5 m` on English ones; one decimal at most, whole metres without.
 pub fn format_contour_interval(metres: f64, lang: SheetLang) -> String {
-    let number = format!("{}", (metres * 100.0).round() / 100.0);
+    let number = format!("{}", (metres * 10.0).round() / 10.0);
     match lang {
         SheetLang::De => format!("{} m", number.replace('.', ",")),
         SheetLang::En => format!("{number} m"),
@@ -170,6 +178,11 @@ mod tests {
         let (text, unknown) = fill("{course} {event} {course} {x y} {}", &values());
         assert_eq!(text, "{course} Lübeck Sprint {course} {x y} {}");
         assert_eq!(unknown, ["course"]);
+        let (text, unknown) = fill("{Event} {print-scale} {event}", &values());
+        assert_eq!(text, "{Event} {print-scale} Lübeck Sprint");
+        assert_eq!(unknown, ["Event", "print-scale"]);
+        let long = format!("{{{}}}", "a".repeat(41));
+        assert!(fill(&long, &values()).1.is_empty());
         assert_eq!(fill("open {event", &values()).0, "open {event");
     }
 
@@ -189,6 +202,9 @@ mod tests {
         assert_eq!(format_contour_interval(2.5, SheetLang::De), "2,5 m");
         assert_eq!(format_contour_interval(2.5, SheetLang::En), "2.5 m");
         assert_eq!(format_contour_interval(5.0, SheetLang::De), "5 m");
+        assert_eq!(format_contour_interval(2.505, SheetLang::De), "2,5 m");
+        assert_eq!(format_contour_interval(2.505, SheetLang::En), "2.5 m");
+        assert_eq!(format_contour_interval(0.5, SheetLang::En), "0.5 m");
     }
 
     #[test]

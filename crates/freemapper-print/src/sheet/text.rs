@@ -1,8 +1,8 @@
 //! Text blocks of the sheet layer: the title block, texts, and the footer with the copyright
 //! and credit lines (design §5.2). Sizes come in pt, the page is in mm.
 
-use crate::project::{Anchor, AnchorTarget, Corner, ElementKind, ElementSpec};
-use crate::render::fonts::{ASCENT, LINE_SPACING, face, text_width};
+use crate::project::{Anchor, AnchorTarget, Corner, ElementKind, ElementSpec, SheetLang};
+use crate::render::fonts::{ASCENT, LINE_SPACING, char_width, face, text_width};
 use crate::render::page::{DirectColour, PaperBox, Pt, Shape, SheetItem};
 
 use super::placeholders::{PlaceholderValues, fill};
@@ -20,6 +20,10 @@ const FOOTER_PT: f64 = 5.0;
 const BOX_PADDING_MM: f64 = 1.0;
 /// Footer on a white box inside the map frame: padding (mm).
 const FOOTER_BOX_PADDING_MM: f64 = 0.8;
+/// The id the default footer goes by in notes.
+pub(super) const FOOTER_ID: &str = "footer";
+/// Most copyright lines shown, the line about the rest included.
+const MAX_COPYRIGHT_LINES: usize = 6;
 /// Footer below the map frame: baseline of the last line above the paper edge (mm).
 const FOOTER_BASELINE_MM: f64 = 4.0;
 /// The footer goes below the frame only if the passe-partout there is at least this wide (mm):
@@ -175,7 +179,10 @@ pub(super) fn place_text_element(
             white_box: false,
         },
         ElementKind::CopyrightLine => Block {
-            lines: plain_lines(&copyright_lines(ctx), spec.size_pt.unwrap_or(FOOTER_PT)),
+            lines: plain_lines(
+                &copyright_lines(ctx, spec.size_pt.unwrap_or(FOOTER_PT) * MM_PER_PT, notes),
+                spec.size_pt.unwrap_or(FOOTER_PT),
+            ),
             padding_mm: 0.0,
             white_box: false,
         },
@@ -192,18 +199,24 @@ pub(super) fn place_text_element(
 /// off, and a `credit_line` element only moves it.
 ///
 /// Below the map frame, left-aligned with it, the last baseline 4 mm above the paper edge. If the
-/// passe-partout is too narrow for that (under 6.5 mm, or too narrow for all the lines), inside the frame at its bottom left on a white box.
-pub(super) fn default_footer(ctx: &SheetContext<'_>) -> Vec<SheetItem> {
+/// passe-partout is too narrow for that (under 6.5 mm, or too narrow for all the lines), inside
+/// the frame at its bottom left on a white box, inset by half the frame line.
+///
+/// The caller checks the box it covers like an element's ([`FOOTER_ID`]).
+pub(super) fn default_footer(
+    ctx: &SheetContext<'_>,
+    notes: &mut Vec<SheetNote>,
+) -> Option<PlacedElement> {
     let has = |kind| layout_elements(ctx.project, ctx.layout).any(|e| e.kind == kind);
     let mut text = Vec::new();
     if !has(ElementKind::CopyrightLine) {
-        text.extend(copyright_lines(ctx));
+        text.extend(copyright_lines(ctx, FOOTER_PT * MM_PER_PT, notes));
     }
     if !has(ElementKind::CreditLine) {
         text.push(credit_text(ctx));
     }
     if text.is_empty() {
-        return Vec::new();
+        return None;
     }
     let mut block = Block {
         lines: plain_lines(&text, FOOTER_PT),
@@ -217,16 +230,18 @@ pub(super) fn default_footer(ctx: &SheetContext<'_>) -> Vec<SheetItem> {
     let bottom = ctx.page.max.1 - FOOTER_BASELINE_MM + (size * LINE_SPACING - ASCENT * size);
     // Below the frame only if the whole block fits there, not just the last line.
     if margin >= FOOTER_MIN_MARGIN_MM && bottom - h >= ctx.frame.max.1 {
-        block.place((ctx.frame.min.0, bottom - h)).items
+        Some(block.place((ctx.frame.min.0, bottom - h)))
     } else {
         block.padding_mm = FOOTER_BOX_PADDING_MM;
         block.white_box = true;
+        // The frame line is centred on the frame edge: keep the box off its inner half.
+        let half_border = ctx.layout.map_frame.border_mm / 2.0;
         let anchor = Anchor {
             to: AnchorTarget::MapFrame,
             corner: Corner::BottomLeft,
-            offset_mm: [0.0, 0.0],
+            offset_mm: [half_border, half_border],
         };
-        block.place_on(&anchor, ctx).items
+        Some(block.place_on(&anchor, ctx))
     }
 }
 
@@ -244,8 +259,14 @@ fn credit_text(ctx: &SheetContext<'_>) -> String {
 }
 
 /// One source per line: `print.copyright` if set, otherwise the notes of the map; split at line
-/// breaks, trimmed, empty lines dropped.
-fn copyright_lines(ctx: &SheetContext<'_>) -> Vec<String> {
+/// breaks, trimmed, empty lines dropped. More than six lines are cut to the first five and a
+/// sixth that counts the rest ([`SheetNote::CopyrightTruncated`]); a line wider than the frame
+/// is cut with "…".
+fn copyright_lines(
+    ctx: &SheetContext<'_>,
+    size_mm: f64,
+    notes: &mut Vec<SheetNote>,
+) -> Vec<String> {
     let source = ctx
         .project
         .project
@@ -253,12 +274,53 @@ fn copyright_lines(ctx: &SheetContext<'_>) -> Vec<String> {
         .copyright
         .as_deref()
         .unwrap_or(&ctx.map.notes);
-    source
+    let mut lines: Vec<String> = source
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .map(str::to_string)
+        .collect();
+    let total = lines.len();
+    if total > MAX_COPYRIGHT_LINES {
+        let shown = MAX_COPYRIGHT_LINES - 1;
+        lines.truncate(shown);
+        let rest = total - shown;
+        lines.push(match ctx.project.project.event.lang {
+            SheetLang::De => format!("… und {rest} weitere Quellen"),
+            SheetLang::En => format!("… and {rest} more sources"),
+        });
+        notes.push(SheetNote::CopyrightTruncated {
+            layout: ctx.layout.id.clone(),
+            total,
+            shown,
+        });
+    }
+    let limit = ctx.frame.max.0 - ctx.frame.min.0 - 2.0 * FOOTER_BOX_PADDING_MM;
+    lines
+        .into_iter()
+        .map(|l| cut_to_width(l, size_mm, limit))
         .collect()
+}
+
+/// `text` cut at a character boundary to fit `limit` mm at `size_mm`, ending in "…"; as is when
+/// it fits.
+fn cut_to_width(text: String, size_mm: f64, limit: f64) -> String {
+    let regular = face(false, false);
+    let width = |t: &str| text_width(t, regular) * size_mm;
+    if width(&text) <= limit {
+        return text;
+    }
+    let ellipsis = width("…");
+    let mut used = ellipsis;
+    let mut end = 0;
+    for (i, c) in text.char_indices() {
+        used += char_width(c, regular) * size_mm;
+        if used > limit {
+            break;
+        }
+        end = i + c.len_utf8();
+    }
+    format!("{}…", text[..end].trim_end())
 }
 
 /// What the text elements of the layout leave out: `{print_scale}`, `{contour_interval}`, the

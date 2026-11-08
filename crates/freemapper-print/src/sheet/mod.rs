@@ -12,7 +12,7 @@ use std::borrow::Cow;
 
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
-use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
+use crate::project::{AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject};
 use crate::render::page::{PaperBox, RenderedPage, SheetItem};
 
 pub use layout::anchor_point;
@@ -44,6 +44,13 @@ pub enum SheetNote {
     },
     /// The map had no north lines; this many were added (ADR 0023).
     NorthLinesAdded { count: usize },
+    /// The map notes (or `print.copyright`) have more lines than the footer shows: `shown`
+    /// sources of `total` are printed, the rest counted in a last line.
+    CopyrightTruncated {
+        layout: String,
+        total: usize,
+        shown: usize,
+    },
     /// A logo was left out, and why.
     LogoSkipped { id: String, reason: String },
     /// A text names a placeholder that does not exist; it is printed as written.
@@ -139,7 +146,17 @@ pub fn render_sheet(
             page.sheet.extend(placed.items);
         }
     }
-    page.sheet.extend(text::default_footer(&ctx));
+    if let Some(footer) = text::default_footer(&ctx, &mut notes) {
+        // Hung on the page, so that a footer inside the frame counts as covering the map.
+        notes.extend(layout::bounds_notes(
+            text::FOOTER_ID,
+            AnchorTarget::Page,
+            footer.rect,
+            page_box,
+            frame,
+        ));
+        page.sheet.extend(footer.items);
+    }
     let missing = text::missing_scale_or_contour(&ctx);
     if !missing.is_empty() {
         notes.push(SheetNote::MissingScaleOrContour {
@@ -464,16 +481,22 @@ mod tests {
             }
         ));
         assert!(page.sheet.len() > 1, "the frame line and the footer");
+        // Luebeck's notes have several lines: the footer sits on the map.
         assert_eq!(
             report.notes,
-            [SheetNote::MissingScaleOrContour {
-                layout: "a4".into(),
-                missing: vec![
-                    "{print_scale}".into(),
-                    "{contour_interval}".into(),
-                    "map.contour_interval_m".into()
-                ]
-            }]
+            [
+                SheetNote::ElementOverlapsMap {
+                    id: "footer".into()
+                },
+                SheetNote::MissingScaleOrContour {
+                    layout: "a4".into(),
+                    missing: vec![
+                        "{print_scale}".into(),
+                        "{contour_interval}".into(),
+                        "map.contour_interval_m".into()
+                    ]
+                }
+            ]
         );
         let (pdf, _) =
             crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t")).unwrap();
@@ -705,13 +728,13 @@ mod tests {
         };
         assert_eq!(*colour, DirectColour::WHITE);
         // Frame: 6..204 × 6..291. The box sits in its bottom left corner.
-        assert_eq!(rings[0][0].0, 6.0);
-        assert!((rings[0][2].1 - 291.0).abs() < 1e-9, "{rings:?}");
+        assert_eq!(rings[0][0].0, 6.125);
+        assert!((rings[0][2].1 - 290.875).abs() < 1e-9, "{rings:?}");
         let s = pt_mm(5.0);
-        let top = 291.0 - (s * LINE_SPACING + 1.6);
+        let top = 290.875 - (s * LINE_SPACING + 1.6);
         assert!((rings[0][0].1 - top).abs() < 1e-9);
         let t = footer_texts(&page);
-        assert!((t[0].1.0 - 6.8).abs() < 1e-9);
+        assert!((t[0].1.0 - 6.925).abs() < 1e-9);
         assert!((t[0].1.1 - (top + 0.8 + ASCENT * s)).abs() < 1e-9);
     }
 
@@ -731,8 +754,99 @@ mod tests {
             panic!("{:?}", page.sheet)
         };
         assert_eq!(*colour, DirectColour::WHITE);
-        assert!((rings[0][2].1 - 289.0).abs() < 1e-9);
+        assert!((rings[0][2].1 - 288.875).abs() < 1e-9);
         assert!(footer_texts(&page).iter().all(|t| t.1.1 < 289.0));
+    }
+
+    #[test]
+    fn copyright_lines_capped() {
+        let mut map = empty_map();
+        map.notes = (1..=200).map(|i| format!("Quelle {i}\n")).collect();
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, report) = sheet_of(&lp, &map);
+        let t = footer_texts(&page);
+        // Five sources, the line for the rest, the credit line.
+        assert_eq!(t.len(), 7);
+        assert_eq!(t[4].0, "Quelle 5");
+        assert_eq!(t[5].0, "… und 195 weitere Quellen");
+        assert!(report.notes.contains(&SheetNote::CopyrightTruncated {
+            layout: "a4".into(),
+            total: 200,
+            shown: 5
+        }));
+        let mut en = lp.clone();
+        en.project.event.lang = SheetLang::En;
+        let (page, _) = sheet_of(&en, &map);
+        assert_eq!(footer_texts(&page)[5].0, "… and 195 more sources");
+        // Exactly six lines are shown as they are.
+        map.notes = (1..=6).map(|i| format!("Q{i}\n")).collect();
+        let (page, report) = sheet_of(&lp, &map);
+        assert_eq!(footer_texts(&page).len(), 7);
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::CopyrightTruncated { .. }))
+        );
+        // The box stays inside the page.
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementOutsidePage { .. }))
+        );
+    }
+
+    #[test]
+    fn long_copyright_line_cut_to_the_frame() {
+        use crate::render::fonts::{FontFace, text_width};
+        let mut map = empty_map();
+        map.notes = "x".repeat(300);
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, _) = sheet_of(&lp, &map);
+        let t = footer_texts(&page);
+        assert!(t[0].0.ends_with('…') && t[0].0.len() < 300, "{}", t[0].0);
+        let w = text_width(&t[0].0, FontFace::Regular) * pt_mm(5.0);
+        assert!(w <= 194.0 - 1.6 && w > 180.0, "{w}");
+        // The credit line stays whole.
+        assert!(t[1].0.ends_with("freemapper-print"));
+    }
+
+    #[test]
+    fn footer_over_the_map_noted() {
+        let mut map = empty_map();
+        map.notes = "a\nb\nc".into();
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (_, report) = sheet_of(&lp, &map);
+        assert!(report.notes.contains(&SheetNote::ElementOverlapsMap {
+            id: "footer".into()
+        }));
+        // Below the frame: nothing to note.
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementOverlapsMap { .. }))
+        );
+    }
+
+    #[test]
+    fn footer_box_keeps_off_the_frame_line() {
+        let mut map = empty_map();
+        map.notes = "a\nb\nc".into();
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, _) = sheet_of(&lp, &map);
+        let SheetItem::Shape {
+            shape: Shape::Fill { rings },
+            ..
+        } = &page.sheet[1]
+        else {
+            panic!()
+        };
+        // Frame 8..202 × 8..289, line 0.25 mm wide.
+        assert!((rings[0][0].0 - 8.125).abs() < 1e-9);
+        assert!((rings[0][2].1 - 288.875).abs() < 1e-9);
     }
 
     #[test]
