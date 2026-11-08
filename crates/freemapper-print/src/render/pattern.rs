@@ -222,9 +222,10 @@ pub(super) fn area_pattern(
         return;
     }
     // A clipped pattern shares one outline among its shapes, and the PDF writes it once per run
-    // of them: charge its points once per pattern ([`draw::POINTS_PER_UNIT`]).
+    // of them: charge its points once per pattern as kept points
+    // ([`draw::KEPT_POINTS_PER_UNIT`]).
     if clipping == Clipping::Clip {
-        sink.charge_points(rings.iter().map(Vec::len).sum());
+        sink.charge_kept_points(rings.iter().map(Vec::len).sum());
     }
     // The canvas grows by the extent (lo, hi) of what one line or point paints around its
     // centre: left − hi.x, top − hi.y, right − lo.x, bottom − lo.y.
@@ -447,7 +448,7 @@ mod tests {
 
     use super::*;
     use crate::omap::{MapCoord, MapObject, MapObjectKind, SymbolSet, closed_ring};
-    use crate::render::draw::{MAX_PRIMITIVES_PER_OBJECT, primitives_counted};
+    use crate::render::draw::{MAX_UNITS_PER_OBJECT, primitives_counted};
     use crate::render::symbols::{Element, LineDef};
 
     const PATTERNED: u32 = 9_999;
@@ -642,7 +643,7 @@ mod tests {
             width: 100.0,
             clipping,
         };
-        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
         area_pattern(
             &one_line(Clipping::Clip),
             &rings,
@@ -659,7 +660,7 @@ mod tests {
         );
         // Unclipped modes do not pay for it.
         let unclipped = one_line(Clipping::NoClippingIfCentreInside);
-        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
         area_pattern(&unclipped, &rings, None, &render_symbols(), &mut sink, 0);
         assert!(sink.spent() < 10, "{}", sink.spent());
     }
@@ -704,7 +705,7 @@ mod tests {
             points: 4,
         };
         let draw = |def: &PointDef, at: Pt, clipping: Clipping| {
-            let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+            let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
             place_point(def, at, 0.0, clipping, &outline, &r, &mut sink, 0);
             sink.out
         };
@@ -894,8 +895,8 @@ mod tests {
         };
         let (p, cut) = patterned(1_000_000, pattern, None);
         assert!(cut);
-        assert!(p.len() <= MAX_PRIMITIVES_PER_OBJECT);
-        assert!(p.len() > MAX_PRIMITIVES_PER_OBJECT / 2, "{}", p.len());
+        assert!(p.len() <= MAX_UNITS_PER_OBJECT);
+        assert!(p.len() > MAX_UNITS_PER_OBJECT / 2, "{}", p.len());
     }
 
     #[test]
@@ -933,7 +934,7 @@ mod tests {
         };
         let (p, cut) = patterned(1_000_000, pattern, None);
         assert!(cut);
-        assert!(p.len() <= MAX_PRIMITIVES_PER_OBJECT, "{}", p.len());
+        assert!(p.len() <= MAX_UNITS_PER_OBJECT, "{}", p.len());
     }
 
     /// A pattern whose point is an area with a pattern whose point is an area with a huge thin
@@ -1020,13 +1021,13 @@ mod tests {
         };
         // Units asked for by every sink of this thread, the object's and any other.
         let before = draw::work_units();
-        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
         draw::draw_object(&object, &r, &mut sink);
         let work = draw::work_units() - before;
         assert!(sink.cut);
         assert_eq!(sink.left(), 0);
-        assert!(sink.out.len() <= MAX_PRIMITIVES_PER_OBJECT);
-        let bound = MAX_PRIMITIVES_PER_OBJECT + draw::BUDGET_SLACK;
+        assert!(sink.out.len() <= MAX_UNITS_PER_OBJECT);
+        let bound = MAX_UNITS_PER_OBJECT + draw::BUDGET_SLACK;
         assert!(sink.spent() <= bound, "object's sink: {}", sink.spent());
         assert!(work <= bound, "all sinks: {work}");
         let (_, cut) = primitives_counted(&object, &r);

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::omap::enlarge::enlarge_symbols;
 use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, OmapError, SymbolSet};
 use crate::render::bounds::{Bounds, painted_bounds};
-use crate::render::draw::{MAX_PRIMITIVES_PER_OBJECT, Primitive, Shape, primitives_within};
+use crate::render::draw::{MAX_UNITS_PER_OBJECT, Primitive, Shape, primitives_within};
 use crate::render::fonts::substituted;
 use crate::render::geometry::Pt;
 use crate::render::page::{PaperBox, RenderedPage};
@@ -22,12 +22,14 @@ use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_fac
 /// White margin on each side of the page; the map is clipped to the page minus this margin (mm).
 pub const PAGE_MARGIN_MM: f64 = 5.0;
 
-/// Most primitives one page holds. Lübeck (2173 objects) draws about 4400 and the forest sample
-/// (539 objects) about 1500 at every allowed scale, so a dense real map stays far below it. A
-/// file that asks for more is broken or hostile; the objects after the limit are not drawn and
-/// counted ([`PrintReport::objects_not_drawn_page_limit`]). It bounds the memory of a page at
-/// a few hundred megabytes.
-pub const MAX_PRIMITIVES_PER_PAGE: usize = 2_000_000;
+/// Most units of work one page may use, counted as for one object (`MAX_UNITS_PER_OBJECT`): a
+/// primitive costs one unit plus one per eight points it keeps. Lübeck (2173 objects, about 4400 primitives) uses about 6500 units and
+/// the forest sample (539 objects, about 1500 primitives) at most about 6400 at every allowed
+/// scale, so a dense real map stays far below it. A file that asks for more is broken or
+/// hostile; the objects after the limit are not drawn and counted
+/// ([`PrintReport::objects_not_drawn_page_limit`]). A page then keeps fewer than four million
+/// points; the worst file measured (500 000 strokes of seven points) peaks at about 200 MB.
+pub const MAX_UNITS_PER_PAGE: usize = 500_000;
 
 /// The tag freemapper puts on the objects of a map's peripheral information.
 const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
@@ -99,10 +101,10 @@ pub struct PrintReport {
     pub skipped_objects: usize,
     /// Objects of a type the reader does not know ([`MapDocument::unknown_objects`]).
     pub unknown_type_objects: usize,
-    /// Objects whose drawing a limit cut short: the per-object budget (`MAX_PRIMITIVES_PER_OBJECT`),
+    /// Objects whose drawing a limit cut short: the per-object budget (`MAX_UNITS_PER_OBJECT`),
     /// the symbol nesting depth, a pattern's line cap, or the rest of the page budget.
     pub truncated_objects: usize,
-    /// Objects not drawn at all because the page budget ([`MAX_PRIMITIVES_PER_PAGE`]) was spent.
+    /// Objects not drawn at all because the page budget ([`MAX_UNITS_PER_PAGE`]) was spent.
     pub objects_not_drawn_page_limit: usize,
     /// Drawn objects whose symbol lost an area pattern when read, because the pattern broke a
     /// limit (spacing or point distance below 0.05 mm, a number that is not finite).
@@ -132,10 +134,10 @@ pub fn render_page(
     map: &MapDocument,
     options: &PrintOptions,
 ) -> Result<(RenderedPage, PrintReport), PrintError> {
-    render_page_within(map, options, MAX_PRIMITIVES_PER_PAGE)
+    render_page_within(map, options, MAX_UNITS_PER_PAGE)
 }
 
-/// [`render_page`] with a page budget of `page_budget` primitives.
+/// [`render_page`] with a page budget of `page_budget` units.
 fn render_page_within(
     map: &MapDocument,
     options: &PrintOptions,
@@ -177,15 +179,14 @@ fn render_page_within(
             objects_not_drawn_page_limit += 1;
             continue;
         }
-        let (mut drawn, cut) =
-            primitives_within(object, &symbols, page_left.min(MAX_PRIMITIVES_PER_OBJECT));
-        page_left -= drawn.len();
-        truncated_objects += usize::from(cut);
+        let mut drawn = primitives_within(object, &symbols, page_left.min(MAX_UNITS_PER_OBJECT));
+        page_left = page_left.saturating_sub(drawn.units);
+        truncated_objects += usize::from(drawn.cut);
         dropped_pattern_objects += usize::from(
             object.kind == MapObjectKind::Path
                 && symbols.dropped_patterns.contains(&object.symbol_id),
         );
-        primitives.append(&mut drawn);
+        primitives.append(&mut drawn.primitives);
         if let (MapObjectKind::Text { .. }, Some(Symbol::Text(def))) =
             (&object.kind, symbols.symbols.get(&object.symbol_id))
             && substituted(&def.family)
@@ -701,6 +702,117 @@ mod tests {
             ),
             (0, 0)
         );
+    }
+
+    /// A map of `objects` objects of 20 000 points each, whose combined symbol fills the object
+    /// 1000 times (final review of M1: three of them took 1.2 GB).
+    fn thousand_fills(objects: usize) -> MapDocument {
+        let parts = r#"<part symbol="0"/>"#.repeat(1000);
+        let coords: String = (0..20_000)
+            .map(|i| format!("{} {};", i % 1000 * 10, i / 1000 * 10))
+            .collect();
+        let object = format!(
+            r#"<object type="1" symbol="1"><coords count="20001">{coords}0 0 18;</coords></object>"#
+        );
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<map xmlns="http://openorienteering.org/apps/mapper/xml/v2" version="9">
+<georeferencing scale="4000"/>
+<colors count="1"><color priority="0" name="Black" c="0" m="0" y="0" k="1" opacity="1"/></colors>
+<symbols count="2" id="ISSprOM 2019"><symbol type="4" id="0" code="999" name="a"><area_symbol inner_color="0" min_area="0" patterns="0"/></symbol><symbol type="16" id="1" code="998" name="c"><combined_symbol parts="1000">{parts}</combined_symbol></symbol></symbols>
+<parts count="1" current="0"><part name="p"><objects count="{objects}">{}</objects></part></parts>
+<templates count="0"/>
+</map>"#,
+            object.repeat(objects)
+        );
+        crate::omap::read::read_map(&xml).unwrap()
+    }
+
+    /// Points the fills and strokes of `page` keep.
+    fn kept_points(page: &RenderedPage) -> usize {
+        page.primitives
+            .iter()
+            .map(|p| match &p.shape {
+                Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+                Shape::Stroke { path, .. } => path.len(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    #[test]
+    fn page_budget_counts_work_units() {
+        use crate::render::draw::{BUDGET_SLACK, KEPT_POINTS_PER_UNIT, work_units};
+        // One object: its own budget cuts it.
+        let before = work_units();
+        let (page, report) = render(&thousand_fills(1), &options(Orientation::Portrait));
+        let work = work_units() - before;
+        assert_eq!(
+            (
+                report.truncated_objects,
+                report.objects_not_drawn_page_limit
+            ),
+            (1, 0)
+        );
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // Three: two use up the page, the third is not drawn.
+        let before = work_units();
+        let (page3, report) = render(&thousand_fills(3), &options(Orientation::Portrait));
+        let work = work_units() - before;
+        assert_eq!(
+            (
+                report.truncated_objects,
+                report.objects_not_drawn_page_limit
+            ),
+            (2, 1)
+        );
+        assert!(work <= MAX_UNITS_PER_PAGE + 2 * BUDGET_SLACK, "{work}");
+        let points = kept_points(&page3);
+        assert!(
+            points <= MAX_UNITS_PER_PAGE * KEPT_POINTS_PER_UNIT,
+            "{points}"
+        );
+        assert_eq!(page3.primitives.len(), 2 * page.primitives.len());
+    }
+
+    #[test]
+    fn real_maps_stay_far_below_the_page_budget() {
+        use crate::render::draw::work_units;
+        let maps = [
+            ("luebeck.omap", MapKind::Sprint),
+            ("forest-sample.omap", MapKind::Forest),
+        ];
+        for (file, kind) in maps {
+            let path = format!(
+                "{}/../../tests/fixtures/maps/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            let doc = crate::omap::read::read_map_file(std::path::Path::new(&path)).unwrap();
+            for scale in kind.allowed_scales() {
+                let options = PrintOptions {
+                    print_scale: Some(scale),
+                    kind,
+                    show_sheet_objects: true,
+                    ..options(Orientation::Auto)
+                };
+                let before = work_units();
+                let (page, report) = render(&doc, &options);
+                let units = work_units() - before;
+                eprintln!(
+                    "{file} 1:{scale}: {units} units, {} primitives, {} kept points",
+                    page.primitives.len(),
+                    kept_points(&page)
+                );
+                assert!(units < MAX_UNITS_PER_PAGE / 10, "{file} 1:{scale}: {units}");
+                assert_eq!(
+                    (
+                        report.truncated_objects,
+                        report.objects_not_drawn_page_limit
+                    ),
+                    (0, 0)
+                );
+            }
+        }
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub(super) fn line(
     sink: &mut Sink,
     depth: u32,
 ) {
+    sink.charge_points(coords.len());
     let parts: Vec<Part> = geometry::parts(coords)
         .into_iter()
         .filter(|p| p.points.len() >= 2 && geometry::length(&p.points) > 0.0)
@@ -236,7 +237,6 @@ fn pointed_cap(def: &LineDef, part: &Part, range: (f64, f64), is_end: bool, sink
         return;
     };
     sink.charge(checks / POINTS_PER_UNIT);
-    sink.charge_points(ring.len());
     sink.push(Primitive {
         priority: def.color,
         shape: Shape::Fill { rings: vec![ring] },
@@ -296,7 +296,7 @@ fn borders(
 #[cfg(test)]
 mod tests {
     use super::super::draw::{
-        BUDGET_SLACK, MAX_PRIMITIVES_PER_OBJECT, Primitive, Shape, primitives, primitives_counted,
+        BUDGET_SLACK, MAX_UNITS_PER_OBJECT, Primitive, Shape, primitives, primitives_counted,
         work_units,
     };
     use super::super::symbols::{DashSymbol, Element, Mid, MidPlacement, PointDef, Symbol};
@@ -734,11 +734,11 @@ mod tests {
             let (_, cut, work) = counted(def, ten_long_parts());
             assert!(cut, "{placement:?} {distance}");
             assert!(
-                work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK,
+                work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK,
                 "{placement:?} {distance}: {work}"
             );
             assert!(
-                work >= MAX_PRIMITIVES_PER_OBJECT,
+                work >= MAX_UNITS_PER_OBJECT,
                 "skipped steps are charged: {work}"
             );
         }
@@ -763,8 +763,8 @@ mod tests {
             ..plain(200.0)
         };
         let (n, cut, work) = counted(def, coords.clone());
-        assert!(cut && n <= MAX_PRIMITIVES_PER_OBJECT);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(cut && n <= MAX_UNITS_PER_OBJECT);
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
         let def = LineDef {
             dash: Some(super::super::symbols::Dash {
                 dash: 1.0,
@@ -786,7 +786,7 @@ mod tests {
         };
         let (_, cut, work) = counted(def, coords);
         assert!(cut);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
     }
 
     #[test]
@@ -854,14 +854,14 @@ mod tests {
         // 300 000 identical dash points: each tangent search skips the run in one step, so the
         // dots, not the searches, use the budget.
         let (n, cut, work) = counted(dash_symbol_line(), cluster(300_000, 0));
-        assert!(cut && n < MAX_PRIMITIVES_PER_OBJECT, "{n}");
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
-        // A pointed cap over them: two caps, nothing cut; the ring of 300 000 points is
-        // charged, the searches cost a few checks per point.
+        assert!(cut && n < MAX_UNITS_PER_OBJECT, "{n}");
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // A pointed cap over them: two caps, nothing cut; the rings of 300 000 points each are
+        // kept and charged, the searches cost a few checks per point.
         let (n, cut, work) = counted(pointed(), cluster(300_000, 0));
         assert_eq!((n, cut), (2, false));
-        // Linear: about 600 000 ring points and four checks per cap point, over 64.
-        assert!(work < 40_000, "{work}");
+        // Linear: about 600 000 kept ring points over 8, four checks per cap point over 64.
+        assert!(work < 120_000, "{work}");
     }
 
     #[test]
@@ -870,8 +870,8 @@ mod tests {
         // whole cluster. Those checks are charged, so the budget stops the object.
         let (_, cut, work) = counted(dash_symbol_line(), cluster(300_000, 10));
         assert!(cut);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
-        assert!(work >= MAX_PRIMITIVES_PER_OBJECT, "{work}");
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(work >= MAX_UNITS_PER_OBJECT, "{work}");
         // The zigzag is 3 m long: caps of 10 m each, scaled to half the line, cover it.
         let long_caps = LineDef {
             start_offset: 10_000_000.0,
@@ -880,7 +880,7 @@ mod tests {
         };
         let (_, cut, work) = counted(long_caps, cluster(300_000, 10));
         assert!(cut);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
         // Mid symbols in every dash of a line that zigzags inside the cluster: the position
         // searches are charged too.
         let dashed = LineDef {
@@ -904,7 +904,7 @@ mod tests {
         };
         let (_, cut, work) = counted(dashed, cluster(300_000, 10));
         assert!(cut);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
     }
 
     #[test]
@@ -926,10 +926,11 @@ mod tests {
         };
         let (_, cut, work) = counted(solid.clone(), cluster(300_000, 10));
         assert!(cut);
-        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
-        // Identical points: the line is 4 mm long and gets its few mid symbols, uncut.
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // Identical points: the line is 4 mm long and gets its few mid symbols, uncut. Its
+        // stroke keeps all 300 000 points (over 8).
         let (n, cut, work) = counted(solid, cluster(300_000, 0));
         assert!(!cut && n > 1 && n < 20, "{n}");
-        assert!(work < 20_000, "{work}");
+        assert!(work < 50_000, "{work}");
     }
 }

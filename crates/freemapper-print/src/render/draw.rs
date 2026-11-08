@@ -69,23 +69,42 @@ pub(super) fn mm(v: f64) -> f64 {
     v / 1000.0
 }
 
-/// Most primitives drawn for one map object, and at the same time the most units of work: a
-/// step that draws nothing (a pattern line or point placement without output, a symbol call)
-/// costs one unit too. Guards against hostile or broken files (dense patterns, symbols nested
-/// into each other); real objects stay far below it.
-pub const MAX_PRIMITIVES_PER_OBJECT: usize = 250_000;
+/// Most units of work one map object may use: one per primitive plus its kept points
+/// ([`KEPT_POINTS_PER_UNIT`]), one per step that draws nothing (a pattern line or point
+/// placement without output, a symbol call), one per [`POINTS_PER_UNIT`] points handled.
+/// Guards against hostile or broken files (dense patterns, symbols nested into each other, a
+/// combined symbol that draws the same large area many times); real objects stay far below it.
+pub const MAX_UNITS_PER_OBJECT: usize = 250_000;
 
 /// Coordinates or outline points handled per unit of budget: copying an element's coordinates
 /// for a placement, or testing a point against an outline, costs one unit per this many points
 /// (rounded down, so small symbols stay free).
 pub(super) const POINTS_PER_UNIT: usize = 64;
 
+/// Points kept in the output per unit of budget. A primitive costs one unit plus one per this
+/// many of its points (rounded down), and a clipped pattern's outline costs as much once per
+/// pattern. Kept points stay in memory until the page is written, and the PDF writes each one
+/// again as text, so they cost more than points that are only handled ([`POINTS_PER_UNIT`]).
+/// This bounds the memory of a page: a unit keeps at most eight points.
+pub(crate) const KEPT_POINTS_PER_UNIT: usize = 8;
+
+/// The points (or text bytes) `shape` keeps; a clipped shape's outline is charged by the
+/// pattern that shares it.
+fn kept_points(shape: &Shape) -> usize {
+    match shape {
+        Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+        Shape::Stroke { path, .. } => path.len(),
+        Shape::Text { text, .. } => text.len(),
+        Shape::Clipped { inner, .. } => kept_points(inner),
+    }
+}
+
 /// Collects the primitives of one drawing call within a budget.
 pub(super) struct Sink {
     pub(super) out: Vec<Primitive>,
     left: usize,
-    /// Every unit asked for, also beyond the budget: the proof in tests that drawing stays
-    /// within it.
+    /// Every unit asked for, also beyond the budget: what the object costs the page budget, and
+    /// the proof in tests that drawing stays within its own.
     spent: usize,
     /// The budget ran out and output was dropped.
     pub(super) cut: bool,
@@ -100,17 +119,17 @@ thread_local! {
 
 /// Units asked for by all sinks of this thread so far.
 #[cfg(test)]
-pub(super) fn work_units() -> usize {
+pub(crate) fn work_units() -> usize {
     WORK.with(std::cell::Cell::get)
 }
 
 /// How far a drawing call may ask beyond its budget: the steps in progress when the budget runs
 /// out still ask for their units before the loops around them stop, at most one step per
-/// nesting level (a settle, a push, an outline test or element copy of n / 64 units). The
-/// test objects stay well inside it; an element or outline with more than 64 000 points could
-/// exceed it.
+/// nesting level (a settle, a push of 1 + n / 8 units, an outline test or element copy of
+/// n / 64 units). The test objects stay well inside it; a primitive with more than 8000 points,
+/// or an element or outline with more than 64 000, could exceed it.
 #[cfg(test)]
-pub(super) const BUDGET_SLACK: usize = 1_000;
+pub(crate) const BUDGET_SLACK: usize = 1_000;
 
 impl Sink {
     pub(super) fn new(budget: usize) -> Self {
@@ -135,12 +154,17 @@ impl Sink {
         self.spent
     }
 
+    /// Adds `primitive` for one unit plus its kept points ([`KEPT_POINTS_PER_UNIT`]); one that
+    /// costs more than is left is dropped, and the budget counts as spent.
     pub(super) fn push(&mut self, primitive: Primitive) {
-        self.request(1);
-        if self.stop() {
+        let units = 1 + kept_points(&primitive.shape) / KEPT_POINTS_PER_UNIT;
+        self.request(units);
+        if units > self.left {
+            self.left = 0;
+            self.cut = true;
             return;
         }
-        self.left -= 1;
+        self.left -= units;
         self.out.push(primitive);
     }
 
@@ -177,6 +201,12 @@ impl Sink {
         self.charge(points / POINTS_PER_UNIT);
     }
 
+    /// Charges `points` kept in the output outside a primitive (a clipped pattern's outline,
+    /// [`KEPT_POINTS_PER_UNIT`]).
+    pub(super) fn charge_kept_points(&mut self, points: usize) {
+        self.charge(points / KEPT_POINTS_PER_UNIT);
+    }
+
     /// Records that a limit (budget or repeat count) changed the output.
     pub(super) fn mark_cut(&mut self) {
         self.cut = true;
@@ -196,27 +226,46 @@ pub(crate) fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Pri
     primitives_counted(object, symbols).0
 }
 
-/// The primitives of one map object and whether [`MAX_PRIMITIVES_PER_OBJECT`] cut them short.
+/// The primitives of one map object and whether [`MAX_UNITS_PER_OBJECT`] cut them short.
 #[cfg(test)]
 pub(crate) fn primitives_counted(
     object: &MapObject,
     symbols: &RenderSymbols,
 ) -> (Vec<Primitive>, bool) {
-    primitives_within(object, symbols, MAX_PRIMITIVES_PER_OBJECT)
+    let drawn = primitives_within(object, symbols, MAX_UNITS_PER_OBJECT);
+    (drawn.primitives, drawn.cut)
 }
 
-/// The primitives of one map object within `budget` units, and whether a limit cut them short.
+/// What one map object drew within its budget.
+pub(crate) struct Drawn {
+    pub(crate) primitives: Vec<Primitive>,
+    /// A limit cut the drawing short.
+    pub(crate) cut: bool,
+    /// Units asked for, also beyond the budget.
+    pub(crate) units: usize,
+}
+
+/// The primitives of one map object within `budget` units.
 pub(crate) fn primitives_within(
     object: &MapObject,
     symbols: &RenderSymbols,
     budget: usize,
-) -> (Vec<Primitive>, bool) {
+) -> Drawn {
     let mut sink = Sink::new(budget);
     draw_object(object, symbols, &mut sink);
-    let Sink { mut out, cut, .. } = sink;
+    let Sink {
+        mut out,
+        cut,
+        spent,
+        ..
+    } = sink;
     // A colour missing from the colour table is not drawn (as in OOM).
     out.retain(|p| symbols.colour(p.priority).is_some());
-    (out, cut)
+    Drawn {
+        primitives: out,
+        cut,
+        units: spent,
+    }
 }
 
 /// Draws one map object into `sink` (colours not yet filtered).
@@ -290,6 +339,7 @@ pub(super) fn path_symbol(
     let len = sink.out.len();
     match symbol {
         Symbol::Area { color, patterns } => {
+            sink.charge_points(coords.len());
             let parts = geometry::parts(coords);
             // The fill and the patterns' clip path need more than two points in the first part.
             if parts.first().is_some_and(|p| p.points.len() > 2) {
@@ -1290,16 +1340,13 @@ mod tests {
         assert!(cut);
         // The rest went to one unit per dash section: the parts begun before the budget ran out.
         assert!(
-            (MAX_PRIMITIVES_PER_OBJECT - 10..=MAX_PRIMITIVES_PER_OBJECT).contains(&p.len()),
+            (MAX_UNITS_PER_OBJECT - 10..=MAX_UNITS_PER_OBJECT).contains(&p.len()),
             "{}",
             p.len()
         );
         // Both objects together: one budget plus the slack, plus the solid kilometre.
         let work = work_units() - before;
-        assert!(
-            work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK + 1,
-            "{work}"
-        );
+        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK + 1, "{work}");
     }
 
     /// Ten 900 mm parts, `def` on each.
@@ -1381,6 +1428,77 @@ mod tests {
     }
 
     const PATTERNED: u32 = 9_999;
+    const COMBINED: u32 = 9_997;
+
+    /// Fill and stroke points in `p`.
+    fn kept(p: &[Primitive]) -> usize {
+        p.iter()
+            .map(|p| match &p.shape {
+                Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+                Shape::Stroke { path, .. } => path.len(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// An object of 20 000 points whose combined symbol draws `part` on it 1000 times (final
+    /// review of M1: a 260 KB file took 565 MB).
+    fn thousand_parts(r: &mut RenderSymbols, part: Symbol) -> MapObject {
+        r.symbols.insert(PATTERNED, part);
+        r.symbols.insert(
+            COMBINED,
+            Symbol::Combined(vec![SymbolPart::Ref(PATTERNED); 1000]),
+        );
+        let zigzag: Vec<(i32, i32)> = (0..20_000)
+            .map(|i| (i % 1000 * 10, i / 1000 * 10))
+            .collect();
+        MapObject {
+            symbol_id: COMBINED,
+            kind: MapObjectKind::Path,
+            coords: closed_ring(&zigzag),
+            tags: Vec::new(),
+            pattern: None,
+        }
+    }
+
+    #[test]
+    fn copied_points_count_against_the_budget() {
+        let line = Symbol::Line(LineDef {
+            color: 2,
+            width: 100.0,
+            cap: Cap::Flat,
+            join: Join::Miter,
+            dash: None,
+            border: None,
+            mid: None,
+            start: None,
+            end: None,
+            pointed_caps: false,
+            start_offset: 0.0,
+            end_offset: 0.0,
+            dash_symbol: None,
+        });
+        let fill = Symbol::Area {
+            color: 2,
+            patterns: Vec::new(),
+        };
+        for part in [fill, line] {
+            let (mut r, _) = set();
+            let object = thousand_parts(&mut r, part);
+            let before = work_units();
+            let (p, cut) = primitives_counted(&object, &r);
+            let work = work_units() - before;
+            assert!(cut, "{} primitives", p.len());
+            assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
+            // Each copy holds 20 000 points; the budget lets a few dozen through.
+            let points = kept(&p);
+            assert!(
+                points <= MAX_UNITS_PER_OBJECT * KEPT_POINTS_PER_UNIT,
+                "{points}"
+            );
+            assert!(p.len() > 10, "{}", p.len());
+        }
+    }
 
     fn patterned_square(pattern: Pattern, origin: Option<PatternOrigin>) -> Vec<Primitive> {
         let (mut r, _) = set();
@@ -1557,7 +1675,7 @@ mod tests {
             }],
         };
         // Rotation −π/2 (y down) turns local +x to paper up.
-        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
         let quarter = -std::f64::consts::FRAC_PI_2;
         point_symbol(&arrow, (10.0, 10.0), quarter, &r, &mut sink, 0);
         let p = sink.out;
