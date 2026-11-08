@@ -475,8 +475,12 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   passes `delta_rotation`; PS `createRenderablesScaled`].
 - Example (pinned in `draw.rs` tests): 10 × 10 mm square, horizontal point pattern, spacing =
   distance = 2 mm, a dot of radius 0.1 mm: canvas [−0.1, 10.1]², lines y = 0, 2, …, 10 (10 <
-  10.1) and on each points x = 0, 2, …, 10 (cur = 0.1 … 10.1 < 10.2) = **36** placements. A point
-  symbol with zero extent gives 25 (the canvas is the square itself and 10 < 10 fails).
+  10.1) and on each points x = 0, 2, …, 10 (cur = 0.1 … 10.1 < 10.2) = **36** placements.
+- A point symbol that draws nothing has an empty extent (`PointObject::getExtent` of no
+  renderables). OOM still walks its placements, but every placement draws nothing, so the pattern
+  is invisible [AS `FillPattern::createRenderables`, `createPointPatternLine`]. freemapper-print
+  skips the placements; the output is the same. Every point symbol that draws anything has a
+  non-zero extent (dots and rings have a radius, strokes a width), so no visible case differs.
 
 ### 4.5 Clipping [AS `FillPattern::createRenderables`, `createPointPatternLine`; RN `PainterConfig::activate`; PS `createRenderablesIf*Inside`]
 
@@ -510,8 +514,14 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
 - One budget of 250 000 units per map object (`draw::MAX_PRIMITIVES_PER_OBJECT`), shared by every
   nested symbol, pattern line, point placement and point symbol: each primitive costs one unit,
   each step that draws nothing (a line without points, a placement left out, a symbol call
-  without output) costs one too. When it is spent drawing stops and `primitives_counted` reports
-  the object as cut.
+  without output) costs one too. Copying an element's coordinates for a placement and testing a
+  point against the outline in the `no_clipping` modes cost one unit per 64 points
+  (`draw::POINTS_PER_UNIT`, rounded down). The extent probe of a point pattern draws into the
+  same budget. When the budget is spent drawing stops and `primitives_counted` reports the object
+  as cut.
+- Dashes (§2.2) and mid symbols (§2.4) of a part are computed only up to the units left. A part
+  that needs more than 100 000 of them (`geometry::MAX_REPEATS`) is drawn solid or without mid
+  symbols. Both cases also report the object as cut.
 - All pattern shapes of one area hold the same outline (`Arc`); the PDF writer opens one clip
   block per run of shapes with the same outline.
 

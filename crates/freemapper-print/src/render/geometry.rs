@@ -227,7 +227,10 @@ fn between(points: &[Pt], cum: &[f64], a: f64, b: f64) -> Vec<Pt> {
 /// The dashes of a part as polylines; one polyline (the whole part) when it is too short
 /// (reference §2.2). The dash length is stretched so that the line starts and ends with a full
 /// dash; on closed parts the two halves at the closing point form one dash.
-pub fn dashes(part: &Part, dash: &Dash) -> Vec<Vec<Pt>> {
+///
+/// At most `max` dashes; the flag is true when that limit, or `MAX_REPEATS` (the part is then
+/// drawn solid), changed the result.
+pub fn dashes(part: &Part, dash: &Dash, max: usize) -> (Vec<Vec<Pt>>, bool) {
     let points = &part.points;
     let cum = cumulative(points);
     let l = *cum.last().unwrap_or(&0.0);
@@ -249,7 +252,7 @@ pub fn dashes(part: &Part, dash: &Dash) -> Vec<Vec<Pt>> {
     let sw = 0.2 * period / kf;
     let usable = d > 0.0 && b >= 0.0 && g >= 0.0 && period.is_finite() && nf.is_finite();
     if !usable || l <= 0.0 || (lo <= 1.0 && l < 2.0 * period - min_opt_dashes * sw) {
-        return vec![points.clone()];
+        return (vec![points.clone()], false);
     }
     let hi = nf.ceil();
     let n = if lo < 1.0 {
@@ -260,7 +263,7 @@ pub fn dashes(part: &Part, dash: &Dash) -> Vec<Vec<Pt>> {
         if dlo > dhi { hi } else { lo }
     };
     if n * kf > MAX_REPEATS as f64 {
-        return vec![points.clone()];
+        return (vec![points.clone()], true);
     }
     let dash_len = ((l - (n - 1.0) * b - n * (kf - 1.0) * g) * 2.0 / (2.0 * n * kf - hf)).max(0.0);
     let groups = n as u32;
@@ -268,6 +271,9 @@ pub fn dashes(part: &Part, dash: &Dash) -> Vec<Vec<Pt>> {
     let mut pos = 0.0;
     for grp in 1..=groups {
         for i in 1..=k {
+            if out.len() >= max {
+                return (out, true);
+            }
             let first = grp == 1 && i == 1;
             let last = grp == groups && i == k;
             let halved = (first && half) != (last && half);
@@ -287,11 +293,12 @@ pub fn dashes(part: &Part, dash: &Dash) -> Vec<Vec<Pt>> {
         let last = out.last_mut().expect("more than one");
         last.extend(first.into_iter().skip(1));
     }
-    out
+    (out, false)
 }
 
-/// Positions and directions of a line's mid symbols (reference §2.4).
-pub fn mid_positions(part: &Part, mid: &Mid) -> Vec<(Pt, f64)> {
+/// Positions and directions of a line's mid symbols (reference §2.4), at most `max`; the flag is
+/// true when that limit, or `MAX_REPEATS` (no mid symbols then), changed the result.
+pub fn mid_positions(part: &Part, mid: &Mid, max: usize) -> (Vec<(Pt, f64)>, bool) {
     let cum = cumulative(&part.points);
     let l = *cum.last().unwrap_or(&0.0);
     let (s, e, q) = (
@@ -302,12 +309,19 @@ pub fn mid_positions(part: &Part, mid: &Mid) -> Vec<(Pt, f64)> {
     let m = mid.per_spot.max(1);
     let msl = f64::from(m - 1) * q;
     let mut spots = Vec::new();
+    let mut limited = false;
     if !(s > 0.0 && s.is_finite() && e >= 0.0 && q >= 0.0 && msl.is_finite()) || l <= 0.0 {
-        return spots;
+        return (spots, limited);
     }
     // Spots per section, bounded: a broken definition gets no mid symbols.
     let bound = |n: f64| (n + 1.0) * f64::from(m) <= MAX_REPEATS as f64;
-    let mut place = |p: f64| spots.push(at_on(part, &cum, p));
+    let mut place = |p: f64| {
+        if spots.len() < max {
+            spots.push(at_on(part, &cum, p));
+        } else {
+            limited = true;
+        }
+    };
     if e == 0.0 && !part.closed {
         place(0.0);
     }
@@ -325,7 +339,7 @@ pub fn mid_positions(part: &Part, mid: &Mid) -> Vec<(Pt, f64)> {
             let dhi = (l - hi * s - (hi + 1.0) * msl - 2.0 * e).abs();
             let (n, dev) = if dlo >= dhi { (hi, -dhi) } else { (lo, dlo) };
             if !bound(n) {
-                return Vec::new();
+                return (Vec::new(), true);
             }
             let ideal = n * s + 2.0 * e;
             let e2 = e + dev * e / ideal;
@@ -344,7 +358,7 @@ pub fn mid_positions(part: &Part, mid: &Mid) -> Vec<(Pt, f64)> {
             let dhi = (l - hi * s - (hi + 1.0) * msl).abs() / hi;
             let n = if dlo > dhi { hi } else { lo };
             if !bound(n) {
-                return Vec::new();
+                return (Vec::new(), true);
             }
             let a = (l - (n + 1.0) * msl) / n + msl;
             if a >= msl {
@@ -363,7 +377,7 @@ pub fn mid_positions(part: &Part, mid: &Mid) -> Vec<(Pt, f64)> {
         }
         place(l);
     }
-    spots
+    (spots, limited)
 }
 
 /// The polyline offset by `shift` mm to the right of travel (negative: left), mitred at corners
@@ -514,7 +528,7 @@ mod tests {
 
     #[test]
     fn dashes_are_stretched_to_whole_dashes() {
-        let dashes = dashes(&line(&[(0.0, 0.0), (10.0, 0.0)]), &dash_506());
+        let dashes = dashes(&line(&[(0.0, 0.0), (10.0, 0.0)]), &dash_506(), usize::MAX).0;
         assert_eq!(dashes.len(), 6);
         let lengths: Vec<f64> = dashes.iter().map(|d| length(d)).collect();
         let d = (10.0 - 5.0 * 0.37) / 6.0;
@@ -526,7 +540,12 @@ mod tests {
     #[test]
     fn dashes_run_through_corners() {
         // 6 mm: three dashes of 1.753 mm; the second spans the corner at 3 mm.
-        let dashes = dashes(&line(&[(0.0, 0.0), (3.0, 0.0), (3.0, 3.0)]), &dash_506());
+        let dashes = dashes(
+            &line(&[(0.0, 0.0), (3.0, 0.0), (3.0, 3.0)]),
+            &dash_506(),
+            usize::MAX,
+        )
+        .0;
         assert_eq!(dashes.len(), 3);
         assert!(dashes[1].contains(&(3.0, 0.0)), "{dashes:?}");
         let total: f64 = dashes.iter().map(|d| length(d)).sum();
@@ -535,7 +554,7 @@ mod tests {
 
     #[test]
     fn short_dashed_line_is_solid() {
-        let dashes = dashes(&line(&[(0.0, 0.0), (2.5, 0.0)]), &dash_506());
+        let dashes = dashes(&line(&[(0.0, 0.0), (2.5, 0.0)]), &dash_506(), usize::MAX).0;
         assert_eq!(dashes, [vec![(0.0, 0.0), (2.5, 0.0)]]);
     }
 
@@ -545,7 +564,7 @@ mod tests {
             points: vec![(0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)],
             closed: true,
         };
-        let dashes = dashes(&square, &dash_506());
+        let dashes = dashes(&square, &dash_506(), usize::MAX).0;
         // The first and last half dashes form one dash across the closing point.
         let at_origin = |p: &Pt| p.0.abs() < 1e-9 && p.1.abs() < 1e-9;
         let joined = dashes.iter().find(|d| d.iter().any(at_origin)).unwrap();
@@ -582,7 +601,7 @@ mod tests {
     #[test]
     fn mid_symbols_fill_the_line() {
         // 20 mm: n·3.75 + 4.65 closest to 20 for n = 4 (19.65); scaled by 20/19.65.
-        let spots = mid_positions(&line(&[(0.0, 0.0), (20.0, 0.0)]), &fence_mid());
+        let spots = mid_positions(&line(&[(0.0, 0.0), (20.0, 0.0)]), &fence_mid(), usize::MAX).0;
         assert_eq!(spots.len(), 5);
         let f = 20.0 / 19.65;
         assert!(near(spots[0].0.0, 2.325 * f));
@@ -593,8 +612,12 @@ mod tests {
 
     #[test]
     fn short_fence_has_no_tick() {
-        assert!(mid_positions(&line(&[(0.0, 0.0), (2.5, 0.0)]), &fence_mid()).is_empty());
-        let one = mid_positions(&line(&[(0.0, 0.0), (3.0, 0.0)]), &fence_mid());
+        assert!(
+            mid_positions(&line(&[(0.0, 0.0), (2.5, 0.0)]), &fence_mid(), usize::MAX)
+                .0
+                .is_empty()
+        );
+        let one = mid_positions(&line(&[(0.0, 0.0), (3.0, 0.0)]), &fence_mid(), usize::MAX).0;
         assert_eq!(one.len(), 1);
         assert!(near(one[0].0.0, 1.5));
     }
@@ -610,19 +633,35 @@ mod tests {
             half_outer: false,
         };
         let start = std::time::Instant::now();
-        let pieces = dashes(&long, &tiny);
+        let (pieces, limited) = dashes(&long, &tiny, usize::MAX);
+        assert!(limited);
         assert!(pieces.len() <= MAX_REPEATS, "{}", pieces.len());
         let mut mid = fence_mid();
         mid.segment = 0.001;
         mid.end = 0.001;
         mid.per_spot = 1_000_000;
-        assert!(mid_positions(&long, &mid).len() <= MAX_REPEATS);
+        assert!(mid_positions(&long, &mid, usize::MAX).0.len() <= MAX_REPEATS);
         let nan = Dash {
             dash: f64::NAN,
             ..dash_506()
         };
-        assert_eq!(dashes(&long, &nan).len(), 1, "solid");
+        assert_eq!(
+            dashes(&long, &nan, usize::MAX),
+            (vec![long.points.clone()], false),
+            "solid"
+        );
         assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[test]
+    fn dashes_and_mid_symbols_stop_at_the_limit() {
+        let long = line(&[(0.0, 0.0), (1_000.0, 0.0)]);
+        let (pieces, limited) = dashes(&long, &dash_506(), 100);
+        assert_eq!((pieces.len(), limited), (100, true));
+        let (all, limited) = dashes(&long, &dash_506(), usize::MAX);
+        assert!(all.len() > 100 && !limited);
+        let (spots, limited) = mid_positions(&long, &fence_mid(), 10);
+        assert_eq!((spots.len(), limited), (10, true));
     }
 
     #[test]
@@ -631,7 +670,12 @@ mod tests {
             group: u32::MAX,
             ..dash_506()
         };
-        assert_eq!(dashes(&line(&[(0.0, 0.0), (10.0, 0.0)]), &huge).len(), 1);
+        assert_eq!(
+            dashes(&line(&[(0.0, 0.0), (10.0, 0.0)]), &huge, usize::MAX)
+                .0
+                .len(),
+            1
+        );
     }
 
     #[test]

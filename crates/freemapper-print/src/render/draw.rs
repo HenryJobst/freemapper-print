@@ -69,6 +69,11 @@ pub(super) fn mm(v: f64) -> f64 {
 /// into each other); real objects stay far below it.
 pub const MAX_PRIMITIVES_PER_OBJECT: usize = 250_000;
 
+/// Coordinates or outline points handled per unit of budget: copying an element's coordinates
+/// for a placement, or testing a point against an outline, costs one unit per this many points
+/// (rounded down, so small symbols stay free).
+pub(super) const POINTS_PER_UNIT: usize = 64;
+
 /// Collects the primitives of one drawing call within a budget.
 pub(super) struct Sink {
     pub(super) out: Vec<Primitive>,
@@ -121,6 +126,16 @@ impl Sink {
         self.left = self.left.saturating_sub(units);
     }
 
+    /// Charges the work of handling `points` coordinates ([`POINTS_PER_UNIT`]).
+    pub(super) fn charge_points(&mut self, points: usize) {
+        self.charge(points / POINTS_PER_UNIT);
+    }
+
+    /// Records that a limit (budget or repeat count) changed the output.
+    pub(super) fn mark_cut(&mut self) {
+        self.cut = true;
+    }
+
     /// Charges one unit if nothing was drawn since the output had `len` primitives.
     pub(super) fn settle(&mut self, len: usize) {
         if self.out.len() == len {
@@ -136,10 +151,19 @@ pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive>
 
 /// The primitives of one map object and whether [`MAX_PRIMITIVES_PER_OBJECT`] cut them short.
 pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<Primitive>, bool) {
-    let Some(symbol) = symbols.symbols.get(&object.symbol_id) else {
-        return (Vec::new(), false);
-    };
     let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+    draw_object(object, symbols, &mut sink);
+    let Sink { mut out, cut, .. } = sink;
+    // A colour missing from the colour table is not drawn (as in OOM).
+    out.retain(|p| symbols.colour(p.priority).is_some());
+    (out, cut)
+}
+
+/// Draws one map object into `sink` (colours not yet filtered).
+pub(super) fn draw_object(object: &MapObject, symbols: &RenderSymbols, sink: &mut Sink) {
+    let Some(symbol) = symbols.symbols.get(&object.symbol_id) else {
+        return;
+    };
     match &object.kind {
         MapObjectKind::Point { rotation_rad } => {
             if let (Symbol::Point(def), Some(c)) = (symbol, object.coords.first()) {
@@ -149,7 +173,7 @@ pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<P
                     (mm(f64::from(c.x)), mm(f64::from(c.y))),
                     r,
                     symbols,
-                    &mut sink,
+                    sink,
                     0,
                 );
             }
@@ -159,7 +183,7 @@ pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<P
             &object.coords,
             object.pattern.as_ref(),
             symbols,
-            &mut sink,
+            sink,
             0,
         ),
         MapObjectKind::Text {
@@ -175,15 +199,11 @@ pub fn primitives_counted(object: &MapObject, symbols: &RenderSymbols) -> (Vec<P
                     *h_align,
                     *v_align,
                     (mm(f64::from(c.x)), mm(f64::from(c.y))),
-                    &mut sink,
+                    sink,
                 );
             }
         }
     }
-    let Sink { mut out, cut, .. } = sink;
-    // A colour missing from the colour table is not drawn (as in OOM).
-    out.retain(|p| symbols.colour(p.priority).is_some());
-    (out, cut)
 }
 
 /// Nesting depth of symbols (combined parts, point elements) beyond which drawing stops: a
@@ -284,10 +304,17 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
         .collect();
     let width = mm(def.width);
     for part in &parts {
-        // Main line, whole or dashed.
+        if sink.stop() {
+            return;
+        }
+        // Main line, whole or dashed; a line without colour or width draws nothing.
         match &def.dash {
+            _ if def.color < 0 || width <= 0.0 => {}
             Some(dash) => {
-                let dashes = geometry::dashes(part, dash);
+                let (dashes, limited) = geometry::dashes(part, dash, sink.left());
+                if limited {
+                    sink.mark_cut();
+                }
                 let solid = dashes.len() == 1 && dashes[0] == part.points;
                 for d in dashes {
                     sink.extend(stroke(
@@ -319,7 +346,10 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
             };
             let pieces: Vec<(Vec<Pt>, bool)> = match &border.dash {
                 Some(dash) => {
-                    let dashes = geometry::dashes(part, dash);
+                    let (dashes, limited) = geometry::dashes(part, dash, sink.left());
+                    if limited {
+                        sink.mark_cut();
+                    }
                     let solid = dashes.len() == 1 && dashes[0] == part.points;
                     dashes
                         .into_iter()
@@ -344,7 +374,11 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
         }
         // Mid symbols, local +y to the right of travel.
         if let Some(mid) = &def.mid {
-            for (at, angle) in geometry::mid_positions(part, mid) {
+            let (spots, limited) = geometry::mid_positions(part, mid, sink.left());
+            if limited {
+                sink.mark_cut();
+            }
+            for (at, angle) in spots {
                 if sink.stop() {
                     return;
                 }
@@ -410,8 +444,14 @@ pub(super) fn ring(def: &PointDef, at: Pt) -> Option<Primitive> {
 }
 
 /// An element's coordinates rotated about the point centre `at` and moved there, back in
-/// 0.001 mm.
-pub(super) fn element_coords(element: &Element, at: Pt, rotation: f64) -> Vec<MapCoord> {
+/// 0.001 mm; the copy is charged to `sink` ([`POINTS_PER_UNIT`]).
+pub(super) fn element_coords(
+    element: &Element,
+    at: Pt,
+    rotation: f64,
+    sink: &mut Sink,
+) -> Vec<MapCoord> {
+    sink.charge_points(element.coords.len());
     let (sin, cos) = rotation.sin_cos();
     element
         .coords
@@ -442,7 +482,10 @@ pub(super) fn point_symbol(
     sink.extend(dot(def, at));
     sink.extend(ring(def, at));
     for element in &def.elements {
-        let coords = element_coords(element, at, rotation);
+        if sink.stop() {
+            break;
+        }
+        let coords = element_coords(element, at, rotation, sink);
         path_symbol(&element.symbol, &coords, None, symbols, sink, depth + 1);
     }
     sink.settle(len);
@@ -494,7 +537,7 @@ fn text_primitives(
 
 #[cfg(test)]
 mod tests {
-    use super::super::symbols::{Clipping, Pattern};
+    use super::super::symbols::{Clipping, Dash, Pattern};
     use super::*;
     use crate::omap::coord::{FLAG_CLOSE, FLAG_HOLE};
     use crate::omap::{PatternOrigin, SymbolSet, closed_ring};
@@ -771,6 +814,64 @@ mod tests {
         assert!(
             bars.iter().any(|b| horizontal(b)),
             "end bar ⟂ north: {bars:?}"
+        );
+    }
+
+    #[test]
+    fn tiny_dash_on_long_line_is_bounded() {
+        let (mut r, _) = set();
+        let dashed = |dash: f64| {
+            Symbol::Line(LineDef {
+                color: 2,
+                width: 100.0,
+                cap: Cap::Flat,
+                join: Join::Miter,
+                dash: Some(Dash {
+                    dash,
+                    gap: dash,
+                    group: 1,
+                    in_group_gap: 0.0,
+                    half_outer: false,
+                }),
+                border: None,
+                mid: None,
+                start: None,
+                end: None,
+            })
+        };
+        let line_object = |coords| MapObject {
+            symbol_id: PATTERNED,
+            kind: MapObjectKind::Path,
+            coords,
+            tags: Vec::new(),
+            pattern: None,
+        };
+        let start = std::time::Instant::now();
+        // 1 µm dashes on 1 km of paper: 5 · 10⁸ dashes, beyond the repeat limit, drawn solid.
+        r.symbols.insert(PATTERNED, dashed(1.0));
+        let km = line_object(vec![MapCoord::new(0, 0), MapCoord::new(1_000_000_000, 0)]);
+        let (p, cut) = primitives_counted(&km, &r);
+        assert_eq!((p.len(), cut), (1, true));
+        // Ten 900 mm parts with 90 000 dashes each: the budget stops them.
+        r.symbols.insert(PATTERNED, dashed(5.0));
+        let coords: Vec<MapCoord> = (0..10)
+            .flat_map(|i| {
+                [
+                    MapCoord::new(0, i * 1_000),
+                    MapCoord {
+                        flags: FLAG_HOLE,
+                        ..MapCoord::new(900_000, i * 1_000)
+                    },
+                ]
+            })
+            .collect();
+        let (p, cut) = primitives_counted(&line_object(coords), &r);
+        assert!(cut);
+        assert_eq!(p.len(), MAX_PRIMITIVES_PER_OBJECT);
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(10),
+            "{:?}",
+            start.elapsed()
         );
     }
 

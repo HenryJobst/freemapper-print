@@ -277,20 +277,15 @@ pub(super) fn area_pattern(
             if *distance <= 0.0 {
                 return;
             }
-            // Extent of the point object at (0, 0) with the object's pattern rotation; a point
-            // symbol that draws nothing there draws nothing anywhere.
-            let mut probe = Sink::new(sink.left());
+            // Extent of the point object at (0, 0) with the object's pattern rotation, drawn into
+            // the same sink (its work counts against the same budget) and then taken out again.
+            // A point symbol that draws nothing there draws nothing anywhere: OOM still walks the
+            // placements, without output (reference §4.4).
             let probe_rotation = if symbol.rotatable { -delta } else { 0.0 };
-            draw::point_symbol(
-                symbol,
-                (0.0, 0.0),
-                probe_rotation,
-                symbols,
-                &mut probe,
-                depth + 1,
-            );
-            sink.charge(probe.out.len().max(1));
-            let Some(point_extent) = shapes_extent(&probe.out) else {
+            let saved = std::mem::take(&mut sink.out);
+            draw::point_symbol(symbol, (0.0, 0.0), probe_rotation, symbols, sink, depth + 1);
+            let probe = std::mem::replace(&mut sink.out, saved);
+            let Some(point_extent) = shapes_extent(&probe) else {
                 return;
             };
             let (lines, delta_along) = pattern_lines(
@@ -302,6 +297,10 @@ pub(super) fn area_pattern(
                 sink.left(),
             );
             let step = mm(*distance);
+            let outline = Outline {
+                rings,
+                points: rings.iter().map(Vec::len).sum(),
+            };
             for (first, second) in lines {
                 let length = (second.0 - first.0).hypot(second.1 - first.1);
                 let dir = ((second.0 - first.0) / length, (second.1 - first.1) / length);
@@ -316,7 +315,7 @@ pub(super) fn area_pattern(
                     }
                     let at = (first.0 + dir.0 * cur, first.1 + dir.1 * cur);
                     let placed = sink.out.len();
-                    place_point(symbol, at, -delta, clipping, rings, symbols, sink, depth);
+                    place_point(symbol, at, -delta, clipping, &outline, symbols, sink, depth);
                     sink.settle(placed);
                 }
                 sink.settle(len);
@@ -325,6 +324,21 @@ pub(super) fn area_pattern(
                 }
             }
         }
+    }
+}
+
+/// The area outline of a pattern: its rings, shared by all clipped shapes, and their point
+/// count.
+struct Outline<'a> {
+    rings: &'a Arc<[Vec<Pt>]>,
+    points: usize,
+}
+
+impl Outline<'_> {
+    /// [`inside`], charged to `sink` by the outline's size ([`draw::POINTS_PER_UNIT`]).
+    fn contains(&self, p: Pt, sink: &mut Sink) -> bool {
+        sink.charge_points(self.points);
+        inside(self.rings, p)
     }
 }
 
@@ -337,7 +351,7 @@ fn place_point(
     at: Pt,
     rotation: f64,
     clipping: Clipping,
-    rings: &Arc<[Vec<Pt>]>,
+    outline: &Outline,
     symbols: &RenderSymbols,
     sink: &mut Sink,
     depth: u32,
@@ -349,16 +363,16 @@ fn place_point(
             draw::point_symbol(def, at, rotation, symbols, sink, depth + 1);
             for p in &mut sink.out[len..] {
                 let shape = std::mem::replace(&mut p.shape, Shape::Fill { rings: Vec::new() });
-                p.shape = clip(clipping, rings, shape);
+                p.shape = clip(clipping, outline.rings, shape);
             }
         }
         Clipping::NoClippingIfCentreInside => {
-            if inside(rings, at) {
+            if outline.contains(at, sink) {
                 sink.extend(draw::dot(def, at));
                 sink.extend(draw::ring(def, at));
             }
             for element in &def.elements {
-                let coords = draw::element_coords(element, at, rotation);
+                let coords = draw::element_coords(element, at, rotation, sink);
                 if coords.is_empty() {
                     continue;
                 }
@@ -367,24 +381,24 @@ fn place_point(
                     .iter()
                     .map(to_mm)
                     .fold((0.0, 0.0), |s, q| (s.0 + q.0, s.1 + q.1));
-                if inside(rings, (sum.0 / n, sum.1 / n)) {
+                if outline.contains((sum.0 / n, sum.1 / n), sink) {
                     draw::path_symbol(&element.symbol, &coords, None, symbols, sink, depth + 2);
                 }
             }
         }
         Clipping::NoClippingIfCompletelyInside | Clipping::NoClippingIfPartlyInside => {
             let all = clipping == Clipping::NoClippingIfCompletelyInside;
-            dot_and_ring_if_inside(def, at, all, rings, sink);
+            dot_and_ring_if_inside(def, at, all, outline, sink);
             for element in &def.elements {
-                let coords = draw::element_coords(element, at, rotation);
+                let coords = draw::element_coords(element, at, rotation, sink);
                 // A point element: only its dot and ring, tested the same way.
                 if let Symbol::Point(point) = &element.symbol {
                     if let Some(c) = coords.first() {
-                        dot_and_ring_if_inside(point, to_mm(c), all, rings, sink);
+                        dot_and_ring_if_inside(point, to_mm(c), all, outline, sink);
                     }
                     continue;
                 }
-                let mut tests = coords.iter().map(|c| inside(rings, to_mm(c)));
+                let mut tests = coords.iter().map(|c| outline.contains(to_mm(c), sink));
                 let hit = if all {
                     tests.all(|t| t)
                 } else {
@@ -401,8 +415,8 @@ fn place_point(
 /// The dot and ring of `def` at `at` if all (`all`) or any of the four points at their radius
 /// (left, top, right, bottom) lie inside `rings` [PS `createPrimitivesIfCompletelyInside`,
 /// `createPrimitivesIfPartiallyInside`].
-fn dot_and_ring_if_inside(def: &PointDef, at: Pt, all: bool, rings: &[Vec<Pt>], sink: &mut Sink) {
-    let test = |r: f64| {
+fn dot_and_ring_if_inside(def: &PointDef, at: Pt, all: bool, outline: &Outline, sink: &mut Sink) {
+    let test = |r: f64, sink: &mut Sink| {
         let mut tests = [
             (at.0 - r, at.1),
             (at.0, at.1 - r),
@@ -410,17 +424,20 @@ fn dot_and_ring_if_inside(def: &PointDef, at: Pt, all: bool, rings: &[Vec<Pt>], 
             (at.0, at.1 + r),
         ]
         .into_iter()
-        .map(|p| inside(rings, p));
+        .map(|p| outline.contains(p, sink));
         if all {
             tests.all(|t| t)
         } else {
             tests.any(|t| t)
         }
     };
-    if def.dot.is_some_and(|(_, radius)| test(mm(radius))) {
+    if def.dot.is_some_and(|(_, radius)| test(mm(radius), sink)) {
         sink.extend(draw::dot(def, at));
     }
-    if def.ring.is_some_and(|(_, radius, _)| test(mm(radius))) {
+    if def
+        .ring
+        .is_some_and(|(_, radius, _)| test(mm(radius), sink))
+    {
         sink.extend(draw::ring(def, at));
     }
 }
@@ -608,9 +625,13 @@ mod tests {
         let r = render_symbols();
         let square: Arc<[Vec<Pt>]> =
             vec![vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]].into();
+        let outline = Outline {
+            rings: &square,
+            points: 4,
+        };
         let draw = |def: &PointDef, at: Pt, clipping: Clipping| {
             let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
-            place_point(def, at, 0.0, clipping, &square, &r, &mut sink, 0);
+            place_point(def, at, 0.0, clipping, &outline, &r, &mut sink, 0);
             sink.out
         };
         let dot = dot(500.0);
@@ -839,5 +860,103 @@ mod tests {
         let (p, cut) = patterned(1_000_000, pattern, None);
         assert!(cut);
         assert!(p.len() <= MAX_PRIMITIVES_PER_OBJECT, "{}", p.len());
+    }
+
+    /// A pattern whose point is an area with a pattern whose point is an area with a huge thin
+    /// outline and a mode-1 point pattern that rejects every placement: much work, few
+    /// primitives, most of it in the extent probes.
+    fn hostile_nesting() -> Pattern {
+        let thin: Vec<(i32, i32)> = (0..=2_000)
+            .map(|i| (i, 0))
+            .chain((0..=2_000).rev().map(|i| (i, 100)))
+            .collect();
+        let a2 = Element {
+            symbol: Symbol::Area {
+                color: -1,
+                patterns: vec![Pattern::Points {
+                    angle_rad: 0.0,
+                    rotatable: false,
+                    spacing: 50.0,
+                    offset: 0.0,
+                    offset_along: 0.0,
+                    distance: 50.0,
+                    symbol: Box::new(dot(400.0)),
+                    clipping: Clipping::NoClippingIfCompletelyInside,
+                }],
+            },
+            coords: closed_ring(&thin),
+        };
+        let p2 = PointDef {
+            rotatable: false,
+            dot: Some((3, 100.0)),
+            ring: None,
+            elements: vec![a2],
+        };
+        let a1 = Element {
+            symbol: Symbol::Area {
+                color: -1,
+                patterns: vec![Pattern::Points {
+                    angle_rad: 0.0,
+                    rotatable: false,
+                    spacing: 1_000.0,
+                    offset: 0.0,
+                    offset_along: 0.0,
+                    distance: 1_000.0,
+                    symbol: Box::new(p2),
+                    clipping: Clipping::Clip,
+                }],
+            },
+            coords: closed_ring(&[(0, 0), (2_000, 0), (2_000, 2_000), (0, 2_000)]),
+        };
+        Pattern::Points {
+            angle_rad: 0.0,
+            rotatable: false,
+            spacing: 2_000.0,
+            offset: 0.0,
+            offset_along: 0.0,
+            distance: 2_000.0,
+            symbol: Box::new(PointDef {
+                rotatable: false,
+                dot: Some((3, 100.0)),
+                ring: None,
+                elements: vec![a1],
+            }),
+            clipping: Clipping::Clip,
+        }
+    }
+
+    #[test]
+    fn probe_work_counts_against_the_budget() {
+        // The work of the extent probes and of rejected placements (outline tests, element
+        // copies) counts against the one budget: the object is cut, quickly.
+        let mut r = render_symbols();
+        r.symbols.insert(
+            PATTERNED,
+            Symbol::Area {
+                color: -1,
+                patterns: vec![hostile_nesting()],
+            },
+        );
+        let object = MapObject {
+            symbol_id: PATTERNED,
+            kind: MapObjectKind::Path,
+            coords: closed_ring(&[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)]),
+            tags: Vec::new(),
+            pattern: None,
+        };
+        let start = std::time::Instant::now();
+        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        draw::draw_object(&object, &r, &mut sink);
+        assert!(sink.cut);
+        assert_eq!(sink.left(), 0, "all units spent, none more");
+        assert!(sink.out.len() <= MAX_PRIMITIVES_PER_OBJECT);
+        // The same object without the shared probe budget took 14.6 s (debug build).
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "{:?}",
+            start.elapsed()
+        );
+        let (_, cut) = primitives_counted(&object, &r);
+        assert!(cut);
     }
 }
