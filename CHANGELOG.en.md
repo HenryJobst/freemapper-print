@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- The event project file `freemapper-print.toml` is read and checked: event, map source, shared sheet elements and any number of layouts. Unknown keys report file, line and name.
 - Program texts come in German and English: help, summary, notes, warnings and errors. The language comes from
   `--lang de|en` (before or after the command), then `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The
   texts live in Fluent files under `crates/freemapper-print-cli/i18n/`. Error messages from the library and

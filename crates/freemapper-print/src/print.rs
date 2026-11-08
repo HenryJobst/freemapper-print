@@ -43,7 +43,7 @@ const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
 const UM_PER_MM: f64 = 1000.0;
 
 /// Paper sizes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Paper {
     A4,
     A3,
@@ -60,7 +60,8 @@ impl Paper {
 }
 
 /// Page orientation. `Auto` takes the orientation in which less of the map lies outside the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Orientation {
     Auto,
     Portrait,

@@ -7,6 +7,7 @@
 pub mod omap;
 pub mod output;
 pub mod print;
+pub mod project;
 pub mod render;
 pub mod scale;
 

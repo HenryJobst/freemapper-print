@@ -36,7 +36,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Passepartout | passe-partout | Weißer Rand zwischen Kartenausschnitt und Blattrand, auf dem Blattelemente stehen können. | `Passepartout` |
 | Blattelement | sheet element | Etwas, das auf dem Blatt steht, aber nicht zur Karte gehört: Titelblock, Logo, Text, Postenbeschreibung, Kontrollstrecke, Namensnennung. | `SheetElement` |
 | gemeinsames Element | shared element | Blattelement, das einmal gepflegt wird und in allen Layouts erscheint. Ein Layout darf es verschieben oder ausblenden. | `SharedElement` |
-| Anker | anchor | Ecke oder Kante des Blatts oder des Kartenausschnitts, an der ein Blattelement mit Abstand in mm hängt. | `Anchor` |
+| Anker | anchor | Ecke oder Kante des Blatts (`page`) oder des Kartenausschnitts (`map_frame`), an der ein Blattelement hängt: eine von neun Positionen (`top_left`, `top`, `top_right`, `left`, `centre`, `right`, `bottom_left`, `bottom`, `bottom_right`) mit Abstand `offset_mm = [x, y]` in mm, von der Position nach innen gemessen (x nach rechts, y nach unten). | `Anchor` |
 | Titelblock | title block | Blattelement mit Veranstaltung, Bahn, Maßstab und Äquidistanz. | `TitleBlock` |
 | Platzhalter | placeholder | Text in geschweiften Klammern, z. B. `{course}`, der je Bahn ausgefüllt wird. | `Placeholder` |
 | Logo | logo | Vereins- oder Sponsorenlogo als Bild (SVG, PDF, PNG). | `Logo` |

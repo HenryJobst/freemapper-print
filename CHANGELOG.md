@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Die Projektdatei `freemapper-print.toml` einer Veranstaltung wird gelesen und geprüft: Veranstaltung, Kartenquelle, gemeinsame Blattelemente und beliebig viele Layouts. Unbekannte Schlüssel melden Datei, Zeile und Namen.
 - Die Programmtexte gibt es auf Deutsch und Englisch: Hilfe, Zusammenfassung, Hinweise, Warnungen und Fehler.
   Die Sprache kommt aus `--lang de|en` (vor oder nach dem Befehl), dann aus `FREEMAPPER_LANG`, `LC_ALL`,
   `LC_MESSAGES` und `LANG`. Die Texte stehen in Fluent-Dateien unter `crates/freemapper-print-cli/i18n/`.
