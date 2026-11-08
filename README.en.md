@@ -59,7 +59,8 @@ If the map does not fit on the page, the program writes the PDF anyway and says 
 missing. It also lists objects it did not draw, or drew in simplified form.
 
 Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. A finished
-example with the same pages at 1:4000 and 1:5000 is in [examples/luebeck-scales](examples/luebeck-scales/README.en.md).
+example with the same pages at 1:4000 and 1:5000 is in
+[examples/luebeck-scales](examples/luebeck-scales/README.en.md).
 The manual explains printing in the chapter
 [Printing](docs/manual/en.md#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop).
 

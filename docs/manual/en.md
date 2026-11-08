@@ -2,8 +2,9 @@
 
 [Deutsch](de.md) · [README](../../README.en.md)
 
-This manual will be written with the first usable version. So far chapter 9 is written. It will lead step by step from the finished OOM map
-and the Purple Pen file to the printed sheets, without needing the command line.
+This manual is being written with the first usable version; so far only chapter 9 is done. In the end it should
+lead step by step from the finished OOM map and the Purple Pen file to the printed sheets, without needing the
+command line.
 
 Planned chapters:
 
@@ -32,8 +33,8 @@ freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 
 Without `--scale` the program prints at the scale of the map. `--scale 5000` prints at 1:5000. Choose A4 or A3
 (`--paper`) and, if needed, the orientation (`--orientation`). With `auto` the program takes the orientation
-that cuts off less of the map. At the end it writes a line with the paper, the print scale and the factors, plus
-a reminder to print at actual size.
+that cuts off less of the map. First the program writes a line with the paper, the print scale and the factors,
+then come notes and a reminder to print at actual size.
 
 ### Printing at actual size
 
@@ -67,17 +68,17 @@ For this the program needs the map kind (sprint, schoolyard, forest). If it can 
 
 ### Checking the scale with a ruler
 
-The example [examples/luebeck-scales](../../examples/luebeck-scales/README.en.md) holds the same map at 1:4000
-and 1:5000. Print both at actual size and measure a distance of 100 m on the map, for example with the scale bar
-or between two building corners whose distance you know. Your ruler should show:
+The example [examples/luebeck-scales](../../examples/luebeck-scales/README.en.md) holds the same map at
+1:4000 and 1:5000. Print both at actual size. Then measure between two points whose distance you know, such as
+two building corners or the ends of a straight stretch of street. For 100 m your ruler should show:
 
 | Print scale | 100 m on the map |
 |---|---|
 | 1:4000 | 25 mm |
 | 1:5000 | 20 mm |
 
-If the value is off, the printer has scaled. Check the print dialog. A scale check bar on the sheet itself
-follows with the layouts.
+If the value is off, the printer has scaled. Check the print dialog. The program draws no scale check bar of its
+own yet; it follows with M2 and the layouts.
 
 ### Messages from the program
 

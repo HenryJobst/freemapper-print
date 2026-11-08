@@ -2,8 +2,9 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch entsteht mit der ersten nutzbaren Version. Bisher ist Kapitel 9 geschrieben. Es wird Schritt für Schritt von der fertigen OOM-Karte und
-der Purple-Pen-Datei zu den gedruckten Kartenblättern führen, auch ohne Erfahrung mit der Kommandozeile.
+Dieses Handbuch entsteht mit der ersten nutzbaren Version; bisher ist nur Kapitel 9 geschrieben. Am Ende soll
+es Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern
+führen, auch ohne Erfahrung mit der Kommandozeile.
 
 Geplante Kapitel:
 
@@ -32,8 +33,9 @@ freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 
 Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 5000` druckt in 1:5000. Zum Drucken wählen
 Sie A4 oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm
-die Ausrichtung, die weniger von der Karte abschneidet. Am Ende schreibt es eine Zeile mit Papier,
-Druckmaßstab und Faktoren sowie eine Erinnerung ans Drucken in Originalgröße.
+die Ausrichtung, die weniger von der Karte abschneidet. Zuerst schreibt das Programm eine Zeile mit Papier,
+Druckmaßstab und Faktoren, danach folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße. Das
+Programm gibt seine Meldungen auf Englisch aus; die Zitate in diesem Kapitel bleiben deshalb Englisch.
 
 ### In Originalgröße drucken
 
@@ -51,8 +53,8 @@ Warning: the map does not fit on the page. It is 3.9 mm too tall for the printab
 ```
 
 Die Zahl sagt, um wie viele Millimeter die Karte über den bedruckbaren Bereich hinausragt. Die Karte wird nicht
-verkleinert, denn das würde den Maßstab verfälschen. Sie haben drei Möglichkeiten: ein größeres Papier (A3), die
-andere Ausrichtung oder ein Druckmaßstab mit größerer Zahl, etwa 1:5000 statt 1:4000. Die Meldung nennt
+verkleinert, denn das würde den Maßstab verfälschen. Sie haben drei Möglichkeiten: ein größeres Papier (A3),
+die andere Ausrichtung oder ein Druckmaßstab mit größerer Zahl, etwa 1:5000 statt 1:4000. Die Meldung nennt
 passende Vorschläge. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen können, was fehlt.
 
 ### Warum die Symbole ihre Größe behalten
@@ -68,16 +70,17 @@ Das Programm kennt dafür die Kartenart (Sprintkarte, Schulhofkarte, Waldkarte).
 ### Den Maßstab mit dem Lineal prüfen
 
 Das Beispiel [examples/luebeck-scales](../../examples/luebeck-scales/README.md) enthält dieselbe Karte in
-1:4000 und 1:5000. Drucken Sie beide in Originalgröße und messen Sie auf der Karte eine Strecke von 100 m, zum
-Beispiel mit dem Maßstabsbalken oder zwischen zwei Gebäudeecken, deren Abstand Sie kennen. Das Lineal muss zeigen:
+1:4000 und 1:5000. Drucken Sie beide in Originalgröße. Messen Sie dann zwischen zwei Punkten, deren Abstand Sie
+kennen, etwa zwei Gebäudeecken oder die Enden eines geraden Straßenstücks. Für 100 m muss das Lineal
+zeigen:
 
 | Druckmaßstab | 100 m auf der Karte |
 |---|---|
 | 1:4000 | 25 mm |
 | 1:5000 | 20 mm |
 
-Weicht das Maß ab, hat der Drucker skaliert. Prüfen Sie dann den Druckdialog. Eine eigene Kontrollstrecke auf
-dem Blatt folgt mit den Layouts.
+Weicht das Maß ab, hat der Drucker skaliert. Prüfen Sie dann den Druckdialog. Die Karte zeichnet keine eigene
+Kontrollstrecke; sie folgt mit M2 und den Layouts.
 
 ### Hinweise des Programms
 

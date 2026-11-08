@@ -59,8 +59,8 @@ Das schreibt die Karte als PDF auf eine A4-Seite im Maßstab 1:5000. Die wichtig
 Passt die Karte nicht auf die Seite, schreibt das Programm das PDF trotzdem und meldet, wie viele Millimeter
 fehlen. Es nennt auch Objekte, die es nicht oder nur vereinfacht gezeichnet hat.
 
-Drucken Sie das PDF in Originalgröße (100 %, "Tatsächliche Größe") und schalten Sie "An Seite anpassen" aus.
-Sonst stimmt der Maßstab nicht. Ein fertiges Beispiel mit denselben Seiten in 1:4000 und 1:5000 liegt in
+Drucken Sie das PDF in Originalgröße (100 %, "Tatsächliche Größe") und schalten Sie "An Seite anpassen"
+aus. Sonst stimmt der Maßstab nicht. Ein fertiges Beispiel mit denselben Seiten in 1:4000 und 1:5000 liegt in
 [examples/luebeck-scales](examples/luebeck-scales/README.md). Das Handbuch erklärt das Drucken im Kapitel
 [Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
 

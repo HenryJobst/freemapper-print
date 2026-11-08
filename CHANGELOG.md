@@ -11,13 +11,14 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Projektgerüst nach dem Vorbild von freemapper: Rust-Workspace mit Bibliothek und Programm `freemapper-print`
   (bisher nur `--version` und `--help`), CI für Linux, macOS und Windows, Release-Workflow.
 - Design, Glossar und die ersten 15 Architekturentscheidungen.
-- `freemapper-print render <Karte> --out <PDF>` druckt eine OOM-Karte als PDF im exakten Maßstab. Papier (A4, A3),
-  Ausrichtung und Druckmaßstab sind wählbar, `--kind` gibt die Kartenart vor, `--show-sheet-objects` zeichnet
-  Nordlinien und Informationsblock mit. Das Programm meldet, wie viele Millimeter der Karte nicht auf die Seite
+- `freemapper-print render <Karte> --out <PDF>` druckt eine OOM-Karte als PDF im exakten
+  Maßstab. Papier (A4, A3), Ausrichtung und Druckmaßstab sind wählbar, `--kind` gibt die Kartenart vor,
+  `--show-sheet-objects` zeichnet Nordlinien und Informationsblock mit. Das Programm meldet, wie viele Millimeter der Karte nicht auf die Seite
   passen, außerdem nicht gezeichnete, vereinfachte oder abgeschnittene Objekte, ersetzte Schriften und fehlende
   Zeichen. Zum Schluss erinnert es ans Drucken in Originalgröße. Steuerzeichen aus der Kartendatei gibt das
   Programm nur maskiert aus, Fehlermeldungen eingeschlossen.
-- Die Karte aus OOM (`.omap`) wird gelesen, mit allen Kartenteilen. Hintergrundbilder (Vorlagen) bleiben unberücksichtigt.
+- Die Karte aus OOM (`.omap`) wird gelesen, mit allen Kartenteilen.
+  Hintergrundbilder (Vorlagen) bleiben unberücksichtigt.
 - Flächenmuster, spitze Linienenden, Strichpunktsymbole, Textrahmen und gedrehter Text werden wie in OOM
   gezeichnet. Kartentexte stehen in der eingebetteten Schrift Arimo, auch mit Umlauten und anderen
   Unicode-Zeichen.
