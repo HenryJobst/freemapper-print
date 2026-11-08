@@ -88,11 +88,12 @@ pub fn face(bold: bool, italic: bool) -> FontFace {
 
 /// Advance width of `text` in em. A character without a glyph counts with the width of `.notdef`.
 pub fn text_width(text: &str, face: FontFace) -> f64 {
-    let units: f64 = text
-        .chars()
-        .map(|c| f64::from(face.advance(face.glyph(c).unwrap_or(GlyphId(0)))))
-        .sum();
-    units / face.units_per_em()
+    text.chars().map(|c| char_width(c, face)).sum()
+}
+
+/// Advance width of one character in em ([`text_width`]).
+pub fn char_width(c: char, face: FontFace) -> f64 {
+    f64::from(face.advance(face.glyph(c).unwrap_or(GlyphId(0)))) / face.units_per_em()
 }
 
 /// Arimo's ascent and line spacing in em, from its hhea table: ascender 1854, descender −434,

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use super::fonts::{ASCENT, LINE_SPACING, face, text_width};
+use super::fonts::{ASCENT, FontFace, LINE_SPACING, char_width, face, text_width};
 use super::geometry::{self, Pt};
 use super::line::line;
 use super::pattern::area_pattern;
@@ -237,16 +237,16 @@ pub(super) fn draw_object(object: &MapObject, symbols: &RenderSymbols, sink: &mu
             h_align,
             v_align,
             rotation_rad,
+            box_size,
         } => {
             if let (Symbol::Text(def), Some(c)) = (symbol, object.coords.first()) {
-                text_primitives(
-                    def,
-                    text,
-                    (*h_align, *v_align),
-                    (mm(f64::from(c.x)), mm(f64::from(c.y))),
-                    *rotation_rad,
-                    sink,
-                );
+                let placement = Placement {
+                    align: (*h_align, *v_align),
+                    anchor: (mm(f64::from(c.x)), mm(f64::from(c.y))),
+                    box_mm: box_size.map(|(w, h)| (mm(w), mm(h))),
+                    rotation: *rotation_rad,
+                };
+                text_primitives(def, text, &placement, sink);
             }
         }
     }
@@ -452,19 +452,27 @@ pub(super) fn point_symbol_scaled(
     sink.settle(len);
 }
 
+/// Where a text object goes: its alignment (OOM `h_align`, `v_align`), anchor (mm), box (mm, a
+/// box text's anchor is the middle of the box) and rotation (radians).
+struct Placement {
+    align: (u8, u8),
+    anchor: Pt,
+    box_mm: Option<(f64, f64)>,
+    rotation: f64,
+}
+
 /// The text primitives of a text object, laid out per reference §6: the framing first (a stroke
 /// of the glyph outlines or the shadow copy, in the framing colour), then the text, one primitive
 /// per line [TS `createRenderables`]. A rotatable text symbol turns the lines about the anchor by
 /// the object's rotation, counter-clockwise on paper [RI `TextRenderable`].
-fn text_primitives(
-    def: &TextDef,
-    text: &str,
-    align: (u8, u8),
-    anchor: Pt,
-    rotation: f64,
-    sink: &mut Sink,
-) {
-    let rotation = if def.rotatable { rotation } else { 0.0 };
+fn text_primitives(def: &TextDef, text: &str, placement: &Placement, sink: &mut Sink) {
+    let rotation = if def.rotatable {
+        placement.rotation
+    } else {
+        0.0
+    };
+    let lines = text_layout(def, text, placement, sink);
+    let anchor = placement.anchor;
     match def.framing {
         Some(Framing::Line { color, half_width }) => {
             let layer = Layer {
@@ -472,7 +480,7 @@ fn text_primitives(
                 anchor,
                 stroke: Some(2.0 * mm(half_width)),
             };
-            text_lines(def, text, align, layer, rotation, sink);
+            text_lines(def, &lines, layer, rotation, sink);
         }
         // The shadow offset is not turned with the text [TS `createRenderables`].
         Some(Framing::Shadow { color, dx, dy }) => {
@@ -481,7 +489,7 @@ fn text_primitives(
                 anchor: (anchor.0 + mm(dx), anchor.1 + mm(dy)),
                 stroke: None,
             };
-            text_lines(def, text, align, layer, rotation, sink);
+            text_lines(def, &lines, layer, rotation, sink);
         }
         None => {}
     }
@@ -490,7 +498,7 @@ fn text_primitives(
         anchor,
         stroke: None,
     };
-    text_lines(def, text, align, layer, rotation, sink);
+    text_lines(def, &lines, layer, rotation, sink);
 }
 
 /// One painting of a text: its colour, anchor and stroke width (line framing, mm).
@@ -500,11 +508,127 @@ struct Layer {
     stroke: Option<f64>,
 }
 
-/// One text primitive per line of `layer` [TO `prepareLineInfos`].
+/// One line of a laid-out text: the start of its baseline in text coordinates (mm, y down,
+/// relative to the anchor, before rotation) and its characters.
+#[derive(Debug)]
+struct TextLine<'a> {
+    at: Pt,
+    text: &'a str,
+}
+
+/// The lines of `text` and where they start [TO `prepareLineInfos`]. Each `\n` ends a paragraph.
+/// A box text wraps a paragraph at the last space where the line still fits the box width (a
+/// word wider than the box stays whole) and aligns the lines to the box edges; a single-anchor
+/// text aligns them to the anchor. Each line costs one unit of `sink`, plus the characters
+/// measured ([`POINTS_PER_UNIT`]), and layout stops when the budget is spent.
+fn text_layout<'a>(
+    def: &TextDef,
+    text: &'a str,
+    placement: &Placement,
+    sink: &mut Sink,
+) -> Vec<TextLine<'a>> {
+    let (h_align, v_align) = placement.align;
+    let em = mm(def.size);
+    let face = face(def.bold, def.italic);
+    let ascent = ASCENT * em;
+    let line_step = def.line_spacing * LINE_SPACING * em;
+    let paragraph_step = mm(def.paragraph_spacing);
+    let (box_w, box_h) = placement.box_mm.unwrap_or((0.0, 0.0));
+    let line_x = match h_align {
+        0 => -box_w / 2.0,
+        2 => box_w / 2.0,
+        _ => 0.0,
+    };
+    let mut y = 0.0;
+    if v_align == 0 || v_align == 1 {
+        y -= box_h / 2.0;
+    }
+    if v_align != 0 {
+        y += ascent;
+    }
+    let mut lines = Vec::new();
+    let mut widths = Vec::new();
+    let mut paragraphs = 0;
+    'paragraphs: for paragraph in text.split('\n') {
+        let mut rest = paragraph;
+        loop {
+            sink.charge(1);
+            let end = match placement.box_mm {
+                Some(_) => wrap_end(rest, face, em, box_w),
+                None => rest.len(),
+            };
+            let line = &rest[..end];
+            sink.charge_points(end);
+            if sink.stop() {
+                break 'paragraphs;
+            }
+            widths.push(text_width(line, face) * em);
+            lines.push(TextLine {
+                at: (line_x, y),
+                text: line,
+            });
+            y += line_step;
+            if end == rest.len() {
+                y += paragraph_step;
+                paragraphs += 1;
+                break;
+            }
+            // The space the line broke at belongs to neither line.
+            rest = &rest[end + 1..];
+        }
+    }
+    let delta_y = match v_align {
+        2 | 3 => {
+            let height = ascent
+                + lines.len().saturating_sub(1) as f64 * line_step
+                + (paragraphs as f64 - 1.0).max(0.0) * paragraph_step;
+            if v_align == 2 {
+                -height / 2.0
+            } else {
+                -height + box_h / 2.0
+            }
+        }
+        _ => 0.0,
+    };
+    for (line, width) in lines.iter_mut().zip(widths) {
+        line.at.0 -= match h_align {
+            1 => width / 2.0,
+            2 => width,
+            _ => 0.0,
+        };
+        line.at.1 += delta_y;
+    }
+    lines
+}
+
+/// Where the first line of `paragraph` ends in a box `box_w` mm wide (byte index): at the last
+/// space before which the text still fits; at the first space when not even the first word fits;
+/// at the end when the whole paragraph fits or has no space [TO `prepareLineInfos`]. A space at
+/// the start is no break. Linear in the length of the line it returns.
+fn wrap_end(paragraph: &str, face: FontFace, em: f64, box_w: f64) -> usize {
+    let mut width = 0.0;
+    let mut fits = None;
+    for (i, c) in paragraph.char_indices() {
+        if c == ' ' && i > 0 {
+            if width <= box_w {
+                fits = Some(i);
+            } else {
+                return fits.unwrap_or(i);
+            }
+        }
+        width += char_width(c, face) * em;
+    }
+    if width <= box_w {
+        paragraph.len()
+    } else {
+        fits.unwrap_or(paragraph.len())
+    }
+}
+
+/// One text primitive per non-empty line of `lines`, painted as `layer`.
 fn text_lines(
     def: &TextDef,
-    text: &str,
-    (h_align, v_align): (u8, u8),
+    lines: &[TextLine<'_>],
     Layer {
         color,
         anchor,
@@ -516,45 +640,28 @@ fn text_lines(
     if color < 0 {
         return;
     }
-    let em = mm(def.size);
-    let ascent = ASCENT * em;
-    let line_step = def.line_spacing * LINE_SPACING * em;
-    let lines: Vec<&str> = text.split('\n').collect();
-    let mut y = if v_align == 0 { 0.0 } else { ascent };
-    if v_align == 2 || v_align == 3 {
-        let height = ascent + (lines.len().saturating_sub(1)) as f64 * line_step;
-        y -= if v_align == 2 { height / 2.0 } else { height };
-    }
     // Text coordinates (x, y) → paper: turned by −rotation (y down) about the anchor.
     let (sin, cos) = rotation.sin_cos();
-    for line in lines {
-        let width = text_width(line, face(def.bold, def.italic)) * em;
-        let x = match h_align {
-            1 => -width / 2.0,
-            2 => -width,
-            _ => 0.0,
-        };
-        if !line.is_empty() {
+    for TextLine { at: (x, y), text } in lines {
+        if !text.is_empty() {
             sink.push(Primitive {
                 priority: color,
                 shape: Shape::Text {
                     origin: (anchor.0 + x * cos + y * sin, anchor.1 - x * sin + y * cos),
-                    size: em,
+                    size: mm(def.size),
                     bold: def.bold,
                     italic: def.italic,
-                    text: line.to_string(),
+                    text: (*text).to_string(),
                     rotation,
                     stroke,
                 },
             });
         }
-        y += line_step;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::fonts::FontFace;
     use super::super::symbols::{Clipping, Dash, LineDef, Pattern};
     use super::*;
     use crate::omap::coord::{FLAG_CLOSE, FLAG_HOLE};
@@ -729,6 +836,7 @@ mod tests {
                     h_align,
                     v_align: 0,
                     rotation_rad: 0.0,
+                    box_size: None,
                 },
                 vec![MapCoord::new(50_000, 20_000)],
             )
@@ -762,6 +870,7 @@ mod tests {
                 h_align,
                 v_align: 0,
                 rotation_rad,
+                box_size: None,
             },
             coords: vec![MapCoord::new(50_000, 20_000)],
             tags: Vec::new(),
@@ -778,9 +887,131 @@ mod tests {
             bold: false,
             italic: false,
             line_spacing: 1.0,
+            paragraph_spacing: 0.0,
             rotatable: true,
             framing,
         }
+    }
+
+    /// The (origin, text) of each line of `text` in `def`, anchored at (50, 20) mm, in a box of
+    /// `box_mm` when given.
+    fn laid_out(
+        def: TextDef,
+        text: &str,
+        (h_align, v_align): (u8, u8),
+        box_mm: Option<(f64, f64)>,
+    ) -> Vec<(Pt, String)> {
+        let (mut r, _) = set();
+        r.symbols.insert(TEXT, Symbol::Text(def));
+        let object = MapObject {
+            symbol_id: TEXT,
+            kind: MapObjectKind::Text {
+                text: text.into(),
+                h_align,
+                v_align,
+                rotation_rad: 0.0,
+                box_size: box_mm.map(|(w, h)| (w * 1000.0, h * 1000.0)),
+            },
+            coords: vec![MapCoord::new(50_000, 20_000)],
+            tags: Vec::new(),
+            pattern: None,
+        };
+        primitives(&object, &r)
+            .into_iter()
+            .map(|p| match p.shape {
+                Shape::Text { origin, text, .. } => (origin, text),
+                other => panic!("{other:?}"),
+            })
+            .collect()
+    }
+
+    fn near(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn box_text_starts_at_the_left_and_top_edge() {
+        // A 40 × 20 mm box around (50, 20): left edge x = 30, top edge y = 10 [TO
+        // `prepareLineInfos`].
+        let lines = laid_out(text_def(None), "Wald", (0, 1), Some((40.0, 20.0)));
+        let [(origin, _)] = &lines[..] else {
+            panic!("{lines:?}")
+        };
+        assert!(near(origin.0, 30.0), "{origin:?}");
+        assert!(near(origin.1, 10.0 + ASCENT * 4.0), "{origin:?}");
+        // Right and bottom: the line ends at the right edge, the baseline sits half the box below
+        // the anchor less the ascent's share of the height (one line: height = ascent).
+        let width = text_width("Wald", FontFace::Regular) * 4.0;
+        let lines = laid_out(text_def(None), "Wald", (2, 3), Some((40.0, 20.0)));
+        assert!(near(lines[0].0.0, 70.0 - width), "{lines:?}");
+        assert!(near(lines[0].0.1, 30.0), "{lines:?}");
+        // Baseline alignment in a box: the first baseline on the top edge.
+        let lines = laid_out(text_def(None), "Wald", (1, 0), Some((40.0, 20.0)));
+        assert!(near(lines[0].0.0, 50.0 - width / 2.0) && near(lines[0].0.1, 10.0));
+    }
+
+    #[test]
+    fn long_box_text_wraps_inside_the_box() {
+        let text = "Der Weg führt am Wasser entlang bis zur alten Brücke am Markt";
+        let lines = laid_out(text_def(None), text, (0, 1), Some((40.0, 60.0)));
+        assert!(lines.len() > 2, "{lines:?}");
+        let step = LINE_SPACING * 4.0;
+        for (k, (origin, line)) in lines.iter().enumerate() {
+            assert!(near(origin.0, 30.0), "{lines:?}");
+            assert!(near(origin.1, 20.0 - 30.0 + ASCENT * 4.0 + k as f64 * step));
+            let width = text_width(line, FontFace::Regular) * 4.0;
+            assert!(width <= 40.0, "{line}: {width}");
+        }
+        // Each line takes as many words as fit: the next word would not.
+        for pair in lines.windows(2) {
+            let first_word = pair[1].1.split(' ').next().unwrap();
+            let longer = format!("{} {first_word}", pair[0].1);
+            assert!(
+                text_width(&longer, FontFace::Regular) * 4.0 > 40.0,
+                "{longer}"
+            );
+        }
+        let joined: Vec<&str> = lines.iter().map(|(_, l)| l.as_str()).collect();
+        assert_eq!(joined.join(" "), text);
+        // Without a box, nothing wraps.
+        assert_eq!(laid_out(text_def(None), text, (0, 1), None).len(), 1);
+    }
+
+    #[test]
+    fn a_word_longer_than_the_box_stays_whole() {
+        let lines = laid_out(
+            text_def(None),
+            "Donaudampfschifffahrt ab",
+            (0, 1),
+            Some((10.0, 20.0)),
+        );
+        let texts: Vec<&str> = lines.iter().map(|(_, l)| l.as_str()).collect();
+        assert_eq!(texts, ["Donaudampfschifffahrt", "ab"]);
+    }
+
+    #[test]
+    fn paragraph_spacing_adds_after_each_paragraph() {
+        let def = TextDef {
+            paragraph_spacing: 1_500.0,
+            ..text_def(None)
+        };
+        let lines = laid_out(def.clone(), "Alte\nMühle", (0, 0), None);
+        let step = LINE_SPACING * 4.0;
+        assert!(
+            near(lines[0].0.1, 20.0) && near(lines[1].0.1, 20.0 + step + 1.5),
+            "{lines:?}"
+        );
+        // A wrapped line is no paragraph end: no extra space inside the paragraph.
+        let lines = laid_out(def.clone(), "aaaa bbbb\ncccc", (0, 0), Some((10.0, 40.0)));
+        let ys: Vec<f64> = lines.iter().map(|(o, _)| o.1 - lines[0].0.1).collect();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(near(ys[1], step) && near(ys[2], 2.0 * step + 1.5), "{ys:?}");
+        // Bottom alignment counts the spacing between paragraphs into the height.
+        let lines = laid_out(def, "Alte\nMühle", (0, 3), None);
+        assert!(
+            near(lines[1].0.1, 20.0),
+            "last baseline on the anchor: {lines:?}"
+        );
     }
 
     #[test]

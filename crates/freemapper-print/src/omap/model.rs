@@ -10,14 +10,17 @@ pub enum MapObjectKind {
         rotation_rad: f64,
     },
     Path,
-    /// Text at a single anchor; alignments as in OOM (`h_align` 0 left, 1 centre, 2 right;
-    /// `v_align` 0 baseline, 1 top, 2 centre, 3 bottom).
+    /// Text at a single anchor or in a box; alignments as in OOM (`h_align` 0 left, 1 centre,
+    /// 2 right; `v_align` 0 baseline, 1 top, 2 centre, 3 bottom).
     Text {
         text: String,
         h_align: u8,
         v_align: u8,
         /// Rotation in radians as stored by OOM (counter-clockwise on the map).
         rotation_rad: f64,
+        /// Width and height (0.001 mm) of a box text: the anchor is the middle of the box, the
+        /// lines wrap at its width and align to its edges. `None` for a single-anchor text.
+        box_size: Option<(f64, f64)>,
     },
 }
 

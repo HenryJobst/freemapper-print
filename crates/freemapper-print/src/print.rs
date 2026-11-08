@@ -258,8 +258,8 @@ fn placed_coords(object: &MapObject) -> &[MapCoord] {
     }
 }
 
-/// `object` with its geometry multiplied by `factor` (Bézier control points and pattern origin
-/// included).
+/// `object` with its geometry multiplied by `factor` (Bézier control points, pattern origin and
+/// the box of a box text included).
 fn scaled(object: &MapObject, factor: f64) -> MapObject {
     let mut object = object.clone();
     if factor == 1.0 {
@@ -271,6 +271,14 @@ fn scaled(object: &MapObject, factor: f64) -> MapObject {
     }
     if let Some(p) = &mut object.pattern {
         p.origin = scale_coord(p.origin, factor);
+    }
+    if let MapObjectKind::Text {
+        box_size: Some((w, h)),
+        ..
+    } = &mut object.kind
+    {
+        *w *= factor;
+        *h *= factor;
     }
     object
 }
@@ -529,6 +537,7 @@ mod tests {
                 h_align: 0,
                 v_align: 0,
                 rotation_rad: 0.0,
+                box_size: None,
             },
             coords: vec![MapCoord::new(10_000, 0)],
             tags: Vec::new(),
@@ -561,6 +570,28 @@ mod tests {
     }
 
     #[test]
+    fn box_scales_with_the_geometry() {
+        let set = SymbolSet::issprom_2019();
+        let text = MapObject {
+            symbol_id: set.id_for_code("704").unwrap(),
+            kind: MapObjectKind::Text {
+                text: "Wald".into(),
+                h_align: 0,
+                v_align: 1,
+                rotation_rad: 0.0,
+                box_size: Some((40_000.0, 20_000.0)),
+            },
+            coords: vec![MapCoord::new(10_000, 0)],
+            tags: Vec::new(),
+            pattern: None,
+        };
+        let MapObjectKind::Text { box_size, .. } = scaled(&text, 0.8).kind else {
+            panic!()
+        };
+        assert_eq!(box_size, Some((32_000.0, 16_000.0)));
+    }
+
+    #[test]
     fn substituted_fonts_are_reported() {
         let mut set = SymbolSet::issprom_2019();
         set.symbols_xml = set
@@ -574,6 +605,7 @@ mod tests {
                 h_align: 0,
                 v_align: 0,
                 rotation_rad: 0.0,
+                box_size: None,
             },
             coords: vec![MapCoord::new(0, 0)],
             tags: Vec::new(),
@@ -607,6 +639,7 @@ mod tests {
                 h_align: 0,
                 v_align: 0,
                 rotation_rad: 0.0,
+                box_size: None,
             },
             coords: vec![MapCoord::new(0, 0)],
             tags: Vec::new(),

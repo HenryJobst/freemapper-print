@@ -688,26 +688,47 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   the text matrix is `[cos r, sin r, -sin r, cos r, x, y]`. freemapper-print takes the version from
   `<map version="…">` (9 if absent): without the attribute a text symbol is rotatable in files
   before version 9 and not rotatable from version 9 on.
-- Object: `<object type="4" h_align v_align>` (missing -> 0), anchor = first coordinate; a second
-  coordinate or `<size>` makes it a box text (word wrap) [OBJ `Object::load`].
+- Object: `<object type="4" h_align v_align>` (missing -> 0), anchor = first coordinate. A `<size
+  width height>` child (µm) makes it a box text; before `<size>` existed, OOM stored the box size
+  as a **second coordinate** (`setBoxSize(coords[1])`, not a corner) [OBJ `Object::load`]. The
+  anchor of a box text is the **middle of the box**. freemapper-print reads both forms into
+  `MapObjectKind::Text::box_size` and keeps only the anchor as a coordinate; the box scales with
+  the geometry factor like the anchor (OOM `TextObject::scale` scales the size too).
   `h_align`: 0 Left, 1 HCenter, 2 Right; `v_align`: 0 Baseline, 1 Top, 2 VCenter, 3 Bottom [TOH].
 
-Layout of a single-anchor text (`box_width = box_height = 0`), in text units (em = font size)
-[TO `prepareLineInfos`]. A = font ascent, LS = `line_spacing * QFontMetricsF::lineSpacing()`
-(= line_spacing x (ascent + descent + leading)), PS = paragraph_spacing (mm) converted to text
-units. Each `\n` ends a line and (without wrapping) a paragraph; `\t` starts a tab part.
+Layout, in text units (em = font size) [TO `prepareLineInfos`]. A = font ascent, LS =
+`line_spacing * QFontMetricsF::lineSpacing()` (= line_spacing x (ascent + descent + leading)),
+PS = `paragraph_spacing` (µm -> mm, `getParagraphSpacing`) plus, when the symbol has a
+`<line_below>`, its `distance + width`. (W, H) = box size, (0, 0) for a single-anchor text.
+Each `\n` ends a line and a paragraph; `\t` starts a tab part (not supported by freemapper-print).
 ```
-y0 = (v_align == Baseline) ? 0 : A           // first baseline, y down
-line k baseline: y_k = y0 + k*(LS + PS)
+x0 = -W/2 (Left) | 0 (HCenter) | +W/2 (Right)
+y0 = (v_align in {Top, Baseline}) ? -H/2 : 0
+if v_align != Baseline: y0 += A
+for each paragraph (text between \n):
+   box text: wrap — the line ends at the LAST space before which the text still fits W
+             (advance widths, starting from the line start); if not even the first word fits,
+             at the FIRST space; a space at the line start is no break; no space -> whole rest.
+             The space at the break belongs to neither line. A wrapped line is no paragraph end.
+   line k baseline y_k; after each line y += LS, after a paragraph end also y += PS
 w_k = advance width of line k (horizontalAdvance incl. kerning and letter spacing)
-x_k = 0 (Left) | -w_k/2 (HCenter) | -w_k (Right)
+x_k = x0 (Left) | x0 - w_k/2 (HCenter) | x0 - w_k (Right)
 if v_align in {VCenter, Bottom}:
-   height = A + (n-1)*LS + (P-1)*PS          // n lines, P paragraphs (P = n here)
-   delta  = (VCenter) ? -height/2 : -height
+   height = A + (n-1)*LS + (P-1)*PS          // n lines, P paragraph ends
+   delta  = (VCenter) ? -height/2 : -height + H/2
    y_k += delta
 map position of glyph origin = anchor + R(-rotation) * (x_k, y_k)   [mm, y down]
 ```
-- So: Top -> first baseline A below the anchor; VCenter (single line) -> baseline A/2 below the
+- OOM measures the first width of a part with `boundingRect`, later ones with `width`;
+  freemapper-print uses advance widths throughout. OOM has no limit on text length; freemapper-print
+  charges one unit per line plus one per 64 measured bytes to the object budget (§4.6).
+- In a box: Left -> lines start at the left edge, Right -> end at the right edge; Top -> first
+  baseline A below the top edge; Baseline -> first baseline on the top edge; Bottom -> last
+  baseline on the bottom edge (one line: `H/2` below the anchor); VCenter as without a box.
+- OOM's `TextSymbol::scale` does not scale `paragraph_spacing` or the line below.
+  freemapper-print's enlargement scales both, so an enlarged print keeps the text's proportions
+  (ADR 0018).
+- Single anchor: Top -> first baseline A below the anchor; VCenter (single line) -> baseline A/2 below the
   anchor (descent ignored); **Bottom (single line) -> baseline on the anchor** (last baseline on
   the anchor for several lines); Baseline -> first baseline on the anchor.
 - Metrics come from Qt's font engine (hhea ascender/descender/lineGap on macOS/FreeType). Arial and

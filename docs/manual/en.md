@@ -31,7 +31,7 @@ dialog.
 freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 ```
 
-Without `--scale` the program prints at the scale of the map. `--scale 5000` prints at 1:5000. Choose A4 or A3
+Without `--scale` the program prints at the scale of the map. `--scale 3000` prints at 1:3000. Choose A4 or A3
 (`--paper`) and, if needed, the orientation (`--orientation`). With `auto` the program takes the orientation
 that cuts off less of the map. First the program writes a line with the paper, the print scale and the factors,
 then come notes and a reminder to print at actual size.
@@ -51,17 +51,27 @@ map is larger than the page, the program cuts it off and tells you, for example:
 Warning: the map does not fit on the page. It is 3.9 mm too tall for the printable area. Try A3 paper, or ...
 ```
 
-The number says by how many millimetres the map extends beyond the printable area. The map is not shrunk,
-because that would falsify the scale. You have three options: larger paper (A3), the other orientation, or a
-print scale with a larger number, such as 1:5000 instead of 1:4000. The message names suitable suggestions. The
-PDF is written even with an overflow, so you can see what is missing.
+The number says by how many millimetres the map extends beyond the printable area. It is measured on what
+would actually print, with line widths, point symbols and texts. The map is not shrunk, because that would
+falsify the scale. You can take larger paper (A3) or a print scale with a larger number. If you chose the
+orientation yourself, the message also names the other orientation. The PDF is written even with an overflow,
+so you can see what is missing.
 
-### Why symbols keep their size
+### How large the symbols are
 
-When you go from 1:4000 to 1:5000, the terrain shrinks to 80 %. The symbols do not shrink with it. The
-specification for the map kind sets how wide a path and how large a building symbol are on the paper, whatever
-the scale. The map stays readable, and more terrain fits on the page. In the example, a footpath is 0.27 mm wide
-in both PDFs.
+The specification for the map kind sets the symbol sizes for a base scale: 1:4000 for sprint maps (ISSprOM),
+1:15000 for forest maps (ISOM). A larger print enlarges everything by the same ratio, the terrain and every
+symbol. A sprint map at 1:3000, which the standard recommends for the youngest age groups, has its symbols at
+133 %: a small footpath is 0.36 mm wide instead of 0.27 mm. A forest map grows to 150 % at 1:10000, 200 % at
+1:7500 and 300 % at 1:5000. The map needs correspondingly more paper.
+
+The standards foresee no print smaller than the base scale. The program prints it anyway, for example a sprint
+map at 1:5000. The symbols then keep their 1:4000 size and only the terrain shrinks. The program warns:
+
+```
+Warning: 1:5000 is not a standard scale for sprint maps. The map is reduced and the symbols keep their 1:4000
+size. Use this print for training only.
+```
 
 For this the program needs the map kind (sprint, schoolyard, forest). If it can tell it neither from
 `freemapper.toml` nor from the map file, give it with `--kind`.
@@ -69,13 +79,14 @@ For this the program needs the map kind (sprint, schoolyard, forest). If it can 
 ### Checking the scale with a ruler
 
 The example [examples/luebeck-scales](../../examples/luebeck-scales/README.en.md) holds the same map at
-1:4000 and 1:5000. Print both at actual size. Then measure between two points whose distance you know, such as
-two building corners or the ends of a straight stretch of street. For 100 m your ruler should show:
+1:4000 on A4 and at 1:3000 on A3. Print both at actual size. Then measure between two points whose distance you
+know, such as two building corners or the ends of a straight stretch of street. For 100 m your ruler should
+show:
 
 | Print scale | 100 m on the map |
 |---|---|
 | 1:4000 | 25 mm |
-| 1:5000 | 20 mm |
+| 1:3000 | 33.3 mm |
 
 If the value is off, the printer has scaled. Check the print dialog. The program draws no scale check bar of its
 own yet; it follows with M2 and the layouts.
@@ -86,10 +97,14 @@ own yet; it follows with M2 and the layouts.
   know. They are missing in the PDF.
 - "simplified or cut short": an object needs more drawing commands than the program allows per object. It
   appears simplified or cut off.
+- "not drawn because the page reached its drawing limit": the whole page needs more drawing commands than the
+  program allows per page. Only broken or deliberately overloaded files get there.
 - "the font Arimo replaces ...": the PDF contains only the Arimo font. The program replaces the other fonts of
   the map with it.
-- "missing glyphs": a character of the map is not in Arimo and is not printed.
-- The north lines and the information block of the map are printed only with `--show-sheet-objects`. At another
-  print scale they scale with the map, so a scale printed in them can be wrong.
+- "the embedded font has no glyph for these characters, so they are missing in the PDF": a character of the map
+  is not in Arimo and is not printed.
+- freemapper's information block (title, scale, scale bar, credits) is printed only with
+  `--show-sheet-objects`. At another print scale it scales with the map, so a scale printed in it can be wrong.
+  North lines belong to the map and are always in the PDF.
 
 The other chapters follow with later versions.

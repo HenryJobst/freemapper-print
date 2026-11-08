@@ -142,6 +142,10 @@ pub struct TextDef {
     pub bold: bool,
     pub italic: bool,
     pub line_spacing: f64,
+    /// Extra space after each paragraph (0.001 mm): `paragraph_spacing`, plus the distance and
+    /// width of a `<line_below>` as OOM counts them, although the line itself is not drawn
+    /// (reference §6) [TO `prepareLineInfos`].
+    pub paragraph_spacing: f64,
     /// `rotatable="true"`: the object's rotation applies (reference §6; version 9 files only).
     pub rotatable: bool,
     pub framing: Option<Framing>,
@@ -561,6 +565,15 @@ fn framing(node: &Node) -> Option<Framing> {
     }
 }
 
+/// The space after a paragraph (0.001 mm) [TS `loadImpl`, TO `prepareLineInfos`]; a non-finite
+/// value counts as 0.
+fn paragraph_spacing(text: Option<&Node>, line_below: Option<&Node>) -> f64 {
+    let spacing = text.map_or(0.0, |t| t.num("paragraph_spacing"));
+    let below = line_below.map_or(0.0, |l| l.num("distance") + l.num("width"));
+    let total = spacing + below;
+    if total.is_finite() { total } else { 0.0 }
+}
+
 /// One `<symbol>`; `version` is the file format version (defaults that changed with it).
 fn symbol(node: &Node, version: u32) -> Option<Symbol> {
     match node.num("type") as u32 {
@@ -596,6 +609,7 @@ fn symbol(node: &Node, version: u32) -> Option<Symbol> {
                     .and_then(|t| t.attr("line_spacing"))
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(1.0),
+                paragraph_spacing: paragraph_spacing(text, t.child("line_below")),
                 // Without the attribute, rotatable before version 9 [TS `loadImpl`].
                 rotatable: match t.attr("rotatable") {
                     Some(v) => v == "true",
@@ -1000,6 +1014,27 @@ mod tests {
             Some(Symbol::Text(t)) => t,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn paragraph_spacing_includes_the_line_below() {
+        let xml = |children: &str| {
+            format!(
+                r#"<symbol type="8" id="1"><text_symbol><font family="Arial" size="3000"/><text color="2" line_spacing="1" paragraph_spacing="700"/>{children}</text_symbol></symbol>"#
+            )
+        };
+        let spacing = |xml: &str| match symbol(&parse(xml).children[0], 9) {
+            Some(Symbol::Text(t)) => t.paragraph_spacing,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(spacing(&xml("")), 700.0);
+        assert_eq!(
+            spacing(&xml(
+                r#"<line_below color="2" width="100" distance="200"/>"#
+            )),
+            1000.0
+        );
+        assert_eq!(text_of("", "").paragraph_spacing, 0.0);
     }
 
     #[test]

@@ -230,6 +230,7 @@ impl State {
                 h_align: u8::try_from(int_attr(e, "h_align")?).unwrap_or(0),
                 v_align: u8::try_from(int_attr(e, "v_align")?).unwrap_or(0),
                 rotation_rad: float_attr(e, "rotation")?,
+                box_size: None,
             },
             _ => {
                 self.skipping = true;
@@ -264,6 +265,12 @@ impl State {
                 self.current().coords.push(c);
             }
             ("text", Some("object")) => self.start_collect(Collect::Text),
+            ("size", Some("object")) => {
+                let size = (float_attr(e, "width")?, float_attr(e, "height")?);
+                if let MapObjectKind::Text { box_size, .. } = &mut self.current().kind {
+                    *box_size = Some(size);
+                }
+            }
             ("t", Some("tags")) => {
                 let key = attribute(e, "k")?.unwrap_or_default();
                 self.start_collect(Collect::Tag(key));
@@ -284,6 +291,18 @@ impl State {
             _ => {}
         }
         Ok(())
+    }
+
+    /// A text object with more than one coordinate is a box text from before `<size>`: the second
+    /// coordinate holds the box size [OBJ `Object::load`]. Only the anchor stays a coordinate.
+    fn legacy_box_size(&mut self) {
+        let object = self.current();
+        if let MapObjectKind::Text { box_size, .. } = &mut object.kind
+            && let Some(size) = object.coords.get(1)
+        {
+            *box_size = Some((f64::from(size.x), f64::from(size.y)));
+            object.coords.truncate(1);
+        }
     }
 
     /// The object being read; only called while `self.object` is set.
@@ -323,6 +342,7 @@ impl State {
                 Collect::Coords => {
                     let coords = parse_coords(&text)?;
                     self.current().coords.extend(coords);
+                    self.legacy_box_size();
                 }
                 Collect::Text => {
                     if let MapObjectKind::Text { text: t, .. } = &mut self.current().kind {
@@ -406,9 +426,32 @@ mod tests {
                 text: "Hütte & Co".into(),
                 h_align: 1,
                 v_align: 2,
-                rotation_rad: 0.25
+                rotation_rad: 0.25,
+                box_size: Some((1.0, 2.0)),
             }
         );
+    }
+
+    #[test]
+    fn reads_box_text_size() {
+        let text = |o: &crate::omap::MapObject| match &o.kind {
+            MapObjectKind::Text { box_size, .. } => *box_size,
+            other => panic!("{other:?}"),
+        };
+        let single = one(
+            r#"<object type="4" symbol="0"><coords count="1">5 6;</coords><text>a</text></object>"#,
+        );
+        assert_eq!(text(&single), None);
+        let sized = one(
+            r#"<object type="4" symbol="0"><coords count="1">5 6;</coords><size width="40000" height="20000"/><text>a</text></object>"#,
+        );
+        assert_eq!(text(&sized), Some((40_000.0, 20_000.0)));
+        // Before <size>, OOM kept the box size as a second coordinate [OBJ `Object::load`].
+        let legacy = one(
+            r#"<object type="4" symbol="0"><coords count="2">5 6;40000 20000;</coords><text>a</text></object>"#,
+        );
+        assert_eq!(text(&legacy), Some((40_000.0, 20_000.0)));
+        assert_eq!(legacy.coords, vec![c(5, 6, 0)], "only the anchor stays");
     }
 
     #[test]

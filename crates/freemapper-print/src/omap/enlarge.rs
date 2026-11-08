@@ -31,6 +31,10 @@ const PATTERN_ATTRS: &[&str] = &[
     "point_distance",
 ];
 const FRAMING_ATTRS: &[&str] = &["line_half_width", "shadow_x_offset", "shadow_y_offset"];
+// OOM's `TextSymbol::scale` leaves these two alone. freemapper-print scales them, so a print at
+// another scale keeps the proportions of a text (ADR 0018: everything grows by the same ratio).
+const TEXT_ATTRS: &[&str] = &["paragraph_spacing"];
+const LINE_BELOW_ATTRS: &[&str] = &["width", "distance"];
 
 /// How a numeric attribute value is scaled.
 #[derive(Clone, Copy)]
@@ -83,6 +87,10 @@ pub fn enlarge_symbols(symbols_xml: &str, factor: f64) -> Result<String, OmapErr
                     ("pattern", Some("area_symbol")) => &[(PATTERN_ATTRS, Scaling::Linear(factor))],
                     ("font", Some("text_symbol")) => &[(&["size"], Scaling::FontSize(factor))],
                     ("framing", Some("text_symbol")) => &[(FRAMING_ATTRS, Scaling::Linear(factor))],
+                    ("text", Some("text_symbol")) => &[(TEXT_ATTRS, Scaling::Linear(factor))],
+                    ("line_below", Some("text_symbol")) => {
+                        &[(LINE_BELOW_ATTRS, Scaling::Linear(factor))]
+                    }
                     ("coord", Some("coords")) if in_element_object(&stack) => {
                         &[(&["x", "y"], Scaling::Linear(factor))]
                     }
@@ -283,6 +291,20 @@ mod tests {
         assert!(out.contains(r#"icon_text="375""#));
         assert!(
             out.contains(r#"line_half_width="125" shadow_x_offset="250" shadow_y_offset="250""#)
+        );
+    }
+
+    #[test]
+    fn paragraph_spacing_and_line_below_scaled() {
+        let xml = r#"<symbols><symbol type="8" id="0"><text_symbol><font size="4000"/><text color="1" line_spacing="1" paragraph_spacing="800"/><line_below color="1" width="200" distance="400"/></text_symbol></symbol></symbols>"#;
+        let out = enlarge(xml);
+        assert!(
+            out.contains(r#"<text color="1" line_spacing="1" paragraph_spacing="1000"/>"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"<line_below color="1" width="250" distance="500"/>"#),
+            "{out}"
         );
     }
 

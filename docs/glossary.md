@@ -69,6 +69,8 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Mittelsymbol | mid symbol | Punktsymbol, das eine Liniensignatur in Abständen entlang der Linie wiederholt (z. B. Zaunstriche); auf gestrichelten Linien je Strich, Strichgruppe oder Lücke. | `Mid`, `MidPlacement` |
 | Anfangs- und Endabstand | start and end offset | Strecke, um die eine offene Linie am Anfang und am Ende gekürzt gezeichnet wird. | `LineDef::start_offset`, `LineDef::end_offset` |
 | spitzes Linienende | pointed cap | Linienende, das über den Anfangs- oder Endabstand von der vollen Breite bis auf null zuläuft (OOM-Linienende 3). | `LineDef::pointed_caps` |
+| Textfeld | box text | Kartentext in einem Rechteck: Der Anker ist die Mitte des Rechtecks, die Zeilen brechen an seiner Breite um und richten sich nach seinen Kanten aus, wie in OOM. | `MapObjectKind::Text::box_size` |
+| Absatzabstand | paragraph spacing | Zusätzlicher Abstand nach jedem Absatz eines Kartentexts, aus der Textsignatur. | `TextDef::paragraph_spacing` |
 | Textrahmen | text framing | Umrandung einer Textsignatur: die Buchstabenumrisse in einer zweiten Farbe nachgezogen oder als versetzter Schatten gedruckt. | `Framing` |
 | Schrift, Schriftschnitt | font, font face | Die Schrift, in der Kartentexte im PDF stehen: Arimo, maßgleich mit Arial, eingebettet als Teilmenge der benutzten Zeichen. Jede Schriftfamilie der Karte wird durch Arimo ersetzt; der Schriftschnitt (normal, fett, kursiv, fett kursiv) folgt der Textsignatur (ADR 0017). | `FontFace`, `fonts` |
 

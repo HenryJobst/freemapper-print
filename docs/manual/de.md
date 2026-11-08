@@ -31,7 +31,7 @@ entscheidet der Druckdialog.
 freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 ```
 
-Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 5000` druckt in 1:5000. Zum Drucken wählen
+Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 3000` druckt in 1:3000. Zum Drucken wählen
 Sie A4 oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm
 die Ausrichtung, die weniger von der Karte abschneidet. Zuerst schreibt das Programm eine Zeile mit Papier,
 Druckmaßstab und Faktoren, danach folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße. Das
@@ -52,17 +52,28 @@ Karte größer als die Seite, schneidet das Programm sie ab und meldet es, zum B
 Warning: the map does not fit on the page. It is 3.9 mm too tall for the printable area. Try A3 paper, or ...
 ```
 
-Die Zahl sagt, um wie viele Millimeter die Karte über den bedruckbaren Bereich hinausragt. Die Karte wird nicht
-verkleinert, denn das würde den Maßstab verfälschen. Sie haben drei Möglichkeiten: ein größeres Papier (A3),
-die andere Ausrichtung oder ein Druckmaßstab mit größerer Zahl, etwa 1:5000 statt 1:4000. Die Meldung nennt
-passende Vorschläge. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen können, was fehlt.
+Die Zahl sagt, um wie viele Millimeter die Karte über den bedruckbaren Bereich hinausragt. Gemessen wird an
+dem, was tatsächlich gedruckt würde, also mit Linienbreiten, Punktsymbolen und Texten. Die Karte wird nicht
+verkleinert, denn das würde den Maßstab verfälschen. Sie können ein größeres Papier nehmen (A3) oder einen
+Druckmaßstab mit größerer Zahl. Haben Sie die Ausrichtung selbst gewählt, nennt die Meldung auch die andere
+Ausrichtung. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen können, was fehlt.
 
-### Warum die Symbole ihre Größe behalten
+### Wie groß die Symbole sind
 
-Wechseln Sie von 1:4000 auf 1:5000, schrumpft das Gelände auf 80 %. Die Symbole schrumpfen nicht mit. Die
-Vorschrift für die Kartenart legt fest, wie breit ein Weg und wie groß ein Gebäudesymbol auf dem Papier sind,
-und das gilt unabhängig vom Maßstab. Die Karte bleibt deshalb lesbar, nur liegt mehr Gelände auf der Seite.
-Im Beispiel ist ein Fußweg in beiden PDFs 0,27 mm breit.
+Die Vorschrift der Kartenart legt die Symbolgrößen für einen Basismaßstab fest: 1:4000 für Sprintkarten
+(ISSprOM), 1:15000 für Waldkarten (ISOM). Druckt man größer, wächst alles im selben Verhältnis, das Gelände und
+jedes Symbol. Eine Sprintkarte in 1:3000, wie sie die Norm für die jüngsten Altersklassen empfiehlt, hat
+Symbole in 133 %: Ein schmaler Fußweg ist dann 0,36 mm statt 0,27 mm breit. Eine Waldkarte wächst in 1:10000
+auf 150 %, in 1:7500 auf 200 % und in 1:5000 auf 300 %. Die Karte braucht dabei entsprechend mehr Papier.
+
+Kleiner als im Basismaßstab sieht die Norm keinen Druck vor. Das Programm druckt ihn trotzdem, etwa eine
+Sprintkarte in 1:5000. Die Symbole behalten dann ihre Größe aus 1:4000, nur das Gelände schrumpft. Das Programm
+warnt dabei:
+
+```
+Warning: 1:5000 is not a standard scale for sprint maps. The map is reduced and the symbols keep their 1:4000
+size. Use this print for training only.
+```
 
 Das Programm kennt dafür die Kartenart (Sprintkarte, Schulhofkarte, Waldkarte). Erkennt es sie weder aus
 `freemapper.toml` noch aus der Kartendatei, geben Sie sie mit `--kind` an.
@@ -70,14 +81,14 @@ Das Programm kennt dafür die Kartenart (Sprintkarte, Schulhofkarte, Waldkarte).
 ### Den Maßstab mit dem Lineal prüfen
 
 Das Beispiel [examples/luebeck-scales](../../examples/luebeck-scales/README.md) enthält dieselbe Karte in
-1:4000 und 1:5000. Drucken Sie beide in Originalgröße. Messen Sie dann zwischen zwei Punkten, deren Abstand Sie
-kennen, etwa zwei Gebäudeecken oder die Enden eines geraden Straßenstücks. Für 100 m muss das Lineal
-zeigen:
+1:4000 auf A4 und 1:3000 auf A3. Drucken Sie beide in Originalgröße. Messen Sie dann zwischen zwei Punkten,
+deren Abstand Sie kennen, etwa zwei Gebäudeecken oder die Enden eines geraden Straßenstücks. Für 100 m muss das
+Lineal diese Werte zeigen:
 
 | Druckmaßstab | 100 m auf der Karte |
 |---|---|
 | 1:4000 | 25 mm |
-| 1:5000 | 20 mm |
+| 1:3000 | 33,3 mm |
 
 Weicht das Maß ab, hat der Drucker skaliert. Prüfen Sie dann den Druckdialog. Die Karte zeichnet keine eigene
 Kontrollstrecke; sie folgt mit M2 und den Layouts.
@@ -88,10 +99,14 @@ Kontrollstrecke; sie folgt mit M2 und den Layouts.
   nicht kennt. Sie fehlen im PDF.
 - "simplified or cut short": Ein Objekt braucht mehr Zeichenbefehle, als das Programm je Objekt zulässt. Es
   erscheint vereinfacht oder abgeschnitten.
+- "not drawn because the page reached its drawing limit": Die ganze Seite braucht mehr Zeichenbefehle, als das
+  Programm je Seite zulässt. Das passiert nur bei kaputten oder absichtlich überladenen Dateien.
 - "the font Arimo replaces ...": Das PDF enthält nur die Schrift Arimo. Andere Schriften der Karte ersetzt das
   Programm durch sie.
-- "missing glyphs": Ein Zeichen der Karte fehlt in Arimo und wird nicht gedruckt.
-- Die Nordlinien und den Informationsblock der Karte druckt das Programm nur mit `--show-sheet-objects`. Bei
-  einem anderen Druckmaßstab skalieren sie mit der Karte, ein darin gedruckter Maßstab kann also falsch sein.
+- "the embedded font has no glyph for these characters, so they are missing in the PDF": Ein Zeichen der Karte
+  fehlt in Arimo und wird nicht gedruckt.
+- Den Informationsblock von freemapper (Titel, Maßstab, Maßstabsleiste, Namensnennung) druckt das Programm nur
+  mit `--show-sheet-objects`. Bei einem anderen Druckmaßstab skaliert er mit der Karte, ein darin gedruckter
+  Maßstab kann also falsch sein. Die Nordlinien gehören zur Karte und stehen immer im PDF.
 
 Die übrigen Kapitel folgen mit späteren Versionen.
