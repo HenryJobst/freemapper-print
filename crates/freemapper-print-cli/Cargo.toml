@@ -15,8 +15,11 @@ path = "src/main.rs"
 freemapper-print.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+fluent-bundle.workspace = true
+unic-langid.workspace = true
 
 [dev-dependencies]
+fluent-syntax.workspace = true
 tempfile.workspace = true
 
 [lints]

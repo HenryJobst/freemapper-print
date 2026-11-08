@@ -7,6 +7,13 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Die Programmtexte gibt es auf Deutsch und Englisch: Hilfe, Zusammenfassung, Hinweise, Warnungen und Fehler.
+  Die Sprache kommt aus `--lang de|en` (vor oder nach dem Befehl), dann aus `FREEMAPPER_LANG`, `LC_ALL`,
+  `LC_MESSAGES` und `LANG`. Die Texte stehen in Fluent-Dateien unter `crates/freemapper-print-cli/i18n/`.
+  Fehlermeldungen der Bibliothek und die Überschriften von clap bleiben vorerst Englisch.
+
 ## [0.1.0] - 2026-11-08
 
 ### Hinzugefügt

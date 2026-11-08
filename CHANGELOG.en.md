@@ -7,6 +7,13 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- Program texts come in German and English: help, summary, notes, warnings and errors. The language comes from
+  `--lang de|en` (before or after the command), then `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The
+  texts live in Fluent files under `crates/freemapper-print-cli/i18n/`. Error messages from the library and
+  clap's headings stay English for now.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added

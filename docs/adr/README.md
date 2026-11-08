@@ -64,3 +64,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0021](0021-map-kind-older-files-and-exit-codes.md) | Map kind inference, older files and CLI exit codes | Accepted | 2026-11-08 |
 | [0022](0022-conformance-to-oom-checked-against-fixtures.md) | Conformance to OOM, checked against fixtures and OOM exports | Accepted | 2026-11-08 |
 | [0023](0023-north-lines-belong-to-the-map.md) | North lines belong to the map | Accepted | 2026-11-08 |
+| [0024](0024-program-texts-in-fluent-files.md) | Program texts in Fluent files (suite rule) | Accepted | 2026-11-08 |

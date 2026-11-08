@@ -16,11 +16,18 @@ const FOREST: &str = concat!(
     "/../../tests/fixtures/maps/forest-sample.omap"
 );
 
+/// The binary with English forced, so a German system locale cannot break the assertions.
+fn command() -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_freemapper-print"));
+    cmd.env("FREEMAPPER_LANG", "en")
+        .env("LANG", "C")
+        .env_remove("LC_ALL")
+        .env_remove("LC_MESSAGES");
+    cmd
+}
+
 fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_freemapper-print"))
-        .args(args)
-        .output()
-        .expect("run binary")
+    command().args(args).output().expect("run binary")
 }
 
 fn render(map: &str, out: &Path, extra: &[&str]) -> Output {
@@ -348,5 +355,118 @@ fn broken_sidecar_gets_a_note() {
     assert!(
         err.contains("freemapper.toml is not valid") && err.contains("comes from the map file"),
         "{err}"
+    );
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[test]
+fn render_messages_in_german() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("o.pdf");
+    let o = render(LUEBECK, &out, &["--paper", "a4", "--lang", "de"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let err = stderr(&o);
+    assert!(err.contains("geschrieben: A4 Querformat"), "{err}");
+    assert!(err.contains("Druckmaßstab 1:4000"), "{err}");
+    assert!(err.contains("Symbolfaktor 1,000"), "{err}");
+    assert!(err.contains("In Originalgröße drucken"), "{err}");
+    assert!(!err.contains("actual size"), "{err}");
+}
+
+#[test]
+fn lang_works_before_the_subcommand_and_from_the_environment() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("o.pdf");
+    let o = run(&[
+        "--lang=de",
+        "render",
+        LUEBECK,
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert!(
+        stderr(&o).contains("In Originalgröße drucken"),
+        "{}",
+        stderr(&o)
+    );
+    // --lang beats the environment; an unknown FREEMAPPER_LANG falls through to LANG.
+    let o = command()
+        .args(["render", LUEBECK, "--out", out.to_str().unwrap()])
+        .env("FREEMAPPER_LANG", "fr")
+        .env("LANG", "de_DE.UTF-8")
+        .output()
+        .unwrap();
+    assert!(
+        stderr(&o).contains("In Originalgröße drucken"),
+        "{}",
+        stderr(&o)
+    );
+    let o = command()
+        .args([
+            "--lang",
+            "en",
+            "render",
+            LUEBECK,
+            "--out",
+            out.to_str().unwrap(),
+        ])
+        .env("FREEMAPPER_LANG", "de")
+        .output()
+        .unwrap();
+    assert!(stderr(&o).contains("actual size"), "{}", stderr(&o));
+}
+
+#[test]
+fn unknown_lang_is_a_usage_error() {
+    let o = run(&["--lang", "fr", "render", LUEBECK, "--out", "x.pdf"]);
+    assert_eq!(o.status.code(), Some(2));
+    let err = stderr(&o);
+    assert!(
+        err.contains("unknown language \"fr\"") && err.contains("en, de"),
+        "{err}"
+    );
+}
+
+#[test]
+fn errors_come_in_german_too() {
+    let o = run(&[
+        "--lang",
+        "de",
+        "render",
+        LUEBECK,
+        "--out",
+        "/no/such/dir/o.pdf",
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    let err = stderr(&o);
+    assert!(
+        err.starts_with("Fehler: ") && err.contains("existiert nicht"),
+        "{err}"
+    );
+}
+
+#[test]
+fn help_follows_the_language() {
+    let o = run(&["render", "--help"]);
+    let en = stdout(&o);
+    assert!(
+        en.contains("Render a map to a PDF at an exact print scale."),
+        "{en}"
+    );
+    assert!(en.contains("Exit codes: 0 on success"), "{en}");
+    assert!(en.contains("--lang"), "{en}");
+    let o = run(&["render", "--help", "--lang", "de"]);
+    let de = stdout(&o);
+    assert!(de.contains("Schreibt eine Karte als PDF"), "{de}");
+    assert!(de.contains("Zu schreibende PDF-Datei"), "{de}");
+    assert!(de.contains("Exit-Codes: 0 bei Erfolg"), "{de}");
+    assert!(!de.contains("Paper size"), "{de}");
+    let top = stdout(&run(&["--help", "--lang", "de"]));
+    assert!(
+        top.contains("Druckt fertige Orientierungslaufkarten"),
+        "{top}"
     );
 }

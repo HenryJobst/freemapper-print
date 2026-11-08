@@ -1,57 +1,47 @@
 //! The `freemapper-print` binary. Commands come with the milestones in the design
 //! (`docs/superpowers/specs/2026-11-08-freemapper-print-design.md`).
 
+mod text;
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use fluent_bundle::FluentArgs;
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 
+use text::{Lang, Texts, detect_lang};
+
 #[derive(Parser)]
-#[command(
-    name = "freemapper-print",
-    version,
-    about = "Prints finished orienteering maps as exact-scale PDFs",
-    arg_required_else_help = true
-)]
+// The help texts come from the catalogs (see `localised_command`).
+#[command(name = "freemapper-print", version, arg_required_else_help = true)]
 struct Cli {
+    #[arg(long = "lang", global = true, value_name = "LANG")]
+    _lang: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Render a map to a PDF at an exact print scale.
-    #[command(after_long_help = "\
-The PDF has 1 mm on paper for the exact map distance at the print scale. Print it at actual size.
-
-Exit codes: 0 on success, 1 when the map cannot be read or printed, 2 when the command line is wrong.")]
     Render(RenderArgs),
 }
 
 #[derive(Args)]
 struct RenderArgs {
-    /// The OOM map file (.omap).
     map: PathBuf,
-    /// PDF file to write. An existing file is overwritten; its folder must exist.
     #[arg(long)]
     out: PathBuf,
-    /// Print scale denominator, e.g. 4000 for 1:4000. The default is the scale of the map.
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     scale: Option<u32>,
-    /// Paper size.
     #[arg(long, value_enum, default_value_t = PaperArg::A4)]
     paper: PaperArg,
-    /// Page orientation. Auto picks the one that cuts off less of the map.
     #[arg(long, value_enum, default_value_t = OrientationArg::Auto)]
     orientation: OrientationArg,
-    /// Map kind. Needed only when the program cannot tell it from freemapper.toml or the map file.
     #[arg(long, value_enum)]
     kind: Option<KindArg>,
-    /// Also draw freemapper's information block: title, scale, scale bar and credits. It scales
-    /// with the map at another print scale, so its scale text can be wrong then.
     #[arg(long)]
     show_sheet_objects: bool,
 }
@@ -105,21 +95,35 @@ impl From<KindArg> for MapKind {
     }
 }
 
-fn render(args: &RenderArgs) -> anyhow::Result<()> {
-    let map = read_map_file(&args.map)
-        .with_context(|| format!("could not read the map {}", args.map.display()))?;
+/// Message arguments: `args!("name" => value, ...)`.
+macro_rules! args {
+    ($($name:literal => $value:expr),* $(,)?) => {{
+        let mut a = FluentArgs::new();
+        $(a.set($name, $value);)*
+        a
+    }};
+}
+
+fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<()> {
+    let map = read_map_file(&args.map).with_context(|| {
+        texts.get(
+            "error-read-map",
+            Some(&args!("path" => args.map.display().to_string())),
+        )
+    })?;
     let kind = match args.kind {
         Some(kind) => kind.into(),
         None => {
             if let Err(err) = read_sidecar(&args.map) {
                 eprintln!(
-                    "Note: {}. The map kind comes from the map file instead.",
-                    printable(&err.to_string())
+                    "{}",
+                    texts.get(
+                        "note-sidecar",
+                        Some(&args!("error" => printable(&err.to_string())))
+                    )
                 );
             }
-            infer_kind(&map, &args.map).context(
-                "cannot tell the map kind from the file; pass --kind sprint, --kind schoolyard or --kind forest",
-            )?
+            infer_kind(&map, &args.map).context(texts.plain("error-kind-unknown"))?
         }
     };
     let parent = match args.out.parent() {
@@ -127,16 +131,16 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
         _ => Path::new("."),
     };
     if !parent.is_dir() {
-        bail!(
-            "the folder {} for the PDF does not exist; create it first",
-            parent.display()
-        );
+        bail!(texts.get(
+            "error-out-folder-missing",
+            Some(&args!("path" => parent.display().to_string()))
+        ));
     }
     if same_file(&args.map, &args.out) {
-        bail!(
-            "--out points at the map file {}; choose a PDF path so the map stays safe",
-            args.map.display()
-        );
+        bail!(texts.get(
+            "error-out-is-map",
+            Some(&args!("path" => args.map.display().to_string()))
+        ));
     }
     let options = PrintOptions {
         print_scale: args.scale,
@@ -150,9 +154,13 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
         .map
         .file_stem()
         .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned());
-    let (pdf, report) = print_map(&map, &options, &title)?;
-    freemapper_print::output::write_pdf_file(&args.out, &pdf)?;
+    // Library errors keep their English text for now (ADR 0024); the lead-in is translated.
+    let (pdf, report) =
+        print_map(&map, &options, &title).with_context(|| texts.plain("error-print"))?;
+    freemapper_print::output::write_pdf_file(&args.out, &pdf)
+        .with_context(|| texts.plain("error-write"))?;
     for line in report_lines(
+        texts,
         &report,
         args.paper,
         args.orientation,
@@ -210,21 +218,13 @@ fn printable(text: &str) -> String {
 }
 
 /// A millimetre value with one decimal, never below 0.1 for a positive value.
-fn mm(value: f64) -> String {
-    format!("{:.1}", value.max(0.1))
-}
-
-/// "1 object is" or "3 objects are" (with the verbs the caller gives).
-fn objects(count: usize, is: &str, are: &str) -> String {
-    if count == 1 {
-        format!("1 object {is}")
-    } else {
-        format!("{count} objects {are}")
-    }
+fn mm(texts: &Texts, value: f64) -> String {
+    texts.decimal(&format!("{:.1}", value.max(0.1)))
 }
 
 /// The messages for a finished print, in the order they appear on stderr.
 fn report_lines(
+    texts: &Texts,
     report: &PrintReport,
     paper: PaperArg,
     orientation_arg: OrientationArg,
@@ -236,22 +236,36 @@ fn report_lines(
         .to_possible_value()
         .map_or_else(String::new, |v| v.get_name().to_uppercase());
     let (w, h) = report.page_mm;
-    let orientation = if w > h { "landscape" } else { "portrait" };
-    let mut lines = vec![format!(
-        "Wrote {}: {paper_name} {orientation}, print scale 1:{}, map scale 1:{map_scale}, \
-         geometry factor {:.3}, symbol factor {:.3}.",
-        out.display(),
-        report.print_scale,
-        report.geometry_factor,
-        report.symbol_factor,
+    let orientation = texts.plain(if w > h {
+        "word-landscape"
+    } else {
+        "word-portrait"
+    });
+    let mut lines = vec![texts.get(
+        "report-summary",
+        Some(&args!(
+            "out" => out.display().to_string(),
+            "paper" => paper_name,
+            "orientation" => orientation,
+            "print_scale" => report.print_scale.to_string(),
+            "map_scale" => map_scale.to_string(),
+            "geometry" => texts.decimal(&format!("{:.3}", report.geometry_factor)),
+            "symbol" => texts.decimal(&format!("{:.3}", report.symbol_factor)),
+        )),
     )];
     if report.non_standard_scale {
-        lines.push(format!(
-            "Warning: 1:{} is not a standard scale for {} maps. The map is reduced and the symbols \
-             keep their 1:{} size. Use this print for training only.",
-            report.print_scale,
-            kind.name(),
-            kind.base_scale(),
+        let kind_word = match kind {
+            MapKind::Sprint => "word-kind-sprint",
+            MapKind::Schoolyard => "word-kind-schoolyard",
+            MapKind::Forest => "word-kind-forest",
+        };
+        lines.push(texts.get(
+            "warning-non-standard-scale",
+            Some(&args!(
+                "print_scale" => report.print_scale.to_string(),
+                "kind" => texts.plain(kind_word),
+                "base_scale" => kind.base_scale().to_string(),
+            )),
         ));
     }
     if let Some((x, y)) = report.overflow_mm
@@ -259,18 +273,26 @@ fn report_lines(
     {
         let mut cut = Vec::new();
         if x > 0.0 {
-            cut.push(format!("{} mm too wide", mm(x)));
+            cut.push(texts.get("overflow-too-wide", Some(&args!("mm" => mm(texts, x)))));
         }
         if y > 0.0 {
-            cut.push(format!("{} mm too tall", mm(y)));
+            cut.push(texts.get("overflow-too-tall", Some(&args!("mm" => mm(texts, y)))));
         }
+        let cut = if cut.len() == 2 {
+            texts.get(
+                "overflow-and",
+                Some(&args!("first" => cut[0].clone(), "second" => cut[1].clone())),
+            )
+        } else {
+            cut.remove(0)
+        };
         let mut hints = Vec::new();
         if matches!(paper, PaperArg::A4) {
-            hints.push("A3 paper".to_string());
+            hints.push(texts.plain("hint-paper-a3"));
         }
         // Auto already took the orientation that cuts off less.
         if orientation_arg != OrientationArg::Auto {
-            hints.push("the other orientation".into());
+            hints.push(texts.plain("hint-other-orientation"));
         }
         // The next larger allowed number shrinks the map on the page.
         match kind
@@ -278,51 +300,40 @@ fn report_lines(
             .into_iter()
             .find(|&s| s > report.print_scale)
         {
-            Some(next) if is_standard(kind, next) => hints.push(format!(
-                "a print scale with a larger number, for example 1:{next}"
-            )),
-            Some(next) => hints.push(format!(
-                "a print scale with a larger number, for example 1:{next} (not standard, for \
-                 training only)"
-            )),
-            None => hints.push("a print scale with a larger number".into()),
+            Some(next) => {
+                let id = if is_standard(kind, next) {
+                    "hint-scale-example"
+                } else {
+                    "hint-scale-example-non-standard"
+                };
+                hints.push(texts.get(id, Some(&args!("next" => next.to_string()))));
+            }
+            None => hints.push(texts.plain("hint-scale-larger")),
         }
         let last = hints.pop().unwrap_or_default();
-        lines.push(format!(
-            "Warning: the map does not fit on the page. It is {} for the printable area. Try {}, or {last}.",
-            cut.join(" and "),
-            hints.join(", ")
-        ));
+        lines.push(if hints.is_empty() {
+            texts.get(
+                "warning-overflow-single",
+                Some(&args!("cut" => cut, "last" => last)),
+            )
+        } else {
+            texts.get(
+                "warning-overflow",
+                Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
+            )
+        });
     }
-    if report.skipped_objects > 0 {
-        lines.push(format!(
-            "Note: {} not drawn because the symbol is unknown or hidden.",
-            objects(report.skipped_objects, "is", "are")
-        ));
-    }
-    if report.unknown_type_objects > 0 {
-        lines.push(format!(
-            "Note: {} not drawn because the program does not know their object type.",
-            objects(report.unknown_type_objects, "is", "are")
-        ));
-    }
-    if report.truncated_objects > 0 {
-        lines.push(format!(
-            "Note: {} simplified or cut short because the file asks for more detail than the renderer draws.",
-            objects(report.truncated_objects, "was", "were")
-        ));
-    }
-    if report.objects_not_drawn_page_limit > 0 {
-        lines.push(format!(
-            "Note: {} not drawn because the page reached its drawing limit.",
-            objects(report.objects_not_drawn_page_limit, "is", "are")
-        ));
-    }
-    if report.dropped_pattern_objects > 0 {
-        lines.push(format!(
-            "Note: {} drawn without an area pattern whose spacing is below 0.05 mm or not a number.",
-            objects(report.dropped_pattern_objects, "is", "are")
-        ));
+    let counted = [
+        ("note-skipped", report.skipped_objects),
+        ("note-unknown-type", report.unknown_type_objects),
+        ("note-truncated", report.truncated_objects),
+        ("note-page-limit", report.objects_not_drawn_page_limit),
+        ("note-dropped-pattern", report.dropped_pattern_objects),
+    ];
+    for (id, count) in counted {
+        if count > 0 {
+            lines.push(texts.get(id, Some(&args!("count" => count))));
+        }
     }
     if !report.substituted_fonts.is_empty() {
         let names: Vec<String> = report
@@ -330,10 +341,7 @@ fn report_lines(
             .iter()
             .map(|f| printable(f))
             .collect();
-        lines.push(format!(
-            "Note: the font Arimo replaces {}.",
-            names.join(", ")
-        ));
+        lines.push(texts.get("note-fonts", Some(&args!("names" => names.join(", ")))));
     }
     if !report.missing_glyphs.is_empty() {
         let chars: String = report
@@ -342,26 +350,92 @@ fn report_lines(
             .map(|c| printable(&c.to_string()))
             .collect::<Vec<_>>()
             .join(" ");
-        lines.push(format!(
-            "Note: the embedded font has no glyph for these characters, so they are missing in the PDF: {chars}"
-        ));
+        lines.push(texts.get("note-missing-glyphs", Some(&args!("chars" => chars))));
     }
-    lines.push(
-        "Print at actual size: 100 %, with \"fit to page\" switched off. Any other size breaks the scale."
-            .into(),
-    );
+    lines.push(texts.plain("reminder-actual-size"));
     lines
 }
 
+/// The `--lang` value from the raw arguments, found before clap runs because the help texts
+/// depend on it. The last occurrence wins, as it does for clap; `--` ends the options.
+fn lang_from_args(args: &[std::ffi::OsString]) -> Option<String> {
+    let mut found = None;
+    let mut iter = args.iter().skip(1).map(|a| a.to_string_lossy());
+    while let Some(arg) = iter.next() {
+        if arg == "--" {
+            break;
+        } else if arg == "--lang" {
+            found = iter.next().map(|v| v.into_owned());
+        } else if let Some(value) = arg.strip_prefix("--lang=") {
+            found = Some(value.to_owned());
+        }
+    }
+    found
+}
+
+/// The derived command with its help texts taken from the catalog of `texts`. Clap's own
+/// headings ("Usage", "Options") and its parse errors stay English.
+fn localised_command(texts: &Texts) -> clap::Command {
+    Cli::command()
+        .about(texts.plain("cli-about"))
+        .mut_arg("_lang", |a| a.help(texts.plain("help-lang")))
+        .mut_subcommand("render", |c| {
+            c.about(texts.plain("render-about"))
+                .after_long_help(format!(
+                    "{}\n\n{}",
+                    texts.plain("render-after-size"),
+                    texts.plain("render-after-exit-codes")
+                ))
+                .mut_arg("map", |a| a.help(texts.plain("help-map")))
+                .mut_arg("out", |a| a.help(texts.plain("help-out")))
+                .mut_arg("scale", |a| a.help(texts.plain("help-scale")))
+                .mut_arg("paper", |a| a.help(texts.plain("help-paper")))
+                .mut_arg("orientation", |a| a.help(texts.plain("help-orientation")))
+                .mut_arg("kind", |a| a.help(texts.plain("help-kind")))
+                .mut_arg("show_sheet_objects", |a| {
+                    a.help(texts.plain("help-show-sheet-objects"))
+                })
+        })
+}
+
 fn main() -> std::process::ExitCode {
-    let result = match Cli::parse().command {
-        Commands::Render(args) => render(&args),
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let env = |name: &str| std::env::var(name).ok();
+    let lang = match detect_lang(lang_from_args(&args).as_deref(), &env) {
+        Ok(lang) => lang,
+        Err(unknown) => {
+            // The language of the message itself comes from the environment alone.
+            let texts = Texts::new(&detect_lang(None, &env).unwrap_or_else(|_| Lang::english()));
+            let available: Vec<String> = unknown.available.iter().map(Lang::code).collect();
+            let message = texts.get(
+                "error-unknown-lang",
+                Some(&args!(
+                    "lang" => printable(&unknown.given),
+                    "available" => available.join(", "),
+                )),
+            );
+            eprintln!(
+                "{}",
+                texts.get("error-line", Some(&args!("message" => message)))
+            );
+            return std::process::ExitCode::from(2);
+        }
+    };
+    let texts = Texts::new(&lang);
+    let matches = localised_command(&texts).get_matches_from(args);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    let result = match cli.command {
+        Commands::Render(args) => render(&texts, &args),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
             // Errors can quote map content, so they get the same escaping as the notes.
-            eprintln!("Error: {}", printable(&format!("{err:#}")));
+            let message = printable(&format!("{err:#}"));
+            eprintln!(
+                "{}",
+                texts.get("error-line", Some(&args!("message" => message)))
+            );
             std::process::ExitCode::FAILURE
         }
     }
@@ -391,6 +465,7 @@ mod tests {
 
     fn lines(r: &PrintReport, paper: PaperArg) -> Vec<String> {
         report_lines(
+            &Texts::new(&Lang::english()),
             r,
             paper,
             OrientationArg::Auto,
@@ -530,6 +605,7 @@ mod tests {
         };
         assert!(!lines(&r, PaperArg::A4)[1].contains("orientation"));
         let explicit = report_lines(
+            &Texts::new(&Lang::english()),
             &r,
             PaperArg::A4,
             OrientationArg::Landscape,

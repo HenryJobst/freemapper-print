@@ -13,6 +13,8 @@ rust-version = "1.88"
 freemapper-print = { path = "crates/freemapper-print" }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
+fluent-bundle = "=0.16.0"
+fluent-syntax = "=0.12.0"
 fs4 = "1.1.0"
 miniz_oxide = "0.9.1"
 pdf-writer = "0.15.0"
@@ -22,6 +24,7 @@ subsetter = { version = "0.2.6", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 toml = "1.2.1"
+unic-langid = "=0.9.6"
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
