@@ -20,6 +20,8 @@ source, shared sheet elements and layouts.
   checked after parsing (a logo needs `file` and `width_mm`).
 - Ids of layouts are unique. Ids of shared elements and of a layout's own elements are unique together.
   `hide_shared` names existing shared ids.
+- Every sheet carries the credit line naming freemapper-print and its project URL. There is no switch to turn it
+  off; the `credit_line` element kind only places it, and a default footer position applies when no element does.
 - `init` writes the file with `save_new`, which refuses to overwrite.
 - The `toml` crate rewrites the file without comments. The editor (later) must keep the user's comments and
   layout, so it switches to `toml_edit` for saving. Until then only `init` writes the file.

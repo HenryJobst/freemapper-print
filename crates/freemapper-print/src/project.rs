@@ -69,22 +69,11 @@ pub struct MapSettings {
     pub contour_interval_m: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrintSettings {
-    #[serde(default = "yes")]
-    pub credit_line: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
-}
-
-impl Default for PrintSettings {
-    fn default() -> Self {
-        PrintSettings {
-            credit_line: true,
-            copyright: None,
-        }
-    }
 }
 
 /// Whether north lines are added when the map has none (ADR 0023).
@@ -217,9 +206,6 @@ pub struct Anchor {
     pub offset_mm: [f64; 2],
 }
 
-fn yes() -> bool {
-    true
-}
 fn default_paper() -> Paper {
     Paper::A4
 }
@@ -690,10 +676,19 @@ mod tests {
         let l = &lp.project.layouts[0];
         assert_eq!(l.map_frame.margin_mm, 8.0);
         assert_eq!(l.map_frame.border_mm, 0.25);
-        assert!(lp.project.print.credit_line);
+        assert_eq!(lp.project.print, PrintSettings::default());
         assert_eq!(l.north_lines, NorthLines::Auto);
         assert_eq!(l.paper, Paper::A4);
         assert_eq!(l.orientation, Orientation::Auto);
+    }
+
+    #[test]
+    fn credit_line_switch_is_gone() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\ncredit_line = false\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(msg.contains(":9:1") && msg.contains("credit_line"), "{msg}");
     }
 
     #[test]
@@ -856,7 +851,6 @@ mod tests {
                 contour_interval_m: Some(5.0),
             },
             print: PrintSettings {
-                credit_line: false,
                 copyright: Some("(c) OC".into()),
             },
             shared: vec![title, el("bar", ElementKind::ScaleCheckBar)],
