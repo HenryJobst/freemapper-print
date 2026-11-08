@@ -212,24 +212,29 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         content.clip_nonzero();
         content.end_path();
     }
-    let mut pattern_clip: Option<&Arc<[Vec<Pt>]>> = None;
+    // The clip blocks open, outermost first. A pattern inside a pattern clips its shapes twice;
+    // each level stays open while the next shapes share it.
+    let mut open: Vec<&Arc<[Vec<Pt>]>> = Vec::new();
     for primitive in items {
-        let (rings, shape) = match &primitive.shape {
-            Shape::Clipped { rings, inner } => (Some(rings), &**inner),
-            shape => (None, shape),
-        };
-        // The pattern shapes of one area share their rings: compare pointers first.
-        let same_clip = match (pattern_clip, rings) {
-            (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
-            _ => false,
-        };
-        if pattern_clip.is_some() && !same_clip {
-            content.restore_state();
-            pattern_clip = None;
+        let mut chain = Vec::new();
+        let mut shape = &primitive.shape;
+        while let Shape::Clipped { rings, inner } = shape {
+            chain.push(rings);
+            shape = inner;
         }
-        if let (None, Some(rings)) = (pattern_clip, rings) {
+        // The pattern shapes of one area share their rings: compare pointers first.
+        let kept = open
+            .iter()
+            .zip(&chain)
+            .take_while(|(a, b)| Arc::ptr_eq(a, b) || a == b)
+            .count();
+        for _ in kept..open.len() {
+            content.restore_state();
+        }
+        open.truncate(kept);
+        for rings in &chain[kept..] {
             begin_clip(&mut content, &t, rings);
-            pattern_clip = Some(rings);
+            open.push(rings);
         }
         paint(
             &mut content,
@@ -240,7 +245,7 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
             &mut fonts,
         );
     }
-    if pattern_clip.is_some() {
+    for _ in &open {
         content.restore_state();
     }
     if !items.is_empty() {
@@ -424,6 +429,39 @@ mod tests {
         let clips = pdf.windows(4).filter(|w| w == b"W*\nn").count();
         let strokes = pdf.windows(2).filter(|w| w == b"S\n").count();
         assert_eq!((clips, strokes), (1, 5));
+    }
+
+    #[test]
+    fn nested_clips_share_their_blocks_too() {
+        // Lines of a pattern inside a pattern: clipped to the outer outline and to their own.
+        // Each outline is written once, though both clips wrap every line.
+        let outer: Arc<[Vec<Pt>]> = vec![vec![(0.0, 0.0), (50.0, 0.0), (50.0, 50.0)]].into();
+        let inner: Arc<[Vec<Pt>]> = vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0)]].into();
+        let lines: Vec<Primitive> = (0..5)
+            .map(|i| {
+                let Shape::Clipped { inner: line, .. } = clipped_line(11.0 + f64::from(i)).shape
+                else {
+                    panic!()
+                };
+                Primitive {
+                    priority: 2,
+                    shape: Shape::Clipped {
+                        rings: Arc::clone(&outer),
+                        inner: Box::new(Shape::Clipped {
+                            rings: Arc::clone(&inner),
+                            inner: line,
+                        }),
+                    },
+                }
+            })
+            .collect();
+        let pdf = content_of(&write(&lines));
+        let clips = pdf.windows(4).filter(|w| w == b"W*\nn").count();
+        let strokes = pdf.windows(2).filter(|w| w == b"S\n").count();
+        let ops = |op: &[u8]| pdf.split(|&b| b == b'\n').filter(|l| *l == op).count();
+        let (saves, restores) = (ops(b"q"), ops(b"Q"));
+        assert_eq!((clips, strokes), (2, 5));
+        assert_eq!((saves, restores), (3, 3), "the page and both outlines");
     }
 
     fn text(rotation: f64, stroke: Option<f64>) -> Primitive {

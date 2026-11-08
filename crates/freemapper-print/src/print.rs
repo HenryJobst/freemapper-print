@@ -5,7 +5,7 @@
 //! symbols by the symbol factor the IOF standard sets for the map kind. Nothing is fitted to the page: a map larger than
 //! the page is clipped, and the report says by how much it overflows.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::omap::enlarge::enlarge_symbols;
@@ -372,16 +372,20 @@ fn page_size(
 
 type Rings = Arc<[Vec<Pt>]>;
 
-/// Moves every primitive by `d` (mm). The clipped shapes of one area pattern keep sharing their
-/// rings.
+/// Moved outlines by the address of the original, which the entry holds so that no address
+/// is reused.
+type MovedOutlines = HashMap<usize, (Rings, Rings)>;
+
+/// Moves every primitive by `d` (mm). Clipped shapes that share an outline keep sharing it,
+/// at every nesting level: each outline is moved once.
 fn translate(primitives: &mut [Primitive], d: Pt) {
-    let mut shared: Option<(Rings, Rings)> = None;
+    let mut moved = MovedOutlines::new();
     for p in primitives {
-        translate_shape(&mut p.shape, d, &mut shared);
+        translate_shape(&mut p.shape, d, &mut moved);
     }
 }
 
-fn translate_shape(shape: &mut Shape, d: Pt, shared: &mut Option<(Rings, Rings)>) {
+fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
     let shift = |p: &mut Pt| {
         p.0 += d.0;
         p.1 += d.1;
@@ -391,19 +395,16 @@ fn translate_shape(shape: &mut Shape, d: Pt, shared: &mut Option<(Rings, Rings)>
         Shape::Stroke { path, .. } => path.iter_mut().for_each(shift),
         Shape::Text { origin, .. } => shift(origin),
         Shape::Clipped { rings, inner } => {
-            let moved = match shared {
-                Some((from, to)) if Arc::ptr_eq(from, rings) => Arc::clone(to),
-                _ => {
-                    let to: Rings = rings
-                        .iter()
-                        .map(|r| r.iter().map(|&(x, y)| (x + d.0, y + d.1)).collect())
-                        .collect();
-                    *shared = Some((Arc::clone(rings), Arc::clone(&to)));
-                    to
-                }
-            };
-            *rings = moved;
-            translate_shape(inner, d, shared);
+            let key = Arc::as_ptr(rings).cast::<()>().addr();
+            let (_, to) = moved.entry(key).or_insert_with(|| {
+                let to: Rings = rings
+                    .iter()
+                    .map(|r| r.iter().map(|&(x, y)| (x + d.0, y + d.1)).collect())
+                    .collect();
+                (Arc::clone(rings), to)
+            });
+            *rings = Arc::clone(to);
+            translate_shape(inner, d, moved);
         }
     }
 }
@@ -708,7 +709,9 @@ mod tests {
         let doc = map(4000, set, vec![area(id, 10_000, 10_000); 20]);
         let (page, report) =
             render_page_within(&doc, &options(Orientation::Portrait), 250).unwrap();
-        assert_eq!(page.primitives.len(), 250);
+        // A unit per line and one per outline: two whole areas (102 units each), 45 lines of the
+        // third.
+        assert_eq!(page.primitives.len(), 247);
         // Two whole areas, the third cut short, the other 17 not drawn.
         assert_eq!(report.truncated_objects, 1);
         assert_eq!(report.objects_not_drawn_page_limit, 17);
@@ -898,6 +901,42 @@ mod tests {
         assert_eq!(report.dropped_pattern_objects, 1);
         assert_eq!(report.unknown_type_objects, 3);
         assert_eq!(page.primitives.len(), 1, "only the line");
+    }
+
+    #[test]
+    fn nested_pattern_outlines_stay_shared_on_the_page() {
+        // A hatched square at every point of an outer pattern: each hatch line is clipped to
+        // the outer area and, inside that, to its own square. Moving the page must not copy
+        // either outline per line.
+        let set = SymbolSet::issprom_2019().with_additions(concat!(
+            r#"<symbol type="4" id="@" code="999.2" name="nested"><area_symbol inner_color="-1" min_area="0" patterns="1">"#,
+            r#"<pattern type="2" angle="0" line_spacing="2000" line_offset="0" offset_along_line="0" point_distance="2000">"#,
+            r#"<symbol type="1" code=""><point_symbol inner_radius="0" inner_color="-1" outer_width="0" outer_color="-1" elements="1"><element>"#,
+            r#"<symbol type="4" code=""><area_symbol inner_color="-1" min_area="0" patterns="1"><pattern type="1" angle="0" line_spacing="100" line_offset="0" offset_along_line="0" color="2" line_width="10"/></area_symbol></symbol>"#,
+            r#"<object type="1"><coords count="5">-500 -500;500 -500;500 500;-500 500;-500 -500 18;</coords></object>"#,
+            r#"</element></point_symbol></symbol></pattern></area_symbol></symbol>"#,
+        ));
+        let id = set.id_for_code("999.2").unwrap();
+        let doc = map(4000, set, vec![area(id, 10_000, 10_000)]);
+        let (page, _) = render(&doc, &options(Orientation::Portrait));
+        // Every outline (by content) is one Arc.
+        let mut outlines: Vec<&Rings> = Vec::new();
+        let mut clipped = 0;
+        for p in &page.primitives {
+            let mut shape = &p.shape;
+            while let Shape::Clipped { rings, inner } = shape {
+                clipped += 1;
+                match outlines.iter().find(|o| o[..] == rings[..]) {
+                    Some(o) => assert!(Arc::ptr_eq(o, rings), "an outline was copied"),
+                    None => outlines.push(rings),
+                }
+                shape = inner;
+            }
+        }
+        // A square at each of the 36 placements, ten lines each, two clips per line: the outer
+        // outline and one per square.
+        assert!(clipped > 400, "{clipped}");
+        assert_eq!(outlines.len(), 37);
     }
 
     #[test]

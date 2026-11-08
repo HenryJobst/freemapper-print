@@ -221,12 +221,6 @@ pub(super) fn area_pattern(
     if !rotation.is_finite() {
         return;
     }
-    // A clipped pattern shares one outline among its shapes, and the PDF writes it once per run
-    // of them: charge its points once per pattern as kept points
-    // ([`draw::KEPT_POINTS_PER_UNIT`]).
-    if clipping == Clipping::Clip {
-        sink.charge_kept_points(rings.iter().map(Vec::len).sum());
-    }
     // The canvas grows by the extent (lo, hi) of what one line or point paints around its
     // centre: left − hi.x, top − hi.y, right − lo.x, bottom − lo.y.
     let canvas = |(lo, hi): (Pt, Pt)| Canvas {
@@ -240,6 +234,10 @@ pub(super) fn area_pattern(
             let width = mm(*width);
             // Such a line draws nothing (OOM: no colour or zero width).
             if *color < 0 || width <= 0.0 {
+                return;
+            }
+            // A clipped pattern shares one outline among its lines ([`Sink::charge_outline`]).
+            if clipping == Clipping::Clip && !sink.charge_outline(rings, *color) {
                 return;
             }
             let m = width / 2.0;
@@ -361,7 +359,13 @@ fn place_point(
         Clipping::Clip => {
             let len = sink.out.len();
             draw::point_symbol(def, at, rotation, symbols, sink, depth + 1);
-            for p in &mut sink.out[len..] {
+            for i in len..sink.out.len() {
+                // The shared outline ([`Sink::charge_outline`]); what does not fit is dropped.
+                if !sink.charge_outline(outline.rings, sink.out[i].priority) {
+                    sink.out.truncate(i);
+                    break;
+                }
+                let p = &mut sink.out[i];
                 let shape = std::mem::replace(&mut p.shape, Shape::Fill { rings: Vec::new() });
                 p.shape = clip(clipping, outline.rings, shape);
             }
@@ -626,7 +630,7 @@ mod tests {
     #[test]
     fn a_clip_outline_is_charged_by_its_points() {
         // A 10 mm square traced with 64 000 points: clipping a pattern to it costs at least
-        // 64 000 / 64 units, also when the pattern has a single line.
+        // 64 000 / 8 units (kept points), also when the pattern has a single line.
         let n = 16_000;
         let side: Vec<Pt> = (0..n).map(|i| (10.0 * i as f64 / n as f64, 0.0)).collect();
         let mut ring = side.clone();
@@ -654,7 +658,7 @@ mod tests {
         );
         assert_eq!(sink.out.len(), 1);
         assert!(
-            sink.spent() >= 4 * n / draw::POINTS_PER_UNIT,
+            sink.spent() >= 4 * n / draw::KEPT_POINTS_PER_UNIT,
             "{}",
             sink.spent()
         );
@@ -667,15 +671,20 @@ mod tests {
 
     #[test]
     fn line_cap_marks_the_cut() {
-        // 11 lines (y = 0..=10 mm) fill the square.
+        // 11 lines (y = 0..=10 mm) fill the square, and its outline of 5 points costs a unit.
         let pattern = lines(0.0, false, 0.0, Clipping::Clip);
-        assert_eq!(with_budget(&pattern, 11), (11, false));
+        assert_eq!(with_budget(&pattern, 12), (11, false));
         assert_eq!(
-            with_budget(&pattern, 10),
+            with_budget(&pattern, 11),
             (10, true),
             "the cap dropped a line"
         );
-        assert_eq!(with_budget(&pattern, 1), (1, true));
+        assert_eq!(with_budget(&pattern, 2), (1, true));
+        assert_eq!(
+            with_budget(&pattern, 1),
+            (0, true),
+            "not even the outline fits"
+        );
     }
 
     #[test]
@@ -998,6 +1007,67 @@ mod tests {
             }),
             clipping: Clipping::Clip,
         }
+    }
+
+    #[test]
+    fn outline_counts_once_per_colour_it_clips() {
+        // One placement of a point whose 200 elements fill in 200 colours, clipped to an
+        // outline of 20 000 points: the PDF writes the outline once per colour (the shapes of a
+        // colour are painted together), so each colour pays for it.
+        let elements = (0..200)
+            .map(|color| Element {
+                symbol: Symbol::Area {
+                    color,
+                    patterns: Vec::new(),
+                },
+                coords: closed_ring(&[(0, 0), (100, 0), (100, 100)]),
+            })
+            .collect();
+        let pattern = Pattern::Points {
+            angle_rad: 0.0,
+            rotatable: false,
+            spacing: 1_000_000.0,
+            offset: 0.0,
+            offset_along: 0.0,
+            distance: 1_000_000.0,
+            symbol: Box::new(PointDef {
+                rotatable: false,
+                dot: None,
+                ring: None,
+                elements,
+            }),
+            clipping: Clipping::Clip,
+        };
+        let mut r = render_symbols();
+        r.symbols.insert(
+            PATTERNED,
+            Symbol::Area {
+                color: -1,
+                patterns: vec![pattern],
+            },
+        );
+        let zigzag: Vec<(i32, i32)> = (0..20_000)
+            .map(|i| (i % 1000 * 10, i / 1000 * 10))
+            .collect();
+        let object = MapObject {
+            symbol_id: PATTERNED,
+            kind: MapObjectKind::Path,
+            coords: closed_ring(&zigzag),
+            tags: Vec::new(),
+            pattern: None,
+        };
+        // Unfiltered: most of these colours are not in the colour table.
+        let before = draw::work_units();
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
+        draw::draw_object(&object, &r, &mut sink);
+        let work = draw::work_units() - before;
+        // 2500 units per colour: about a hundred colours fit.
+        assert!(sink.cut, "{} primitives", sink.out.len());
+        assert!((90..=100).contains(&sink.out.len()), "{}", sink.out.len());
+        assert!(
+            work <= MAX_UNITS_PER_OBJECT + 2_500 + draw::BUDGET_SLACK,
+            "{work}"
+        );
     }
 
     #[test]
