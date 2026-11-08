@@ -56,6 +56,7 @@ fn overflow_expected(
         orientation,
         centre: None,
         show_sheet_objects: false,
+        frame_margin_mm: None,
     };
     print_map(&doc, &options, "t")
         .unwrap()
@@ -188,6 +189,7 @@ fn overflow_amount_matches_the_library() {
         orientation: Orientation::Portrait,
         centre: None,
         show_sheet_objects: false,
+        frame_margin_mm: None,
     };
     let (x, y) = print_map(&doc, &options, "t")
         .unwrap()

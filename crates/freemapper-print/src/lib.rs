@@ -10,6 +10,7 @@ pub mod print;
 pub mod project;
 pub mod render;
 pub mod scale;
+pub mod sheet;
 
 /// The program and where to find it, as named in the PDF metadata.
 pub const CREDIT: &str = concat!("freemapper-print – ", env!("CARGO_PKG_REPOSITORY"));

@@ -198,6 +198,7 @@ fn paper_for(map: &Path) -> (String, PrintOptions) {
             orientation: Orientation::Auto,
             centre: None,
             show_sheet_objects: false,
+            frame_margin_mm: None,
         };
         let (page, _) = render_page(&doc, &options).unwrap();
         let (w, h) = drawn_extent(&page);
@@ -397,6 +398,7 @@ fn probedruck_distances_match_readme() {
             orientation,
             centre: None,
             show_sheet_objects: false,
+            frame_margin_mm: None,
         };
         let (page, _) = render_page(&doc, &options).unwrap();
         let offset = map_to_page(&doc, &page, p);

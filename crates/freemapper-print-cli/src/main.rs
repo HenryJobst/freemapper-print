@@ -149,6 +149,7 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<()> {
         orientation: args.orientation.into(),
         centre: None,
         show_sheet_objects: args.show_sheet_objects,
+        frame_margin_mm: None,
     };
     let title = args
         .map

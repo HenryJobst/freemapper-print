@@ -59,6 +59,7 @@ fn options(kind: MapKind, print_scale: Option<u32>) -> PrintOptions {
         orientation: Orientation::Portrait,
         centre: None,
         show_sheet_objects: false,
+        frame_margin_mm: None,
     }
 }
 
