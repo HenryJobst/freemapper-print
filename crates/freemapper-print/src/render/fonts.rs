@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
+use super::pdf::PdfError;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Filter, Finish, Name, Pdf, Rect, Ref, Str};
 use subsetter::GlyphRemapper;
@@ -226,10 +227,11 @@ impl FontObjects {
     }
 
     /// Writes every used face as a Type0 font over a CIDFontType2 with the subset embedded.
-    pub(crate) fn write(&self, pdf: &mut Pdf) {
+    pub(crate) fn write(&self, pdf: &mut Pdf) -> Result<(), PdfError> {
         for font in &self.fonts {
-            write_font(pdf, font);
+            write_font(pdf, font)?;
         }
+        Ok(())
     }
 }
 
@@ -245,11 +247,12 @@ fn subset_tag(glyphs: impl Iterator<Item = u16>) -> String {
         }
     }
     (0..6)
+        // `% 26` keeps the value below 26, so the cast is exact.
         .map(|i| char::from(b'A' + ((hash >> (5 * i)) % 26) as u8))
         .collect()
 }
 
-fn write_font(pdf: &mut Pdf, font: &FontObject) {
+fn write_font(pdf: &mut Pdf, font: &FontObject) -> Result<(), PdfError> {
     let face = font.face;
     let parsed = face.parsed();
     let scale = 1000.0 / face.units_per_em();
@@ -316,22 +319,31 @@ fn write_font(pdf: &mut Pdf, font: &FontObject) {
 
     // Arimo is a plain TrueType font, which `subsetter` handles; the test
     // `every_face_subsets` covers all four files.
+    let font_error = |message: String| PdfError::Font {
+        face: face.postscript_name(),
+        message,
+    };
     let subset = subsetter::subset(face.data(), 0, &font.usage.remapper)
-        .expect("subsetting the embedded Arimo");
+        .map_err(|e| font_error(format!("{e:?}")))?;
+    let length = i32::try_from(subset.len())
+        .map_err(|_| font_error(format!("subset of {} bytes", subset.len())))?;
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&subset, 6);
     pdf.stream(font.font_file, &compressed)
         .filter(Filter::FlateDecode)
-        .pair(Name(b"Length1"), subset.len() as i32);
+        .pair(Name(b"Length1"), length);
 
     let mut cmap = UnicodeCmap::new(Name(b"Custom"), system_info);
     for (cid, c) in font.usage.unicode.iter().enumerate() {
         if let Some(c) = c {
-            cmap.pair(cid as u16, *c);
+            // The remapper hands out u16 glyph ids, one per entry.
+            let cid = u16::try_from(cid).map_err(|_| font_error(format!("glyph id {cid}")))?;
+            cmap.pair(cid, *c);
         }
     }
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&cmap.finish(), 6);
     pdf.stream(font.to_unicode, &compressed)
         .filter(Filter::FlateDecode);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -398,7 +410,7 @@ mod tests {
             let mut next = Ref::new(1);
             let objects = fonts.finish(&mut next);
             let mut pdf = Pdf::new();
-            objects.write(&mut pdf);
+            objects.write(&mut pdf).unwrap();
             assert_eq!(objects.resources().count(), 1);
         }
     }

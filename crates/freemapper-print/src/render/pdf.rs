@@ -156,6 +156,13 @@ fn paint(
     }
 }
 
+/// A page that could not be written.
+#[derive(Debug, thiserror::Error)]
+pub enum PdfError {
+    #[error("could not embed the font {face}: {message}")]
+    Font { face: &'static str, message: String },
+}
+
 /// What a written page could not show as asked.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PdfInfo {
@@ -183,7 +190,7 @@ impl PdfMeta {
 /// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
 /// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
 /// not show.
-pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> (Vec<u8>, PdfInfo) {
+pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
     let (page_w, page_h) = page.page_mm;
     let t = Transform {
         page_height: page_h,
@@ -263,14 +270,14 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> (Vec<u8>, PdfInfo) {
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
     pdf.stream(contents, &compressed)
         .filter(Filter::FlateDecode);
-    fonts.write(&mut pdf);
+    fonts.write(&mut pdf)?;
     pdf.document_info(info)
         .title(TextStr(&meta.title))
         .creator(TextStr(&meta.creator));
     let info = PdfInfo {
         missing_glyphs: fonts.missing,
     };
-    (pdf.finish(), info)
+    Ok((pdf.finish(), info))
 }
 
 /// The decompressed page content of a PDF written by [`write_pdf`] (for tests).
@@ -332,7 +339,7 @@ mod tests {
     }
 
     fn write_info(primitives: &[Primitive], title: &str) -> (Vec<u8>, PdfInfo) {
-        write_pdf(&page(primitives), &PdfMeta::new(title))
+        write_pdf(&page(primitives), &PdfMeta::new(title)).unwrap()
     }
 
     fn write(primitives: &[Primitive]) -> Vec<u8> {

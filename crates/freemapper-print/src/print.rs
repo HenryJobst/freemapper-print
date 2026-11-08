@@ -15,7 +15,7 @@ use crate::render::draw::{MAX_PRIMITIVES_PER_OBJECT, Primitive, Shape, primitive
 use crate::render::fonts::substituted;
 use crate::render::geometry::Pt;
 use crate::render::page::{PaperBox, RenderedPage};
-use crate::render::pdf::{PdfMeta, write_pdf};
+use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
 use crate::render::symbols::{RenderSymbols, Symbol};
 use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
 
@@ -120,6 +120,8 @@ pub enum PrintError {
     Scale(#[from] ScaleError),
     #[error("could not resize the map symbols for the print scale: {0}")]
     Symbols(#[from] OmapError),
+    #[error(transparent)]
+    Pdf(#[from] PdfError),
 }
 
 /// The page for `map` at the print scale of `options`, in page millimetres, ready for any backend.
@@ -246,7 +248,7 @@ pub fn print_map(
     title: &str,
 ) -> Result<(Vec<u8>, PrintReport), PrintError> {
     let (page, mut report) = render_page(map, options)?;
-    let (pdf, info) = write_pdf(&page, &PdfMeta::new(title));
+    let (pdf, info) = write_pdf(&page, &PdfMeta::new(title))?;
     report.missing_glyphs = info.missing_glyphs.into_iter().collect();
     Ok((pdf, report))
 }
