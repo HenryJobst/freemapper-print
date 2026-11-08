@@ -3,7 +3,7 @@
 
 use crate::project::{Anchor, AnchorTarget, Corner, ElementKind, ElementSpec, SheetLang};
 use crate::render::fonts::{ASCENT, LINE_SPACING, char_width, face, text_width};
-use crate::render::page::{DirectColour, PaperBox, Pt, Shape, SheetItem};
+use crate::render::page::{DirectColour, FillRule, PaperBox, Pt, Shape, SheetItem};
 
 use super::placeholders::{PlaceholderValues, fill};
 use super::{PlacedElement, SheetContext, SheetNote, layout, layout_elements};
@@ -81,6 +81,7 @@ impl Block {
                         rect.max,
                         (rect.min.0, rect.max.1),
                     ]],
+                    rule: FillRule::EvenOdd,
                 },
             });
         }

@@ -421,7 +421,7 @@ fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
         p.1 += d.1;
     };
     match shape {
-        Shape::Fill { rings } => rings.iter_mut().flatten().for_each(shift),
+        Shape::Fill { rings, .. } => rings.iter_mut().flatten().for_each(shift),
         Shape::Stroke { path, .. } => path.iter_mut().for_each(shift),
         Shape::Text { origin, .. } => shift(origin),
         Shape::Clipped { rings, inner } => {
@@ -443,6 +443,7 @@ fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
 mod tests {
     use super::*;
     use crate::omap::{MapGeoref, MapPart};
+    use crate::render::draw::FillRule;
 
     fn map(scale: u32, set: SymbolSet, objects: Vec<MapObject>) -> MapDocument {
         MapDocument {
@@ -786,7 +787,7 @@ mod tests {
         page.primitives
             .iter()
             .map(|p| match &p.shape {
-                Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+                Shape::Fill { rings, .. } => rings.iter().map(Vec::len).sum(),
                 Shape::Stroke { path, .. } => path.len(),
                 _ => 0,
             })
@@ -1096,6 +1097,7 @@ mod tests {
                 rings: Arc::clone(rings),
                 inner: Box::new(Shape::Fill {
                     rings: vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
+                    rule: FillRule::EvenOdd,
                 }),
             },
         };
@@ -1111,7 +1113,8 @@ mod tests {
         assert_eq!(
             **inner,
             Shape::Fill {
-                rings: vec![vec![(10.0, 20.0), (11.0, 21.0), (10.0, 21.0)]]
+                rings: vec![vec![(10.0, 20.0), (11.0, 21.0), (10.0, 21.0)]],
+                rule: FillRule::EvenOdd,
             }
         );
     }

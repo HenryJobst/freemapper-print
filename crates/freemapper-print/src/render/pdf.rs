@@ -8,7 +8,7 @@ use std::sync::Arc;
 use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
-use super::draw::Shape;
+use super::draw::{FillRule, Shape};
 use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
 use super::image::RasterImage;
@@ -79,12 +79,15 @@ fn paint(
 ) {
     let [c, m, y, k] = cmyk.map(|v| v as f32);
     match shape {
-        Shape::Fill { rings } => {
+        Shape::Fill { rings, rule } => {
             content.set_fill_cmyk(c, m, y, k);
             for ring in rings {
                 path(content, t, ring, true);
             }
-            content.fill_even_odd();
+            match rule {
+                FillRule::EvenOdd => content.fill_even_odd(),
+                FillRule::NonZero => content.fill_nonzero(),
+            };
         }
         Shape::Stroke {
             path: points,
@@ -404,6 +407,7 @@ mod tests {
             priority,
             shape: Shape::Fill {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
+                rule: FillRule::EvenOdd,
             },
         }
     }
@@ -914,6 +918,7 @@ mod tests {
             },
             shape: Shape::Fill {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0)]],
+                rule: FillRule::EvenOdd,
             },
         };
         let pdf = content_of(&sheet_page(vec![fill], &[]));

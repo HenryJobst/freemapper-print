@@ -14,10 +14,22 @@ use super::symbols::{
 };
 use crate::omap::{MapCoord, MapObject, MapObjectKind, PatternOrigin};
 
+/// Which points a fill covers where its rings cross or nest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FillRule {
+    /// Inside where a ray from the point crosses the rings an odd number of times. Map areas
+    /// fill this way, as in OOM.
+    #[default]
+    EvenOdd,
+    /// Inside where the rings wind around the point a nonzero number of times, as SVG fills by
+    /// default.
+    NonZero,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
-    /// Even-odd fill of closed rings.
-    Fill { rings: Vec<Vec<Pt>> },
+    /// Fill of closed rings by `rule`.
+    Fill { rings: Vec<Vec<Pt>>, rule: FillRule },
     Stroke {
         path: Vec<Pt>,
         closed: bool,
@@ -93,7 +105,7 @@ pub(crate) const KEPT_POINTS_PER_UNIT: usize = 8;
 /// ([`Sink::charge_outline`]).
 fn kept_points(shape: &Shape) -> usize {
     match shape {
-        Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+        Shape::Fill { rings, .. } => rings.iter().map(Vec::len).sum(),
         Shape::Stroke { path, .. } => path.len(),
         Shape::Text { text, .. } => text.len(),
         Shape::Clipped { inner, .. } => kept_points(inner),
@@ -363,6 +375,7 @@ pub(super) fn path_symbol(
                         priority: *color,
                         shape: Shape::Fill {
                             rings: rings.to_vec(),
+                            rule: FillRule::EvenOdd,
                         },
                     });
                 }
@@ -427,6 +440,7 @@ pub(super) fn dot(def: &PointDef, at: Pt) -> Option<Primitive> {
         priority: color,
         shape: Shape::Fill {
             rings: vec![circle(at, mm(radius))],
+            rule: FillRule::EvenOdd,
         },
     })
 }
@@ -828,7 +842,7 @@ mod tests {
             &r,
         );
         assert_eq!(p.len(), 2);
-        let Shape::Fill { rings } = &p.iter().find(|p| p.priority == 21).unwrap().shape else {
+        let Shape::Fill { rings, .. } = &p.iter().find(|p| p.priority == 21).unwrap().shape else {
             panic!()
         };
         let r_dot = rings[0]
@@ -886,7 +900,7 @@ mod tests {
             (2_000, 4_000),
         ]));
         let p = primitives(&object(&s, "521", MapObjectKind::Path, coords), &r);
-        let Shape::Fill { rings } = &p.iter().find(|p| p.priority == 9).unwrap().shape else {
+        let Shape::Fill { rings, .. } = &p.iter().find(|p| p.priority == 9).unwrap().shape else {
             panic!()
         };
         assert_eq!(rings.len(), 2, "outer ring and courtyard");
@@ -1444,7 +1458,7 @@ mod tests {
     fn kept(p: &[Primitive]) -> usize {
         p.iter()
             .map(|p| match &p.shape {
-                Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+                Shape::Fill { rings, .. } => rings.iter().map(Vec::len).sum(),
                 Shape::Stroke { path, .. } => path.len(),
                 _ => 0,
             })
@@ -1641,7 +1655,7 @@ mod tests {
             .into_iter()
             .map(|(rings, inner)| {
                 assert_eq!(rings, square_mm().as_slice());
-                let Shape::Fill { rings } = inner else {
+                let Shape::Fill { rings, .. } = inner else {
                     panic!("{inner:?}")
                 };
                 let n = rings[0].len() as f64;

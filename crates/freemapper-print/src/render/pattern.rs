@@ -9,7 +9,7 @@ use std::f64::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 
 use super::bounds::{extent, painted_bounds};
-use super::draw::{self, Primitive, Shape, Sink, mm};
+use super::draw::{self, FillRule, Primitive, Shape, Sink, mm};
 use super::geometry::Pt;
 use super::symbols::{Cap, Clipping, Join, Pattern, PointDef, RenderSymbols, Symbol};
 use crate::omap::PatternOrigin;
@@ -405,7 +405,13 @@ fn place_point(
                     break;
                 }
                 let p = &mut sink.out[i];
-                let shape = std::mem::replace(&mut p.shape, Shape::Fill { rings: Vec::new() });
+                let shape = std::mem::replace(
+                    &mut p.shape,
+                    Shape::Fill {
+                        rings: Vec::new(),
+                        rule: FillRule::EvenOdd,
+                    },
+                );
                 p.shape = clip(clipping, outline.rings, shape);
             }
         }
@@ -583,7 +589,7 @@ mod tests {
     /// Centre of a dot drawn by `draw::dot` (its first ring point lies `radius` east of it).
     fn dot_centre(shape: &Shape, radius: f64) -> Option<Pt> {
         match shape {
-            Shape::Fill { rings } => Some((rings[0][0].0 - radius, rings[0][0].1)),
+            Shape::Fill { rings, .. } => Some((rings[0][0].0 - radius, rings[0][0].1)),
             _ => None,
         }
     }

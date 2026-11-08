@@ -3,7 +3,7 @@
 
 use crate::project::{ElementSpec, SheetLang};
 use crate::render::fonts::{ASCENT, LINE_SPACING, face, text_width};
-use crate::render::page::{Cap, DirectColour, Join, PaperBox, Pt, Shape, SheetItem};
+use crate::render::page::{Cap, DirectColour, FillRule, Join, PaperBox, Pt, Shape, SheetItem};
 
 use super::{PlacedElement, SheetContext, layout};
 
@@ -83,6 +83,7 @@ pub fn scale_check_bar(
         colour,
         shape: Shape::Fill {
             rings: vec![rect(min, max)],
+            rule: FillRule::EvenOdd,
         },
     };
     let stroke = |path: Vec<Pt>, closed| SheetItem::Shape {
@@ -250,7 +251,7 @@ mod tests {
         let (items, size) = scale_check_bar(4000, (10.0, 20.0), SheetLang::De);
         let SheetItem::Shape {
             colour,
-            shape: Shape::Fill { rings },
+            shape: Shape::Fill { rings, .. },
         } = &items[0]
         else {
             panic!("white box first");

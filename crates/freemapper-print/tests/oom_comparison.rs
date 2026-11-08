@@ -176,7 +176,7 @@ fn drawn_extent(page: &RenderedPage) -> (f64, f64) {
     };
     for primitive in &page.primitives {
         match &primitive.shape {
-            Shape::Fill { rings } => rings.iter().flatten().for_each(&mut add),
+            Shape::Fill { rings, .. } => rings.iter().flatten().for_each(&mut add),
             Shape::Stroke { path, .. } => path.iter().for_each(&mut add),
             _ => {}
         }
@@ -347,7 +347,7 @@ fn map_to_page(
     let edge = (c(coords[1].x - coords[0].x), c(coords[1].y - coords[0].y));
     let mut found = Vec::new();
     for primitive in &page.primitives {
-        if let Shape::Fill { rings } = &primitive.shape {
+        if let Shape::Fill { rings, .. } = &primitive.shape {
             for r in rings.iter().filter(|r| r.len() >= 2) {
                 let d = (r[1].0 - r[0].0, r[1].1 - r[0].1);
                 if (d.0 - edge.0).abs() < 0.002 && (d.1 - edge.1).abs() < 0.002 {

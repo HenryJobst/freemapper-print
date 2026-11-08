@@ -1,13 +1,14 @@
 //! Logos (design §5.2): club and sponsor logos as PNG, JPEG or SVG, `width_mm` wide, the height
 //! from the aspect ratio.
 //!
-//! PNG and JPEG become a [`RasterImage`] and keep their alpha. SVG is parsed by `usvg` (no text,
-//! no fonts) and drawn as fills and strokes in CMYK; what the sheet cannot draw as written is
-//! simplified with a [`SheetNote::LogoSimplified`]. Logo files come from users and may be broken
-//! or hostile: the limits below bound the work (ADR 0019), and a file that breaks one is left out
-//! with a [`SheetNote::LogoSkipped`].
+//! PNG and JPEG become a [`RasterImage`] and keep their alpha. An SVG must pass an allow-list of
+//! plain shapes ([`svg_check`], ADR 0026); then `usvg` parses it (no text, no fonts) and it is
+//! drawn as fills and strokes in CMYK. What the sheet cannot draw as written is simplified with a
+//! [`SheetNote::LogoSimplified`]. Logo files come from users and may be broken or hostile: the
+//! limits below bound the work (ADR 0019), and a file that breaks one is left out with a
+//! [`SheetNote::LogoSkipped`].
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::Arc;
@@ -19,9 +20,13 @@ use usvg::tiny_skia_path::PathSegment;
 use crate::project::ElementSpec;
 use crate::render::geometry::flatten_cubic;
 use crate::render::image::MAX_DIMENSION;
-use crate::render::page::{Cap, DirectColour, Join, PaperBox, Pt, RasterImage, Shape, SheetItem};
+use crate::render::page::{
+    Cap, DirectColour, FillRule, Join, PaperBox, Pt, RasterImage, Shape, SheetItem,
+};
 
 use super::{PlacedElement, SheetContext, SheetNote, layout};
+
+mod svg_check;
 
 /// Largest logo file read (bytes).
 pub const MAX_FILE_BYTES: u64 = 10_000_000;
@@ -34,13 +39,8 @@ pub const MAX_SVG_SEGMENTS: usize = 20_000;
 /// Most points of an SVG logo once its curves are flattened. Curves far outside the logo, or
 /// huge ones, would otherwise flatten into millions of points.
 const MAX_SVG_POINTS: usize = 500_000;
-/// Most work of an SVG logo once `usvg` has resolved it: one unit per element plus one per two
-/// bytes of path data, every `use` and every marker copy counted again.
-const MAX_SVG_WORK: u64 = 1_000_000;
 /// Most XML nodes of an SVG logo as written.
 const MAX_SVG_NODES: u32 = 200_000;
-/// Deepest SVG nesting, `use` resolved.
-const MAX_SVG_DEPTH: u64 = 256;
 /// Most text that entity references may expand to (bytes), estimated from above.
 const MAX_ENTITY_TEXT: u64 = 50_000_000;
 
@@ -50,7 +50,7 @@ const OPACITY: &str = "transparency ignored, drawn opaque";
 const DASHES: &str = "dashes drawn as solid lines";
 const IMAGE: &str = "embedded image left out";
 const TEXT: &str = "text left out (convert it to paths)";
-const EFFECTS: &str = "clip path, mask or filter ignored";
+const CLIP: &str = "clip path ignored";
 
 /// RGB to CMYK, naive: k = 1 − max(r, g, b), c = (1 − r − k) / (1 − k) and so on; no colour
 /// when k = 1.
@@ -107,11 +107,8 @@ pub(super) fn place_logo(
             rect,
             image: Arc::new(image),
         }],
-        Logo::Vector {
-            tree,
-            mut simplified,
-        } => match svg_items(&tree, rect, &mut simplified) {
-            Ok(items) => {
+        Logo::Vector(tree) => match svg_items(&tree, rect) {
+            Ok((items, simplified)) => {
                 notes.extend(simplified.into_iter().map(|r| SheetNote::LogoSimplified {
                     id: spec.id.clone(),
                     reason: r.into(),
@@ -130,11 +127,7 @@ pub(super) fn place_logo(
 /// A logo as read, before it is placed.
 enum Logo {
     Raster(RasterImage),
-    /// `simplified`: what the SVG uses that the sheet cannot draw, found while reading.
-    Vector {
-        tree: Box<usvg::Tree>,
-        simplified: BTreeSet<&'static str>,
-    },
+    Vector(Box<usvg::Tree>),
 }
 
 impl Logo {
@@ -142,7 +135,7 @@ impl Logo {
     fn size(&self) -> (f64, f64) {
         match self {
             Logo::Raster(image) => (f64::from(image.width()), f64::from(image.height())),
-            Logo::Vector { tree, .. } => (
+            Logo::Vector(tree) => (
                 f64::from(tree.size().width()),
                 f64::from(tree.size().height()),
             ),
@@ -205,13 +198,23 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
             "{width} x {height} pixels, more than 25 megapixels"
         ));
     }
+    if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        return Err(format!(
+            "{width} x {height} pixels, wider or higher than 65 535"
+        ));
+    }
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_DIMENSION);
     limits.max_image_height = Some(MAX_DIMENSION);
     limits.max_alloc = Some(MAX_DECODE_BYTES);
     let mut decoder = reader();
     decoder.limits(limits);
-    let decoded = decoder.decode().map_err(cannot)?;
+    let decoded = decoder.decode().map_err(|e| match e {
+        image::ImageError::Limits(_) => {
+            "too large to decode; save it as an 8-bit image or with fewer pixels".to_string()
+        }
+        e => cannot(e),
+    })?;
     let (width, height) = (decoded.width(), decoded.height());
     let (rgb, alpha) = if decoded.color().has_alpha() {
         let rgba = decoded.into_rgba8().into_raw();
@@ -228,8 +231,9 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
     RasterImage::new(width, height, rgb, alpha).map_err(|e| format!("cannot use the image ({e})"))
 }
 
-/// An SVG parsed into paths. Entities, `use` and nesting are checked on the XML before `usvg`
-/// resolves them; embedded images are never loaded, external files never read.
+/// An SVG parsed into paths. Entities and the allow-list ([`svg_check`]) are checked on the XML
+/// before `usvg` resolves it, so a file that is refused never reaches `usvg`. Embedded images are
+/// never loaded, external files never read.
 fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "cannot read the SVG (not UTF-8)")?;
     check_entities(text)?;
@@ -241,8 +245,7 @@ fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     };
     let doc = roxmltree::Document::parse_with_options(text, options)
         .map_err(|e| format!("cannot read the SVG ({e})"))?;
-    let mut simplified = BTreeSet::new();
-    check_elements(&doc, &mut simplified)?;
+    svg_check::check_svg(&doc)?;
     let opt = usvg::Options {
         resources_dir: None,
         image_href_resolver: usvg::ImageHrefResolver {
@@ -253,10 +256,7 @@ fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     };
     let tree =
         usvg::Tree::from_xmltree(&doc, &opt).map_err(|e| format!("cannot read the SVG ({e})"))?;
-    Ok(Logo::Vector {
-        tree: Box::new(tree),
-        simplified,
-    })
+    Ok(Logo::Vector(Box::new(tree)))
 }
 
 /// Rejects entity declarations that could expand into more than [`MAX_ENTITY_TEXT`] bytes. The
@@ -274,127 +274,6 @@ fn check_entities(text: &str) -> Result<(), String> {
     let refs = text.bytes().filter(|&b| b == b'&').count() as u64;
     if refs.saturating_mul(256).saturating_mul(dtd_len as u64) > MAX_ENTITY_TEXT {
         return Err("its entities expand too far".into());
-    }
-    Ok(())
-}
-
-/// Size of one SVG element as `usvg` will hold it: one plus half the length of its path data
-/// (`d`, `points`), an upper bound of its points.
-fn element_work(node: roxmltree::Node<'_, '_>) -> u64 {
-    let data =
-        node.attribute("d").map_or(0, str::len) + node.attribute("points").map_or(0, str::len);
-    1 + data as u64 / 2
-}
-
-/// Whether `usvg` places markers on the element's points.
-fn takes_markers(node: roxmltree::Node<'_, '_>) -> bool {
-    matches!(
-        node.tag_name().name(),
-        "path" | "line" | "polyline" | "polygon"
-    )
-}
-
-/// One subtree with every `use` replaced by what it refers to.
-#[derive(Debug, Clone, Copy, Default)]
-struct Expanded {
-    /// Sum of [`element_work`].
-    work: u64,
-    /// Upper bound of the points that can carry a marker.
-    marker_points: u64,
-    depth: u64,
-}
-
-/// Checks the SVG's size once `usvg` has resolved it: every `use` replaced by what it refers
-/// to and every marker copied to the points it marks. Both are done before any limit on the
-/// paths could apply, so a small file could otherwise make `usvg` build millions of paths.
-/// Notes embedded images and text, which are not drawn. A `use` that refers to itself, directly
-/// or not, counts as empty, as `usvg` drops it.
-fn check_elements(
-    doc: &roxmltree::Document<'_>,
-    simplified: &mut BTreeSet<&'static str>,
-) -> Result<(), String> {
-    let mut ids = HashMap::new();
-    for node in doc.descendants().filter(|n| n.is_element()) {
-        match node.tag_name().name() {
-            "image" => {
-                simplified.insert(IMAGE);
-            }
-            "text" => {
-                simplified.insert(TEXT);
-            }
-            _ => {}
-        }
-        if let Some(id) = node.attribute("id") {
-            ids.entry(id).or_insert(node);
-        }
-    }
-    let target = |node: roxmltree::Node<'_, '_>| {
-        if node.tag_name().name() != "use" {
-            return None;
-        }
-        let href = node
-            .attribute(("http://www.w3.org/1999/xlink", "href"))
-            .or_else(|| node.attribute("href"))?;
-        ids.get(href.strip_prefix('#')?).copied()
-    };
-    // Each subtree worked out children first, without recursion.
-    let mut done: HashMap<roxmltree::NodeId, Expanded> = HashMap::new();
-    let mut open = HashSet::new();
-    let mut stack = vec![(doc.root_element(), false)];
-    while let Some((node, expanded)) = stack.pop() {
-        if done.contains_key(&node.id()) {
-            continue;
-        }
-        let parts = || {
-            node.children()
-                .filter(|c| c.is_element())
-                .chain(target(node))
-        };
-        if !expanded {
-            if !open.insert(node.id()) {
-                continue;
-            }
-            stack.push((node, true));
-            for part in parts() {
-                if !done.contains_key(&part.id()) && !open.contains(&part.id()) {
-                    stack.push((part, false));
-                }
-            }
-            continue;
-        }
-        let own = element_work(node);
-        let mut sum = Expanded {
-            work: own,
-            marker_points: if takes_markers(node) { own + 1 } else { 0 },
-            depth: 0,
-        };
-        for part in parts() {
-            let p = done.get(&part.id()).copied().unwrap_or_default();
-            sum.work = sum.work.saturating_add(p.work);
-            sum.marker_points = sum.marker_points.saturating_add(p.marker_points);
-            sum.depth = sum.depth.max(p.depth);
-        }
-        sum.depth += 1;
-        if sum.work > MAX_SVG_WORK {
-            return Err("too complex once `use` is resolved".into());
-        }
-        if sum.depth > MAX_SVG_DEPTH {
-            return Err(format!("SVG nested deeper than {MAX_SVG_DEPTH} levels"));
-        }
-        open.remove(&node.id());
-        done.insert(node.id(), sum);
-    }
-    let all = done
-        .get(&doc.root_element().id())
-        .copied()
-        .unwrap_or_default();
-    let markers = doc
-        .descendants()
-        .filter(|n| n.has_tag_name("marker"))
-        .filter_map(|m| done.get(&m.id()))
-        .fold(0u64, |sum, m| sum.saturating_add(m.work));
-    if markers.saturating_mul(all.marker_points) > MAX_SVG_WORK {
-        return Err("too complex once its markers are placed".into());
     }
     Ok(())
 }
@@ -437,15 +316,21 @@ impl Budget {
 fn svg_items(
     tree: &usvg::Tree,
     rect: PaperBox,
-    simplified: &mut BTreeSet<&'static str>,
-) -> Result<Vec<SheetItem>, String> {
+) -> Result<(Vec<SheetItem>, BTreeSet<&'static str>), String> {
+    let mut simplified = BTreeSet::new();
     let to_page = ToPage {
         origin: rect.min,
         scale: (rect.max.0 - rect.min.0) / f64::from(tree.size().width()),
     };
     let mut items = Vec::new();
     let mut budget = Budget::default();
-    group_items(tree.root(), to_page, &mut items, &mut budget, simplified)?;
+    group_items(
+        tree.root(),
+        to_page,
+        &mut items,
+        &mut budget,
+        &mut simplified,
+    )?;
 
     let tolerance = 1e-6;
     let outside = items.iter().any(|item| {
@@ -453,7 +338,7 @@ fn svg_items(
             return false;
         };
         let (points, margin): (Box<dyn Iterator<Item = &Pt>>, f64) = match shape {
-            Shape::Fill { rings } => (Box::new(rings.iter().flatten()), 0.0),
+            Shape::Fill { rings, .. } => (Box::new(rings.iter().flatten()), 0.0),
             Shape::Stroke { path, width, .. } => (Box::new(path.iter()), width / 2.0),
             _ => (Box::new(std::iter::empty()), 0.0),
         };
@@ -473,7 +358,13 @@ fn svg_items(
         ]]);
         for item in &mut items {
             if let SheetItem::Shape { shape, .. } = item {
-                let inner = std::mem::replace(shape, Shape::Fill { rings: Vec::new() });
+                let inner = std::mem::replace(
+                    shape,
+                    Shape::Fill {
+                        rings: Vec::new(),
+                        rule: FillRule::EvenOdd,
+                    },
+                );
                 *shape = Shape::Clipped {
                     rings: ring.clone(),
                     inner: Box::new(inner),
@@ -481,7 +372,7 @@ fn svg_items(
             }
         }
     }
-    Ok(items)
+    Ok((items, simplified))
 }
 
 fn group_items(
@@ -494,13 +385,15 @@ fn group_items(
     if group.opacity().get() < 1.0 {
         simplified.insert(OPACITY);
     }
+    // The allow-list lets only clip paths through; masks and filters cannot occur.
     if group.clip_path().is_some() || group.mask().is_some() || !group.filters().is_empty() {
-        simplified.insert(EFFECTS);
+        simplified.insert(CLIP);
     }
     for node in group.children() {
         match node {
             usvg::Node::Group(g) => group_items(g, to_page, items, budget, simplified)?,
             usvg::Node::Path(p) => path_items(p, to_page, items, budget, simplified)?,
+            // The allow-list keeps images and text out; if `usvg` still makes one, it is noted.
             usvg::Node::Image(_) => {
                 simplified.insert(IMAGE);
             }
@@ -569,8 +462,6 @@ fn path_items(
         if f.opacity().get() < 1.0 {
             simplified.insert(OPACITY);
         }
-        // `Shape::Fill` fills even-odd; a nonzero SVG fill differs only where subpaths of the
-        // same direction overlap.
         SheetItem::Shape {
             colour: paint_colour(f.paint(), simplified),
             shape: Shape::Fill {
@@ -579,6 +470,10 @@ fn path_items(
                     .filter(|(ring, _)| ring.len() >= 3)
                     .map(|(ring, _)| ring.clone())
                     .collect(),
+                rule: match f.rule() {
+                    usvg::FillRule::NonZero => FillRule::NonZero,
+                    usvg::FillRule::EvenOdd => FillRule::EvenOdd,
+                },
             },
         }
     });
@@ -620,7 +515,7 @@ fn path_items(
         }
     }
     let fill = fill.filter(
-        |f| !matches!(f, SheetItem::Shape { shape: Shape::Fill { rings }, .. } if rings.is_empty()),
+        |f| !matches!(f, SheetItem::Shape { shape: Shape::Fill { rings, .. }, .. } if rings.is_empty()),
     );
     match path.paint_order() {
         usvg::PaintOrder::FillAndStroke => {
@@ -696,7 +591,7 @@ mod tests {
     use super::super::tests::{a4, element, empty_map, project, sheet_of};
     use super::*;
     use crate::project::{Anchor, AnchorTarget, Corner, ElementKind};
-    use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem};
+    use crate::render::page::{DirectColour, FillRule, PaperBox, RenderedPage, Shape, SheetItem};
     use crate::scale::MapKind;
     use crate::sheet::SheetReport;
 
@@ -840,7 +735,7 @@ mod tests {
             .filter_map(|i| match i {
                 SheetItem::Shape {
                     colour,
-                    shape: Shape::Fill { rings },
+                    shape: Shape::Fill { rings, .. },
                 } => Some((*colour, rings.clone())),
                 _ => None,
             })
@@ -950,6 +845,10 @@ mod tests {
 
     /// A PNG that claims `width` x `height` RGBA pixels but holds only a few bytes of data.
     fn png_claiming(width: u32, height: u32) -> Vec<u8> {
+        png_claiming_depth(width, height, 8)
+    }
+
+    fn png_claiming_depth(width: u32, height: u32, depth: u8) -> Vec<u8> {
         let chunk = |kind: &[u8], data: &[u8]| {
             let mut c = (data.len() as u32).to_be_bytes().to_vec();
             let mut body = kind.to_vec();
@@ -960,7 +859,7 @@ mod tests {
         };
         let mut ihdr = width.to_be_bytes().to_vec();
         ihdr.extend_from_slice(&height.to_be_bytes());
-        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+        ihdr.extend_from_slice(&[depth, 6, 0, 0, 0]);
         let idat = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
         let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
         png.extend(chunk(b"IHDR", &ihdr));
@@ -1077,10 +976,7 @@ mod tests {
         let path = write_temp(&dir, "bomb.svg", svg.as_bytes());
         let (_, report) = sheet_with(&path, 40.0);
         let reason = skipped_reason(&report);
-        assert!(
-            reason.contains("too complex once `use` is resolved"),
-            "{reason}"
-        );
+        assert!(reason.ends_with(TOO_COMPLEX), "{reason}");
     }
 
     #[test]
@@ -1118,11 +1014,10 @@ mod tests {
     #[test]
     fn svg_simplifications_noted() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <defs><clipPath id="c"><rect width="90" height="90"/></clipPath></defs>
             <rect width="50" height="50" fill="#00ff00" fill-opacity="0.5"/>
             <path d="M5 60 L95 60" stroke="#000" stroke-dasharray="4 2"/>
-            <image href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/>
-            <text x="0" y="90">Sponsor</text>
-            <rect x="60" width="40" height="40" fill="#000" style="filter: blur(2px)"/>
+            <rect x="60" width="40" height="40" fill="#000" clip-path="url(#c)"/>
         </svg>"##;
         let dir = tempfile::tempdir().unwrap();
         let path = write_temp(&dir, "mixed.svg", svg.as_bytes());
@@ -1134,19 +1029,15 @@ mod tests {
                 other => panic!("{other:?}"),
             })
             .collect();
-        for expected in [
-            "transparency ignored, drawn opaque",
-            "dashes drawn as solid lines",
-            "embedded image left out",
-            "text left out (convert it to paths)",
-            "clip path, mask or filter ignored",
-        ] {
-            assert!(
-                reasons.iter().any(|r| r == expected),
-                "{expected}: {reasons:?}"
-            );
-        }
-        assert!(!fills(&logo_items(&page)).is_empty());
+        assert_eq!(
+            reasons,
+            [
+                "clip path ignored",
+                "dashes drawn as solid lines",
+                "transparency ignored, drawn opaque",
+            ]
+        );
+        assert_eq!(fills(&logo_items(&page)).len(), 2);
     }
 
     #[test]
@@ -1188,7 +1079,7 @@ mod tests {
         let path = write_temp(&dir, "markers.svg", svg.as_bytes());
         let (_, report) = sheet_with(&path, 40.0);
         let reason = skipped_reason(&report);
-        assert!(reason.contains("markers"), "{reason}");
+        assert!(reason.ends_with(&plain("the element <marker>")), "{reason}");
     }
 
     #[test]
@@ -1245,5 +1136,376 @@ mod tests {
         let (_, report) = sheet_with(dir.path(), 40.0);
         let reason = skipped_reason(&report);
         assert!(reason.contains("not a regular file"), "{reason}");
+    }
+
+    const TOO_COMPLEX: &str = "too complex once `use` and clip paths are resolved";
+
+    fn plain(what: &str) -> String {
+        format!(
+            "{what} is not supported in logos; export the logo as a plain SVG (shapes, paths, gradients)"
+        )
+    }
+
+    const SVG_OPEN: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100" viewBox="0 0 100 100">"#;
+
+    fn sheet_with_svg(body: &str) -> (RenderedPage, SheetReport) {
+        let dir = tempfile::tempdir().unwrap();
+        let svg = format!("{SVG_OPEN}{body}</svg>");
+        let path = write_temp(&dir, "logo.svg", svg.as_bytes());
+        sheet_with(&path, 40.0)
+    }
+
+    /// The reason an SVG of `body` is skipped. Every reason below comes from the allow-list or
+    /// the count before `usvg` runs, so `usvg` never sees these files.
+    fn svg_skipped(body: &str) -> String {
+        let (page, report) = sheet_with_svg(body);
+        assert_eq!(logo_items(&page), []);
+        skipped_reason(&report)
+    }
+
+    /// What an SVG of `body` draws, and its notes.
+    fn svg_drawn(body: &str) -> (Vec<SheetItem>, Vec<SheetNote>) {
+        let (page, report) = sheet_with_svg(body);
+        (logo_items(&page), logo_notes(&report))
+    }
+
+    /// A `use` bomb: `levels` groups, each using the one below ten times, the lowest a path with
+    /// `data` as its `d`. `link` writes the reference to the level below.
+    fn use_bomb(levels: usize, data: &str, link: impl Fn(usize) -> String) -> String {
+        let mut b = format!(r#"<defs><path id="a0" d="{data}"/><g id="t"/>"#);
+        for i in 1..=levels {
+            b.push_str(&format!(r#"<g id="a{i}">"#));
+            for _ in 0..10 {
+                b.push_str(&format!("<use {}/>", link(i - 1)));
+            }
+            b.push_str("</g>");
+        }
+        b.push_str(&format!("</defs><use {}/>", link(levels)));
+        b
+    }
+
+    #[test]
+    fn svg_use_bomb_every_href_form_skipped() {
+        type Link = fn(usize) -> String;
+        let forms: [(&str, Link); 5] = [
+            ("href", |i| format!(r##"href="#a{i}""##)),
+            ("xlink:href", |i| format!(r##"xlink:href="#a{i}""##)),
+            // The plain `href` wins over `xlink:href`, as in usvg.
+            ("both", |i| format!(r##"href="#a{i}" xlink:href="#t""##)),
+            ("leading space", |i| format!(r##"href=" #a{i}""##)),
+            ("trailing space", |i| format!(r##"href="#a{i} ""##)),
+        ];
+        for (form, link) in forms {
+            let reason = svg_skipped(&use_bomb(8, "M0 0h1", link));
+            assert!(reason.ends_with(TOO_COMPLEX), "{form}: {reason}");
+        }
+    }
+
+    #[test]
+    fn svg_use_of_long_path_data_skipped() {
+        // 10^4 copies of a path with 4000 bytes of data.
+        let data = format!("M0 0{}", "h1v1".repeat(1000));
+        let reason = svg_skipped(&use_bomb(4, &data, |i| format!(r##"href="#a{i}""##)));
+        assert!(reason.ends_with(TOO_COMPLEX), "{reason}");
+    }
+
+    #[test]
+    fn svg_xlink_dummy_does_not_hide_a_use() {
+        // `xlink:href` points to an empty group, `href` to the path: usvg draws the path.
+        let (items, notes) = svg_drawn(
+            r##"<defs><path id="p" d="M0 0H50V50Z" fill="#000"/><g id="t"/></defs><use href="#p" xlink:href="#t"/>"##,
+        );
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_patterns_skipped() {
+        let reason = svg_skipped(
+            r##"<defs><pattern id="p" width="0.5" height="0.5"><rect width="1" height="1"/></pattern></defs><rect width="1" height="1" fill="url(#p)"/>"##,
+        );
+        assert!(
+            reason.ends_with(&plain("the element <pattern>")),
+            "{reason}"
+        );
+        // Patterns nested in patterns.
+        let mut b = String::from("<defs>");
+        for i in 0..6 {
+            let fill = if i < 5 {
+                format!(r##" fill="url(#p{})""##, i + 1)
+            } else {
+                String::new()
+            };
+            b.push_str(&format!(r#"<pattern id="p{i}" width="0.5" height="0.5">"#));
+            b.push_str(&format!(r#"<rect width="1" height="1"{fill}/>"#).repeat(10));
+            b.push_str("</pattern>");
+        }
+        b.push_str(r##"</defs><rect width="10" height="10" fill="url(#p0)"/>"##);
+        let reason = svg_skipped(&b);
+        assert!(
+            reason.ends_with(&plain("the element <pattern>")),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn svg_masks_skipped() {
+        let reason = svg_skipped(
+            r##"<defs><mask id="m"><rect width="1" height="1" fill="white"/></mask></defs><rect width="1" height="1" mask="url(#m)"/>"##,
+        );
+        assert!(reason.ends_with(&plain("the element <mask>")), "{reason}");
+        // The 4 KB file of masks nested seven deep that took 3 GB in usvg.
+        let mut b = String::from("<defs>");
+        for i in 0..7 {
+            let mask = if i < 6 {
+                format!(r##" mask="url(#m{})""##, i + 1)
+            } else {
+                String::new()
+            };
+            b.push_str(&format!(r#"<mask id="m{i}">"#));
+            b.push_str(&format!(r#"<rect width="1" height="1" fill="white"{mask}/>"#).repeat(10));
+            b.push_str("</mask>");
+        }
+        b.push_str(r##"</defs><rect width="10" height="10" mask="url(#m0)"/>"##);
+        let reason = svg_skipped(&b);
+        assert!(reason.ends_with(&plain("the element <mask>")), "{reason}");
+        // A mask property without a mask element.
+        let reason = svg_skipped(r#"<rect width="1" height="1" style="mask: url(#nowhere)"/>"#);
+        assert!(reason.ends_with(&plain("the property mask")), "{reason}");
+    }
+
+    #[test]
+    fn svg_clip_paths_checked() {
+        let bbox = svg_skipped(
+            r##"<defs><clipPath id="c" clipPathUnits="objectBoundingBox"><path d="M0 0h1v1z"/></clipPath></defs><rect width="1" height="1" clip-path="url(#c)"/>"##,
+        );
+        assert!(
+            bbox.ends_with(&plain("a clip path in objectBoundingBox units")),
+            "{bbox}"
+        );
+        let nested = svg_skipped(
+            r##"<defs><clipPath id="c0"><rect width="1" height="1" clip-path="url(#c1)"/></clipPath><clipPath id="c1"><rect width="1" height="1"/></clipPath></defs><rect width="10" height="10" clip-path="url(#c0)"/>"##,
+        );
+        assert!(
+            nested.ends_with(&plain("a clip path inside a clip path")),
+            "{nested}"
+        );
+        let clipped_clip = svg_skipped(
+            r##"<defs><clipPath id="c0" style="clip-path: url( #c1 )"><rect width="1" height="1"/></clipPath><clipPath id="c1"><rect width="1" height="1"/></clipPath></defs><rect width="10" height="10" clip-path="url(#c0)"/>"##,
+        );
+        assert!(
+            clipped_clip.ends_with(&plain("a clip path inside a clip path")),
+            "{clipped_clip}"
+        );
+        let group = svg_skipped(
+            r##"<defs><g id="g"><rect width="1" height="1"/></g><clipPath id="c"><use xlink:href="#g"/></clipPath></defs><rect width="10" height="10" clip-path="url(#c)"/>"##,
+        );
+        assert!(
+            group.ends_with(&plain("a clip path that uses <g>")),
+            "{group}"
+        );
+        let not_a_clip = svg_skipped(
+            r##"<defs><rect id="r" width="1" height="1"/></defs><rect width="10" height="10" clip-path="url( #r )"/>"##,
+        );
+        assert!(
+            not_a_clip.ends_with(&plain("clip-path pointing to <rect>")),
+            "{not_a_clip}"
+        );
+        // Illustrator's way: a clip path that uses a shape, in user space.
+        let (items, notes) = svg_drawn(
+            r##"<defs><rect id="r" width="90" height="90"/><clipPath id="c"><use xlink:href="#r" overflow="visible"/></clipPath></defs><g clip-path="url(#c)"><rect width="50" height="50" fill="#000"/></g>"##,
+        );
+        assert_eq!(
+            notes,
+            [SheetNote::LogoSimplified {
+                id: "logo".into(),
+                reason: "clip path ignored".into()
+            }]
+        );
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_clip_path_copies_counted() {
+        // A user-space clip path of 400 000 bytes of path data, used by 20 shapes.
+        let data = format!("M0 0{}z", "h1v1".repeat(100_000));
+        let mut b = format!(r#"<defs><clipPath id="c"><path d="{data}"/></clipPath></defs>"#);
+        b.push_str(&r##"<rect width="1" height="1" clip-path="url(#c)"/>"##.repeat(20));
+        let reason = svg_skipped(&b);
+        assert!(reason.ends_with(TOO_COMPLEX), "{reason}");
+    }
+
+    #[test]
+    fn svg_filters_images_text_and_styles_skipped() {
+        let cases = [
+            (
+                r##"<defs><g id="big"><rect width="1" height="1"/></g><filter id="f"><feImage href="#big"/></filter></defs><rect width="1" height="1" filter="url(#f)"/>"##,
+                plain("the element <filter>"),
+            ),
+            (
+                r#"<rect width="1" height="1" style="filter: blur(2px)"/>"#,
+                plain("the property filter"),
+            ),
+            (
+                r#"<image href="file:///etc/passwd" width="10" height="10"/>"#,
+                plain("the element <image>"),
+            ),
+            (
+                r#"<text x="0" y="9">Club</text>"#,
+                plain("the element <text>"),
+            ),
+            (
+                r#"<style>@import url("https://example.com/a.css");</style><rect width="5" height="5"/>"#,
+                plain("the element <style>"),
+            ),
+            (
+                r#"<x:style xmlns:x="urn:x">rect { fill: red }</x:style>"#,
+                plain("the element <style>"),
+            ),
+            (
+                r#"<switch><rect width="5" height="5"/></switch>"#,
+                plain("the element <switch>"),
+            ),
+            (
+                r#"<rect width="5" height="5" cursor="url(#c)"/>"#,
+                plain("url() in the property cursor"),
+            ),
+            (
+                r#"<rect id="a" width="5" height="5"/><rect id="a" width="5" height="5"/>"#,
+                "the id \"a\" is used twice; export the logo as a plain SVG".to_string(),
+            ),
+        ];
+        for (body, expected) in cases {
+            let reason = svg_skipped(body);
+            assert!(reason.ends_with(&expected), "{body}: {reason}");
+        }
+    }
+
+    #[test]
+    fn svg_paint_links_resolved_as_usvg_does() {
+        // Gradients in every form usvg takes.
+        for fill in [
+            r#"fill="url(#g)""#,
+            r#"fill="url( #g )""#,
+            r#"fill="url('#g') red""#,
+            r#"style="fill: url( &quot;#g&quot; )""#,
+        ] {
+            let (items, notes) = svg_drawn(&format!(
+                r##"<defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs><rect width="10" height="10" {fill}/>"##
+            ));
+            assert_eq!(
+                notes,
+                [SheetNote::LogoSimplified {
+                    id: "logo".into(),
+                    reason: "gradient drawn in its first stop colour".into()
+                }],
+                "{fill}"
+            );
+            assert!(close_cmyk(fills(&items)[0].0.cmyk, [0.0, 1.0, 1.0, 0.0]));
+        }
+        // A paint link to anything else, in every form.
+        for fill in [
+            r#"fill="url(#grp)""#,
+            r#"stroke="url( #grp )""#,
+            r#"style="fill:url('#grp')""#,
+        ] {
+            let reason = svg_skipped(&format!(
+                r##"<defs><g id="grp"/></defs><rect width="10" height="10" {fill}/>"##
+            ));
+            assert!(reason.contains("with a <g>"), "{fill}: {reason}");
+        }
+        let linked = svg_skipped(
+            r##"<defs><rect id="r"/><linearGradient id="g" xlink:href=" #r"/></defs><rect width="10" height="10" fill="url(#g)"/>"##,
+        );
+        assert!(
+            linked.ends_with(&plain("a gradient linked to <rect>")),
+            "{linked}"
+        );
+        let looped = svg_skipped(
+            r##"<defs><linearGradient id="a" href="#b"/><linearGradient id="b" href="#a"/></defs><rect width="10" height="10" fill="url(#a)"/>"##,
+        );
+        assert!(
+            looped.ends_with(&plain("a chain of gradient links this long")),
+            "{looped}"
+        );
+    }
+
+    #[test]
+    fn svg_editor_elements_ignored() {
+        let (items, notes) = svg_drawn(
+            r##"<sodipodi:namedview xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" pagecolor="#ffffff"/>
+            <metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/></metadata>
+            <g xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:label="Layer 1"><rect width="10" height="10" fill="#000"/></g>"##,
+        );
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_external_use_ignored() {
+        // usvg does not load other files; the link resolves to nothing.
+        let (items, notes) =
+            svg_drawn(r##"<use href="other.svg#a"/><rect width="5" height="5" fill="#000"/>"##);
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_nonzero_fill_keeps_the_overlap() {
+        // Two squares drawn the same way round, overlapping in the middle: nonzero fills the
+        // overlap, even-odd leaves it empty.
+        let d = "M10 10 H60 V60 H10 Z M40 40 H90 V90 H40 Z";
+        let (page, report) = sheet_with_svg(&format!(
+            r##"<path d="{d}" fill="#000"/><path d="{d}" fill="#000" fill-rule="evenodd"/>"##
+        ));
+        assert_eq!(logo_notes(&report), []);
+        let rules: Vec<FillRule> = logo_items(&page)
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Fill { rule, rings },
+                    ..
+                } => {
+                    assert_eq!(rings.len(), 2);
+                    Some(*rule)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rules, [FillRule::NonZero, FillRule::EvenOdd]);
+        let (pdf, _) =
+            crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t")).unwrap();
+        let content = String::from_utf8(crate::render::pdf::content_of(&pdf)).unwrap();
+        let ops: Vec<&str> = content
+            .lines()
+            .filter(|l| *l == "f" || *l == "f*")
+            .collect();
+        assert_eq!(ops, ["f", "f*"]);
+    }
+
+    #[test]
+    fn wide_png_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        // 20 megapixels, but wider than a PDF image may be.
+        let path = write_temp(&dir, "wide.png", &png_claiming(1_000_000, 20));
+        let (_, report) = sheet_with(&path, 40.0);
+        let reason = skipped_reason(&report);
+        assert!(
+            reason.ends_with("1000000 x 20 pixels, wider or higher than 65 535"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn deep_png_too_large_to_decode() {
+        let dir = tempfile::tempdir().unwrap();
+        // 25 megapixels of 16-bit RGBA: 200 MB, more than the decoder may allocate.
+        let path = write_temp(&dir, "deep.png", &png_claiming_depth(5000, 5000, 16));
+        let (_, report) = sheet_with(&path, 40.0);
+        let reason = skipped_reason(&report);
+        assert!(
+            reason.ends_with("too large to decode; save it as an 8-bit image or with fewer pixels"),
+            "{reason}"
+        );
     }
 }

@@ -56,8 +56,8 @@ pub enum SheetNote {
     /// A logo was left out, and why.
     LogoSkipped { id: String, reason: String },
     /// An SVG logo uses something the sheet cannot draw as written: a gradient, transparency,
-    /// an embedded image, text, dashes, a clip path, mask or filter. `reason` says what and how
-    /// it is drawn instead. One note per kind and logo.
+    /// dashes or a clip path. `reason` says what and how it is drawn instead. One note per kind
+    /// and logo.
     LogoSimplified { id: String, reason: String },
     /// A text names a placeholder that does not exist; it is printed as written.
     UnknownPlaceholder { id: String, name: String },
@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(report.print.print_scale, 7500);
         // Bottom right of the page, 0 offset: the white box ends at the paper corner.
         let SheetItem::Shape {
-            shape: Shape::Fill { rings },
+            shape: Shape::Fill { rings, .. },
             ..
         } = &page.sheet[1]
         else {
@@ -644,7 +644,7 @@ mod tests {
             panic!()
         };
         assert_eq!(*colour, DirectColour::WHITE);
-        let Shape::Fill { rings } = shape else {
+        let Shape::Fill { rings, .. } = shape else {
             panic!()
         };
         let (s1, s2) = (pt_mm(14.0), pt_mm(9.0));
@@ -750,7 +750,7 @@ mod tests {
         let (page, _) = sheet_of(&lp, &empty_map());
         let SheetItem::Shape {
             colour,
-            shape: Shape::Fill { rings },
+            shape: Shape::Fill { rings, .. },
         } = &page.sheet[1]
         else {
             panic!("{:?}", page.sheet)
@@ -777,7 +777,7 @@ mod tests {
         let (page, _) = sheet_of(&lp, &map);
         let SheetItem::Shape {
             colour,
-            shape: Shape::Fill { rings },
+            shape: Shape::Fill { rings, .. },
         } = &page.sheet[1]
         else {
             panic!("{:?}", page.sheet)
@@ -867,7 +867,7 @@ mod tests {
         let lp = project(MapKind::Sprint, Vec::new(), &a4());
         let (page, _) = sheet_of(&lp, &map);
         let SheetItem::Shape {
-            shape: Shape::Fill { rings },
+            shape: Shape::Fill { rings, .. },
             ..
         } = &page.sheet[1]
         else {

@@ -66,4 +66,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0023](0023-north-lines-belong-to-the-map.md) | North lines belong to the map | Accepted | 2026-11-08 |
 | [0024](0024-program-texts-in-fluent-files.md) | Program texts in Fluent files (suite rule) | Accepted | 2026-11-08 |
 | [0025](0025-event-project-file-format.md) | Event project file format | Accepted | 2026-11-08 |
-| [0026](0026-logos-png-jpeg-and-svg-as-paths.md) | Logos: PNG and JPEG as images, SVG as paths | Accepted | 2026-11-08 |
+| [0026](0026-logos-png-jpeg-and-svg-as-paths.md) | Logos: PNG and JPEG as images, SVG as paths from an allow-list | Accepted | 2026-11-08 |
