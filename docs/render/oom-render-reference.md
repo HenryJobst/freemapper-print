@@ -647,7 +647,16 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   symbols. Both cases also report the object as cut. A main line or border without colour or
   width is skipped before its dashes are computed (it draws nothing in OOM either).
 - All pattern shapes of one area hold the same outline (`Arc`); the PDF writer opens one clip
-  block per run of shapes with the same outline.
+  block per run of shapes with the same outline. A clipped pattern charges its outline points
+  once (`POINTS_PER_UNIT`).
+- A pattern asks for one line more than the units left; if it gets it, the extra line is dropped
+  and the object reported as cut.
+- Symbol nesting deeper than 8 (`draw::MAX_DEPTH`) stops drawing and reports the object as cut.
+- Symbols that lost a pattern to these limits are listed (`RenderSymbols::dropped_patterns`, also
+  combined symbols with such a part); the print report counts their path objects.
+- A page holds at most 2 000 000 primitives (`print::MAX_PRIMITIVES_PER_PAGE`): each object gets
+  the rest of the page budget at most, the objects after it are counted, not drawn (ADR 0019).
+- The XML readers refuse nesting deeper than 256 elements (`omap::MAX_XML_DEPTH`).
 
 ---
 

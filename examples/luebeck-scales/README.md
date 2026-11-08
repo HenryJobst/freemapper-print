@@ -23,7 +23,7 @@ Altersklassen. Dabei wächst alles im selben Verhältnis, Gelände und Symbole, 
 schmaler Fußweg (Symbol 506) ist bei 1:4000 0,27 mm breit und bei 1:3000 0,36 mm. Die Karte braucht deshalb
 ein Drittel mehr Papier in jeder Richtung und passt nur noch auf A3.
 
-Bei 1:4000 ist die Karte 3,9 mm zu hoch für den bedruckbaren Bereich von A4. Das Programm warnt und schreibt
+Bei 1:4000 ist die Karte 4,0 mm zu hoch für den bedruckbaren Bereich von A4. Das Programm warnt und schreibt
 das PDF trotzdem. Das ist hier gewollt. Bei 1:3000 auf A3 passt die ganze Karte.
 
 ## Geprüft

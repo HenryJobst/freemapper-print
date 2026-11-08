@@ -48,7 +48,7 @@ The program leaves 5 mm free on every side, because many printers do not print t
 map is larger than the page, the program cuts it off and tells you, for example:
 
 ```
-Warning: the map does not fit on the page. It is 3.9 mm too tall for the printable area. Try A3 paper, or ...
+Warning: the map does not fit on the page. It is 4.0 mm too tall for the printable area. Try A3 paper, or ...
 ```
 
 The number says by how many millimetres the map extends beyond the printable area. It is measured on what
@@ -99,6 +99,13 @@ own yet; it follows with M2 and the layouts.
   appears simplified or cut off.
 - "not drawn because the page reached its drawing limit": the whole page needs more drawing commands than the
   program allows per page. Only broken or deliberately overloaded files get there.
+- "not drawn because the program does not know their object type": the file holds objects of a kind OOM does
+  not write. They are missing in the PDF.
+- "drawn without an area pattern whose spacing is below 0.05 mm or not a number": the map file asks for an
+  area pattern denser than 0.05 mm or with invalid numbers. The program leaves the pattern out and prints
+  the rest of the area.
+- "freemapper.toml ... is not valid": the `freemapper.toml` next to the map is broken. The program then takes
+  the map kind from the map file.
 - "the font Arimo replaces ...": the PDF contains only the Arimo font. The program replaces the other fonts of
   the map with it.
 - "the embedded font has no glyph for these characters, so they are missing in the PDF": a character of the map

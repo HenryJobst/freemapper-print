@@ -22,8 +22,8 @@ Geplante Kapitel:
 ## 9. Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop
 
 Eine Orientierungslaufkarte muss den Maßstab haben, der darauf steht. Das PDF von freemapper-print hat ihn
-genau: 1 mm auf dem Papier sind die Strecke im Gelände, die der Druckmaßstab vorgibt. Ob der Ausdruck ihn behält,
-entscheidet der Druckdialog.
+genau: 1 mm auf dem Papier sind die Strecke im Gelände, die der Druckmaßstab vorgibt. Ob der Ausdruck ihn
+behält, entscheidet der Druckdialog.
 
 ### Das PDF erzeugen
 
@@ -49,7 +49,7 @@ Das Programm lässt rundum 5 mm Rand frei, weil viele Drucker nicht bis an die P
 Karte größer als die Seite, schneidet das Programm sie ab und meldet es, zum Beispiel:
 
 ```
-Warning: the map does not fit on the page. It is 3.9 mm too tall for the printable area. Try A3 paper, or ...
+Warning: the map does not fit on the page. It is 4.0 mm too tall for the printable area. Try A3 paper, or ...
 ```
 
 Die Zahl sagt, um wie viele Millimeter die Karte über den bedruckbaren Bereich hinausragt. Gemessen wird an
@@ -61,8 +61,8 @@ Ausrichtung. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen kö
 ### Wie groß die Symbole sind
 
 Die Vorschrift der Kartenart legt die Symbolgrößen für einen Basismaßstab fest: 1:4000 für Sprintkarten
-(ISSprOM), 1:15000 für Waldkarten (ISOM). Druckt man größer, wächst alles im selben Verhältnis, das Gelände und
-jedes Symbol. Eine Sprintkarte in 1:3000, wie sie die Norm für die jüngsten Altersklassen empfiehlt, hat
+(ISSprOM), 1:15000 für Waldkarten (ISOM). Druckt man größer, wächst alles im selben Verhältnis, das Gelände
+und jedes Symbol. Eine Sprintkarte in 1:3000, wie sie die Norm für die jüngsten Altersklassen empfiehlt, hat
 Symbole in 133 %: Ein schmaler Fußweg ist dann 0,36 mm statt 0,27 mm breit. Eine Waldkarte wächst in 1:10000
 auf 150 %, in 1:7500 auf 200 % und in 1:5000 auf 300 %. Die Karte braucht dabei entsprechend mehr Papier.
 
@@ -101,6 +101,13 @@ Kontrollstrecke; sie folgt mit M2 und den Layouts.
   erscheint vereinfacht oder abgeschnitten.
 - "not drawn because the page reached its drawing limit": Die ganze Seite braucht mehr Zeichenbefehle, als das
   Programm je Seite zulässt. Das passiert nur bei kaputten oder absichtlich überladenen Dateien.
+- "not drawn because the program does not know their object type": Die Datei enthält Objekte einer Art, die
+  OOM nicht schreibt. Sie fehlen im PDF.
+- "drawn without an area pattern whose spacing is below 0.05 mm or not a number": Die Kartendatei verlangt
+  ein Flächenmuster, das dichter als 0,05 mm ist oder ungültige Zahlen hat. Das Programm lässt das Muster weg
+  und druckt den Rest der Fläche.
+- "freemapper.toml ... is not valid": Die Datei `freemapper.toml` neben der Karte ist kaputt. Das Programm
+  bestimmt die Kartenart dann aus der Kartendatei.
 - "the font Arimo replaces ...": Das PDF enthält nur die Schrift Arimo. Andere Schriften der Karte ersetzt das
   Programm durch sie.
 - "the embedded font has no glyph for these characters, so they are missing in the PDF": Ein Zeichen der Karte

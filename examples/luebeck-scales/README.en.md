@@ -23,7 +23,7 @@ groups. Everything grows by the same ratio, terrain and symbols, to 133 % (ADR 0
 (symbol 506) is 0.27 mm wide at 1:4000 and 0.36 mm at 1:3000. So the map needs a third more paper in each
 direction and only fits on A3.
 
-At 1:4000 the map is 3.9 mm too tall for the printable area of A4. The program warns and still writes the PDF.
+At 1:4000 the map is 4.0 mm too tall for the printable area of A4. The program warns and still writes the PDF.
 That is intended here. At 1:3000 on A3 the whole map fits.
 
 ## Checked

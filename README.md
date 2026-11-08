@@ -14,8 +14,8 @@ Geplant ist:
   OCAD-Bahnlegung), mit Bahnaufdruck und Postenbeschreibung;
 - Passepartout, Titel, Vereins- und Sponsorenlogos, eine Kontrollstrecke zum Nachmessen;
 - Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet;
-- mehrere Layouts je Veranstaltung, etwa 1:4000 für die älteren Klassen und 1:3000 für die jüngsten, jeweils mit
-  den Symbolgrößen, die die Norm für den Maßstab vorschreibt;
+- mehrere Layouts je Veranstaltung, etwa 1:4000 für die älteren Klassen und 1:3000 für die jüngsten, jeweils
+  mit den Symbolgrößen, die die Norm für den Maßstab vorschreibt;
 - Bedienung über einen Editor im Browser, über die Kommandozeile oder über einen KI-Assistenten (MCP).
 
 Die Nordlinien kommen aus der Karte und werden immer mitgedruckt. Fehlen sie in einer Karte, soll das Programm

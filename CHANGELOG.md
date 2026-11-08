@@ -2,7 +2,8 @@
 
 [English version](CHANGELOG.en.md) · [Handbuch](docs/manual/de.md)
 
-Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
+Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. Das Format folgt
+[Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unveröffentlicht]
 
@@ -31,3 +32,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Anleitung zum Nachmessen.
 - Ein Test vergleicht die Ausgabe mit dem PDF-Export von OOM.
 - Die Release-Archive enthalten die Lizenz der Schrift Arimo als `FONT-LICENSE.txt`.
+- Texte in einem Textfeld brechen wie in OOM an der Feldbreite um und richten sich nach den Feldkanten aus.
+  Der Absatzabstand der Textsignatur gilt nach jedem Absatz.
+- Der Überstand misst, was tatsächlich gedruckt würde, also mit Linienbreiten, Punktsymbolen und Texten. Die
+  Seite wird auch danach zentriert.
+- Kaputte oder überladene Kartendateien halten das Programm nicht mehr auf: Zu tief verschachteltes XML ist
+  ein Fehler, und eine Seite hat ein Zeichenlimit. Das Programm meldet Objekte, die es deshalb nicht oder nur
+  zum Teil zeichnet, außerdem Objekte unbekannter Art, verworfene Flächenmuster und eine kaputte
+  `freemapper.toml`.
