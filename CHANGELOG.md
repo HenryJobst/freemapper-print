@@ -11,3 +11,4 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Projektgerüst nach dem Vorbild von freemapper: Rust-Workspace mit Bibliothek und Programm `freemapper-print`
   (bisher nur `--version` und `--help`), CI für Linux, macOS und Windows, Release-Workflow.
 - Design, Glossar und die ersten 15 Architekturentscheidungen.
+- `freemapper-print render <Karte> --out <PDF>` druckt eine OOM-Karte als PDF im exakten Maßstab (A4/A3, Hoch- oder Querformat, wählbarer Druckmaßstab). Das Programm meldet Überhang, nicht gezeichnete Objekte, ersetzte Schriften und fehlende Zeichen und erinnert ans Drucken in Originalgröße.
