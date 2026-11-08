@@ -222,11 +222,13 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
             chain.push(rings);
             shape = inner;
         }
-        // The pattern shapes of one area share their rings: compare pointers first.
+        // The shapes of one pattern share their rings, also after the page was moved into place:
+        // compare pointers only. Equal rings in separate `Arc`s get a block each; each is paid
+        // for when drawn.
         let kept = open
             .iter()
             .zip(&chain)
-            .take_while(|(a, b)| Arc::ptr_eq(a, b) || a == b)
+            .take_while(|(a, b)| Arc::ptr_eq(a, b))
             .count();
         for _ in kept..open.len() {
             content.restore_state();
@@ -424,11 +426,34 @@ mod tests {
 
     #[test]
     fn clipped_shapes_with_one_outline_share_a_clip_block() {
-        let lines: Vec<Primitive> = (0..5).map(|i| clipped_line(11.0 + f64::from(i))).collect();
+        let first = clipped_line(11.0);
+        let Shape::Clipped { rings, .. } = &first.shape else {
+            panic!()
+        };
+        let shared = Arc::clone(rings);
+        let mut lines: Vec<Primitive> = (1..5)
+            .map(|i| {
+                let Shape::Clipped { inner, .. } = clipped_line(11.0 + f64::from(i)).shape else {
+                    panic!()
+                };
+                Primitive {
+                    priority: 2,
+                    shape: Shape::Clipped {
+                        rings: Arc::clone(&shared),
+                        inner,
+                    },
+                }
+            })
+            .collect();
+        lines.insert(0, first);
         let pdf = content_of(&write(&lines));
         let clips = pdf.windows(4).filter(|w| w == b"W*\nn").count();
         let strokes = pdf.windows(2).filter(|w| w == b"S\n").count();
         assert_eq!((clips, strokes), (1, 5));
+        // Equal rings in separate `Arc`s are not compared point by point: a block each.
+        let separate: Vec<Primitive> = (0..2).map(|i| clipped_line(11.0 + f64::from(i))).collect();
+        let pdf = content_of(&write(&separate));
+        assert_eq!(pdf.windows(4).filter(|w| w == b"W*\nn").count(), 2);
     }
 
     #[test]

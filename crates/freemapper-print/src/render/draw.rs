@@ -3,7 +3,6 @@
 //!
 //! Paper millimetres with y down.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::fonts::{ASCENT, FontFace, LINE_SPACING, char_width, face, text_width};
@@ -83,10 +82,11 @@ pub const MAX_UNITS_PER_OBJECT: usize = 250_000;
 pub(super) const POINTS_PER_UNIT: usize = 64;
 
 /// Points kept in the output per unit of budget. A primitive costs one unit plus one per this
-/// many of its points (rounded down), and a clip outline one per this many points (rounded up)
-/// once per colour it clips ([`Sink::charge_outline`]). Kept points stay in memory until the page is written, and the PDF writes each one
-/// again as text, so they cost more than points that are only handled ([`POINTS_PER_UNIT`]).
-/// This bounds the memory of a page: a unit keeps at most eight points.
+/// many of its points (rounded down). A clip outline costs one unit per this many points
+/// (rounded up) for each clip block the PDF writes for it ([`Sink::charge_outline`]). Kept
+/// points stay in memory until the page is written, and the PDF writes each one again as text,
+/// so they cost more than points that are only handled ([`POINTS_PER_UNIT`]). A unit keeps
+/// fewer than eight points.
 pub(crate) const KEPT_POINTS_PER_UNIT: usize = 8;
 
 /// The points (or text bytes) `shape` keeps; a clipped shape's outline is charged separately
@@ -109,10 +109,6 @@ pub(super) struct Sink {
     spent: usize,
     /// The budget ran out and output was dropped.
     pub(super) cut: bool,
-    /// The clip outlines charged so far, by address and colour ([`Sink::charge_outline`]).
-    outlines: HashSet<(usize, i32)>,
-    /// The charged outlines, held so that no address is reused while the sink lives.
-    held: Vec<Arc<[Vec<Pt>]>>,
 }
 
 // Units asked for by all sinks of this thread, so tests also see work done in a sink other than
@@ -143,8 +139,6 @@ impl Sink {
             left: budget,
             spent: 0,
             cut: false,
-            outlines: HashSet::new(),
-            held: Vec::new(),
         }
     }
 
@@ -208,17 +202,10 @@ impl Sink {
         self.charge(points / POINTS_PER_UNIT);
     }
 
-    /// Charges the outline `rings` that clips a shape of colour `priority`: once per outline and
-    /// colour, one unit per [`KEPT_POINTS_PER_UNIT`] points, rounded up. The shapes of one
-    /// pattern come one after the other, so after sorting by colour the PDF writes an outline
-    /// once per colour it clips, and the page keeps one copy of it. False when the outline does
-    /// not fit in the budget; the budget then counts as spent and the shape must be dropped.
-    pub(super) fn charge_outline(&mut self, rings: &Arc<[Vec<Pt>]>, priority: i32) -> bool {
-        let key = (Arc::as_ptr(rings).cast::<()>().addr(), priority);
-        if self.outlines.contains(&key) {
-            return true;
-        }
-        let points: usize = rings.iter().map(Vec::len).sum();
+    /// Charges one clip block of an outline of `points` points: one unit per
+    /// [`KEPT_POINTS_PER_UNIT`] points, rounded up. False when it does not fit in the budget;
+    /// the budget then counts as spent and the clipped shape must be dropped.
+    pub(super) fn charge_outline(&mut self, points: usize) -> bool {
         let units = points.div_ceil(KEPT_POINTS_PER_UNIT);
         self.request(units);
         if units > self.left {
@@ -227,8 +214,6 @@ impl Sink {
             return false;
         }
         self.left -= units;
-        self.outlines.insert(key);
-        self.held.push(Arc::clone(rings));
         true
     }
 

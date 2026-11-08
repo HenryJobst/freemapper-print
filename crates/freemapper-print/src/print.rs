@@ -23,12 +23,17 @@ use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_fac
 pub const PAGE_MARGIN_MM: f64 = 5.0;
 
 /// Most units of work one page may use, counted as for one object (`MAX_UNITS_PER_OBJECT`): a
-/// primitive costs one unit plus one per eight points it keeps. Lübeck (2173 objects, about 4400 primitives) uses about 6500 units and
-/// the forest sample (539 objects, about 1500 primitives) at most about 6400 at every allowed
-/// scale, so a dense real map stays far below it. A file that asks for more is broken or
-/// hostile; the objects after the limit are not drawn and counted
-/// ([`PrintReport::objects_not_drawn_page_limit`]). A page then keeps fewer than four million
-/// points; the worst file measured (500 000 strokes of seven points) peaks at about 200 MB.
+/// primitive costs one unit plus one per eight points it keeps, and a clip outline one per
+/// eight points for each clip block the PDF writes. Lübeck (2173 objects, about 4400
+/// primitives) uses about 6500 units and the forest sample (539 objects, about 1500
+/// primitives) at most about 6400 at every allowed scale, so a dense real map stays far below
+/// it. A file that asks for more is broken or hostile; the objects after the limit are not
+/// drawn and counted ([`PrintReport::objects_not_drawn_page_limit`]).
+///
+/// A page keeps fewer than four million points (500 000 units of fewer than eight points),
+/// clip outlines counted once per block. Measured peak memory (release build, macOS): about
+/// 200 MB on a 134 KB file of 500 000 strokes of seven points, the largest of the hostile
+/// files tried (ADR 0019).
 pub const MAX_UNITS_PER_PAGE: usize = 500_000;
 
 /// The tag freemapper puts on the objects of a map's peripheral information.
@@ -937,6 +942,80 @@ mod tests {
         // outline and one per square.
         assert!(clipped > 400, "{clipped}");
         assert_eq!(outlines.len(), 37);
+    }
+
+    /// A map of `objects` circles of `points` points, each with `patterns` line patterns of one
+    /// colour, clipped and unclipped (`no_clipping="2"`) in turn, one line each.
+    fn interleaved(patterns: usize, points: u32, objects: usize) -> MapDocument {
+        let xml: String = (0..patterns)
+            .map(|i| {
+                format!(
+                    r#"<pattern type="1" angle="0" no_clipping="{}" line_spacing="1000000" line_offset="0" offset_along_line="0" color="2" line_width="10"/>"#,
+                    if i % 2 == 0 { 0 } else { 2 }
+                )
+            })
+            .collect();
+        let set = SymbolSet::issprom_2019().with_additions(&format!(
+            r#"<symbol type="4" id="@" code="999.3" name="interleaved"><area_symbol inner_color="-1" min_area="0" patterns="{patterns}">{xml}</area_symbol></symbol>"#
+        ));
+        let circle: Vec<(i32, i32)> = (0..points)
+            .map(|i| {
+                let a = f64::from(i) / f64::from(points) * std::f64::consts::TAU;
+                (
+                    (50_000.0 * a.cos()).round() as i32,
+                    (50_000.0 * a.sin()).round() as i32,
+                )
+            })
+            .collect();
+        let object = MapObject {
+            coords: crate::omap::closed_ring(&circle),
+            ..area(set.id_for_code("999.3").unwrap(), 0, 0)
+        };
+        map(4000, set, vec![object; objects])
+    }
+
+    #[test]
+    fn every_clip_block_the_pdf_writes_is_charged() {
+        // 40 patterns on a 2000 point circle: the PDF writes the outline 20 times.
+        use crate::render::draw::{KEPT_POINTS_PER_UNIT, work_units};
+        let doc = interleaved(40, 2000, 1);
+        let before = work_units();
+        let (page, report) = render(&doc, &options(Orientation::Portrait));
+        let work = work_units() - before;
+        assert_eq!(report.truncated_objects, 0);
+        let (pdf, _) = write_pdf(&page, &PdfMeta::new("clips")).unwrap();
+        let content = crate::render::pdf::content_of(&pdf);
+        let blocks = content.windows(4).filter(|w| w == b"W*\nn").count();
+        assert_eq!(blocks, 20);
+        // Each block writes the 2000 point outline: the units pay for all of them.
+        assert!(
+            work * KEPT_POINTS_PER_UNIT >= blocks * 2000,
+            "{work} units for {blocks} blocks"
+        );
+    }
+
+    #[test]
+    fn a_spent_object_asks_for_no_more_outlines() {
+        // The reviewer's probe, smaller: 300 clipped patterns on a 20 000 point circle need
+        // 750 000 units. Each object is cut at its own budget, and the patterns after that do not
+        // ask for their outlines, so the second object still gets the rest of the page.
+        use crate::render::draw::{BUDGET_SLACK, work_units};
+        let doc = interleaved(600, 20_000, 4);
+        let before = work_units();
+        let (_, report) = render(&doc, &options(Orientation::Portrait));
+        let work = work_units() - before;
+        assert_eq!(
+            (
+                report.truncated_objects,
+                report.objects_not_drawn_page_limit
+            ),
+            (2, 2)
+        );
+        // One outline (2500 units) may be asked for beyond each object's budget.
+        assert!(
+            work <= MAX_UNITS_PER_PAGE + 2 * (2_500 + BUDGET_SLACK),
+            "{work}"
+        );
     }
 
     #[test]

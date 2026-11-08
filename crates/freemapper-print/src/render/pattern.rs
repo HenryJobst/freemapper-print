@@ -4,6 +4,7 @@
 //!
 //! Paper millimetres with y down.
 
+use std::collections::HashSet;
 use std::f64::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 
@@ -181,6 +182,10 @@ pub(super) fn area_pattern(
     sink: &mut Sink,
     depth: u32,
 ) {
+    // A spent budget: the pattern would only ask for units it cannot get.
+    if sink.stop() {
+        return;
+    }
     let (angle, rotatable, spacing, offset, clipping) = match pattern {
         Pattern::Lines {
             angle_rad,
@@ -236,8 +241,8 @@ pub(super) fn area_pattern(
             if *color < 0 || width <= 0.0 {
                 return;
             }
-            // A clipped pattern shares one outline among its lines ([`Sink::charge_outline`]).
-            if clipping == Clipping::Clip && !sink.charge_outline(rings, *color) {
+            // A clipped pattern shares one outline among its lines: one clip block.
+            if clipping == Clipping::Clip && !Outline::new(rings).pay(*color, sink) {
                 return;
             }
             let m = width / 2.0;
@@ -295,10 +300,7 @@ pub(super) fn area_pattern(
                 sink,
             );
             let step = mm(*distance);
-            let outline = Outline {
-                rings,
-                points: rings.iter().map(Vec::len).sum(),
-            };
+            let mut outline = Outline::new(rings);
             for (first, second) in lines {
                 let length = (second.0 - first.0).hypot(second.1 - first.1);
                 let dir = ((second.0 - first.0) / length, (second.1 - first.1) / length);
@@ -313,7 +315,16 @@ pub(super) fn area_pattern(
                     }
                     let at = (first.0 + dir.0 * cur, first.1 + dir.1 * cur);
                     let placed = sink.out.len();
-                    place_point(symbol, at, -delta, clipping, &outline, symbols, sink, depth);
+                    place_point(
+                        symbol,
+                        at,
+                        -delta,
+                        clipping,
+                        &mut outline,
+                        symbols,
+                        sink,
+                        depth,
+                    );
                     sink.settle(placed);
                 }
                 sink.settle(len);
@@ -325,14 +336,40 @@ pub(super) fn area_pattern(
     }
 }
 
-/// The area outline of a pattern: its rings, shared by all clipped shapes, and their point
-/// count.
+/// The area outline of one pattern (one call of [`area_pattern`]): its rings, shared by all
+/// clipped shapes, their point count, and the colours whose clip block is paid for.
 struct Outline<'a> {
     rings: &'a Arc<[Vec<Pt>]>,
     points: usize,
+    paid: HashSet<i32>,
 }
 
-impl Outline<'_> {
+impl<'a> Outline<'a> {
+    fn new(rings: &'a Arc<[Vec<Pt>]>) -> Self {
+        Self {
+            rings,
+            points: rings.iter().map(Vec::len).sum(),
+            paid: HashSet::new(),
+        }
+    }
+
+    /// Pays for the clip block that holds this pattern's shapes of colour `priority`
+    /// ([`Sink::charge_outline`]). All shapes of one pattern are drawn one after the other, so
+    /// after the page is sorted by colour they form one run per colour, and the PDF writes the
+    /// outline once per run. Another pattern on the same outline is another call and pays again:
+    /// the shapes of an unclipped pattern between them split the run. False when the block does
+    /// not fit.
+    fn pay(&mut self, priority: i32, sink: &mut Sink) -> bool {
+        if self.paid.contains(&priority) {
+            return true;
+        }
+        if !sink.charge_outline(self.points) {
+            return false;
+        }
+        self.paid.insert(priority);
+        true
+    }
+
     /// [`inside`], charged to `sink` by the outline's size ([`draw::POINTS_PER_UNIT`]).
     fn contains(&self, p: Pt, sink: &mut Sink) -> bool {
         sink.charge_points(self.points);
@@ -349,7 +386,7 @@ fn place_point(
     at: Pt,
     rotation: f64,
     clipping: Clipping,
-    outline: &Outline,
+    outline: &mut Outline,
     symbols: &RenderSymbols,
     sink: &mut Sink,
     depth: u32,
@@ -360,8 +397,8 @@ fn place_point(
             let len = sink.out.len();
             draw::point_symbol(def, at, rotation, symbols, sink, depth + 1);
             for i in len..sink.out.len() {
-                // The shared outline ([`Sink::charge_outline`]); what does not fit is dropped.
-                if !sink.charge_outline(outline.rings, sink.out[i].priority) {
+                // The shared outline ([`Outline::pay`]); what does not fit is dropped.
+                if !outline.pay(sink.out[i].priority, sink) {
                     sink.out.truncate(i);
                     break;
                 }
@@ -709,13 +746,10 @@ mod tests {
         let r = render_symbols();
         let square: Arc<[Vec<Pt>]> =
             vec![vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]].into();
-        let outline = Outline {
-            rings: &square,
-            points: 4,
-        };
         let draw = |def: &PointDef, at: Pt, clipping: Clipping| {
             let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
-            place_point(def, at, 0.0, clipping, &outline, &r, &mut sink, 0);
+            let mut outline = Outline::new(&square);
+            place_point(def, at, 0.0, clipping, &mut outline, &r, &mut sink, 0);
             sink.out
         };
         let dot = dot(500.0);
@@ -1068,6 +1102,59 @@ mod tests {
             work <= MAX_UNITS_PER_OBJECT + 2_500 + draw::BUDGET_SLACK,
             "{work}"
         );
+    }
+
+    #[test]
+    fn interleaved_clipped_patterns_each_pay_for_the_outline() {
+        // 40 line patterns of one colour on one outline of 2000 points, clipped and unclipped in
+        // turn. After sorting by colour the unclipped lines split the clipped ones into 20 runs,
+        // and the PDF writes the outline once per run, so each clipped pattern pays for it.
+        let patterns = (0..40)
+            .map(|i| Pattern::Lines {
+                angle_rad: 0.0,
+                rotatable: false,
+                spacing: 1_000_000.0,
+                offset: 0.0,
+                color: 3,
+                width: 100.0,
+                clipping: if i % 2 == 0 {
+                    Clipping::Clip
+                } else {
+                    Clipping::NoClippingIfPartlyInside
+                },
+            })
+            .collect();
+        let mut r = render_symbols();
+        r.symbols.insert(
+            PATTERNED,
+            Symbol::Area {
+                color: -1,
+                patterns,
+            },
+        );
+        let circle: Vec<(i32, i32)> = (0..2000)
+            .map(|i| {
+                let a = f64::from(i) / 2000.0 * std::f64::consts::TAU;
+                (
+                    (50_000.0 * a.cos()).round() as i32,
+                    (50_000.0 * a.sin()).round() as i32,
+                )
+            })
+            .collect();
+        let object = MapObject {
+            symbol_id: PATTERNED,
+            kind: MapObjectKind::Path,
+            coords: closed_ring(&circle),
+            tags: Vec::new(),
+            pattern: None,
+        };
+        let before = draw::work_units();
+        let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
+        draw::draw_object(&object, &r, &mut sink);
+        let work = draw::work_units() - before;
+        assert!(!sink.cut);
+        assert_eq!(sink.out.len(), 40);
+        assert!(work >= 20 * 2000 / draw::KEPT_POINTS_PER_UNIT, "{work}");
     }
 
     #[test]
