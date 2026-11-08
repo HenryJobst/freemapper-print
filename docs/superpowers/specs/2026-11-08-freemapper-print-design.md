@@ -27,7 +27,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 ## 2. Goals, non-goals, anti-goals
 
 **First use case** *(user)*: club training in town and park terrain. That means sprint maps (ISSprOM 2019-2,
-1:4000 or 1:5000) on A4, printed on a home printer or in a copy shop, with window and corridor exercises.
+1:4000, enlarged to 1:3000 for the youngest classes) on A4, printed on a home printer or in a copy shop, with window and corridor exercises.
 
 **Goals (first usable version)**
 
@@ -37,7 +37,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 - Several layouts per event, 1 to 5 in practice *(user)*. A layout fixes paper size, orientation, print scale,
   map frame and the placement of sheet elements. Different age classes need different scales *(user)*.
 - Mask variants for window and corridor orienteering, assigned to one or more courses *(user)*.
-- Sheet elements: passe-partout, title block, north lines, logos, free texts, control description box, scale
+- Sheet elements: passe-partout, title block, logos, free texts, control description box, scale
   check bar, credit and copyright line. Shared elements are maintained once and used by every layout.
 - Texts with placeholders (course name, length, climb, scale, contour interval, event title, date) that are
   filled per course.
@@ -103,7 +103,7 @@ Event (project file)
 ├── map source        sanssouci.omap (map scale 1:4000)
 ├── course source     training.ppen  or  courses.xml (IOF XML 3.0)
 ├── shared elements   title block, logos, credit and copyright line
-├── layouts           "A4 1:4000"  "A4 1:5000"   … (1–5)
+├── layouts           "A4 1:4000"  "A3 1:3000"   … (1–5)
 ├── mask variants     "window 3–5"  "corridor north" …
 └── assignments       course → layout, course → mask variant (0 or 1)
 ```
@@ -172,21 +172,24 @@ Rendering rules:
 
 - **Exact scale.** One map millimetre at print scale equals one PDF millimetre. Page size equals the paper
   size. No implicit fitting.
-- **Scale change (ADR 0012).** The map geometry scales by `map_scale / print_scale`. Symbol dimensions
-  (line widths, dash lengths, point symbols, area pattern spacing, map texts) are multiplied by a symbol factor
-  that depends on the map kind and the print scale. The table is data, not code *(Claude's call; the builder
-  verifies each row against the standard's text before M1 ends)*:
+- **Scale change (ADR 0018, superseding 0012).** The map geometry scales by `map_scale / print_scale`.
+  Symbol dimensions follow the IOF standards *(verified 2026-11-08 against ISSprOM 2019-2 §3.1/§4.7 and
+  ISOM 2017-2 Rev. 6 §2.9.1/§3.7)*: an enlarged print scales all lines, symbols and screens proportionally.
+  The size factor relative to the base scale is data:
 
-  | Map kind | Base scale | Print scale | Symbol factor |
-  |---|---|---|---|
-  | Sprint (ISSprOM 2019-2) | 1:4000 | 1:3000, 1:4000, 1:5000 | 1.0 |
-  | Forest (ISOM 2017-2) | 1:15000 | 1:15000 | 1.0 |
-  | Forest (ISOM 2017-2) | 1:15000 | 1:10000, 1:7500, 1:5000 | 1.5 |
-  | Schoolyard (IOF school set 2019) | 1:1000 | 1:1000 | 1.0 |
+  | Map kind | Base scale | Print scale | Size factor | Standard |
+  |---|---|---|---|---|
+  | Sprint (ISSprOM 2019-2) | 1:4000 | 1:3000 | 4/3 | yes (youngest classes) |
+  | Sprint | 1:4000 | 1:4000 | 1.0 | yes |
+  | Sprint | 1:4000 | 1:5000 | 1.0 | no: reduction, training only *(user)* |
+  | Forest (ISOM 2017-2) | 1:15000 | 1:5000 / 1:7500 / 1:10000 / 1:15000 | 3.0 / 2.0 / 1.5 / 1.0 | yes |
+  | Forest | 1:15000 | 1:20000 | 1.0 | no: reduction, training only *(user)* |
+  | Schoolyard (IOF school set 2019) | 1:1000 | 1:1000 | 1.0 | yes |
 
-  The map kind is a project setting. `init` proposes it from the `.omap` symbol set name and map scale, and the
-  user confirms it. A print scale outside the table is refused. The course overprint follows the overprint
-  dimensions of the same standard at the print scale, independent of the map's symbol factor.
+  `symbol_factor = e(print) / e(map)`, so a map drawn with the 1:10000 set prints correctly at 1:15000.
+  Reductions keep the base symbol size and the program warns that the scale is not standard. The map kind is
+  a project setting; `init` proposes it and the user confirms it. The course overprint grows by the same
+  factor (ISSprOM §4.7: 133 % at 1:3000). The table becomes part of the print rule profiles (§5.9).
 - **Legibility warnings** *(Claude's call: later)*. Checking minimum gaps between symbols after a scale change
   is a large geometry module. The first version reports the symbol factor and the geometry factor on export
   and leaves the gap check for later.
@@ -374,6 +377,36 @@ planned beforehand or split on the day. It delivers data only; freemapper-print 
 - **Prerequisites.** Course overprint, description rendering and the placement module (M3), and the
   course-setting application's data model crate. New sheet element: table.
 
+### 5.9 Decisions after M1 (2026-11-08)
+
+- **North lines (ADR 0023, user).** North lines (symbol 601) belong to the map: the mapper draws them in OOM,
+  they lie under walls and fences by colour priority and are interrupted at small features. freemapper-print
+  always draws them and never replaces them; they scale with the map, so the ground spacing stays right. When a
+  map has none, M2 adds them: ground spacing per standard (ISSprOM 120 m, 30 mm at 1:4000; ISOM 300 m, 20 mm at
+  1:15000), aligned to magnetic north from the georeferencing, drawn with the map set's own 601 symbol (fallback
+  black 0.14 mm with a note), across the map frame, without interruptions (the program says so).
+- **Program texts in German and English (user, suite rule).** Fluent files per language
+  (`i18n/<lang>/freemapper-print.ftl`), English as reference and fallback, a test that every language has the
+  same message ids; selection `--lang`, `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`. The detection
+  module is copied from freemapper-courseplan with provenance; a shared crate follows later. From M2; M1's CLI
+  messages are retrofitted. ADR follows with M2.
+- **Audience and rule profiles (user, suite rule).** The whole German orienteering community and international
+  where sensible. Print rules (size factor table, north-line spacing, IOF colours, sheet requirements) become
+  data profiles: an IOF base with national or regional overlays, in the profile format freemapper-courseplan
+  defines in its M2b (reviewed together before it is built).
+- **IOF print and colour rules (research, olberlin.de/kartenwesen).** IOF "Printing and Colour Definitions"
+  Rev. 4 (valid from 2024-12-01): CMYK only, brown 100 % = 25/75/100/0, purple 35/85/0/0; sprint maps are
+  always laser printed. Lower purple (start, controls, legs, forbidden lines) lies below black, brown and blue
+  100 %, upper purple (numbers, map exchange, forbidden areas, marked routes) above them (M3). Scale and contour
+  interval are mandatory on the sheet, maps should not exceed A3 (M2 checks). Later: a note when a map's
+  colours differ from Rev. 4 (old OOM sets), and a calibration sheet for printer, toner and paper like the
+  "Druckmusterbogen".
+- **Gym maps (user, agreed by all three sessions).** freemapper makes the starter project (`--kind gym`, own
+  GPL symbol set aligned to the IOF draft ISInOM, hall plan fitted by two points, court-line building blocks);
+  the fixed hall map is finished in OOM; equipment setups are OOM copies per event (later optionally a setup
+  layer in freemapper-courseplan); tape and closures are course objects. freemapper-print adds a print profile
+  "gym" (scales 1:100–1:500, values are assumptions until ISInOM is final).
+
 ## 6. Testing and quality
 
 - Readers (`.omap`, IOF XML, `.ppen`) test-first with small fixtures and real files from Purple Pen, Condes and
@@ -389,15 +422,16 @@ planned beforehand or split on the day. It delivers data only; freemapper-print 
 1. **M0** Repository, docs, glossary, ADRs, CI. (This commit.)
 2. **M1** `.omap` reader and shared renderer with area patterns and embedded fonts: one map rendered to an
    office PDF at exact scale, checked against the freemapper examples.
-3. **M2** Project file, layouts and sheet elements (passe-partout, title block, north lines, logos, texts,
-   scale check bar, credit), CLI `export`.
+3. **M2** Project file, layouts and sheet elements (passe-partout, title block, logos, texts, scale check bar,
+   credit), north lines when the map has none (§5.9), German and English program texts, CLI `export`.
 4. **M3** Course import (IOF XML 3.0, `.ppen`), course overprint, control description box, control number
    positions from the course file with layout and sheet corrections, the placement module, `check` with
    proposals.
 5. **M4** Mask variants and assignments.
 6. **M5** MCP server.
 7. **M6** Browser editor.
-8. **Later** OCAD reader, press PDF, symbol group hiding, course source from the course-setting application,
+8. **Later** OCAD reader, press PDF, colour check against IOF Rev. 4, calibration sheet, gym print profile,
+   symbol group hiding, course source from the course-setting application,
    team orienteering overprint, control-placer tour sheets (§5.8).
 
 The builder may reorder M5 and M6 or start the editor earlier if layout placement through the CLI turns out
@@ -408,8 +442,8 @@ features make possible, one example per kind, built on freemapper's example maps
 
 | Milestone | Example | Shows |
 |---|---|---|
-| M1 | `luebeck-scales` | the same sprint map printed at 1:4000 and 1:5000: exact scale, symbols at their printed size |
-| M2 | `luebeck-competition-layouts` | one competition, two layouts (A4 1:4000 for older classes, A4 1:5000 for younger ones) with passe-partout, title, north lines, logos, scale check bar |
+| M1 | `luebeck-scales` | the same sprint map at 1:4000 on A4 and enlarged to 1:3000 on A3: exact scale, symbols grow to 133 % per ISSprOM |
+| M2 | `luebeck-competition-layouts` | one competition, two layouts (A4 1:4000 for older classes, 1:3000 for the youngest) with passe-partout, title, logos, scale check bar |
 | M2 | `schoolyard` | a schoolyard map at 1:1000 on A4 |
 | M3 | `luebeck-competition-courses` | the same competition with courses from a Purple Pen project, control descriptions and number placement, plus the same courses as IOF XML 3.0 without descriptions |
 | M4 | `luebeck-training-window` | window orienteering with a mask variant |

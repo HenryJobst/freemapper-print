@@ -371,3 +371,26 @@ Source of the copied code: freemapper (`../freemapper`, https://github.com/Henry
   "Druckrand / page margin").
 - [ ] **Step 2:** Run all user text through `unslop` and `humanizer`.
 - [ ] **Step 3:** Run fmt, clippy and test. Commit: `docs: render command in README, manual and changelog`.
+
+### Task 11: Example `luebeck-scales`
+
+Added on 2026-11-08 at the user's request (design §7, example projects).
+
+**Files:**
+- Create: `examples/luebeck-scales/{README.md,README.en.md,luebeck.omap,luebeck-4000-a4.pdf,luebeck-5000-a4.pdf,preview.jpg}`
+- Modify: `examples/README.md`, `examples/README.en.md` (link the example), `.gitignore` if needed
+
+**Interfaces:**
+- Consumes: the `render` command (Task 8).
+
+- [ ] **Step 1:** Copy the Lübeck map from freemapper's newest merged `examples/schleswig-holstein-luebeck/`
+  (the `water` merge if it has landed, else `743ce4b`); record the commit in the README.
+- [ ] **Step 2:** Run `freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4` and the same
+  with `--scale 5000 --out luebeck-5000-a4.pdf`. Both commands are written in the README so the example can be
+  regenerated.
+- [ ] **Step 3:** `preview.jpg`: both PDFs side by side, rendered with `pdftoppm -r 110` and joined, at most
+  1400 px wide (as freemapper's examples).
+- [ ] **Step 4:** README (German and English, through `unslop` and `humanizer`): what the example shows, that
+  line widths and symbols keep their printed size at 1:5000 while the map shrinks to 80 %, the commands, and
+  the hint to print at actual size.
+- [ ] **Step 5:** Commit: `docs(examples): luebeck-scales`.

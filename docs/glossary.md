@@ -30,7 +30,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 |---|---|---|---|
 | Layout | layout | Vorlage für Kartenblätter: Blattformat, Ausrichtung, Druckmaßstab, Kartenausschnitt und Blattelemente. Eine Veranstaltung hat meist 1 bis 5. | `Layout` |
 | Kartenblatt, Blatt | sheet | Eine gedruckte Seite: eine Bahn mit ihrem Layout und ihrer Abdeckungsvariante. | `Sheet` |
-| Blattformat | paper size | Papiergröße, z. B. A4 oder A3. | `PaperSize` |
+| Blattformat | paper size | Papiergröße, z. B. A4 oder A3. | `Paper` |
 | Ausrichtung | orientation | Hoch- oder Querformat. | `Orientation` |
 | Kartenausschnitt | map frame | Der Teil der Karte, der auf dem Blatt erscheint, und das Rechteck, das er auf dem Blatt füllt. | `MapFrame` |
 | Passepartout | passe-partout | Weißer Rand zwischen Kartenausschnitt und Blattrand, auf dem Blattelemente stehen können. | `Passepartout` |
@@ -50,10 +50,34 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Kartenmaßstab | map scale | Maßstab, in dem die Kartenquelle gezeichnet ist. | `map_scale` |
 | Druckmaßstab | print scale | Maßstab, in dem ein Layout die Karte druckt. | `print_scale` |
 | Geometriefaktor | geometry factor | Kartenmaßstab geteilt durch Druckmaßstab; so stark wird die Kartengeometrie skaliert. | `geometry_factor` |
-| Symbolfaktor | symbol factor | Faktor für Symbolmaße beim Druck, abhängig von Kartenart und Druckmaßstab (ADR 0012). | `symbol_factor` |
+| Basismaßstab | base scale | Maßstab, für den die Vorschrift der Kartenart die Symbolgrößen angibt (100 %): Sprintkarte 1:4000, Waldkarte 1:15000, Schulhofkarte 1:1000. | `MapKind::base_scale` |
+| Symbolfaktor | symbol factor | Faktor für Symbolmaße beim Druck: die Symbolgröße, die die Vorschrift für den Druckmaßstab festlegt, geteilt durch die für den Kartenmaßstab. Eine Vergrößerung vergrößert alle Symbole im selben Verhältnis, etwa auf 133 % bei einer Sprintkarte in 1:3000 (ADR 0018). | `symbol_factor` |
+| nicht normgerechter Maßstab | non-standard scale | Druckmaßstab unter dem Basismaßstab, den die Vorschrift nicht vorsieht (Sprintkarte 1:5000, Waldkarte 1:20000). Die Symbole behalten ihre Größe im Basismaßstab; das Programm warnt, dass der Druck nur fürs Training taugt. | `is_standard`, `PrintReport::non_standard_scale` |
+| gerenderte Seite | rendered page | Eine Seite als Zeichenbefehle in Seitenmillimetern, mit Clip-Rechteck, Seitengröße und Farben. Der PDF-Writer liest nur sie; spätere Ausgaben (SVG, Kacheln) lesen dieselbe. | `RenderedPage` |
+| Seitenrand | page margin | Fester weißer Rand von 5 mm an jeder Seitenkante, den die Karte nicht bedruckt. | `PAGE_MARGIN_MM` |
+| Überstand | overflow | Wie viele Millimeter das, was gedruckt würde (mit Linienbreiten, Punktsymbolen und Texten), in x und y über das Clip-Rechteck hinausragt. Die Karte wird nicht verkleinert, sondern abgeschnitten und der Überstand gemeldet. | `PrintReport::overflow_mm` |
+| Druckbericht | print report | Was eine gedruckte Seite zeigt und was nicht: Seitengröße, Druckmaßstab, Faktoren, nicht normgerechter Maßstab, Überstand, übersprungene, gekürzte und wegen des Seitenlimits nicht gezeichnete Objekte, Objekte unbekannter Art, Objekte mit verworfenem Flächenmuster, ersetzte Schriften, fehlende Zeichen. | `PrintReport` |
+| verstecktes Symbol | hidden symbol | Symbol, das die Kartendatei mit `is_hidden` ausblendet. Seine Objekte werden nicht gedruckt. | `SymbolSet::is_hidden` |
+| übersprungene Objekte | skipped objects | Objekte, die nicht gedruckt werden, weil ihr Symbol unbekannt oder versteckt ist. Der Druckbericht zählt sie. | `PrintReport::skipped_objects` |
+| gekürzte Objekte | truncated objects | Objekte, deren Zeichnung vereinfacht oder abgeschnitten wird, weil sie mehr Arbeitseinheiten bräuchte, als der Renderer je Objekt erlaubt, oder weil das Seitenlimit mitten in ihr erreicht ist. Der Druckbericht zählt sie. | `PrintReport::truncated_objects` |
+| Arbeitseinheit | work unit | Maß für die Arbeit und den Speicher beim Zeichnen: eine Einheit je Zeichenbefehl und je acht Punkte, die er behält, je acht Punkte eines Umrisses für jeden Clip-Block, den das PDF schreibt, eine je Schritt ohne Ausgabe, eine je 64 kopierte oder geprüfte Punkte. Ein Objekt darf 250 000 Einheiten brauchen (ADR 0019). | `MAX_UNITS_PER_OBJECT`, `KEPT_POINTS_PER_UNIT` |
+| Seitenlimit | page limit | Höchstzahl der Arbeitseinheiten einer Seite (500 000). Echte Karten bleiben weit darunter (Lübeck etwa 6500); Objekte nach dem Limit werden nicht gezeichnet und gezählt (ADR 0019). | `MAX_UNITS_PER_PAGE`, `PrintReport::objects_not_drawn_page_limit` |
+| verworfenes Flächenmuster | dropped pattern | Flächenmuster, das der Leser verwirft, weil sein Abstand unter 0,05 mm liegt oder eine Zahl ungültig ist. Der Druckbericht zählt die Objekte, denen es fehlt. | `MIN_PATTERN_STEP`, `PrintReport::dropped_pattern_objects` |
+| Objekte unbekannter Art | unknown-type objects | Objekte, deren Objektart (`type`) der Leser nicht kennt (nicht Punkt, Linie/Fläche oder Text). Sie werden samt Inhalt übersprungen und gezählt. | `MapDocument::unknown_objects` |
+| Malreihenfolge | paint order | Reihenfolge der Zeichenbefehle einer gerenderten Seite: nach Farbpriorität, die höchste Nummer zuerst, innerhalb einer Farbe in der Reihenfolge der Kartendatei. | `RenderedPage::primitives` |
+| Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet`: der Informationsblock (Titel, Maßstab, Maßstabsleiste, Namensnennung, Symbole 991–994) und die Nordlinien. Den Informationsblock druckt das Programm nur auf Wunsch. Nordlinien (601) gehören zur Karte und werden immer gedruckt (ADR 0023). | `show_sheet_objects` |
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |
 | Farbpriorität | colour priority | Reihenfolge, in der Farben übereinander gedruckt werden, wie in OOM. | `ColorPriority` |
+| Strichpunkt | dash point | Koordinate einer Linie mit dem Dash-Point-Flag (32). Strichmuster und Mittelsymbole fangen dort neu an; ein Strichpunktsymbol wird dort gezeichnet. | `FLAG_DASH`, `Part::dash_points` |
+| Strichpunktsymbol | dash symbol | Punktsymbol einer Liniensignatur, das an jedem Strichpunkt steht, zur Winkelhalbierenden gedreht. | `DashSymbol` |
+| Mittelsymbol | mid symbol | Punktsymbol, das eine Liniensignatur in Abständen entlang der Linie wiederholt (z. B. Zaunstriche); auf gestrichelten Linien je Strich, Strichgruppe oder Lücke. | `Mid`, `MidPlacement` |
+| Anfangs- und Endabstand | start and end offset | Strecke, um die eine offene Linie am Anfang und am Ende gekürzt gezeichnet wird. | `LineDef::start_offset`, `LineDef::end_offset` |
+| spitzes Linienende | pointed cap | Linienende, das über den Anfangs- oder Endabstand von der vollen Breite bis auf null zuläuft (OOM-Linienende 3). | `LineDef::pointed_caps` |
+| Textfeld | box text | Kartentext in einem Rechteck: Der Anker ist die Mitte des Rechtecks, die Zeilen brechen an seiner Breite um und richten sich nach seinen Kanten aus, wie in OOM. | `MapObjectKind::Text::box_size` |
+| Absatzabstand | paragraph spacing | Zusätzlicher Abstand nach jedem Absatz eines Kartentexts, aus der Textsignatur. | `TextDef::paragraph_spacing` |
+| Textrahmen | text framing | Umrandung einer Textsignatur: die Buchstabenumrisse in einer zweiten Farbe nachgezogen oder als versetzter Schatten gedruckt. | `Framing` |
+| Schrift, Schriftschnitt | font, font face | Die Schrift, in der Kartentexte im PDF stehen: Arimo, maßgleich mit Arial, eingebettet als Teilmenge der benutzten Zeichen. Jede Schriftfamilie der Karte wird durch Arimo ersetzt; der Schriftschnitt (normal, fett, kursiv, fett kursiv) folgt der Textsignatur (ADR 0017). | `FontFace`, `fonts` |
 
 ## Bahnen / courses
 

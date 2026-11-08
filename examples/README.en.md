@@ -9,8 +9,8 @@ as the program can print it:
 
 | Example | Shows | From |
 |---|---|---|
-| `luebeck-scales` | the same sprint map at 1:4000 and 1:5000: exact scale, symbols at their printed size | M1 |
-| `luebeck-competition-layouts` | one competition with two layouts, A4 1:4000 for older classes and A4 1:5000 for younger ones, with passe-partout, title, north lines, logos and a scale check bar | M2 |
+| [`luebeck-scales`](luebeck-scales/) | the same sprint map at 1:4000 on A4 and 1:3000 on A3: exact scale, symbols grow to 133 % as the standard sets | M1 |
+| `luebeck-competition-layouts` | one competition with two layouts, A4 1:4000 for older classes, 1:3000 for the youngest, with passe-partout, title, logos and a scale check bar | M2 |
 | `schoolyard` | a schoolyard map at 1:1000 on A4 | M2 |
 | `luebeck-competition-courses` | the same competition with courses from Purple Pen, control descriptions and control numbers, plus the same courses as IOF XML 3.0 without descriptions | M3 |
 | `luebeck-training-window` | window orienteering with a mask variant | M4 |

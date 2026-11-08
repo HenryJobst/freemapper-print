@@ -8,6 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+miniz_oxide.workspace = true
+pdf-writer.workspace = true
+quick-xml.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+serde.workspace = true
+subsetter.workspace = true
+ttf-parser.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
