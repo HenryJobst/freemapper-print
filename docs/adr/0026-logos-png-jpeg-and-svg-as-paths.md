@@ -14,7 +14,11 @@ paths in bounding-box units per user, `feImage` targets. The first version of th
 and markers before calling `usvg`. The review of Task 8 broke that count twice. A `use` whose `href` had a
 space before the `#`, or that carried both `href` and `xlink:href`, was resolved differently from `usvg` (2.4
 GB in 20 s). A 4 KB file of masks nested seven deep took 3 GB, because masks were not counted at all.
-Counting every copy `usvg` makes means following its internals release by release.
+Counting every copy `usvg` makes means following its internals release by release. The second review found
+three more ways through the count, all by attribute namespaces: `usvg` finds `use` targets by `id` in any
+namespace, while the check read only its own; a short `x:d` before the real `d` hid 400 KB of path data
+from the check; and a foreign `clipPathUnits`, `clip-path: inherit` or a `style` that overrides the
+attribute hid bounding-box clip paths (10 to 23 s, up to 700 MB).
 
 ## Decision
 
@@ -32,6 +36,15 @@ Counting every copy `usvg` makes means following its internals release by releas
     from another gradient, at most 16 links deep.
   - A clip path must be in user space (`clipPathUnits="userSpaceOnUse"`, the default). Its children are
     shapes or `use` of a shape, and nothing inside it, or used by it, has a clip path of its own.
+  - Attributes are read as `usvg`'s `parse_svg_element` reads them: by local name, in no namespace or the
+    SVG, XLink or XML namespace. The `use` map is built as `usvg` builds it, from the first attribute with
+    the local name `id` in any namespace. Anything that two readers could take differently is refused: two
+    attributes of one local name on an element (also `href` with `xlink:href`), an attribute of any other
+    namespace except those of Inkscape, Sodipodi and Adobe Illustrator, which `usvg` passes over, and `id`
+    or `style` even in those, because `usvg` looks both up in every namespace.
+  - `clip-path` may be set once per element, as attribute or in `style`, and never to `inherit`, which
+    copies the parent's clip path. A `use` that refers to itself, directly or through other elements, is
+    refused; `usvg` drops some of these loops and expands the others until its own node limit stops it.
   - Every reference resolves as in `usvg`: for `use` and gradient links the unprefixed `href` first, then
     `xlink:href`, parsed by `svgtypes::IRI` (spaces around `#id` allowed); `url()` by `svgtypes::FuncIRI` or
     `svgtypes::Paint`; `style` attributes split by `simplecss`. Both crates are the versions `usvg` uses. An
@@ -65,12 +78,14 @@ Counting every copy `usvg` makes means following its internals release by releas
 - A logo with masks, patterns, filters, markers, embedded images or text is refused even where `usvg` could
   have drawn it safely. The note tells the club to export a plain SVG; most editors have such an export, and
   text has to be converted to paths anyway.
-- The checks follow `usvg`'s reference rules but none of its copying rules, so a new `usvg` release needs a
-  look at its reference parsing only.
+- The checks follow `usvg`'s reference and attribute rules but none of its copying rules, so a new `usvg`
+  release needs a look at how it parses references and attributes, including every place it reads an
+  attribute by local name alone.
+- Files that carry both `href` and `xlink:href` on one element, which some exporters write, are refused.
 - Logos print in the colours a naive conversion gives. Bright RGB blues and greens come out duller than on
   screen; a club that needs exact colours supplies a logo in the colours it wants.
 - `Shape::Stroke` has no miter limit, so an SVG's `stroke-miterlimit` (default 4) is not carried over and the
   PDF default of 10 applies: sharp corners of mitred strokes can stick out further than in a browser.
 - Cost if wrong: a club with only a PDF logo has to export it as SVG or PNG first.
 
-Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 review and fix round 1 (2026-11-09).
+Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 reviews and fix rounds 1 and 2 (2026-11-09).

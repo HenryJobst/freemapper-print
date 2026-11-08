@@ -1187,11 +1187,9 @@ mod tests {
     #[test]
     fn svg_use_bomb_every_href_form_skipped() {
         type Link = fn(usize) -> String;
-        let forms: [(&str, Link); 5] = [
+        let forms: [(&str, Link); 4] = [
             ("href", |i| format!(r##"href="#a{i}""##)),
             ("xlink:href", |i| format!(r##"xlink:href="#a{i}""##)),
-            // The plain `href` wins over `xlink:href`, as in usvg.
-            ("both", |i| format!(r##"href="#a{i}" xlink:href="#t""##)),
             ("leading space", |i| format!(r##"href=" #a{i}""##)),
             ("trailing space", |i| format!(r##"href="#a{i} ""##)),
         ];
@@ -1211,9 +1209,149 @@ mod tests {
 
     #[test]
     fn svg_xlink_dummy_does_not_hide_a_use() {
-        // `xlink:href` points to an empty group, `href` to the path: usvg draws the path.
+        // `xlink:href` points to an empty group, `href` to the bomb: usvg would follow `href`.
+        // Two attributes of one local name are refused before anything is counted.
+        let reason = svg_skipped(&use_bomb(8, "M0 0h1", |i| {
+            format!(r##"href="#a{i}" xlink:href="#t""##)
+        }));
+        assert!(
+            reason.ends_with(&plain("an element with two \"href\" attributes")),
+            "{reason}"
+        );
+    }
+
+    /// `<svg>` with the foreign namespace `x` declared.
+    fn with_x(body: &str) -> String {
+        format!(r#"<g xmlns:x="urn:x">{body}</g>"#)
+    }
+
+    #[test]
+    fn svg_foreign_id_skipped() {
+        // usvg finds `use` targets by `id` in any namespace: a target with only `x:id`.
+        let mut b = String::from("<defs>");
+        for i in 0..4 {
+            b.push_str(&format!(r#"<g x:id="u{i}">"#));
+            b.push_str(&format!(r##"<use href="#u{}"/>"##, i + 1).repeat(10));
+            b.push_str("</g>");
+        }
+        b.push_str(r##"<path x:id="u4" d="M0 0h1"/></defs><use href="#u0"/>"##);
+        let reason = svg_skipped(&with_x(&b));
+        assert!(
+            reason.ends_with(&plain("the attribute id in the namespace urn:x")),
+            "{reason}"
+        );
+        // `x:id` before `id`: usvg's `use` map takes the first.
+        let reason = svg_skipped(&with_x(
+            r##"<path x:id="a" id="b" d="M0 0h1"/><use href="#a"/>"##,
+        ));
+        assert!(
+            reason.ends_with(&plain("an element with two ids")),
+            "{reason}"
+        );
+        // Drawing programs' namespaces may not carry an id either.
+        let reason = svg_skipped(
+            r##"<path xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:id="a" d="M0 0h1"/><use href="#a"/>"##,
+        );
+        assert!(
+            reason.ends_with(&plain(
+                "the attribute id in the namespace http://www.inkscape.org/namespaces/inkscape"
+            )),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn svg_foreign_path_data_skipped() {
+        // A short `x:d` in front of the real `d`, which usvg reads.
+        let data = format!("M0 0{}", "h1v1".repeat(100_000));
+        let mut b = format!(r#"<defs><path id="p" x:d="M0 0" d="{data}"/></defs>"#);
+        b.push_str(&r##"<use href="#p"/>"##.repeat(100));
+        let reason = svg_skipped(&with_x(&b));
+        assert!(
+            reason.ends_with(&plain("an element with two \"d\" attributes")),
+            "{reason}"
+        );
+        // `x:d` alone is not read by usvg, but is refused as well.
+        let reason = svg_skipped(&with_x(r#"<path x:d="M0 0h1"/>"#));
+        assert!(
+            reason.ends_with(&plain("the attribute d in the namespace urn:x")),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn svg_clip_units_and_inheritance_skipped() {
+        let clip = |units: &str| {
+            format!(
+                r#"<defs><clipPath id="c" {units}><path d="M0 0h1v1z"/></clipPath></defs><rect width="1" height="1" clip-path="url(#c)"/>"#
+            )
+        };
+        // A foreign `userSpaceOnUse` in front of the `xml:` one that usvg reads.
+        let reason = svg_skipped(&with_x(&clip(
+            r#"x:clipPathUnits="userSpaceOnUse" xml:clipPathUnits="objectBoundingBox""#,
+        )));
+        assert!(
+            reason.ends_with(&plain("an element with two \"clipPathUnits\" attributes")),
+            "{reason}"
+        );
+        // usvg reads `xlink:` and `xml:` attributes by their local name.
+        for units in [
+            r#"xml:clipPathUnits="objectBoundingBox""#,
+            r#"xlink:clipPathUnits="objectBoundingBox""#,
+        ] {
+            let reason = svg_skipped(&clip(units));
+            assert!(
+                reason.ends_with(&plain("a clip path in objectBoundingBox units")),
+                "{units}: {reason}"
+            );
+        }
+        // `inherit` copies the parent's clip path, in the attribute or in `style`.
+        let user = r#"<defs><clipPath id="c"><path d="M0 0h1v1z"/></clipPath></defs>"#;
+        for child in [
+            r#"<rect width="1" height="1" clip-path="inherit"/>"#,
+            r#"<rect width="1" height="1" style="clip-path: inherit"/>"#,
+        ] {
+            let reason = svg_skipped(&format!(r#"{user}<g clip-path="url(#c)">{child}</g>"#));
+            assert!(
+                reason.ends_with(&plain("clip-path: inherit")),
+                "{child}: {reason}"
+            );
+        }
+        // `style` wins over the attribute and the last declaration over the first in usvg.
+        for rect in [
+            r#"<rect width="1" height="1" clip-path="url(#c)" style="clip-path:url(#d)"/>"#,
+            r#"<rect width="1" height="1" style="clip-path:url(#c);clip-path:url(#d)"/>"#,
+        ] {
+            let reason = svg_skipped(&format!(
+                r#"<defs><clipPath id="c"><rect width="1" height="1"/></clipPath><clipPath id="d"><rect width="1" height="1"/></clipPath></defs>{rect}"#
+            ));
+            assert!(
+                reason.ends_with(&plain("clip-path set more than once on one element")),
+                "{rect}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn svg_use_loops_skipped() {
+        for body in [
+            // Two groups that use each other four times each: usvg misses this loop.
+            r##"<defs><g id="a"><use href="#b"/><use href="#b"/><use href="#b"/><use href="#b"/></g><g id="b"><use href="#a"/><use href="#a"/><use href="#a"/><use href="#a"/></g></defs><use href="#a"/>"##,
+            // A group that uses itself.
+            r##"<g id="a"><rect width="1" height="1"/><use href="#a"/></g>"##,
+        ] {
+            let reason = svg_skipped(body);
+            assert!(
+                reason.ends_with(&plain("a `use` that refers to itself")),
+                "{body}: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn svg_drawing_program_attributes_accepted() {
         let (items, notes) = svg_drawn(
-            r##"<defs><path id="p" d="M0 0H50V50Z" fill="#000"/><g id="t"/></defs><use href="#p" xlink:href="#t"/>"##,
+            r##"<path xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:i="http://ns.adobe.com/AdobeIllustrator/10.0/" sodipodi:nodetypes="ccc" i:knockout="Off" d="M0 0H50V50Z" fill="#000"/>"##,
         );
         assert_eq!(notes, []);
         assert_eq!(fills(&items).len(), 1);

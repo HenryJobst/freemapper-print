@@ -42,7 +42,8 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
   shapes times the largest number of gradient stops. Then at most 20 000 path segments and 500 000 points
   after flattening. A logo that breaks a limit is left out whole with `SheetNote::LogoSkipped`; none is drawn
   in part. An earlier count of `use` and markers alone missed copies `usvg` makes of masks, patterns and clip
-  paths and resolved some `href` forms differently; the allow-list replaced it.
+  paths and resolved some `href` forms differently; the allow-list replaced it. Attributes are read as `usvg`
+  reads them, and any attribute two readers could take differently is refused (ADR 0026).
 - The report counts what the limits changed: objects cut short (`truncated_objects`), objects not drawn for
   the page limit, objects whose symbol lost a pattern, objects of unknown type. The CLI prints a note for
   each, and map text reaches the terminal with control and format characters escaped.

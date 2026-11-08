@@ -78,9 +78,68 @@ fn name<'a>(node: Node<'a, '_>) -> &'a str {
     node.tag_name().name()
 }
 
-/// Whether `usvg` reads an attribute of this namespace.
+/// Whether `usvg` reads an attribute of this namespace (`parse_svg_element`).
 fn read_namespace(ns: Option<&str>) -> bool {
     matches!(ns, None | Some(SVG_NS) | Some(XLINK_NS) | Some(XML_NS))
+}
+
+/// Namespaces of drawing programs whose attributes `usvg` passes over: Inkscape, Sodipodi and
+/// Adobe Illustrator.
+fn editor_namespace(ns: &str) -> bool {
+    ns == "http://www.inkscape.org/namespaces/inkscape"
+        || ns == "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+        || ns.starts_with("http://ns.adobe.com/")
+}
+
+/// Attributes that `usvg` looks up by local name in every namespace (`node.attribute(..)` in its
+/// parser), so they must not appear in a namespace it otherwise passes over.
+const READ_IN_ANY_NAMESPACE: &[&str] = &["id", "style"];
+
+/// An attribute as `usvg`'s `parse_svg_element` reads it: by local name, in the namespaces it
+/// reads. [`check_attributes`] has made sure that each local name occurs once per element.
+fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
+    node.attributes()
+        .find(|a| a.name() == local && read_namespace(a.namespace()))
+        .map(|a| a.value())
+}
+
+/// The id `usvg` gives an element for `use`: the first attribute with the local name `id`, in any
+/// namespace, as `roxmltree::Node::attribute("id")` finds it.
+fn use_id<'a>(node: Node<'a, '_>) -> Option<&'a str> {
+    node.attributes()
+        .find(|a| a.name() == "id")
+        .map(|a| a.value())
+}
+
+/// Refuses attributes that `usvg` and this check could read differently: two attributes of one
+/// local name on an element, in any namespaces; attributes of foreign namespaces other than
+/// those of drawing programs; and `id` or `style` in a drawing program's namespace, which
+/// `usvg` reads as if they had none.
+fn check_attributes(node: Node<'_, '_>) -> Result<(), String> {
+    let all: Vec<_> = node.attributes().collect();
+    for (i, a) in all.iter().enumerate() {
+        if all[..i].iter().any(|b| b.name() == a.name()) {
+            return Err(unsupported(&format!(
+                "an element with two \"{}\" attributes",
+                a.name()
+            )));
+        }
+    }
+    for a in &all {
+        let Some(ns) = a.namespace() else {
+            continue;
+        };
+        if read_namespace(Some(ns)) {
+            continue;
+        }
+        if !editor_namespace(ns) || READ_IN_ANY_NAMESPACE.contains(&a.name()) {
+            return Err(unsupported(&format!(
+                "the attribute {} in the namespace {ns}",
+                a.name()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// The link of `href` as `usvg` takes it: the unprefixed `href` first, then `xlink:href`,
@@ -105,7 +164,12 @@ fn properties<'a>(node: Node<'a, '_>) -> Vec<(&'a str, &'a str)> {
         .filter(|a| read_namespace(a.namespace()) && a.name() != "style")
         .map(|a| (a.name(), a.value()))
         .collect();
-    if let Some(style) = node.attribute("style") {
+    // `usvg` takes the first `style` in any namespace; there is at most one.
+    if let Some(style) = node
+        .attributes()
+        .find(|a| a.name() == "style")
+        .map(|a| a.value())
+    {
         all.extend(simplecss::DeclarationTokenizer::from(style).map(|d| (d.name, d.value)));
     }
     all
@@ -127,7 +191,8 @@ impl<'a, 'input> Links<'a, 'input> {
         self.get(id)
     }
 
-    /// The clip path of an element, from its attribute or its `style`.
+    /// The clip path of an element, from its attribute or its `style`. [`check_clip_property`]
+    /// has made sure that an element sets `clip-path` at most once.
     fn clip_of(&self, node: Node<'a, 'input>) -> Option<Node<'a, 'input>> {
         properties(node)
             .into_iter()
@@ -147,6 +212,8 @@ pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
         if !is_svg(node) {
             continue;
         }
+        check_attributes(node)?;
+        check_clip_property(node)?;
         if !ALLOWED.contains(&name(node)) {
             return Err(unsupported(&format!("the element <{}>", name(node))));
         }
@@ -162,28 +229,44 @@ pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
     check_work(doc, &links)
 }
 
-/// Every element by its id. `usvg` keeps the first element of an id for `use` and the elements it
-/// parsed for other links; ids that occur twice could resolve differently, so they are refused.
+/// Every element by its id, as `usvg` maps them for `use`: the first attribute named `id` in any
+/// namespace ([`use_id`]), on every element. `usvg` resolves other links among the SVG elements
+/// it parsed, by `id` in the namespaces it reads. [`check_attributes`] leaves an SVG element at
+/// most one `id`, in such a namespace, so both maps agree; an element with two ids or an id
+/// used twice is refused.
 fn ids<'a, 'input>(doc: &'a roxmltree::Document<'input>) -> Result<Links<'a, 'input>, String> {
     let mut ids = HashMap::new();
     for node in doc.descendants().filter(|n| n.is_element()) {
-        let mut own = node
-            .attributes()
-            .filter(|a| a.name() == "id" && read_namespace(a.namespace()));
-        let Some(id) = own.next() else {
-            continue;
-        };
-        if own.next().is_some() {
+        if node.attributes().filter(|a| a.name() == "id").count() > 1 {
             return Err(unsupported("an element with two ids"));
         }
-        if ids.insert(id.value(), node).is_some() {
+        let Some(id) = use_id(node) else {
+            continue;
+        };
+        if ids.insert(id, node).is_some() {
             return Err(format!(
-                "the id \"{}\" is used twice; export the logo as a plain SVG",
-                id.value()
+                "the id \"{id}\" is used twice; export the logo as a plain SVG"
             ));
         }
     }
     Ok(Links { ids })
+}
+
+/// `clip-path` at most once per element, attribute and `style` together, and never `inherit`,
+/// which copies the parent's clip path.
+fn check_clip_property(node: Node<'_, '_>) -> Result<(), String> {
+    let values: Vec<&str> = properties(node)
+        .into_iter()
+        .filter(|(n, _)| *n == "clip-path")
+        .map(|(_, v)| v)
+        .collect();
+    if values.len() > 1 {
+        return Err(unsupported("clip-path set more than once on one element"));
+    }
+    if values.iter().any(|v| v.trim() == "inherit") {
+        return Err(unsupported("clip-path: inherit"));
+    }
+    Ok(())
 }
 
 fn check_property(
@@ -246,7 +329,7 @@ fn check_gradient_links(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(),
 /// A clip path in user space, of shapes, or of `use` pointing to shapes, none of them clipped
 /// again.
 fn check_clip_path(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), String> {
-    if let Some(units) = node.attribute("clipPathUnits")
+    if let Some(units) = attr(node, "clipPathUnits")
         && units.trim() != "userSpaceOnUse"
     {
         return Err(unsupported("a clip path in objectBoundingBox units"));
@@ -280,8 +363,7 @@ fn check_clip_path(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), Stri
 /// Size of one element as `usvg` holds it: one plus half the length of its path data (`d`,
 /// `points`), an upper bound of its points.
 fn element_work(node: Node<'_, '_>) -> u64 {
-    let data =
-        node.attribute("d").map_or(0, str::len) + node.attribute("points").map_or(0, str::len);
+    let data = attr(node, "d").map_or(0, str::len) + attr(node, "points").map_or(0, str::len);
     1 + data as u64 / 2
 }
 
@@ -309,13 +391,15 @@ fn parts<'a, 'input>(node: Node<'a, 'input>, links: &Links<'a, 'input>) -> Vec<N
 }
 
 /// Counts the SVG as `usvg` will build it: every `use` replaced by what it refers to and every
-/// clip path copied for each element it clips. A `use` that refers to itself, directly or not,
-/// counts as empty, as `usvg` drops it.
+/// clip path copied for each element it clips. A `use` that refers to itself, directly or
+/// through others, is refused: `usvg` drops only some of these loops and expands the others until
+/// its own limits stop it.
 fn check_work<'a, 'input>(
     doc: &'a roxmltree::Document<'input>,
     links: &Links<'a, 'input>,
 ) -> Result<(), String> {
     let too_complex = || "too complex once `use` and clip paths are resolved".to_string();
+    let looped = || unsupported("a `use` that refers to itself");
     let parts = |node| parts(node, links);
     // Each subtree worked out children first, without recursion.
     let mut done: HashMap<NodeId, Expanded> = HashMap::new();
@@ -326,12 +410,16 @@ fn check_work<'a, 'input>(
             continue;
         }
         if !expanded {
+            // A node met again while its own subtree is being worked out refers to itself.
             if !open.insert(node.id()) {
-                continue;
+                return Err(looped());
             }
             stack.push((node, true));
             for part in parts(node) {
-                if !done.contains_key(&part.id()) && !open.contains(&part.id()) {
+                if open.contains(&part.id()) {
+                    return Err(looped());
+                }
+                if !done.contains_key(&part.id()) {
                     stack.push((part, false));
                 }
             }
