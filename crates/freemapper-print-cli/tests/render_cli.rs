@@ -171,8 +171,8 @@ fn missing_parent_directory_fails() {
 
 #[test]
 fn overflow_amount_matches_the_library() {
-    // Luebeck, A4 portrait, 1:4000: print_map reported overflow_mm = (58.0, 0.0), rounded to 0.1 mm,
-    // when this test was written.
+    // Luebeck, A4 portrait, 1:4000: print_map reported overflow_mm = (62.6, 0.0), rounded to 0.1 mm,
+    // when this test was written, with the water map (freemapper a0cc8ef; the map without water gave 58.0).
     let doc = read_map_file(Path::new(LUEBECK)).unwrap();
     let options = PrintOptions {
         print_scale: None,
@@ -187,7 +187,7 @@ fn overflow_amount_matches_the_library() {
         .1
         .overflow_mm
         .unwrap();
-    assert!((x - 58.0).abs() <= 0.1 && y == 0.0, "({x}, {y})");
+    assert!((x - 62.6).abs() <= 0.1 && y == 0.0, "({x}, {y})");
     let dir = tempfile::tempdir().unwrap();
     let o = render(
         LUEBECK,
@@ -195,7 +195,7 @@ fn overflow_amount_matches_the_library() {
         &["--orientation", "portrait"],
     );
     let err = stderr(&o);
-    assert!(err.contains("58.0 mm too wide"), "{err}");
+    assert!(err.contains("62.6 mm too wide"), "{err}");
     assert!(!err.contains("too tall"), "{err}");
 }
 
