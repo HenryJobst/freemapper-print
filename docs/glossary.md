@@ -30,7 +30,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 |---|---|---|---|
 | Layout | layout | Vorlage für Kartenblätter: Blattformat, Ausrichtung, Druckmaßstab, Kartenausschnitt und Blattelemente. Eine Veranstaltung hat meist 1 bis 5. | `Layout` |
 | Kartenblatt, Blatt | sheet | Eine gedruckte Seite: eine Bahn mit ihrem Layout und ihrer Abdeckungsvariante. | `Sheet` |
-| Blattformat | paper size | Papiergröße, z. B. A4 oder A3. | `PaperSize` |
+| Blattformat | paper size | Papiergröße, z. B. A4 oder A3. | `Paper` |
 | Ausrichtung | orientation | Hoch- oder Querformat. | `Orientation` |
 | Kartenausschnitt | map frame | Der Teil der Karte, der auf dem Blatt erscheint, und das Rechteck, das er auf dem Blatt füllt. | `MapFrame` |
 | Passepartout | passe-partout | Weißer Rand zwischen Kartenausschnitt und Blattrand, auf dem Blattelemente stehen können. | `Passepartout` |
@@ -51,6 +51,11 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Druckmaßstab | print scale | Maßstab, in dem ein Layout die Karte druckt. | `print_scale` |
 | Geometriefaktor | geometry factor | Kartenmaßstab geteilt durch Druckmaßstab; so stark wird die Kartengeometrie skaliert. | `geometry_factor` |
 | Symbolfaktor | symbol factor | Faktor für Symbolmaße beim Druck, abhängig von Kartenart und Druckmaßstab (ADR 0012). | `symbol_factor` |
+| gerenderte Seite | rendered page | Eine Seite als Zeichenbefehle in Seitenmillimetern, mit Clip-Rechteck, Seitengröße und Farben. Der PDF-Writer liest nur sie; spätere Ausgaben (SVG, Kacheln) lesen dieselbe. | `RenderedPage` |
+| Seitenrand | page margin | Fester weißer Rand von 5 mm an jeder Seitenkante, den die Karte nicht bedruckt. | `PAGE_MARGIN_MM` |
+| Überstand | overflow | Wie viele Millimeter der Umriss der gezeichneten Objekte in x und y über das Clip-Rechteck hinausragt. Die Karte wird nicht verkleinert, sondern abgeschnitten und der Überstand gemeldet. | `PrintReport::overflow_mm` |
+| Druckbericht | print report | Was eine gedruckte Seite zeigt und was nicht: Seitengröße, Druckmaßstab, Faktoren, Überstand, übersprungene und gekürzte Objekte, ersetzte Schriften, fehlende Zeichen. | `PrintReport` |
+| Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet` (Randangaben der Karte). Sie werden nur auf Wunsch gedruckt. | `show_sheet_objects` |
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |
 | Farbpriorität | colour priority | Reihenfolge, in der Farben übereinander gedruckt werden, wie in OOM. | `ColorPriority` |

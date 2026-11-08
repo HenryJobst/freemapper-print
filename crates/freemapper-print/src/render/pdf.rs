@@ -8,121 +8,30 @@ use std::sync::Arc;
 use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Pdf, Rect, Ref, Str, TextStr};
 
-use super::draw::{Primitive, Shape};
-use super::fonts::{PageFonts, face, text_width};
+pub use super::PaperBox;
+use super::RenderedPage;
+use super::draw::Shape;
+use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
 use super::symbols::{Cap, Join, RenderColour};
 
 /// Points per millimetre.
 const PT_PER_MM: f64 = 72.0 / 25.4;
-/// Margin around everything drawn (mm).
-const MARGIN_MM: f64 = 5.0;
-/// Page sizes tried, smallest first (mm, portrait).
-const PAGES: [(f64, f64); 2] = [(210.0, 297.0), (297.0, 420.0)];
 /// OOM's miter limit for PDF (reference §2.1).
 const MITER_LIMIT: f32 = 2.236_068;
 /// OOM's miter limit for text framing in PDF: Qt 0.5 → √(1 + 4 · 0.5²) = √2 (reference §2.1).
 const TEXT_FRAMING_MITER_LIMIT: f32 = std::f32::consts::SQRT_2;
 
-/// An axis-parallel rectangle on paper (mm, y down).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PaperBox {
-    pub min: Pt,
-    pub max: Pt,
-}
-
-/// The page (mm) for content of `width` × `height` mm plus margin: A4 or A3 in either
-/// orientation, the smallest that fits, else exactly the content size.
-pub fn page_size(width: f64, height: f64) -> (f64, f64) {
-    let (w, h) = (width + 2.0 * MARGIN_MM, height + 2.0 * MARGIN_MM);
-    PAGES
-        .iter()
-        .flat_map(|&(a, b)| [(a, b), (b, a)])
-        .find(|&(pw, ph)| w <= pw && h <= ph)
-        .unwrap_or((w, h))
-}
-
-/// The box around everything a primitive paints (mm), widened by half a stroke.
-fn bounds(p: &Primitive) -> Option<PaperBox> {
-    shape_bounds(&p.shape)
-}
-
-fn shape_bounds(shape: &Shape) -> Option<PaperBox> {
-    let (points, extra): (Vec<Pt>, f64) = match shape {
-        Shape::Fill { rings } => (rings.iter().flatten().copied().collect(), 0.0),
-        Shape::Stroke { path, width, .. } => (path.clone(), width / 2.0),
-        Shape::Text {
-            origin,
-            size,
-            bold,
-            italic,
-            text,
-            rotation,
-            stroke,
-        } => {
-            let w = text_width(text, face(*bold, *italic)) * size;
-            // The box in text coordinates, turned about the origin as the text is.
-            let (sin, cos) = rotation.sin_cos();
-            let corners = [(0.0, -size), (w, -size), (w, size / 3.0), (0.0, size / 3.0)];
-            (
-                corners
-                    .iter()
-                    .map(|&(x, y)| (origin.0 + x * cos + y * sin, origin.1 - x * sin + y * cos))
-                    .collect(),
-                stroke.unwrap_or(0.0) / 2.0,
-            )
-        }
-        // What is painted lies inside both the clip and the inner shape.
-        Shape::Clipped { rings, inner } => {
-            let mut points = rings.iter().flatten();
-            let first = *points.next()?;
-            let (a_min, a_max) = points.fold((first, first), |(min, max), q| {
-                (
-                    (min.0.min(q.0), min.1.min(q.1)),
-                    (max.0.max(q.0), max.1.max(q.1)),
-                )
-            });
-            let a = PaperBox {
-                min: a_min,
-                max: a_max,
-            };
-            let b = shape_bounds(inner)?;
-            let min = (a.min.0.max(b.min.0), a.min.1.max(b.min.1));
-            let max = (a.max.0.min(b.max.0), a.max.1.min(b.max.1));
-            return (min.0 <= max.0 && min.1 <= max.1).then_some(PaperBox { min, max });
-        }
-    };
-    let first = *points.first()?;
-    let (min, max) = points.iter().fold((first, first), |(min, max), q| {
-        (
-            (min.0.min(q.0), min.1.min(q.1)),
-            (max.0.max(q.0), max.1.max(q.1)),
-        )
-    });
-    Some(PaperBox {
-        min: (min.0 - extra, min.1 - extra),
-        max: (max.0 + extra, max.1 + extra),
-    })
-}
-
-fn union(a: PaperBox, b: PaperBox) -> PaperBox {
-    PaperBox {
-        min: (a.min.0.min(b.min.0), a.min.1.min(b.min.1)),
-        max: (a.max.0.max(b.max.0), a.max.1.max(b.max.1)),
-    }
-}
-
-/// Paper mm (y down) → page points (y up).
+/// Page mm (y down) → page points (y up).
 struct Transform {
-    offset: Pt,
     page_height: f64,
 }
 
 impl Transform {
     fn pt(&self, p: Pt) -> (f32, f32) {
         (
-            ((p.0 + self.offset.0) * PT_PER_MM) as f32,
-            ((self.page_height - (p.1 + self.offset.1)) * PT_PER_MM) as f32,
+            (p.0 * PT_PER_MM) as f32,
+            ((self.page_height - p.1) * PT_PER_MM) as f32,
         )
     }
 }
@@ -255,57 +164,52 @@ pub struct PdfInfo {
     pub missing_glyphs: BTreeSet<char>,
 }
 
-/// The PDF of `map` primitives (clipped to `clip`) and `sheet` primitives (not clipped).
-pub fn write_pdf(
-    map: &[Primitive],
-    sheet: &[Primitive],
-    clip: PaperBox,
-    colours: &[RenderColour],
-    title: &str,
-) -> Vec<u8> {
-    write_pdf_info(map, sheet, clip, colours, title).0
+/// The document information a PDF carries about itself.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PdfMeta {
+    pub title: String,
+    pub creator: String,
 }
 
-/// [`write_pdf`] plus what the page could not show.
-pub fn write_pdf_info(
-    map: &[Primitive],
-    sheet: &[Primitive],
-    clip: PaperBox,
-    colours: &[RenderColour],
-    title: &str,
-) -> (Vec<u8>, PdfInfo) {
-    let content_box = sheet.iter().filter_map(bounds).fold(clip, union);
-    let (width, height) = (
-        content_box.max.0 - content_box.min.0,
-        content_box.max.1 - content_box.min.1,
-    );
-    let (page_w, page_h) = page_size(width, height);
+impl PdfMeta {
+    /// `title` with freemapper-print and its link as the creator ([`crate::CREDIT`]).
+    pub fn new(title: &str) -> Self {
+        PdfMeta {
+            title: title.to_string(),
+            creator: crate::CREDIT.to_string(),
+        }
+    }
+}
+
+/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
+/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
+/// not show.
+pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> (Vec<u8>, PdfInfo) {
+    let (page_w, page_h) = page.page_mm;
     let t = Transform {
-        offset: (
-            (page_w - width) / 2.0 - content_box.min.0,
-            (page_h - height) / 2.0 - content_box.min.1,
-        ),
         page_height: page_h,
     };
+    let colours = &page.colours;
 
     // Highest priority first: priority 0 is painted last, on top. Stable, so objects keep their
     // order within a colour.
-    let mut items: Vec<(&Primitive, bool)> = map
-        .iter()
-        .map(|p| (p, true))
-        .chain(sheet.iter().map(|p| (p, false)))
-        .collect();
-    items.sort_by_key(|(p, _)| std::cmp::Reverse(p.priority));
+    let mut items: Vec<_> = page.primitives.iter().collect();
+    items.sort_by_key(|p| std::cmp::Reverse(p.priority));
 
     let mut content = Content::new();
     let mut fonts = PageFonts::new();
-    let (cx0, cy0) = t.pt((clip.min.0, clip.max.1));
-    let (cx1, cy1) = t.pt((clip.max.0, clip.min.1));
-    // One clip block for each run of consecutive map primitives, and nested in it one for each
-    // run of shapes clipped to the same rings (the lines of one area pattern).
-    let mut clipping = false;
+    // One clip block for the page, and nested in it one for each run of shapes clipped to the
+    // same rings (the lines of one area pattern).
+    if !items.is_empty() {
+        let (cx0, cy0) = t.pt((page.clip.min.0, page.clip.max.1));
+        let (cx1, cy1) = t.pt((page.clip.max.0, page.clip.min.1));
+        content.save_state();
+        content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+        content.clip_nonzero();
+        content.end_path();
+    }
     let mut pattern_clip: Option<&Arc<[Vec<Pt>]>> = None;
-    for (primitive, clipped) in items {
+    for primitive in &items {
         let (rings, shape) = match &primitive.shape {
             Shape::Clipped { rings, inner } => (Some(rings), &**inner),
             shape => (None, shape),
@@ -315,19 +219,10 @@ pub fn write_pdf_info(
             (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
             _ => false,
         };
-        if pattern_clip.is_some() && (clipped != clipping || !same_clip) {
+        if pattern_clip.is_some() && !same_clip {
             content.restore_state();
             pattern_clip = None;
         }
-        if clipped && !clipping {
-            content.save_state();
-            content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
-            content.clip_nonzero();
-            content.end_path();
-        } else if !clipped && clipping {
-            content.restore_state();
-        }
-        clipping = clipped;
         if let (None, Some(rings)) = (pattern_clip, rings) {
             begin_clip(&mut content, &t, rings);
             pattern_clip = Some(rings);
@@ -344,7 +239,7 @@ pub fn write_pdf_info(
     if pattern_clip.is_some() {
         content.restore_state();
     }
-    if clipping {
+    if !items.is_empty() {
         content.restore_state();
     }
 
@@ -373,10 +268,8 @@ pub fn write_pdf_info(
         .filter(Filter::FlateDecode);
     fonts.write(&mut pdf);
     pdf.document_info(info)
-        .title(TextStr(title))
-        .creator(TextStr(
-            "freemapper – https://github.com/HenryJobst/freemapper",
-        ));
+        .title(TextStr(&meta.title))
+        .creator(TextStr(&meta.creator));
     let info = PdfInfo {
         missing_glyphs: fonts.missing,
     };
@@ -394,6 +287,7 @@ pub(crate) fn content_of(pdf: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::draw::Primitive;
     use super::*;
 
     fn colours() -> Vec<RenderColour> {
@@ -425,27 +319,31 @@ mod tests {
         }
     }
 
+    /// An A4 portrait page of `primitives`, clipped to [`clip`].
+    fn page(primitives: &[Primitive]) -> RenderedPage {
+        RenderedPage {
+            primitives: primitives.to_vec(),
+            clip: clip(),
+            page_mm: (210.0, 297.0),
+            colours: colours(),
+        }
+    }
+
+    fn write_info(primitives: &[Primitive], title: &str) -> (Vec<u8>, PdfInfo) {
+        write_pdf(&page(primitives), &PdfMeta::new(title))
+    }
+
+    fn write(primitives: &[Primitive]) -> Vec<u8> {
+        write_info(primitives, "Test").0
+    }
+
     fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         haystack.windows(needle.len()).position(|w| w == needle)
     }
 
     #[test]
-    fn page_size_is_a4_or_a3() {
-        assert_eq!(page_size(150.0, 200.0), (210.0, 297.0));
-        assert_eq!(page_size(250.0, 150.0), (297.0, 210.0));
-        assert_eq!(page_size(350.0, 250.0), (420.0, 297.0));
-        assert_eq!(page_size(500.0, 100.0), (510.0, 110.0));
-    }
-
-    #[test]
     fn primitives_are_painted_by_priority() {
-        let pdf = content_of(&write_pdf(
-            &[square(2), square(9)],
-            &[],
-            clip(),
-            &colours(),
-            "Test",
-        ));
+        let pdf = content_of(&write(&[square(2), square(9)]));
         let black = find(&pdf, b"0 0 0 1 k").expect("black fill");
         let grey = find(&pdf, b"0 0 0 0.6 k").expect("grey fill");
         assert!(
@@ -471,7 +369,7 @@ mod tests {
                 join: Join::Miter,
             },
         };
-        let pdf = content_of(&write_pdf(&[line], &[], clip(), &colours(), "Test"));
+        let pdf = content_of(&write(&[line]));
         assert!(find(&pdf, b"0 0 0 1 K").is_some(), "stroke colour");
         assert!(find(&pdf, b"1 J").is_some(), "round cap");
         assert!(find(&pdf, b"2.236068 M").is_some(), "miter limit");
@@ -496,13 +394,7 @@ mod tests {
 
     #[test]
     fn clipped_shape_uses_clip_path() {
-        let pdf = content_of(&write_pdf(
-            &[clipped_line(15.0)],
-            &[],
-            clip(),
-            &colours(),
-            "Test",
-        ));
+        let pdf = content_of(&write(&[clipped_line(15.0)]));
         let after = |from: usize, needle: &[u8]| {
             find(&pdf[from..], needle)
                 .map(|i| from + i)
@@ -521,7 +413,7 @@ mod tests {
     #[test]
     fn clipped_shapes_with_one_outline_share_a_clip_block() {
         let lines: Vec<Primitive> = (0..5).map(|i| clipped_line(11.0 + f64::from(i))).collect();
-        let pdf = content_of(&write_pdf(&lines, &[], clip(), &colours(), "Test"));
+        let pdf = content_of(&write(&lines));
         let clips = pdf.windows(4).filter(|w| w == b"W*\nn").count();
         let strokes = pdf.windows(2).filter(|w| w == b"S\n").count();
         assert_eq!((clips, strokes), (1, 5));
@@ -544,15 +436,12 @@ mod tests {
 
     #[test]
     fn line_framing_strokes_the_glyphs() {
-        let pdf = content_of(&write_pdf(
-            &[],
-            &[text(0.0, Some(0.3)), text(0.0, None)],
-            clip(),
-            &colours(),
-            "Test",
-        ));
+        let pdf = content_of(&write(&[text(0.0, Some(0.3)), text(0.0, None)]));
+        // After the page clip block `q … re W n`.
+        let body = find(&pdf, b"re\nW\nn\n").expect("page clip");
         let at = |needle: &[u8]| {
-            find(&pdf, needle).unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(needle)))
+            body + find(&pdf[body..], needle)
+                .unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(needle)))
         };
         // Stroke only (render mode 1), framing colour, 2 × half width, miter join with OOM's
         // text framing limit √2 [RI `TextFramingRenderable`], inside q … Q so that the fill text
@@ -571,13 +460,7 @@ mod tests {
 
     #[test]
     fn rotated_text_turns_its_text_matrix() {
-        let pdf = content_of(&write_pdf(
-            &[],
-            &[text(std::f64::consts::FRAC_PI_6, None)],
-            clip(),
-            &colours(),
-            "Test",
-        ));
+        let pdf = content_of(&write(&[text(std::f64::consts::FRAC_PI_6, None)]));
         // Counter-clockwise on paper is counter-clockwise in PDF (y up).
         let tm = String::from_utf8_lossy(&pdf);
         let line = tm.lines().find(|l| l.ends_with("Tm")).unwrap();
@@ -595,7 +478,7 @@ mod tests {
     #[test]
     fn content_is_compressed_and_clip_blocks_are_shared() {
         let many: Vec<Primitive> = (0..200).map(|_| square(9)).collect();
-        let pdf = write_pdf(&many, &[], clip(), &colours(), "Test");
+        let pdf = write(&many);
         assert!(find(&pdf, b"/FlateDecode").is_some());
         let start = find(&pdf, b"stream\n").unwrap() + 7;
         let end = find(&pdf, b"\nendstream").unwrap();
@@ -731,13 +614,7 @@ mod tests {
 
     #[test]
     fn pdf_embeds_subset_fonts() {
-        let pdf = write_pdf(
-            &[],
-            &[plain_text("Wald", false, false)],
-            clip(),
-            &colours(),
-            "Test",
-        );
+        let pdf = write(&[plain_text("Wald", false, false)]);
         for key in [
             &b"/FontFile2"[..],
             b"/ToUnicode",
@@ -761,17 +638,11 @@ mod tests {
 
     #[test]
     fn faces_follow_bold_and_italic() {
-        let pdf = write_pdf(
-            &[],
-            &[
-                plain_text("Wald", true, false),
-                plain_text("Wald", false, true),
-                plain_text("Wald", true, true),
-            ],
-            clip(),
-            &colours(),
-            "Test",
-        );
+        let pdf = write(&[
+            plain_text("Wald", true, false),
+            plain_text("Wald", false, true),
+            plain_text("Wald", true, true),
+        ]);
         for name in [&b"Arimo-Bold"[..], b"Arimo-Italic", b"Arimo-BoldItalic"] {
             assert!(
                 find(&pdf, name).is_some(),
@@ -786,13 +657,7 @@ mod tests {
     #[test]
     fn non_ascii_text_round_trips() {
         let texts = ["„Gänsefüßchen“", "Řeka"];
-        let (pdf, info) = write_pdf_info(
-            &[],
-            &texts.map(|t| plain_text(t, false, false)),
-            clip(),
-            &colours(),
-            "Test",
-        );
+        let (pdf, info) = write_info(&texts.map(|t| plain_text(t, false, false)), "Test");
         assert!(info.missing_glyphs.is_empty());
         let streams = streams(&pdf);
         let cmap = streams
@@ -814,13 +679,7 @@ mod tests {
 
     #[test]
     fn missing_glyphs_are_reported() {
-        let (pdf, info) = write_pdf_info(
-            &[],
-            &[plain_text("Wald ✈ 中", false, false)],
-            clip(),
-            &colours(),
-            "Test",
-        );
+        let (pdf, info) = write_info(&[plain_text("Wald ✈ 中", false, false)], "Test");
         assert_eq!(info.missing_glyphs, ['✈', '中'].into_iter().collect());
         assert!(pdf.ends_with(b"%%EOF") || pdf.ends_with(b"%%EOF\n"));
         // .notdef stands in: CID 0 is shown.
@@ -830,16 +689,17 @@ mod tests {
 
     #[test]
     fn pdf_structure_is_valid() {
-        let pdf = write_pdf(&[square(9)], &[], clip(), &colours(), "Strausberg Vorstadt");
+        let pdf = write_info(&[square(9)], "Strausberg Vorstadt").0;
         assert!(pdf.starts_with(b"%PDF-"));
         assert!(find(&pdf, b"xref").is_some() && find(&pdf, b"trailer").is_some());
         assert!(pdf.ends_with(b"%%EOF") || pdf.ends_with(b"%%EOF\n"));
         assert!(find(&pdf, b"(Strausberg Vorstadt)").is_some(), "title");
-        // UTF-16BE (the en dash is not ASCII): "HenryJobst".
-        assert!(
-            find(&pdf, b"00480065006E00720079004A006F00620073007400").is_some(),
-            "creator"
-        );
+        // UTF-16BE hex (the en dash is not ASCII).
+        let creator: String = crate::CREDIT
+            .encode_utf16()
+            .map(|u| format!("{u:04X}"))
+            .collect();
+        assert!(find(&pdf, creator.as_bytes()).is_some(), "creator");
         assert!(
             find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some(),
             "A4"

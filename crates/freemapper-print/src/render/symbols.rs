@@ -134,6 +134,8 @@ pub struct PointDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextDef {
+    /// Font family named by the symbol (`<font family>`); Arimo draws every family (ADR 0017).
+    pub family: String,
     pub color: i32,
     /// Em size (0.001 mm).
     pub size: f64,
@@ -582,6 +584,10 @@ fn symbol(node: &Node, version: u32) -> Option<Symbol> {
             let font = t.child("font");
             let text = t.child("text");
             Some(Symbol::Text(TextDef {
+                family: font
+                    .and_then(|f| f.attr("family"))
+                    .unwrap_or("Arial")
+                    .to_string(),
                 color: text.map_or(-1, |t| t.color("color")),
                 size: font.map_or(4000.0, |f| f.num("size")),
                 bold: font.is_some_and(|f| f.flag("bold")),
@@ -994,6 +1000,11 @@ mod tests {
             Some(Symbol::Text(t)) => t,
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn text_symbol_keeps_its_font_family() {
+        assert_eq!(text_of("", "").family, "Arial");
     }
 
     #[test]

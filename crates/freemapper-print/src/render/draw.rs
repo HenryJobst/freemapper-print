@@ -746,6 +746,7 @@ mod tests {
 
     fn text_def(framing: Option<super::super::symbols::Framing>) -> TextDef {
         TextDef {
+            family: "Arial".into(),
             color: 2,
             size: 4_000.0,
             bold: false,
