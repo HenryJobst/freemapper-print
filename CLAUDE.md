@@ -24,3 +24,21 @@ before changing code.
   `.claude/` and `lefthook.yml` run them.
 - Superpowers process: brainstorming, then writing-plans, then subagent-driven development; TDD for readers,
   writers and geometry.
+- Work autonomously once a plan is approved: decide, record decisions, report them afterwards; stop only for
+  destructive or truly blocking issues. Fix Minor review findings too, at the latest in the final fix wave.
+- Before deleting an SDD workspace, every `Ruling:` line from its ledger goes into an ADR (or an existing ADR's
+  text).
+- Branch and worktree per plan under `.worktrees/<branch>`. Before a merge: fmt, clippy and tests green on the
+  branch; merge with `--no-ff` into main; run them again on main; push to both remotes; watch CI on GitHub;
+  then remove the worktree and branch and run `cargo clean` (target/ grows to tens of GB).
+- Commits: Conventional Commits with a scope (`feat(render): …`, `fix(omap): …`, `docs(adr): …`), English
+  subject, small logical units.
+- Release when the user asks: bump `[workspace.package] version`, `cargo update -w`, turn "Unveröffentlicht"/
+  "Unreleased" into `## [x.y.z] - YYYY-MM-DD` in both changelogs, annotated tag `vX.Y.Z`, push the tag;
+  `release.yml` builds the archives and takes the notes from CHANGELOG.en.md.
+- Every generated output (PDF metadata, visible credit line, notes) names freemapper-print and its public
+  GitHub link.
+- Test fixtures name source, date or commit, and licence in a README next to them.
+- Exchange with freemapper and freemapper-courseplan goes through their stable contracts only: the tag
+  `freemapper:source=sheet` and the map part "peripheral information", and from `freemapper.toml` only
+  `map_kind`, `scale_denominator`, `crs`, `provider`, `title` and `[map_area]`.
