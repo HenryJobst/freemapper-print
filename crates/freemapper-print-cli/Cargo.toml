@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 freemapper-print.workspace = true
 clap.workspace = true
-anyhow = "1.0.104"
+anyhow.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

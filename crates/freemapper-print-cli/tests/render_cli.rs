@@ -40,7 +40,8 @@ fn overflow_expected(
     scale: Option<u32>,
 ) -> bool {
     let doc = read_map_file(Path::new(map)).unwrap();
-    let kind = infer_kind(&doc, Path::new(map)).unwrap_or(MapKind::Sprint);
+    let kind: MapKind =
+        infer_kind(&doc, Path::new(map)).expect("the fixture's kind must be inferable");
     let options = PrintOptions {
         print_scale: scale,
         kind,
@@ -151,7 +152,6 @@ fn renders_forest_sample() {
     assert!(o.status.success(), "{err}");
     assert!(pdf.exists());
     assert!(err.contains("actual size"), "{err}");
-    eprintln!("{err}");
 }
 
 #[test]
@@ -159,5 +159,146 @@ fn missing_parent_directory_fails() {
     let dir = tempfile::tempdir().unwrap();
     let o = render(LUEBECK, &dir.path().join("nope/o.pdf"), &[]);
     assert_eq!(o.status.code(), Some(1));
-    assert!(stderr(&o).contains("Error:"), "{}", stderr(&o));
+    let err = stderr(&o);
+    assert!(
+        err.contains("Error:") && err.contains("does not exist"),
+        "{err}"
+    );
+    assert!(!dir.path().join("nope").exists());
+}
+
+#[test]
+fn overflow_amount_matches_the_library() {
+    // Luebeck, A4 portrait, 1:4000: print_map reported overflow_mm = (58.0, 0.0), rounded to 0.1 mm,
+    // when this test was written.
+    let doc = read_map_file(Path::new(LUEBECK)).unwrap();
+    let options = PrintOptions {
+        print_scale: None,
+        kind: MapKind::Sprint,
+        paper: Paper::A4,
+        orientation: Orientation::Portrait,
+        centre: None,
+        show_sheet_objects: false,
+    };
+    let (x, y) = print_map(&doc, &options, "t")
+        .unwrap()
+        .1
+        .overflow_mm
+        .unwrap();
+    assert!((x - 58.0).abs() <= 0.1 && y == 0.0, "({x}, {y})");
+    let dir = tempfile::tempdir().unwrap();
+    let o = render(
+        LUEBECK,
+        &dir.path().join("o.pdf"),
+        &["--orientation", "portrait"],
+    );
+    let err = stderr(&o);
+    assert!(err.contains("58.0 mm too wide"), "{err}");
+    assert!(!err.contains("too tall"), "{err}");
+}
+
+#[test]
+fn renders_on_a3() {
+    let dir = tempfile::tempdir().unwrap();
+    let o = render(LUEBECK, &dir.path().join("o.pdf"), &["--paper", "a3"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("A3"), "{err}");
+    assert!(!err.contains("does not fit"), "{err}");
+}
+
+#[test]
+fn kind_overrides_inference() {
+    let dir = tempfile::tempdir().unwrap();
+    let o = render(
+        LUEBECK,
+        &dir.path().join("o.pdf"),
+        &["--kind", "forest", "--scale", "4000"],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        err.contains("1:5000, 1:7500"),
+        "forest scales expected: {err}"
+    );
+}
+
+#[test]
+fn kind_makes_an_uninferable_map_printable() {
+    let dir = tempfile::tempdir().unwrap();
+    let text = std::fs::read_to_string(LUEBECK).unwrap();
+    let copy = dir.path().join("copy.omap");
+    std::fs::write(
+        &copy,
+        text.replace(
+            "<georeferencing scale=\"4000\"",
+            "<georeferencing scale=\"15000\"",
+        ),
+    )
+    .unwrap();
+    let o = render(
+        copy.to_str().unwrap(),
+        &dir.path().join("o.pdf"),
+        &["--kind", "forest"],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
+fn show_sheet_objects_is_accepted() {
+    let dir = tempfile::tempdir().unwrap();
+    let plain = dir.path().join("a.pdf");
+    let sheet = dir.path().join("b.pdf");
+    assert!(render(LUEBECK, &plain, &[]).status.success());
+    let o = render(LUEBECK, &sheet, &["--show-sheet-objects"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(sheet.exists());
+}
+
+#[test]
+fn rejects_a_text_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let txt = dir.path().join("notes.omap");
+    std::fs::write(&txt, "this is not a map").unwrap();
+    let pdf = dir.path().join("o.pdf");
+    let o = render(txt.to_str().unwrap(), &pdf, &[]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        err.contains("Error:") && err.contains("could not read the map"),
+        "{err}"
+    );
+    assert!(!pdf.exists());
+}
+
+#[test]
+fn relative_out_resolves_against_the_working_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_freemapper-print"))
+        .current_dir(dir.path())
+        .args(["render", LUEBECK, "--out", "rel.pdf"])
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(dir.path().join("rel.pdf").exists());
+}
+
+#[test]
+fn refuses_to_overwrite_the_map() {
+    let dir = tempfile::tempdir().unwrap();
+    let copy = dir.path().join("m.omap");
+    std::fs::copy(LUEBECK, &copy).unwrap();
+    let before = std::fs::read(&copy).unwrap();
+    // Same file through a different spelling.
+    let alias = dir.path().join(".").join("m.omap");
+    let o = render(copy.to_str().unwrap(), &alias, &[]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err.contains("--out points at the map file"), "{err}");
+    assert_eq!(std::fs::read(&copy).unwrap(), before);
+}
+
+#[test]
+fn usage_errors_exit_with_2() {
+    assert_eq!(run(&["render"]).status.code(), Some(2));
 }
