@@ -37,6 +37,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 - Broken or overloaded map files no longer stall the program: XML nested too deep is an error, and a page has
   a drawing limit. The program reports objects it leaves out or draws only in part because of that, objects of
   unknown type, dropped area patterns and a broken `freemapper.toml`. The limit counts every point a page
-  keeps, so a crafted map file needs at most about 200 MB of memory.
+  keeps and every outline the PDF writes. The worst crafted file measured, 500 000 short strokes in 134 KB,
+  needed about 200 MB of memory.
 - A box size or rotation that is not a finite number, and a negative box size, are read errors. Old box texts
   whose coordinates are stored as `<coord>` elements keep their box.

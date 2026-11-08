@@ -649,9 +649,11 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   width is skipped before its dashes are computed (it draws nothing in OOM either).
 - All pattern shapes of one area hold the same outline (`Arc`), also after the page is moved into
   place. The PDF writer keeps a stack of clip blocks and opens one per run of shapes with the same
-  outline, at each nesting level (a pattern inside a pattern). An outline costs one unit per 8
-  points, rounded up, once per colour it clips (`Sink::charge_outline`): after sorting by colour
-  the PDF writes it once per colour. A clipped shape whose outline no longer fits is dropped.
+  outline, at each nesting level (a pattern inside a pattern), and compares outlines by pointer
+  only. An outline costs one unit per 8 points, rounded up, once per pattern and colour
+  (`Outline::pay`): a pattern's shapes form one run per colour after sorting, and an unclipped
+  pattern between two clipped ones splits their runs. A clipped shape whose outline no longer
+  fits is dropped, and a pattern does not start once the budget is spent.
 - A pattern asks for one line more than the units left; if it gets it, the extra line is dropped
   and the object reported as cut.
 - Symbol nesting deeper than 8 (`draw::MAX_DEPTH`) stops drawing and reports the object as cut.

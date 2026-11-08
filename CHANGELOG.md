@@ -39,7 +39,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Kaputte oder überladene Kartendateien halten das Programm nicht mehr auf: Zu tief verschachteltes XML ist
   ein Fehler, und eine Seite hat ein Zeichenlimit. Das Programm meldet Objekte, die es deshalb nicht oder nur
   zum Teil zeichnet, außerdem Objekte unbekannter Art, verworfene Flächenmuster und eine kaputte
-  `freemapper.toml`. Das Limit zählt jeden Punkt, den eine Seite behält, daher braucht auch eine präparierte
-  Kartendatei höchstens etwa 200 MB Speicher.
+  `freemapper.toml`. Das Limit zählt jeden Punkt, den eine Seite behält, und jeden Umriss, den das PDF
+  schreibt. Die schlimmste gemessene präparierte Datei, 500 000 kurze Linien in 134 KB, brauchte etwa 200 MB
+  Speicher.
 - Eine Textfeldgröße oder Drehung, die keine endliche Zahl ist, und eine negative Textfeldgröße sind
   Lesefehler. Alte Textfelder, deren Koordinaten als `<coord>`-Elemente gespeichert sind, behalten ihr Feld.
