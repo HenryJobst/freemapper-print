@@ -17,11 +17,17 @@ the base scale.
 The symbol size table in `scale.rs` holds, per map kind and scale, the size relative to the base scale and
 whether the standard foresees the scale:
 
-| Kind | Scale | Size | Standard |
-|---|---|---|---|
-| Sprint | 1:3000 / 1:4000 / 1:5000 | 133 % / 100 % / 100 % | yes / yes / no |
-| Forest | 1:5000 / 1:7500 / 1:10000 / 1:15000 / 1:20000 | 300 / 200 / 150 / 100 / 100 % | yes / yes / yes / yes / no |
-| Schoolyard | 1:1000 | 100 % | yes |
+| Kind | Scale | Size | Standard foresees it | Section |
+|---|---|---|---|---|
+| Sprint | 1:3000 | 133 % | yes | ISSprOM 2019-2 §3.1 (youngest age groups), §4.7 (133 %) |
+| Sprint | 1:4000 | 100 % | yes | ISSprOM 2019-2 §3.1 (base scale) |
+| Sprint | 1:5000 | 100 % | no | ISSprOM 2019-2 §3.1 (below the base scale) |
+| Forest | 1:5000 | 300 % | yes | ISOM 2017-2 §2.9.1/§3.7 (300 %) |
+| Forest | 1:7500 | 200 % | yes | ISOM 2017-2 §2.9.1/§3.7 (proportional, 15000 / 7500) |
+| Forest | 1:10000 | 150 % | yes | ISOM 2017-2 §2.9.1/§3.7 (150 %) |
+| Forest | 1:15000 | 100 % | yes | ISOM 2017-2 §2.9.1/§3.7 (base scale) |
+| Forest | 1:20000 | 100 % | no | ISOM 2017-2 §2.9.1/§3.7 (below the base scale) |
+| Schoolyard | 1:1000 | 100 % | yes | IOF school symbol set 2019 (base scale) |
 
 The symbol factor is the size at the print scale divided by the size at the map scale. A reduction below the
 base scale is allowed (user decision 2026-11-08): the symbols keep their base size, the report flags the scale
@@ -29,8 +35,8 @@ as non-standard, and the CLI says the print is for training only. Other scales a
 
 ## Consequences
 
-- A 1:3000 sprint print for the youngest classes has 0.36 mm small footpaths instead of 0.27 mm, and the map
-  needs a third more paper.
+- A 1:3000 sprint print for the youngest classes has 0.36 mm small footpaths instead of 0.27 mm. Each side of
+  the map grows by a third, so it covers 78 % more paper: a map that fills A4 at 1:4000 needs A3 at 1:3000.
 - Cost if wrong: a wrong row prints wrong symbol sizes. Each row quotes the standard's section.
 
 Source: ISSprOM 2019-2, ISOM 2017-2 Rev 6, user decision 2026-11-08 (final review of M1). Supersedes 0012.
