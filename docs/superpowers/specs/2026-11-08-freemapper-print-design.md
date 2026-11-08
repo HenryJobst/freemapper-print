@@ -1,6 +1,6 @@
 # freemapper-print – Design
 
-Status: for approval · Date: 2026-11-08 · Terms follow [`docs/glossary.md`](../../glossary.md).
+Status: approved 2026-11-08 · Date: 2026-11-08 · Terms follow [`docs/glossary.md`](../../glossary.md).
 
 Decisions are recorded as ADRs in `docs/adr/`. Statements marked *(user)* were decided by the user in the
 brainstorming on 2026-11-08. Statements marked *(Claude's call)* are proposals the user has not confirmed yet.
