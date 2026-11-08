@@ -66,6 +66,9 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Postennummer | control number | Laufende Nummer eines Postens in einer Bahn, auf der Karte neben dem Kreis. | `control_number` |
 | Strecke | leg | Verbindung zwischen zwei aufeinanderfolgenden Posten. | `Leg` |
 | Knickpunkt | bend | Punkt, an dem eine Strecke abknickt, z. B. um ein Sperrgebiet herum. | `bends` |
+| Pflichtstrecke | marked route | Abgeflaggter Weg, dem der Läufer folgen muss, z. B. vom letzten Posten zum Ziel. Wird in der Bahnlegung festgelegt. | `MarkedRoute` |
+| Nummernlage | number placement | Richtung und Abstand der Postennummer vom Kreis in Druckmillimetern; fünf Stufen von automatisch bis je Bahn (ADR 0015). | `NumberPlacement` |
+| automatische Platzierung | automatic placement | Wahl der Nummernlage durch das Programm, das Konflikte mit Bahnaufdruck, Abdeckungen, Blattelementen und Kartendetails meidet. | `auto_place` |
 | Bahnaufdruck | course overprint | Die violetten Bahnsymbole über der Karte. | `CourseOverprint` |
 | Postenbeschreibung | control descriptions | Tabelle der Posten nach IOF-Postenbeschreibung (Spalten A bis H). | `ControlDescriptions` |
 | Gabelung | forking | Varianten einer Bahn, z. B. in Staffeln. | `Forking` |
