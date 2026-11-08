@@ -3,9 +3,9 @@
 
 mod dash;
 pub mod draw;
+pub mod fonts;
 pub mod geometry;
 mod line;
-pub(crate) mod metrics;
 mod pattern;
 pub mod pdf;
 pub mod symbols;

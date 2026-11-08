@@ -1,15 +1,16 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
 //! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted by colour priority, texts in
-//! the standard fonts Helvetica / Helvetica-Bold with WinAnsi encoding.
+//! embedded subsets of Arimo (ADR 0017).
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
-use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
+use pdf_writer::{Content, Filter, Finish, Pdf, Rect, Ref, Str, TextStr};
 
 use super::draw::{Primitive, Shape};
+use super::fonts::{PageFonts, face, text_width};
 use super::geometry::Pt;
-use super::metrics::win_ansi;
 use super::symbols::{Cap, Join, RenderColour};
 
 /// Points per millimetre.
@@ -54,11 +55,12 @@ fn shape_bounds(shape: &Shape) -> Option<PaperBox> {
             origin,
             size,
             bold,
+            italic,
             text,
             rotation,
             stroke,
         } => {
-            let w = super::metrics::text_width(text, *bold) * size;
+            let w = text_width(text, face(*bold, *italic)) * size;
             // The box in text coordinates, turned about the origin as the text is.
             let (sin, cos) = rotation.sin_cos();
             let corners = [(0.0, -size), (w, -size), (w, size / 3.0), (0.0, size / 3.0)];
@@ -157,6 +159,7 @@ fn paint(
     priority: i32,
     shape: &Shape,
     colours: &[RenderColour],
+    fonts: &mut PageFonts,
 ) {
     let [c, m, y, k] = colours
         .iter()
@@ -198,12 +201,14 @@ fn paint(
             origin,
             size,
             bold,
+            italic,
             text,
             rotation,
             stroke,
         } => {
             let (x, y0) = t.pt(*origin);
-            let bytes: Vec<u8> = text.chars().map(win_ansi).collect();
+            let font_face = face(*bold, *italic);
+            let cids = fonts.encode(font_face, text);
             match stroke {
                 // Text line framing: the glyph outlines stroked, miter-joined with OOM's limit
                 // for framing; in its own graphics state, which holds the render mode.
@@ -220,7 +225,7 @@ fn paint(
             }
             content.begin_text();
             content.set_font(
-                Name(if *bold { b"F2" } else { b"F1" }),
+                PageFonts::resource_name(font_face),
                 (size * PT_PER_MM) as f32,
             );
             if stroke.is_some() {
@@ -229,7 +234,7 @@ fn paint(
             // Counter-clockwise on paper is counter-clockwise in PDF too.
             let (sin, cos) = rotation.sin_cos();
             content.set_text_matrix([cos as f32, sin as f32, -sin as f32, cos as f32, x, y0]);
-            content.show(Str(&bytes));
+            content.show(Str(&cids));
             content.end_text();
             if stroke.is_some() {
                 content.restore_state();
@@ -237,10 +242,17 @@ fn paint(
         }
         Shape::Clipped { rings, inner } => {
             begin_clip(content, t, rings);
-            paint(content, t, priority, inner, colours);
+            paint(content, t, priority, inner, colours, fonts);
             content.restore_state();
         }
     }
+}
+
+/// What a written page could not show as asked.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PdfInfo {
+    /// Characters of the page's texts that have no glyph in the embedded font (drawn as `.notdef`).
+    pub missing_glyphs: BTreeSet<char>,
 }
 
 /// The PDF of `map` primitives (clipped to `clip`) and `sheet` primitives (not clipped).
@@ -251,6 +263,17 @@ pub fn write_pdf(
     colours: &[RenderColour],
     title: &str,
 ) -> Vec<u8> {
+    write_pdf_info(map, sheet, clip, colours, title).0
+}
+
+/// [`write_pdf`] plus what the page could not show.
+pub fn write_pdf_info(
+    map: &[Primitive],
+    sheet: &[Primitive],
+    clip: PaperBox,
+    colours: &[RenderColour],
+    title: &str,
+) -> (Vec<u8>, PdfInfo) {
     let content_box = sheet.iter().filter_map(bounds).fold(clip, union);
     let (width, height) = (
         content_box.max.0 - content_box.min.0,
@@ -275,6 +298,7 @@ pub fn write_pdf(
     items.sort_by_key(|(p, _)| std::cmp::Reverse(p.priority));
 
     let mut content = Content::new();
+    let mut fonts = PageFonts::new();
     let (cx0, cy0) = t.pt((clip.min.0, clip.max.1));
     let (cx1, cy1) = t.pt((clip.max.0, clip.min.1));
     // One clip block for each run of consecutive map primitives, and nested in it one for each
@@ -308,7 +332,14 @@ pub fn write_pdf(
             begin_clip(&mut content, &t, rings);
             pattern_clip = Some(rings);
         }
-        paint(&mut content, &t, primitive.priority, shape, colours);
+        paint(
+            &mut content,
+            &t,
+            primitive.priority,
+            shape,
+            colours,
+            &mut fonts,
+        );
     }
     if pattern_clip.is_some() {
         content.restore_state();
@@ -317,15 +348,11 @@ pub fn write_pdf(
         content.restore_state();
     }
 
-    let (catalog, pages, page, contents, regular, bold, info) = (
-        Ref::new(1),
-        Ref::new(2),
-        Ref::new(3),
-        Ref::new(4),
-        Ref::new(5),
-        Ref::new(6),
-        Ref::new(7),
-    );
+    // References come from a counter, so a page holds only the fonts it uses.
+    let mut next = Ref::new(1);
+    let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
+    let fonts = fonts.finish(&mut next);
+    let info = next.bump();
     let mut pdf = Pdf::new();
     pdf.catalog(catalog).pages(pages);
     pdf.pages(pages).kids([page]).count(1);
@@ -338,25 +365,22 @@ pub fn write_pdf(
     ));
     p.parent(pages);
     p.contents(contents);
-    p.resources()
-        .fonts()
-        .pair(Name(b"F1"), regular)
-        .pair(Name(b"F2"), bold);
+    p.resources().fonts().pairs(fonts.resources());
     p.finish();
-    for (id, name) in [(regular, &b"Helvetica"[..]), (bold, &b"Helvetica-Bold"[..])] {
-        pdf.type1_font(id)
-            .base_font(Name(name))
-            .encoding_predefined(Name(b"WinAnsiEncoding"));
-    }
+    // The content stream comes first, the font programs after it.
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
     pdf.stream(contents, &compressed)
         .filter(Filter::FlateDecode);
+    fonts.write(&mut pdf);
     pdf.document_info(info)
         .title(TextStr(title))
         .creator(TextStr(
             "freemapper – https://github.com/HenryJobst/freemapper",
         ));
-    pdf.finish()
+    let info = PdfInfo {
+        missing_glyphs: fonts.missing,
+    };
+    (pdf.finish(), info)
 }
 
 /// The decompressed page content of a PDF written by [`write_pdf`] (for tests).
@@ -503,27 +527,6 @@ mod tests {
         assert_eq!((clips, strokes), (1, 5));
     }
 
-    #[test]
-    fn text_is_win_ansi_with_helvetica() {
-        let text = Primitive {
-            priority: 2,
-            shape: Shape::Text {
-                origin: (10.0, 10.0),
-                size: 2.5,
-                bold: true,
-                text: "Maßstab ©".into(),
-                rotation: 0.0,
-                stroke: None,
-            },
-        };
-        let pdf = write_pdf(&[], &[text], clip(), &colours(), "Test");
-        assert!(find(&pdf, b"/Helvetica-Bold").is_some());
-        assert!(find(&pdf, b"/WinAnsiEncoding").is_some());
-        let pdf = content_of(&pdf);
-        // ß = 0xDF, © = 0xA9 in WinAnsi.
-        assert!(find(&pdf, b"<4D61DF7374616220A9> Tj").is_some());
-    }
-
     fn text(rotation: f64, stroke: Option<f64>) -> Primitive {
         Primitive {
             priority: 2,
@@ -531,6 +534,7 @@ mod tests {
                 origin: (10.0, 10.0),
                 size: 2.5,
                 bold: false,
+                italic: false,
                 text: "Wald".into(),
                 rotation,
                 stroke,
@@ -599,6 +603,229 @@ mod tests {
         let clips = content.windows(5).filter(|w| w == b"re\nW\n").count();
         assert_eq!(clips, 1, "one clip block for a run of map primitives");
         assert!(find(&content, b"0 0 0 0.6 k").is_some());
+    }
+
+    fn plain_text(text: &str, bold: bool, italic: bool) -> Primitive {
+        Primitive {
+            priority: 2,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: 2.5,
+                bold,
+                italic,
+                text: text.into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        }
+    }
+
+    /// Every stream of `pdf`, decompressed (all streams written here are FlateDecode).
+    fn streams(pdf: &[u8]) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut from = 0;
+        while let Some(start) = find(&pdf[from..], b"stream\n").map(|i| from + i + 7) {
+            let end = start + find(&pdf[start..], b"\nendstream").expect("end of stream");
+            out.push(
+                miniz_oxide::inflate::decompress_to_vec_zlib(&pdf[start..end])
+                    .expect("FlateDecode"),
+            );
+            from = end + 10;
+        }
+        out
+    }
+
+    /// The string operands of a content stream, in order (literal and hex strings).
+    fn shown_strings(content: &[u8]) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < content.len() {
+            match content[i] {
+                b'(' => {
+                    let (mut s, mut depth) = (Vec::new(), 1);
+                    i += 1;
+                    loop {
+                        match content[i] {
+                            b'\\' => {
+                                i += 1;
+                                match content[i] {
+                                    b'n' => s.push(b'\n'),
+                                    b'r' => s.push(b'\r'),
+                                    b't' => s.push(b'\t'),
+                                    b'b' => s.push(8),
+                                    b'f' => s.push(12),
+                                    d @ b'0'..=b'7' => {
+                                        let mut v = u32::from(d - b'0');
+                                        for _ in 0..2 {
+                                            if matches!(content[i + 1], b'0'..=b'7') {
+                                                i += 1;
+                                                v = v * 8 + u32::from(content[i] - b'0');
+                                            }
+                                        }
+                                        s.push(v as u8);
+                                    }
+                                    c => s.push(c),
+                                }
+                            }
+                            b'(' => {
+                                depth += 1;
+                                s.push(b'(');
+                            }
+                            b')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                                s.push(b')');
+                            }
+                            c => s.push(c),
+                        }
+                        i += 1;
+                    }
+                    out.push(s);
+                }
+                b'<' if content.get(i + 1) != Some(&b'<') => {
+                    let end = i + find(&content[i..], b">").unwrap();
+                    let hex: Vec<u8> = content[i + 1..end]
+                        .iter()
+                        .copied()
+                        .filter(u8::is_ascii_hexdigit)
+                        .collect();
+                    out.push(
+                        hex.chunks(2)
+                            .map(|h| {
+                                u8::from_str_radix(std::str::from_utf8(h).unwrap(), 16).unwrap()
+                            })
+                            .collect(),
+                    );
+                    i = end;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// The `bfchar` entries of a ToUnicode CMap: CID → text.
+    fn bf_chars(cmap: &[u8]) -> std::collections::HashMap<u16, String> {
+        let text = String::from_utf8_lossy(cmap);
+        let mut map = std::collections::HashMap::new();
+        for block in text.split("beginbfchar").skip(1) {
+            let block = block.split("endbfchar").next().unwrap();
+            for line in block.lines().filter(|l| l.starts_with('<')) {
+                let mut parts = line.split(['<', '>']).filter(|p| !p.trim().is_empty());
+                let cid = u16::from_str_radix(parts.next().unwrap(), 16).unwrap();
+                let units: Vec<u16> = parts
+                    .next()
+                    .unwrap()
+                    .as_bytes()
+                    .chunks(4)
+                    .map(|h| u16::from_str_radix(std::str::from_utf8(h).unwrap(), 16).unwrap())
+                    .collect();
+                map.insert(cid, String::from_utf16(&units).unwrap());
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn pdf_embeds_subset_fonts() {
+        let pdf = write_pdf(
+            &[],
+            &[plain_text("Wald", false, false)],
+            clip(),
+            &colours(),
+            "Test",
+        );
+        for key in [
+            &b"/FontFile2"[..],
+            b"/ToUnicode",
+            b"/Type0",
+            b"/CIDFontType2",
+            b"/Identity-H",
+            b"/CIDToGIDMap",
+            b"/W [",
+            b"+Arimo-Regular",
+        ] {
+            assert!(
+                find(&pdf, key).is_some(),
+                "{}",
+                String::from_utf8_lossy(key)
+            );
+        }
+        assert!(find(&pdf, b"/Helvetica").is_none());
+        assert!(find(&pdf, b"Arimo-Bold").is_none(), "only used faces");
+        assert!(pdf.len() < 60_000, "{} bytes", pdf.len());
+    }
+
+    #[test]
+    fn faces_follow_bold_and_italic() {
+        let pdf = write_pdf(
+            &[],
+            &[
+                plain_text("Wald", true, false),
+                plain_text("Wald", false, true),
+                plain_text("Wald", true, true),
+            ],
+            clip(),
+            &colours(),
+            "Test",
+        );
+        for name in [&b"Arimo-Bold"[..], b"Arimo-Italic", b"Arimo-BoldItalic"] {
+            assert!(
+                find(&pdf, name).is_some(),
+                "{}",
+                String::from_utf8_lossy(name)
+            );
+        }
+        assert!(find(&pdf, b"Arimo-Regular").is_none());
+        assert_eq!(pdf.windows(10).filter(|w| w == b"/FontFile2").count(), 3);
+    }
+
+    #[test]
+    fn non_ascii_text_round_trips() {
+        let texts = ["„Gänsefüßchen“", "Řeka"];
+        let (pdf, info) = write_pdf_info(
+            &[],
+            &texts.map(|t| plain_text(t, false, false)),
+            clip(),
+            &colours(),
+            "Test",
+        );
+        assert!(info.missing_glyphs.is_empty());
+        let streams = streams(&pdf);
+        let cmap = streams
+            .iter()
+            .find(|s| find(s, b"beginbfchar").is_some())
+            .expect("ToUnicode CMap");
+        let to_unicode = bf_chars(cmap);
+        let shown: Vec<String> = shown_strings(&content_of(&pdf))
+            .iter()
+            .map(|s| {
+                s.chunks(2)
+                    .map(|c| to_unicode[&u16::from_be_bytes([c[0], c[1]])].as_str())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(shown, texts);
+        assert!(shown.iter().all(|s| !s.contains('?')));
+    }
+
+    #[test]
+    fn missing_glyphs_are_reported() {
+        let (pdf, info) = write_pdf_info(
+            &[],
+            &[plain_text("Wald ✈ 中", false, false)],
+            clip(),
+            &colours(),
+            "Test",
+        );
+        assert_eq!(info.missing_glyphs, ['✈', '中'].into_iter().collect());
+        assert!(pdf.ends_with(b"%%EOF") || pdf.ends_with(b"%%EOF\n"));
+        // .notdef stands in: CID 0 is shown.
+        let shown = shown_strings(&content_of(&pdf));
+        assert!(shown[0].chunks(2).any(|c| c == [0, 0]));
     }
 
     #[test]

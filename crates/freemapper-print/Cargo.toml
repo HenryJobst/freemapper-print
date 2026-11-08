@@ -14,6 +14,8 @@ quick-xml.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 serde.workspace = true
+subsetter.workspace = true
+ttf-parser.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

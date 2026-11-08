@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
+use super::fonts::{ASCENT, LINE_SPACING, face, text_width};
 use super::geometry::{self, Pt};
 use super::line::line;
-use super::metrics::{ASCENT, LINE_SPACING, text_width};
 use super::pattern::area_pattern;
 use super::symbols::{
     Cap, Element, Framing, Join, Part as SymbolPart, PointDef, RenderSymbols, Symbol, TextDef,
@@ -32,6 +32,7 @@ pub enum Shape {
         origin: Pt,
         size: f64,
         bold: bool,
+        italic: bool,
         text: String,
         rotation: f64,
         stroke: Option<f64>,
@@ -527,7 +528,7 @@ fn text_lines(
     // Text coordinates (x, y) → paper: turned by −rotation (y down) about the anchor.
     let (sin, cos) = rotation.sin_cos();
     for line in lines {
-        let width = text_width(line, def.bold) * em;
+        let width = text_width(line, face(def.bold, def.italic)) * em;
         let x = match h_align {
             1 => -width / 2.0,
             2 => -width,
@@ -540,6 +541,7 @@ fn text_lines(
                     origin: (anchor.0 + x * cos + y * sin, anchor.1 - x * sin + y * cos),
                     size: em,
                     bold: def.bold,
+                    italic: def.italic,
                     text: line.to_string(),
                     rotation,
                     stroke,
@@ -552,6 +554,7 @@ fn text_lines(
 
 #[cfg(test)]
 mod tests {
+    use super::super::fonts::FontFace;
     use super::super::symbols::{Clipping, Dash, LineDef, Pattern};
     use super::*;
     use crate::omap::coord::{FLAG_CLOSE, FLAG_HOLE};
@@ -705,7 +708,7 @@ mod tests {
             )
         };
         let em = 2.5;
-        let width = text_width("Maßstab", false) * em;
+        let width = text_width("Maßstab", FontFace::Regular) * em;
         for (h_align, x) in [(0, 50.0), (1, 50.0 - width / 2.0), (2, 50.0 - width)] {
             let p = primitives(&text(h_align), &r);
             let Shape::Text { origin, size, .. } = &p[0].shape else {
@@ -820,7 +823,7 @@ mod tests {
         // Right-aligned, turned a quarter counter-clockwise: the line runs north and ends at the
         // anchor [RI `TextRenderable`].
         let quarter = std::f64::consts::FRAC_PI_2;
-        let width = text_width("Wald", false) * 4.0;
+        let width = text_width("Wald", FontFace::Regular) * 4.0;
         let p = text_with(text_def(None), "Wald", 2, quarter);
         let Shape::Text {
             origin, rotation, ..
