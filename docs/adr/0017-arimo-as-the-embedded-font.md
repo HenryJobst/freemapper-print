@@ -25,4 +25,5 @@ empty box glyph, and the page reports it.
 - Cost if wrong: maps that use condensed or decorative fonts look different, and text set in a narrower font
   runs longer. `fonts::substituted` lets the CLI name each replaced family.
 
-Source: plan M1 Task 6, controller rulings 2026-11-08.
+Source: plan M1 Task 6 (commit `afe86cd`); controller ruling 2026-11-08 that Arimo is OFL-1.1, not Apache-2.0
+as the plan said, and that the release archives carry its licence.

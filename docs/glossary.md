@@ -60,7 +60,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | verstecktes Symbol | hidden symbol | Symbol, das die Kartendatei mit `is_hidden` ausblendet. Seine Objekte werden nicht gedruckt. | `SymbolSet::is_hidden` |
 | übersprungene Objekte | skipped objects | Objekte, die nicht gedruckt werden, weil ihr Symbol unbekannt oder versteckt ist. Der Druckbericht zählt sie. | `PrintReport::skipped_objects` |
 | gekürzte Objekte | truncated objects | Objekte, deren Zeichnung vereinfacht oder abgeschnitten wird, weil sie mehr Zeichenbefehle bräuchte, als der Renderer je Objekt erlaubt. Der Druckbericht zählt sie. | `PrintReport::truncated_objects` |
-| Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet`: der Informationsblock (Titel, Maßstab, Maßstabsleiste, Namensnennung, Symbole 991–994) und die Nordlinien. Den Informationsblock druckt das Programm nur auf Wunsch. Nordlinien (601) gehören zur Karte und werden immer gedruckt (ADR 0022). | `show_sheet_objects` |
+| Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet`: der Informationsblock (Titel, Maßstab, Maßstabsleiste, Namensnennung, Symbole 991–994) und die Nordlinien. Den Informationsblock druckt das Programm nur auf Wunsch. Nordlinien (601) gehören zur Karte und werden immer gedruckt (ADR 0023). | `show_sheet_objects` |
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |
 | Farbpriorität | colour priority | Reihenfolge, in der Farben übereinander gedruckt werden, wie in OOM. | `ColorPriority` |

@@ -75,7 +75,7 @@ pub struct PrintOptions {
     pub centre: Option<MapCoord>,
     /// Draw freemapper's information block (title, scale, scale bar, credits): the objects tagged
     /// `freemapper:source=sheet`. North lines (601) carry the tag too but belong to the map and are
-    /// always drawn (ADR 0022).
+    /// always drawn (ADR 0023).
     pub show_sheet_objects: bool,
 }
 
@@ -272,7 +272,7 @@ fn is_sheet_object(object: &MapObject) -> bool {
 }
 
 /// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
-/// as a sheet object (ADR 0022).
+/// as a sheet object (ADR 0023).
 fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
     set.code_of(object.symbol_id)
         .is_some_and(|code| code == "601" || code.starts_with("601."))
