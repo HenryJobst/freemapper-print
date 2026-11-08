@@ -167,15 +167,46 @@ struct Sidecar {
     map_kind: Option<MapKind>,
 }
 
-fn read_sidecar(map_path: &Path) -> Option<MapKind> {
-    let dir = map_path.parent()?;
-    let text = std::fs::read_to_string(dir.join("freemapper.toml")).ok()?;
-    toml::from_str::<Sidecar>(&text).ok()?.map_kind
+/// `freemapper.toml` next to a map could not be used.
+#[derive(Debug, thiserror::Error)]
+pub enum SidecarError {
+    #[error("could not read {path}: {source}")]
+    Read {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("{path} is not valid: {message}")]
+    Invalid {
+        path: std::path::PathBuf,
+        message: String,
+    },
 }
 
-/// Infers the map kind: `freemapper.toml` next to the map wins; otherwise the symbol set name and scale decide.
+/// The map kind from `freemapper.toml` next to `map_path`: `Ok(None)` without the file or without
+/// `map_kind` in it, an error when the file exists but cannot be read or parsed.
+pub fn read_sidecar(map_path: &Path) -> Result<Option<MapKind>, SidecarError> {
+    let Some(dir) = map_path.parent() else {
+        return Ok(None);
+    };
+    let path = dir.join("freemapper.toml");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => return Err(SidecarError::Read { path, source }),
+    };
+    toml::from_str::<Sidecar>(&text)
+        .map(|s| s.map_kind)
+        .map_err(|e| SidecarError::Invalid {
+            path,
+            message: e.message().to_string(),
+        })
+}
+
+/// Infers the map kind: `freemapper.toml` next to the map wins; otherwise the symbol set name and
+/// scale decide. A `freemapper.toml` that cannot be used counts as missing; [`read_sidecar`] tells
+/// why.
 pub fn infer_kind(map: &MapDocument, map_path: &Path) -> Option<MapKind> {
-    if let Some(kind) = read_sidecar(map_path) {
+    if let Ok(Some(kind)) = read_sidecar(map_path) {
         return Some(kind);
     }
     let name = map.symbol_set.name.to_lowercase();
@@ -344,6 +375,58 @@ mod tests {
         let mut map = read_map_file(Path::new(LUEBECK)).unwrap();
         map.symbol_set.name = String::new();
         map.georef.scale_denominator = 5000;
+        assert_eq!(infer_kind(&map, Path::new(LUEBECK)), None);
+    }
+
+    #[test]
+    fn broken_sidecar_is_reported_and_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let map_path = dir.path().join("a.omap");
+        std::fs::write(dir.path().join("freemapper.toml"), "map_kind = \"moon\"\n").unwrap();
+        let err = read_sidecar(&map_path).unwrap_err();
+        assert!(
+            err.to_string().contains("freemapper.toml is not valid"),
+            "{err}"
+        );
+        let map = read_map_file(Path::new(LUEBECK)).unwrap();
+        assert_eq!(
+            infer_kind(&map, &map_path),
+            Some(MapKind::Sprint),
+            "falls back to the file"
+        );
+        // Without map_kind, or without the file: no kind, no error.
+        std::fs::write(dir.path().join("freemapper.toml"), "title = \"x\"\n").unwrap();
+        assert!(read_sidecar(&map_path).unwrap().is_none());
+        std::fs::remove_file(dir.path().join("freemapper.toml")).unwrap();
+        assert!(read_sidecar(&map_path).unwrap().is_none());
+    }
+
+    #[test]
+    fn issprom_at_1000_is_a_schoolyard_map() {
+        let mut map = read_map_file(Path::new(LUEBECK)).unwrap();
+        map.georef.scale_denominator = 1000;
+        assert_eq!(
+            infer_kind(&map, Path::new(LUEBECK)),
+            Some(MapKind::Schoolyard)
+        );
+    }
+
+    #[test]
+    fn forest_fallback_boundaries() {
+        let mut map = read_map_file(Path::new(LUEBECK)).unwrap();
+        map.symbol_set.name = String::new();
+        for (scale, kind) in [
+            (7499, None),
+            (7500, Some(MapKind::Forest)),
+            (15000, Some(MapKind::Forest)),
+            (15001, None),
+        ] {
+            map.georef.scale_denominator = scale;
+            assert_eq!(infer_kind(&map, Path::new(LUEBECK)), kind, "1:{scale}");
+        }
+        // A sprint marker at a forest scale is no forest map: the caller asks.
+        map.symbol_set.name = "ISSprOM 2019".into();
+        map.georef.scale_denominator = 10000;
         assert_eq!(infer_kind(&map, Path::new(LUEBECK)), None);
     }
 

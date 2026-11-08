@@ -7,7 +7,7 @@ use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
-use freemapper_print::scale::{MapKind, infer_kind, is_standard};
+use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 
 #[derive(Parser)]
 #[command(
@@ -110,9 +110,17 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
         .with_context(|| format!("could not read the map {}", args.map.display()))?;
     let kind = match args.kind {
         Some(kind) => kind.into(),
-        None => infer_kind(&map, &args.map).context(
-            "cannot tell the map kind from the file; pass --kind sprint, --kind schoolyard or --kind forest",
-        )?,
+        None => {
+            if let Err(err) = read_sidecar(&args.map) {
+                eprintln!(
+                    "Note: {}. The map kind comes from the map file instead.",
+                    printable(&err.to_string())
+                );
+            }
+            infer_kind(&map, &args.map).context(
+                "cannot tell the map kind from the file; pass --kind sprint, --kind schoolyard or --kind forest",
+            )?
+        }
     };
     let parent = match args.out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
