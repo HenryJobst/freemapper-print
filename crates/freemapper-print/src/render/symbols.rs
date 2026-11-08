@@ -7,11 +7,40 @@ use std::collections::HashMap;
 
 use crate::omap::{MapCoord, SymbolSet};
 
-/// A colour of the map: its priority (0 is on top) and CMYK (0..1).
+/// A colour of the map: its priority (0 is on top), CMYK for print, RGB for a screen and its
+/// opacity, all 0..1 as OOM stores them (`<color c m y k opacity><rgb r g b/>`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderColour {
     pub priority: i32,
     pub cmyk: [f64; 4],
+    /// OOM's RGB for the screen; without `<rgb>` derived from CMYK.
+    pub rgb: [f64; 3],
+    /// 1 is opaque (missing attribute: 1). The PDF backend does not apply it yet.
+    pub opacity: f64,
+}
+
+/// One `<color>` element.
+fn colour(c: &Node) -> RenderColour {
+    let cmyk = [c.num("c"), c.num("m"), c.num("y"), c.num("k")];
+    let rgb = match c.child("rgb") {
+        Some(rgb) => [rgb.num("r"), rgb.num("g"), rgb.num("b")],
+        None => {
+            let [cyan, magenta, yellow, black] = cmyk;
+            let channel = |v: f64| (1.0 - v) * (1.0 - black);
+            [channel(cyan), channel(magenta), channel(yellow)]
+        }
+    };
+    let opacity = c
+        .attr("opacity")
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map_or(1.0, |v| v.clamp(0.0, 1.0));
+    RenderColour {
+        priority: c.num("priority") as i32,
+        cmyk,
+        rgb,
+        opacity,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +89,7 @@ pub struct Border {
 /// (`LineSymbol::MidSymbolPlacement`, reference §2.5). Solid lines ignore it; 99 (`NoMidSymbols`)
 /// is read as no [`Mid`] on a dashed line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)] // OOM's names (`CenterOfDash`, …)
 pub enum MidPlacement {
     /// 0: centre of every full dash.
     CentreOfDash,
@@ -647,10 +677,7 @@ impl RenderSymbols {
             .iter()
             .flat_map(|c| c.children.iter().chain(std::iter::once(c)))
             .filter(|c| c.name == "color")
-            .map(|c| RenderColour {
-                priority: c.num("priority") as i32,
-                cmyk: [c.num("c"), c.num("m"), c.num("y"), c.num("k")],
-            })
+            .map(colour)
             .collect();
         let root = parse(&set.symbols_xml);
         let symbols = root
@@ -694,6 +721,21 @@ mod tests {
         assert_eq!(r.colours.len(), 32);
         assert_eq!(r.colour(2).unwrap().cmyk, [0.0, 0.0, 0.0, 1.0]);
         assert_eq!(r.colour(8).unwrap().cmyk, [0.0, 0.56, 1.0, 0.18]);
+        // Purple for the course overprint: OOM's RGB and full opacity.
+        assert_eq!(r.colour(0).unwrap().rgb, [0.65, 0.15, 1.0]);
+        assert_eq!(r.colour(0).unwrap().opacity, 1.0);
+    }
+
+    #[test]
+    fn colour_opacity_and_rgb_fallback() {
+        let half = parse(
+            r#"<color priority="4" c="0" m="1" y="0" k="0" opacity="0.5"><rgb r="1" g="0" b="1"/></color>"#,
+        );
+        let c = colour(&half.children[0]);
+        assert_eq!((c.priority, c.rgb, c.opacity), (4, [1.0, 0.0, 1.0], 0.5));
+        let bare = parse(r#"<color priority="3" c="0.2" m="0" y="1" k="0.5"/>"#);
+        let c = colour(&bare.children[0]);
+        assert_eq!((c.rgb, c.opacity), ([0.4, 0.5, 0.0], 1.0));
     }
 
     #[test]

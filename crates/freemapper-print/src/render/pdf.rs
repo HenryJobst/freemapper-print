@@ -8,11 +8,10 @@ use std::sync::Arc;
 use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Pdf, Rect, Ref, Str, TextStr};
 
-pub use super::PaperBox;
-use super::RenderedPage;
 use super::draw::Shape;
 use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
+use super::page::RenderedPage;
 use super::symbols::{Cap, Join, RenderColour};
 
 /// Points per millimetre.
@@ -288,6 +287,7 @@ pub(crate) fn content_of(pdf: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::super::draw::Primitive;
+    use super::super::page::PaperBox;
     use super::*;
 
     fn colours() -> Vec<RenderColour> {
@@ -295,10 +295,14 @@ mod tests {
             RenderColour {
                 priority: 2,
                 cmyk: [0.0, 0.0, 0.0, 1.0],
+                rgb: [0.0, 0.0, 0.0],
+                opacity: 1.0,
             },
             RenderColour {
                 priority: 9,
                 cmyk: [0.0, 0.0, 0.0, 0.6],
+                rgb: [0.4, 0.4, 0.4],
+                opacity: 1.0,
             },
         ]
     }

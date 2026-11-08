@@ -8,8 +8,7 @@ use std::process::Command;
 
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map, render_page};
-use freemapper_print::render::RenderedPage;
-use freemapper_print::render::draw::Shape;
+use freemapper_print::render::page::{RenderedPage, Shape};
 use freemapper_print::scale::infer_kind;
 
 /// Rasterisation resolution (dpi).

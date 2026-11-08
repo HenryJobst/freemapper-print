@@ -5,8 +5,7 @@ use freemapper_print::omap::{
     MapCoord, MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, SymbolSet,
 };
 use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map, render_page};
-use freemapper_print::render::draw::Shape;
-use freemapper_print::render::pdf::PaperBox;
+use freemapper_print::render::page::{PaperBox, RenderedPage, Shape};
 use freemapper_print::scale::MapKind;
 
 /// Points per millimetre.
@@ -159,7 +158,7 @@ fn reduction_keeps_symbol_width_and_is_flagged() {
 }
 
 /// The widths of all strokes on the page (mm).
-fn stroke_widths(page: &freemapper_print::print::RenderedPage) -> Vec<f64> {
+fn stroke_widths(page: &RenderedPage) -> Vec<f64> {
     page.primitives
         .iter()
         .filter_map(|p| match &p.shape {
@@ -286,13 +285,13 @@ fn luebeck_north_lines_drawn_info_block_only_on_request() {
         .filter_map(|o| doc.symbol_set.code_of(o.symbol_id))
         .collect();
     assert_eq!(codes.iter().filter(|c| **c == "601").count(), 9);
-    let texts = |page: &freemapper_print::print::RenderedPage| {
+    let texts = |page: &RenderedPage| {
         page.primitives
             .iter()
             .filter(|p| matches!(p.shape, Shape::Text { .. }))
             .count()
     };
-    let north_colour = |page: &freemapper_print::print::RenderedPage| {
+    let north_colour = |page: &RenderedPage| {
         page.primitives
             .iter()
             .filter(|p| matches!(p.shape, Shape::Stroke { width, .. } if close(width, 0.14, 1e-9)))

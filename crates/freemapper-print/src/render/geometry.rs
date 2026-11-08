@@ -1,6 +1,8 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
 //! Path geometry for rendering (`docs/render/oom-render-reference.md` §2, §7): parts, Bézier
-//! flattening, arc length, dashes, mid-symbol positions and border offsets.
+//! flattening, arc length, positions and directions along a part ([`Walker`]), and cutting a
+//! part into pieces by arc-length intervals. Dash patterns live in `dash.rs`, mid symbols,
+//! borders and caps in `line.rs`.
 //!
 //! Coordinates are paper millimetres with y down, as in OOM.
 
@@ -146,6 +148,7 @@ fn locate(points: &[Pt], cum: &[f64], s: f64) -> (Pt, usize) {
 
 /// Position and direction (radians, y down) at arc length `s`: the segment direction, the
 /// bisector at a vertex, the single direction at an open end.
+#[cfg(test)]
 pub fn at(part: &Part, s: f64) -> (Pt, f64) {
     let mut walker = Walker::new(&part.points, part.closed);
     at_on(part, &cumulative(&part.points), &mut walker, s)
@@ -420,6 +423,7 @@ impl<'a> Walker<'a> {
 }
 
 /// Direction and scale at point `i` of a polyline ([`Walker::tangent_scaling`], no limit).
+#[cfg(test)]
 pub fn tangent_scaling(points: &[Pt], closed: bool, i: usize) -> (f64, f64) {
     Walker::new(points, closed).tangent_scaling(i)
 }

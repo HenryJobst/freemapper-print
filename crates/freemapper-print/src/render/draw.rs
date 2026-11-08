@@ -191,7 +191,8 @@ impl Sink {
 }
 
 /// The primitives of one map object; none when its symbol is unknown or its geometry unusable.
-pub fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive> {
+#[cfg(test)]
+pub(crate) fn primitives(object: &MapObject, symbols: &RenderSymbols) -> Vec<Primitive> {
     primitives_counted(object, symbols).0
 }
 
@@ -341,18 +342,6 @@ pub(super) fn stroke(
             join,
         },
     })
-}
-
-/// The primitives of a point symbol at `at` (mm), rotated by `rotation` (radians, y down).
-pub fn point_primitives(
-    def: &PointDef,
-    at: Pt,
-    rotation: f64,
-    symbols: &RenderSymbols,
-) -> Vec<Primitive> {
-    let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
-    point_symbol(def, at, rotation, symbols, &mut sink, 0);
-    sink.out
 }
 
 /// The filled dot of a point symbol at `at`, if it has one.
@@ -1545,7 +1534,10 @@ mod tests {
             }],
         };
         // Rotation −π/2 (y down) turns local +x to paper up.
-        let p = point_primitives(&arrow, (10.0, 10.0), -std::f64::consts::FRAC_PI_2, &r);
+        let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
+        let quarter = -std::f64::consts::FRAC_PI_2;
+        point_symbol(&arrow, (10.0, 10.0), quarter, &r, &mut sink, 0);
+        let p = sink.out;
         let Shape::Stroke { path, .. } = &p[0].shape else {
             panic!()
         };

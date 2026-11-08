@@ -1,36 +1,15 @@
 //! Copied from freemapper 743ce4b (ADR 0014).
 //! The training map: OOM symbols drawn the way OOM draws them, written as PDF.
+//!
+//! The public part is [`page`] (what every backend draws), [`pdf`] (the PDF backend) and
+//! [`fonts`] (text metrics for layouts); symbol parsing and drawing stay inside the crate.
 
 mod dash;
-pub mod draw;
+pub(crate) mod draw;
 pub mod fonts;
-pub mod geometry;
+pub(crate) mod geometry;
 mod line;
+pub mod page;
 mod pattern;
 pub mod pdf;
-pub mod symbols;
-
-use draw::Primitive;
-use geometry::Pt;
-use symbols::RenderColour;
-
-/// An axis-parallel rectangle on paper (mm, y down).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PaperBox {
-    pub min: Pt,
-    pub max: Pt,
-}
-
-/// One page as every backend needs it, in page millimetres (origin top left, y down).
-///
-/// The PDF writer takes nothing else, so a later SVG or tile backend for the browser editors
-/// draws the same value.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RenderedPage {
-    /// Painted by colour priority, clipped to `clip`.
-    pub primitives: Vec<Primitive>,
-    pub clip: PaperBox,
-    /// Width and height of the page: the paper size.
-    pub page_mm: (f64, f64),
-    pub colours: Vec<RenderColour>,
-}
+pub(crate) mod symbols;

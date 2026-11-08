@@ -13,11 +13,10 @@ use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, OmapError, Sy
 use crate::render::draw::{Primitive, Shape, primitives_counted};
 use crate::render::fonts::substituted;
 use crate::render::geometry::Pt;
+use crate::render::page::{PaperBox, RenderedPage};
 use crate::render::pdf::{PdfMeta, write_pdf};
 use crate::render::symbols::{RenderSymbols, Symbol};
 use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
-
-pub use crate::render::{PaperBox, RenderedPage};
 
 /// White margin on each side of the page; the map is clipped to the page minus this margin (mm).
 pub const PAGE_MARGIN_MM: f64 = 5.0;
