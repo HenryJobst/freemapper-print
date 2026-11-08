@@ -82,6 +82,7 @@ fn refuses_sprint_at_10000() {
         "{}",
         stderr(&o)
     );
+    assert!(!dir.path().join("o.pdf").exists());
 }
 
 #[test]
@@ -106,6 +107,7 @@ fn asks_for_kind() {
         err.contains("sprint") && err.contains("schoolyard") && err.contains("forest"),
         "{err}"
     );
+    assert!(!dir.path().join("o.pdf").exists());
 }
 
 #[test]
@@ -221,6 +223,7 @@ fn kind_overrides_inference() {
         err.contains("1:5000, 1:7500"),
         "forest scales expected: {err}"
     );
+    assert!(!dir.path().join("o.pdf").exists());
 }
 
 #[test]

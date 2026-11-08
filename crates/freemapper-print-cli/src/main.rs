@@ -184,12 +184,15 @@ fn is_format(c: char) -> bool {
         | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
 }
 
-/// Map text for the terminal: control and format characters (such as ESC or a bidi override) become visible escapes, so a map
-/// cannot drive the terminal.
+/// Map text for the terminal. Control characters get Rust's readable escapes (`\n`, `\t`,
+/// `\u{1b}`) and format characters such as bidi overrides get `\u{..}`, so a map cannot drive
+/// the terminal.
 fn printable(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
-        if c.is_control() || is_format(c) {
+        if c.is_control() {
+            out.extend(c.escape_debug());
+        } else if is_format(c) {
             out.extend(c.escape_unicode());
         } else {
             out.push(c);
@@ -382,6 +385,14 @@ mod tests {
         assert!(l[4].contains("Comic Sans, Papyrus"), "{l:?}");
         assert!(l[5].contains("no glyph") && l[5].contains("Ж 猫"), "{l:?}");
         assert!(l[6].contains("actual size"), "{l:?}");
+    }
+
+    #[test]
+    fn printable_keeps_newline_and_tab_readable() {
+        assert_eq!(
+            printable("a\nb\tc\u{1b}d\u{202e}"),
+            "a\\nb\\tc\\u{1b}d\\u{202e}"
+        );
     }
 
     #[test]
