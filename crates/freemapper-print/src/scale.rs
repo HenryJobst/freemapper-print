@@ -133,7 +133,9 @@ pub fn infer_kind(map: &MapDocument, map_path: &Path) -> Option<MapKind> {
     if name.contains("isom") {
         return (5000..=15000).contains(&scale).then_some(MapKind::Forest);
     }
-    None
+    // No marker in the set name: only scales above 1:5000 are unambiguous. 1:5000 is both a sprint and a
+    // forest scale, so it stays unknown and the caller asks for an explicit kind.
+    (7500..=15000).contains(&scale).then_some(MapKind::Forest)
 }
 
 #[cfg(test)]
@@ -223,6 +225,24 @@ mod tests {
         assert_eq!(infer_kind(&map, Path::new(LUEBECK)), Some(MapKind::Sprint));
         let map = read_map_file(Path::new(FOREST)).unwrap();
         assert_eq!(infer_kind(&map, Path::new(FOREST)), Some(MapKind::Forest));
+    }
+
+    #[test]
+    fn infer_forest_by_scale_without_marker() {
+        let mut map = read_map_file(Path::new(LUEBECK)).unwrap();
+        map.symbol_set.name = String::new();
+        map.georef.scale_denominator = 10000;
+        assert_eq!(infer_kind(&map, Path::new(LUEBECK)), Some(MapKind::Forest));
+        map.symbol_set.name = "Custom".into();
+        assert_eq!(infer_kind(&map, Path::new(LUEBECK)), Some(MapKind::Forest));
+    }
+
+    #[test]
+    fn infer_none_at_5000_without_marker() {
+        let mut map = read_map_file(Path::new(LUEBECK)).unwrap();
+        map.symbol_set.name = String::new();
+        map.georef.scale_denominator = 5000;
+        assert_eq!(infer_kind(&map, Path::new(LUEBECK)), None);
     }
 
     #[test]
