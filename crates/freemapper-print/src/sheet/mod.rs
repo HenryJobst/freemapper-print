@@ -6,6 +6,7 @@
 
 pub mod layout;
 pub mod placeholders;
+mod scale_bar;
 mod text;
 
 use std::borrow::Cow;
@@ -196,8 +197,7 @@ fn place_element(
         | ElementKind::Text
         | ElementKind::CreditLine
         | ElementKind::CopyrightLine => text::place_text_element(ctx, spec, notes),
-        // Task 7: the scale check bar.
-        ElementKind::ScaleCheckBar => None,
+        ElementKind::ScaleCheckBar => Some(scale_bar::place_scale_bar(ctx, spec)),
         // Task 8: logos (`LogoSkipped`).
         ElementKind::Logo => None,
     }
@@ -590,6 +590,29 @@ mod tests {
 
     fn empty_map() -> MapDocument {
         doc(4000, vec![("default part", vec![line((50_000, 0))])])
+    }
+
+    #[test]
+    fn scale_bar_uses_print_scale_and_anchor() {
+        let mut layout = a4();
+        layout.print_scale = Some(7500);
+        layout.elements = vec![element("bar")];
+        let lp = project(MapKind::Forest, Vec::new(), &layout);
+        // Map scale 1:15000, print scale 1:7500: the bar follows the print scale.
+        let map = doc(15000, vec![("default part", vec![line((50_000, 0))])]);
+        let (page, report) = sheet_of(&lp, &map);
+        assert_eq!(texts(&page.sheet)[0].0, "250 m = 33,3 mm");
+        assert_eq!(report.print.print_scale, 7500);
+        // Bottom right of the page, 0 offset: the white box ends at the paper corner.
+        let SheetItem::Shape {
+            shape: Shape::Fill { rings },
+            ..
+        } = &page.sheet[1]
+        else {
+            panic!("white box")
+        };
+        let (w, h) = page.page_mm;
+        assert!((rings[0][2].0 - w).abs() < 1e-9 && (rings[0][2].1 - h).abs() < 1e-9);
     }
 
     #[test]

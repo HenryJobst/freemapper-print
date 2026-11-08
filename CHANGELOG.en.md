@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- Sheets carry a scale check bar: a bar of round length (5 m to 1000 m, at most 50 mm when printed), labelled like "200 m = 50 mm". A ruler on the printout shows whether the printer scaled the page.
 - Sheets carry a title block and texts with placeholders (`{event}`, `{date}`, `{print_scale}`, `{contour_interval}`, …), the source lines of the map and the credit line "Created with freemapper-print" at the bottom left. The credit line cannot be switched off; an element only moves it. At most six source lines are shown (the rest is counted) and long ones are cut to the frame width. A sheet that shows neither scale nor contour interval gets a note.
 - The event project file `freemapper-print.toml` is read and checked: event, map source, shared sheet elements and any number of layouts. Unknown keys report file, line and name.
 - Program texts come in German and English: help, summary, notes, warnings and errors. The language comes from
