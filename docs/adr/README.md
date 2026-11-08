@@ -56,3 +56,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0013](0013-example-projects-built-on-freemapper-examples.md) | Example projects built on freemapper's examples | Accepted | 2026-11-08 |
 | [0014](0014-renderer-copied-from-freemapper.md) | The renderer is copied from freemapper and developed here | Accepted | 2026-11-08 |
 | [0015](0015-course-content-in-course-setting-presentation-here.md) | Course setting decides what is the same on every sheet, freemapper-print the rest | Accepted | 2026-11-08 |
+| [0016](0016-ai-features-optional.md) | AI features inside the program are optional | Accepted | 2026-11-08 |

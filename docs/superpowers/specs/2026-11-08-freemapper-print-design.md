@@ -93,6 +93,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 | First target | club training, office print PDF | ADR 0011 |
 | Scale change | symbols keep their printed size | ADR 0012 |
 | Course setting vs. sheet | course setting decides what is the same on every sheet, freemapper-print the rest | ADR 0015 |
+| AI features | optional, active only with a configured model; the program is fully usable without; the MCP server calls no model *(user, suite rule)* | ADR 0016 |
 | User texts | unslop and humanizer skills on READMEs, manual, changelog, ADRs and long messages | `CLAUDE.md` |
 
 ## 4. Concepts
