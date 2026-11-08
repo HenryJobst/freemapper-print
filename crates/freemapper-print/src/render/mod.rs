@@ -9,6 +9,7 @@ mod dash;
 pub(crate) mod draw;
 pub mod fonts;
 pub(crate) mod geometry;
+pub mod image;
 mod line;
 pub mod page;
 mod pattern;

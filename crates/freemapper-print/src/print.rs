@@ -229,6 +229,7 @@ fn render_page_within(
         },
         page_mm,
         colours: symbols.colours,
+        sheet: Vec::new(),
     };
     let report = PrintReport {
         page_mm,

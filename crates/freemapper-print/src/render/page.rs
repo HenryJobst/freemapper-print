@@ -1,8 +1,11 @@
 //! One rendered page as every backend needs it: drawing primitives in page millimetres (origin top
 //! left, y down), the clip rectangle, the page size and the colours.
 
+use std::sync::Arc;
+
 pub use super::draw::{Primitive, Shape};
 pub use super::geometry::Pt;
+pub use super::image::{ImageError, RasterImage};
 pub use super::symbols::{Cap, Join, RenderColour};
 
 /// An axis-parallel rectangle on paper (mm, y down).
@@ -27,4 +30,36 @@ pub struct RenderedPage {
     /// Width and height of the page: the paper size.
     pub page_mm: (f64, f64),
     pub colours: Vec<RenderColour>,
+    /// The sheet elements (title, texts, logos, scale bar, footer), painted after all map
+    /// primitives in this order, over the whole page: they are not clipped to `clip`.
+    pub sheet: Vec<SheetItem>,
+}
+
+/// A colour of a sheet element, given directly instead of by map colour priority. CMYK, so that
+/// print colours match the map's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DirectColour {
+    /// Cyan, magenta, yellow and black, each 0 to 1 (as [`RenderColour::cmyk`]).
+    pub cmyk: [f64; 4],
+}
+
+impl DirectColour {
+    pub const BLACK: DirectColour = DirectColour {
+        cmyk: [0.0, 0.0, 0.0, 1.0],
+    };
+    pub const WHITE: DirectColour = DirectColour {
+        cmyk: [0.0, 0.0, 0.0, 0.0],
+    };
+}
+
+/// One element of the sheet layer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SheetItem {
+    /// `shape` painted in `colour`. Text uses the same embedded fonts as map text.
+    Shape { colour: DirectColour, shape: Shape },
+    /// `image` stretched to fill `rect` exactly.
+    Image {
+        rect: PaperBox,
+        image: Arc<RasterImage>,
+    },
 }
