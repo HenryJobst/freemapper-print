@@ -167,23 +167,24 @@ fn image_name(index: usize) -> String {
 
 /// `image` as a Flate-compressed DeviceRGB XObject, with a DeviceGray soft mask for its alpha.
 fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
-    let data = miniz_oxide::deflate::compress_to_vec_zlib(&image.rgb, 6);
+    // The whole image is held in memory; pixel limits are enforced where images are decoded (Task 8).
+    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), 6);
     let mut x = pdf.image_xobject(id, &data);
     x.filter(Filter::FlateDecode);
-    x.width(image.width as i32);
-    x.height(image.height as i32);
+    x.width(image.width() as i32);
+    x.height(image.height() as i32);
     x.color_space().device_rgb();
     x.bits_per_component(8);
     if let Some(mask) = mask {
         x.s_mask(mask);
     }
     x.finish();
-    if let (Some(mask), Some(alpha)) = (mask, &image.alpha) {
+    if let (Some(mask), Some(alpha)) = (mask, image.alpha()) {
         let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, 6);
         let mut x = pdf.image_xobject(mask, &data);
         x.filter(Filter::FlateDecode);
-        x.width(image.width as i32);
-        x.height(image.height as i32);
+        x.width(image.width() as i32);
+        x.height(image.height() as i32);
         x.color_space().device_gray();
         x.bits_per_component(8);
         x.finish();
@@ -322,7 +323,7 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     // Each image takes an object, and a second for its soft mask.
     let image_refs: Vec<(Ref, Option<Ref>)> = images
         .iter()
-        .map(|i| (next.bump(), i.alpha.is_some().then(|| next.bump())))
+        .map(|i| (next.bump(), i.alpha().is_some().then(|| next.bump())))
         .collect();
     let mut pdf = Pdf::new();
     pdf.catalog(catalog).pages(pages);
@@ -1009,6 +1010,32 @@ mod tests {
                 .matches("/Subtype /Image")
                 .count(),
             4
+        );
+    }
+
+    #[test]
+    fn sheet_text_without_map_text_embeds_one_font() {
+        let item = SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: 3.0,
+                bold: false,
+                italic: false,
+                text: "A\u{4e2d}".into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        };
+        let mut p = page(&[square(2)]);
+        p.sheet = vec![item];
+        let (pdf, info) = write_pdf(&p, &PdfMeta::new("T")).unwrap();
+        assert!(info.missing_glyphs.contains(&'\u{4e2d}'));
+        assert_eq!(
+            String::from_utf8_lossy(&pdf)
+                .matches("/Subtype /Type0")
+                .count(),
+            1
         );
     }
 

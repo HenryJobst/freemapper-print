@@ -42,6 +42,9 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Logo | logo | Vereins- oder Sponsorenlogo als Bild (SVG, PDF, PNG). | `Logo` |
 | Kontrollstrecke | scale check bar | Balken mit Länge in Metern und Millimetern, mit dem man am Ausdruck nachmessen kann, ob der Drucker skaliert hat. | `ScaleCheckBar` |
 | Namensnennung | credit line | Hinweis auf freemapper-print und sein Repository im Blatt und in den PDF-Metadaten. | `CREDIT` |
+| Blattebene | sheet layer | Die Elemente eines Blatts (Titel, Texte, Logos, Maßstabsleiste, Fußzeile), die nach der Karte gemalt werden, in ihrer Reihenfolge und nicht auf den Kartenrahmen beschnitten. Jedes Element ist ein `SheetItem`. | `SheetItem` |
+| Direktfarbe | direct colour | Farbe eines Blattelements, als CMYK-Werte von 0 bis 1 angegeben statt als Kartenfarbe nach Priorität. | `DirectColour` |
+| Rasterbild | raster image | Ein Bild aus Pixeln (8 Bit RGB, optional mit Alpha), zum Beispiel ein Logo. Nur `RasterImage::new` erzeugt eines, geprüft auf Größe und Datenlänge. | `RasterImage` |
 
 ## Maßstab & Darstellung / scale & rendering
 
