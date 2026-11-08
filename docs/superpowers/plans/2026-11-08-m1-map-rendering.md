@@ -272,10 +272,15 @@ Source of the copied code: `/Users/henryprivat/Documents/gitrepos/freemapper` at
     the bounding box of all drawn objects; `Auto` picks the orientation in which more of the map fits);
   - `struct PrintReport { page_mm: (f64, f64), print_scale: u32, geometry_factor: f64, symbol_factor: f64,
     overflow_mm: Option<(f64, f64)>, skipped_objects: usize, substituted_fonts: Vec<String> }`;
-  - `fn print_map(map: &MapDocument, options: &PrintOptions, title: &str) -> Result<(Vec<u8>, PrintReport),
+  - `struct RenderedPage { primitives: Vec<Primitive>, clip: PaperBox, page_mm: (f64, f64), colours:
+    Vec<RenderColour> }`: everything a page backend needs, in page millimetres. It is the only input of the
+    PDF writer, so a later SVG or tile backend for the browser editors (this project's M6 and the
+    course-setting application) consumes the same value. No PDF-specific data goes into `Primitive`;
+  - `fn render_page(map: &MapDocument, options: &PrintOptions) -> Result<(RenderedPage, PrintReport),
     PrintError>`;
-  - `render::pdf::write_pdf(map: &[Primitive], clip: PaperBox, page_mm: (f64, f64), colours: &[RenderColour],
-    info: &PdfInfo) -> Vec<u8>` with `PdfInfo { title: String, creator: String }`; the creator is
+  - `fn print_map(map: &MapDocument, options: &PrintOptions, title: &str) -> Result<(Vec<u8>, PrintReport),
+    PrintError>` = `render_page` followed by `write_pdf`;
+  - `render::pdf::write_pdf(page: &RenderedPage, info: &PdfInfo) -> Vec<u8>` with `PdfInfo { title: String, creator: String }`; the creator is
   `freemapper-print – https://github.com/HenryJobst/freemapper-print`. The freemapper `sheet` argument and
   `page_size` auto-selection are removed.
 
@@ -293,6 +298,8 @@ Source of the copied code: `/Users/henryprivat/Documents/gitrepos/freemapper` at
   - `sheet_objects_hidden_by_default`: an object tagged `freemapper:source=sheet` produces no paint unless
     `show_sheet_objects`.
   - `skipped_objects_counted`: an object with an unknown symbol id raises `skipped_objects` to 1.
+  - `render_page_is_backend_neutral`: `render_page` on the 25 mm line returns one `Stroke` primitive whose
+    path runs 20 mm in page millimetres; no PDF bytes are involved.
 - [ ] **Step 2:** Run `cargo test -p freemapper-print --test exact_scale`. Expected: FAIL.
 - [ ] **Step 3: Implement `print_map`:** clone the symbol set and apply `enlarge_symbols` with the symbol
   factor (skip it at 1.0); multiply object coordinates by the geometry factor (rounded to integer µm); draw; translate so

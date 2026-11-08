@@ -159,6 +159,14 @@ freemapper moves onto it later. The copy keeps a note of the freemapper commit i
 carried across until then. Since both projects are GPL-3.0, the builder may consult and port OOM's rendering
 code (`src/core/renderables/`, `src/core/symbols/`) where the reference document falls short.
 
+One renderer for the suite *(proposal of the course-setting session, 2026-11-08; Claude's call for this
+project)*: freemapper-print's renderer becomes the only one. The browser editors of this project (M6) and of
+the course-setting application need the map too; their output (SVG or raster tiles) is a second backend over
+the same backend-neutral page primitives that the PDF writer consumes. The course-setting application takes
+over the `.omap` reader and the renderer once they are extracted, instead of making another copy of
+freemapper's code. The course-setting application's planned print scale and print area per course are
+defaults only; the layout decides (§5.3).
+
 Rendering rules:
 
 - **Exact scale.** One map millimetre at print scale equals one PDF millimetre. Page size equals the paper
