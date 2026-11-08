@@ -83,7 +83,7 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 | Courses | IOF XML 3.0 plus `.ppen`, masks owned by freemapper-print | ADR 0010 |
 | First target | club training, office print PDF | ADR 0011 |
 | Scale change | symbols keep their printed size | ADR 0012 |
-| Course content vs. presentation | course setting decides content, freemapper-print presentation | ADR 0015 |
+| Course setting vs. sheet | course setting decides what is the same on every sheet, freemapper-print the rest | ADR 0015 |
 | User texts | unslop and humanizer skills on READMEs, manual, changelog, ADRs and long messages | `CLAUDE.md` |
 
 ## 4. Concepts
@@ -254,20 +254,17 @@ course = "D"
 layout = "a4-4000"
 mask = "window-3-5"
 
-# Control number placement (§5.7): direction in degrees (0 = east, counter-clockwise), gap in print mm.
+# Corrections of control number positions (§5.7): direction in degrees (0 = east, counter-clockwise),
+# gap in print mm. The base positions come from the course file.
 [[numbers]]
-control = "31"                 # central: all courses using control 31
-direction = 135
+control = "31"
+layout = "a4-5000"             # every sheet printed with this layout
+direction = 90
 gap_mm = 1.0
 
 [[numbers]]
 control = "31"
-layout = "a4-5000"             # only sheets printed with this layout
-direction = 90
-
-[[numbers]]
-control = "31"
-course = "D"                   # only course D
+course = "D"                   # only the sheet of course D (its layout and mask)
 direction = 315
 ```
 
@@ -285,39 +282,45 @@ Paths are relative to the project file. The editor writes the same file and keep
   and moved and masks that can be drawn on the map. Right: properties of the selected element. Export lives in
   the menu, not as buttons on the main view *(user)*.
 
-### 5.7 Course content and presentation (ADR 0015)
+### 5.7 Course setting and the sheet (ADR 0015)
 
-Rule *(user and Claude, 2026-11-08)*: what changes what the runner must do belongs to course setting; what only
-changes how it looks on one sheet belongs to freemapper-print.
+Rule *(user, 2026-11-08)*: what is the same on every sheet of a course belongs to course setting; what depends
+on the sheet (print scale, mask, sheet elements, map frame) belongs to freemapper-print.
 
 - **Course setting** (read from the course file, never changed here): controls, order, legs and their bends,
   marked routes (taped routes), crossing points, forbidden areas and routes, out-of-bounds areas, control
-  descriptions. freemapper-print draws them per the standard and checks them (below).
-- **freemapper-print**: control number placement, masks, the map frame and everything on the sheet. Gaps in
-  circles and legs that keep map detail readable are presentation too; the first version takes them from the
-  `.ppen` and treats overriding them like numbers later *(Claude's call)*.
+  descriptions, and the control number positions. The course-setting program is Purple Pen today and later a
+  sibling course-setting application that replaces it *(user)*.
+- **freemapper-print**: masks, map frame, sheet elements, and corrections of number positions for a layout or a
+  sheet. Gaps in circles and legs come from the `.ppen` in the first version.
 
-**Control number placement** *(user)*. Five levels; the more specific one wins:
+**Control number placement** *(user, agreed with the course-setting session)*. Levels, the more specific one
+winning:
 
-1. automatic placement (below);
-2. the course file (`.ppen` number position, IOF XML `MapTextPosition`);
-3. central per control code, for every course that uses the control;
-4. per layout and control code;
-5. per course and control code.
+1. automatic placement in freemapper-print, only for numbers the course file gives no position for (for
+   example IOF XML without `MapTextPosition`);
+2. the course file: the central position per control and the per-course position, both set in course setting
+   (`.ppen` number positions, IOF XML `MapTextPosition`);
+3. a correction per layout and control code, in the project file;
+4. a correction per sheet (course, with its layout and mask) and control code, in the project file. This is the
+   exception for a mask that only one course on a layout has.
 
-A course is printed with exactly one layout, so levels 4 and 5 never conflict. A placement is stored as a
-direction and a gap in print millimetres, so a number keeps its distance from the circle at every print scale.
-In the editor the user drags a number and chooses the level it applies to (all courses, this layout, this
-course). freemapper-print never writes back to the course file. When the course file changes a position that a
-level 3 to 5 entry overrides, `check` reports it.
+A position is stored as a direction and a gap in print millimetres, so a number keeps its distance from the
+circle at every print scale. In the editor the user drags a number and chooses whether the correction applies to
+the layout or only to this sheet. freemapper-print never writes back to the course file. When the course file
+changes a position that a correction overrides, `check` reports it.
 
-**Automatic placement and check** *(user)*. For each number the program scores candidate positions (eight
-directions, two or three gaps) and picks the best. Hard conflicts: outside the map frame, under a sheet element,
-under a mask, on another number, circle or leg of the same course. Soft costs *(Claude's call)*: covering map
-detail weighted by symbol (buildings, walls and impassable lines high, open areas low), distance from the course
-file's position. `check` reports every number with a hard conflict and every number whose chosen position has
-high soft costs. A command and an editor menu entry re-run automatic placement for numbers without a level 3 to
-5 entry, or, on request, for all of them.
+**Check and proposals.** `check` scores every number on the finished sheet. Hard conflicts: outside the map
+frame, under a sheet element, under a mask, on a circle, leg or number of the same course. Soft costs *(Claude's
+call)*: covering map detail weighted by symbol (buildings, walls and impassable lines high, open areas low). For
+each conflict `check` proposes a position; the user accepts it as a layout or sheet correction in the editor, by
+command or through MCP. freemapper-print never moves a number silently.
+
+**Shared placement module** *(agreed with the course-setting session)*. The scoring and search live in a module
+of their own with no dependency on the rest of freemapper-print, so the course-setting application can use the
+same algorithm. Callers add their own obstacles: course setting knows circles, legs and map detail;
+freemapper-print adds masks, sheet elements and the map frame. Like the renderer (ADR 0014), the module is
+developed here first and extracted into a shared crate later.
 
 **Overprint and masks.** The course overprint lies above the masks, so a mask never hides a marked route, a
 crossing point, a forbidden route or an out-of-bounds area. `check` warns when such an object lies inside a
@@ -341,7 +344,8 @@ masked area, because the runner then sees it without the map underneath *(Claude
 3. **M2** Project file, layouts and sheet elements (passe-partout, title block, north lines, logos, texts,
    scale check bar, credit), CLI `export`.
 4. **M3** Course import (IOF XML 3.0, `.ppen`), course overprint, control description box, control number
-   placement with its five levels, automatic placement and `check`.
+   positions from the course file with layout and sheet corrections, the placement module, `check` with
+   proposals.
 5. **M4** Mask variants and assignments.
 6. **M5** MCP server.
 7. **M6** Browser editor.

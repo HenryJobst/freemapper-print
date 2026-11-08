@@ -67,8 +67,9 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Strecke | leg | Verbindung zwischen zwei aufeinanderfolgenden Posten. | `Leg` |
 | Knickpunkt | bend | Punkt, an dem eine Strecke abknickt, z. B. um ein Sperrgebiet herum. | `bends` |
 | Pflichtstrecke | marked route | Abgeflaggter Weg, dem der Läufer folgen muss, z. B. vom letzten Posten zum Ziel. Wird in der Bahnlegung festgelegt. | `MarkedRoute` |
-| Nummernlage | number placement | Richtung und Abstand der Postennummer vom Kreis in Druckmillimetern; fünf Stufen von automatisch bis je Bahn (ADR 0015). | `NumberPlacement` |
-| automatische Platzierung | automatic placement | Wahl der Nummernlage durch das Programm, das Konflikte mit Bahnaufdruck, Abdeckungen, Blattelementen und Kartendetails meidet. | `auto_place` |
+| Nummernlage | number placement | Richtung und Abstand der Postennummer vom Kreis in Druckmillimetern. Die Bahnlegung legt sie fest; freemapper-print korrigiert sie je Layout oder je Blatt (ADR 0015). | `NumberPlacement` |
+| automatische Platzierung | automatic placement | Wahl der Nummernlage durch das gemeinsame Platzierungsmodul. In freemapper-print nur, wenn die Bahndatei keine Lage enthält, und als Vorschlag bei Konflikten. | `auto_place` |
+| Nummernkorrektur | number correction | Abweichende Nummernlage je Layout oder je Blatt in der Projektdatei; ändert die Bahndatei nicht. | `NumberCorrection` |
 | Bahnaufdruck | course overprint | Die violetten Bahnsymbole über der Karte. | `CourseOverprint` |
 | Postenbeschreibung | control descriptions | Tabelle der Posten nach IOF-Postenbeschreibung (Spalten A bis H). | `ControlDescriptions` |
 | Gabelung | forking | Varianten einer Bahn, z. B. in Staffeln. | `Forking` |
