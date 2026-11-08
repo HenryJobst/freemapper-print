@@ -17,3 +17,13 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   passen, außerdem nicht gezeichnete, vereinfachte oder abgeschnittene Objekte, ersetzte Schriften und fehlende
   Zeichen. Zum Schluss erinnert es ans Drucken in Originalgröße. Steuerzeichen aus der Kartendatei gibt das
   Programm nur maskiert aus, Fehlermeldungen eingeschlossen.
+- Die Karte aus OOM (`.omap`) wird gelesen, mit allen Kartenteilen. Hintergrundbilder (Vorlagen) bleiben unberücksichtigt.
+- Flächenmuster, spitze Linienenden, Strichpunktsymbole, Textrahmen und gedrehter Text werden wie in OOM
+  gezeichnet. Kartentexte stehen in der eingebetteten Schrift Arimo, auch mit Umlauten und anderen
+  Unicode-Zeichen.
+- Bei einem anderen Druckmaßstab schrumpft die Karte, die Symbole behalten ihre vorgeschriebene Größe.
+  Dieselbe Karte in 1:4000 und 1:5000 hat also gleich breite Wege und gleich große Gebäude.
+- Beispiel `examples/luebeck-scales`: dieselbe Sprintkarte in 1:4000 und 1:5000 auf A4, mit Anleitung zum
+  Nachmessen.
+- Ein Test vergleicht die Ausgabe mit dem PDF-Export von OOM.
+- Die Release-Archive enthalten die Lizenz der Schrift Arimo als `FONT-LICENSE.txt`.

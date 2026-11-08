@@ -55,6 +55,9 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Seitenrand | page margin | Fester weißer Rand von 5 mm an jeder Seitenkante, den die Karte nicht bedruckt. | `PAGE_MARGIN_MM` |
 | Überstand | overflow | Wie viele Millimeter der Umriss der gezeichneten Objekte in x und y über das Clip-Rechteck hinausragt. Die Karte wird nicht verkleinert, sondern abgeschnitten und der Überstand gemeldet. | `PrintReport::overflow_mm` |
 | Druckbericht | print report | Was eine gedruckte Seite zeigt und was nicht: Seitengröße, Druckmaßstab, Faktoren, Überstand, übersprungene und gekürzte Objekte, ersetzte Schriften, fehlende Zeichen. | `PrintReport` |
+| verstecktes Symbol | hidden symbol | Symbol, das die Kartendatei mit `is_hidden` ausblendet. Seine Objekte werden nicht gedruckt. | `SymbolSet::is_hidden` |
+| übersprungene Objekte | skipped objects | Objekte, die nicht gedruckt werden, weil ihr Symbol unbekannt oder versteckt ist. Der Druckbericht zählt sie. | `PrintReport::skipped_objects` |
+| gekürzte Objekte | truncated objects | Objekte, deren Zeichnung vereinfacht oder abgeschnitten wird, weil sie mehr Zeichenbefehle bräuchte, als der Renderer je Objekt erlaubt. Der Druckbericht zählt sie. | `PrintReport::truncated_objects` |
 | Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet` (Randangaben der Karte). Sie werden nur auf Wunsch gedruckt. | `show_sheet_objects` |
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |

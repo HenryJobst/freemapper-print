@@ -17,3 +17,12 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   fit on the page. It also reports objects it did not draw, simplified or cut short, substituted fonts and
   missing glyphs, and it reminds you to print at actual size. Text from the map reaches the terminal with
   control and format characters escaped, and so do error messages.
+- The OOM map (`.omap`) is read, with all its parts. Background images (templates) are ignored.
+- Area patterns, pointed line ends, dash symbols, text framing and rotated text are drawn as in OOM. Map text
+  uses the embedded Arimo font, including umlauts and other Unicode characters.
+- At another print scale the map shrinks and the symbols keep the size the standard sets. The same map at
+  1:4000 and 1:5000 has paths of equal width and buildings of equal size.
+- Example `examples/luebeck-scales`: the same sprint map at 1:4000 and 1:5000 on A4, with instructions for
+  measuring.
+- A test compares the output with the PDF export of OOM.
+- The release archives include the licence of the Arimo font as `FONT-LICENSE.txt`.

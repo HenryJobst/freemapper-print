@@ -2,7 +2,7 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch entsteht mit der ersten nutzbaren Version. Es wird Schritt für Schritt von der fertigen OOM-Karte und
+Dieses Handbuch entsteht mit der ersten nutzbaren Version. Bisher ist Kapitel 9 geschrieben. Es wird Schritt für Schritt von der fertigen OOM-Karte und
 der Purple-Pen-Datei zu den gedruckten Kartenblättern führen, auch ohne Erfahrung mit der Kommandozeile.
 
 Geplante Kapitel:
@@ -17,3 +17,78 @@ Geplante Kapitel:
 8. Abdeckungen für Fenster- und Korridor-OL
 9. Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop
 10. Meldungen und was zu tun ist
+
+## 9. Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop
+
+Eine Orientierungslaufkarte muss den Maßstab haben, der darauf steht. Das PDF von freemapper-print hat ihn
+genau: 1 mm auf dem Papier sind die Strecke im Gelände, die der Druckmaßstab vorgibt. Ob der Ausdruck ihn behält,
+entscheidet der Druckdialog.
+
+### Das PDF erzeugen
+
+```sh
+freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
+```
+
+Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 5000` druckt in 1:5000. Zum Drucken wählen
+Sie A4 oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm
+die Ausrichtung, die weniger von der Karte abschneidet. Am Ende schreibt es eine Zeile mit Papier,
+Druckmaßstab und Faktoren sowie eine Erinnerung ans Drucken in Originalgröße.
+
+### In Originalgröße drucken
+
+Öffnen Sie das PDF und wählen Sie im Druckdialog 100 % oder "Tatsächliche Größe". Schalten Sie "An Seite
+anpassen" und "Verkleinern auf Druckbereich" aus. Jede andere Einstellung ändert den Maßstab, und die Karte
+stimmt nicht mehr. Im Copyshop sagen Sie dasselbe: ohne Skalierung, 100 %, Papier wie im PDF.
+
+### A4 oder A3
+
+Das Programm lässt rundum 5 mm Rand frei, weil viele Drucker nicht bis an die Papierkante drucken. Ist die
+Karte größer als die Seite, schneidet das Programm sie ab und meldet es, zum Beispiel:
+
+```
+Warning: the map does not fit on the page. It is 3.9 mm too tall for the printable area. Try A3 paper, or ...
+```
+
+Die Zahl sagt, um wie viele Millimeter die Karte über den bedruckbaren Bereich hinausragt. Die Karte wird nicht
+verkleinert, denn das würde den Maßstab verfälschen. Sie haben drei Möglichkeiten: ein größeres Papier (A3), die
+andere Ausrichtung oder ein Druckmaßstab mit größerer Zahl, etwa 1:5000 statt 1:4000. Die Meldung nennt
+passende Vorschläge. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen können, was fehlt.
+
+### Warum die Symbole ihre Größe behalten
+
+Wechseln Sie von 1:4000 auf 1:5000, schrumpft das Gelände auf 80 %. Die Symbole schrumpfen nicht mit. Die
+Vorschrift für die Kartenart legt fest, wie breit ein Weg und wie groß ein Gebäudesymbol auf dem Papier sind,
+und das gilt unabhängig vom Maßstab. Die Karte bleibt deshalb lesbar, nur liegt mehr Gelände auf der Seite.
+Im Beispiel ist ein Fußweg in beiden PDFs 0,27 mm breit.
+
+Das Programm kennt dafür die Kartenart (Sprintkarte, Schulhofkarte, Waldkarte). Erkennt es sie weder aus
+`freemapper.toml` noch aus der Kartendatei, geben Sie sie mit `--kind` an.
+
+### Den Maßstab mit dem Lineal prüfen
+
+Das Beispiel [examples/luebeck-scales](../../examples/luebeck-scales/README.md) enthält dieselbe Karte in
+1:4000 und 1:5000. Drucken Sie beide in Originalgröße und messen Sie auf der Karte eine Strecke von 100 m, zum
+Beispiel mit dem Maßstabsbalken oder zwischen zwei Gebäudeecken, deren Abstand Sie kennen. Das Lineal muss zeigen:
+
+| Druckmaßstab | 100 m auf der Karte |
+|---|---|
+| 1:4000 | 25 mm |
+| 1:5000 | 20 mm |
+
+Weicht das Maß ab, hat der Drucker skaliert. Prüfen Sie dann den Druckdialog. Eine eigene Kontrollstrecke auf
+dem Blatt folgt mit den Layouts.
+
+### Hinweise des Programms
+
+- "not drawn because the symbol is unknown or hidden": Objekte, deren Symbol die Kartendatei ausblendet oder
+  nicht kennt. Sie fehlen im PDF.
+- "simplified or cut short": Ein Objekt braucht mehr Zeichenbefehle, als das Programm je Objekt zulässt. Es
+  erscheint vereinfacht oder abgeschnitten.
+- "the font Arimo replaces ...": Das PDF enthält nur die Schrift Arimo. Andere Schriften der Karte ersetzt das
+  Programm durch sie.
+- "missing glyphs": Ein Zeichen der Karte fehlt in Arimo und wird nicht gedruckt.
+- Die Nordlinien und den Informationsblock der Karte druckt das Programm nur mit `--show-sheet-objects`. Bei
+  einem anderen Druckmaßstab skalieren sie mit der Karte, ein darin gedruckter Maßstab kann also falsch sein.
+
+Die übrigen Kapitel folgen mit späteren Versionen.
