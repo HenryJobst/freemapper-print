@@ -521,6 +521,10 @@ mod tests {
                 mid: None,
                 start: None,
                 end: None,
+                pointed_caps: false,
+                start_offset: 0.0,
+                end_offset: 0.0,
+                dash_symbol: None,
             }),
             coords: vec![MapCoord::new(x0, 0), MapCoord::new(x1, 0)],
         }

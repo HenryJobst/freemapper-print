@@ -81,7 +81,8 @@ enlarge.rs, except school additions 321/541–545 and sheet symbols 991–994, w
 | 994 | line | colour 2, w 250, cap 0 flat, join 1 miter. |
 
 Not used by any listed symbol: line patterns/point patterns, pointed caps, start/end offsets,
-dash symbols, dash points, mid symbols on dashed lines, text framing. They are summarised briefly.
+dash symbols, dash points, mid symbols on dashed lines, text framing. Real maps use them; §2.2,
+§2.4, §2.5, §2.7, §4 and §6 cover them (freemapper-print M1).
 
 ---
 
@@ -179,6 +180,19 @@ under every black-100% symbol; 418's white dot (21) shows over green areas of pr
 Only if `dashed="true"` and `dash_length > 0`. A part is split into sections at coordinates with
 the DashPoint flag (32); freemapper paths normally have one section = the whole part.
 
+Sections (taken from OOM **v0.9.6**) [LS `processDashedLine`; VP `PathCoordVector::findNextDashPoint`]:
+the sections of [S, E] (E, S after the offsets of 2.7) end at every dash point strictly between
+S and E, the last at E. Each section runs the algorithm below with `is_part_start` (first section)
+and `is_part_end` (last section). At a dash point between two sections:
+- `k == 1`: the section before ends with a half dash and the section after starts with one
+  (`half_first`/`half_last`). The section before **does not draw its last dash**: it returns that
+  dash's start (`line_start`), and the next section's first dash runs from there, so the two
+  halves form one dash through the dash point.
+- `k > 1`: no halves; the last dash before the dash point is likewise carried into the next
+  section's first dash, which then spans the dash point.
+- A section too short for dashes that is not the last one draws nothing and hands its whole
+  length to the next section (`return line_start`).
+
 Per section [S, E] (arc lengths in mm), with d = dash_length, b = break_length,
 g = in_group_break_length, k = dashes_in_group (all x0.001):
 
@@ -271,6 +285,9 @@ equivalent is to offset a flattened polyline (tolerance ≤ 0.005 mm). The resul
 polyline is then stroked with miter joins (PDF limit √5).
 
 ### 2.4 Mid symbols on solid lines (201, 513.2, 518) [LS `createMidSymbolRenderables`]
+The sections [A, B] below end at the dash points as in 2.2 (v0.9.6: the loop uses
+`findNextDashPoint`); with start/end offsets (2.7) the line is S..E instead of the whole part. With
+e = 0 every section end gets a symbol, so every dash point does.
 Created only if `mid_symbol` is non-empty and `segment_length > 0` and the line is not dashed
 [LS `createSinglePathRenderables`]. `mid_symbol_placement` is used only on dashed lines.
 `minimum_mid_symbol_count` and `minimum_mid_symbol_count_when_closed` are loaded, saved and
@@ -324,10 +341,50 @@ for each section [A, B] (between dash points; normally the whole part):
   [PS `createRenderablesScaled`; MC]. Hence 201 ticks, 513.2 half discs and 518 slanted ticks all
   lie on the right-hand side; reversing the path flips them.
 
-### 2.5 Mid symbols on dashed lines (not used here) [LS `createDashGroups`]
-`mid_symbol_placement`: 0 CenterOfDash (centre of each full dash, per-spot spread ±(m-1)q/2),
-1 CenterOfDashGroup, 2 CenterOfGap (centre of each main break), 99 none [LSH]. Only evaluated for
-`dashed="true"`.
+### 2.5 Mid symbols on dashed lines [LS `createDashGroups`, `processContinuousLine`]
+Rules taken from OOM **v0.9.6**.
+
+`mid_symbol_placement`: 0 CenterOfDash, 1 CenterOfDashGroup, 2 CenterOfGap, 99 NoMidSymbols
+[LSH `MidSymbolPlacement`]. Only evaluated for `dashed="true"`. Mid symbols exist on a dashed line
+if the mid symbol is not empty and `mid_symbols_per_spot > 0` and the placement is not 99;
+`segment_length` plays no part [LS `createDashGroups`]. m = `mid_symbols_per_spot`,
+q = `mid_symbol_distance` (mm). Per section (2.2), with D the stretched dash length:
+
+```
+set_mid = placement != None and (L >= d - sw or show_at_least_one)
+CenterOfDash, before the dashes:
+  if line_start < S or not is_part_start:           // the dash through a dash point
+     set_mid = false
+     pos = S - (m-1)q/2; for s in 0, 2, 4, … < m: if pos >= 0: place(pos); pos += q
+  if half_first:
+     pos = S + (m%2 + 1) q/2; for s in 1, 3, … < m while pos <= part length: place(pos); pos += q
+too short: continuous(line_start, E, set_mid) if is_part_end
+per group:
+  CenterOfDashGroup:
+     pos = (last group and half_last) ? E
+         : (first group and half_first) ? cur : cur + (k·D + (k-1)g)/2
+     pos -= q(m-1)/2
+     for i in 0..m while pos <= E: if pos > S: place(pos); pos += q
+  per dash: continuous(dash_start, dash_end, placement == CenterOfDash and the dash is not a half)
+  after each group but the last, CenterOfGap:
+     pos = cur + (b - q(m-1))/2
+     for i in 0..m: skip pos < S; stop pos > E; place(pos); pos += q
+after the groups, if half_last and CenterOfDash:
+  pos = E - (m-1)q/2; for s in 0, 2, … < m: place(pos); pos += q
+continuous(a, b, set_mid) [processContinuousLine]:
+  stroke [a, b]; if set_mid and (m-1)q <= b - a:
+     pos = (a + b - (m-1)q)/2; place(pos); m-1 times: pos += q; place(pos)
+```
+- So with m = 1: CenterOfDash puts one symbol in the middle of every full dash, one at the
+  closing point of a closed line (the two half dashes there form one dash, which gets one
+  symbol), and one at each dash point where two halves meet. CenterOfDashGroup with k = 1 gives
+  the same positions; CenterOfGap one per main break.
+- A line too short for dashes is drawn solid with one spot in its middle if `set_mid`, whatever
+  the placement.
+- Orientation as in 2.4 (tangent at the position, local +y right).
+- The `s += 2` loops advance `pos` by q per iteration, not 2q (ported as is).
+- freemapper-print bounds the steps (dashes, spots and skipped positions) by its per-object budget
+  and by 100 000; past 100 000 the stretch is drawn solid without mid symbols.
 
 ### 2.6 Start and end symbols (541, 543) [LS `createStartEndSymbolRenderables`]
 - Start symbol at the **first coordinate of the first part**, end symbol at the **last coordinate
@@ -340,13 +397,67 @@ for each section [A, B] (between dash points; normally the whole part):
 - 541: non-rotatable ring (2.4 does not apply) at both ends. 543: bar along local y -> a 0.8 mm bar
   perpendicular to the line at each end.
 
-### 2.7 Start/end offsets, pointed caps, dash symbols (not used here)
-- Only for open parts with `start_offset > 0 || end_offset > 0`: the line is shortened by the
-  offsets (scaled down proportionally and the main line suppressed if their sum exceeds the length);
-  with cap 3 the removed stretch becomes a filled taper from width 0 to full width
-  (`radius = half_width * dist/cap_length`) [LS `createSinglePathRenderables`, `createPointedLineCap`].
-- Dash symbol: placed at coordinates with the DashPoint flag, rotated to the bisector, scaled by
-  `min(1/cos(half angle), 2)` if `scale_dash_symbol` [LS `createDashSymbolRenderables`].
+### 2.7 Start/end offsets, pointed caps, dash symbols
+Rules taken from OOM **v0.9.6**.
+
+Attributes [LS `loadImpl`]: `start_offset`, `end_offset` (µm, since file version 8). If neither is
+present and `cap_style == 3` (PointedCap), both are `pointed_cap_length` (versions ≤ 7). The pointed
+cap has no length of its own: it is the start offset at the start and the end offset at the end.
+`<dash_symbol>` (a point symbol, dropped if empty: no elements, no visible dot or ring
+[PS `isEmpty`]), `suppress_dash_symbol_at_ends` (default false), `scale_dash_symbol` (default
+**true**: anything but `"false"`).
+
+Offsets [LS `createSinglePathRenderables`]:
+- Used only for **open** parts with `start_offset > 0 || end_offset > 0` (negative values count
+  as 0).
+- `so = 0.001·start_offset`, `eo = 0.001·end_offset`, L = part length. If `so + eo > L`: both are
+  scaled by `L/(so + eo)` and **no main line is drawn**; the function then returns after the caps,
+  so there are no borders and no mid symbols either. Also no main line, borders or mid symbols
+  when the line has no colour or width and offsets apply (`create_line` false → return).
+- S = so, E = max(S, L - eo). The main line, its dashes (2.2), mid symbols (2.4, 2.5) and borders
+  (2.3) run on [S, E] only. Start and end symbols (2.6) and dash symbols stay at the part's ends.
+- With cap 3: `createPointedLineCap` on [0, S] (start) and [E, L] (end) when that offset is > 0.
+
+Pointed cap [LS `createPointedLineCap`; RI `LineRenderable`]:
+- Stroke cap of cap style 3 is **flat**.
+- A filled area in the line colour (own `AreaRenderable`; fill rule even-odd as all areas).
+  For every point of the copied stretch [a, b] (start split, vertices in between, end split):
+  `dist` = distance along the line from the tip (`len - a` at the start, `b - len` at the end),
+  `factor = clamp(dist / cap_length, 0, 1)`, `cap_length = 0.001·start_offset` or `end_offset`
+  (**unscaled**, so a scaled-down cap never reaches full width),
+  `(dir, scaling) = calculateTangentScaling(i)` on the stretch (open, no wrap),
+  `radius = clamp(half_width · factor · scaling, 0, 2·half_width)`,
+  right point = p + radius·normalize(perpRight(dir)), left point = p - radius·….
+- Overlap: if `b - a > 0.2 mm`, one extra point 0.05 mm beyond the wide end (along the tangent
+  there: incoming tangent at the last point for a start cap, outgoing at the first point for an end
+  cap, set to length 0.05) and 0.05 mm further **in** on each side.
+- Polygon: start cap = right side from the tip to the wide end (plus overlap), then the whole left
+  side back to the tip (the tip appears first and last). End cap = right side from the overlap and
+  wide end to the tip, then the left side back **without** its tip.
+- Béziers inside the cap get control points offset by `tan_angle = half_width/cap_length`; on a
+  polyline flattened to 0.005 mm this is the same shape.
+
+Dash symbols [LS `createDashSymbolRenderables`; VP `calculateTangentScaling`]:
+- Drawn first for every part, from the original path, before offsets and dashes.
+- At every coordinate with the DashPoint flag, index range: all; with
+  `suppress_dash_symbol_at_ends` not at the first and last coordinate; else on a closed part not at
+  the first coordinate (the closing point counts once).
+- `calculateTangentScaling(i)`: incoming = `coords[i] - coords[k]` for the nearest earlier k farther
+  than 0.025 mm (closed parts wrap from the end), outgoing likewise forward. No outgoing: direction
+  = incoming, scaling 1. No incoming: outgoing, 1. Both: unit vectors; if outgoing = -incoming the
+  direction is `perpRight(outgoing)` and scaling ∞, else direction = normalize(in + out) and
+  scaling = 1/dot(direction, in) = 1/cos(half the turn).
+- Rotation = angle of the direction if the dash symbol is rotatable, else 0 (local +y right).
+- Scale = `min(scaling, 2·miterLimit()) = min(scaling, 2)` if `scale_dash_symbol`, else 1; it
+  multiplies **element coordinates only**, not the dot radius or ring [PS
+  `createRenderablesScaled`, `coord_scale`].
+- freemapper-print takes the tangents from the flattened polyline; at a dash point on a Bézier
+  the direction can differ slightly from OOM's control-point tangent.
+
+Borders of a non-trivial line [LS `createSinglePathRenderables`, `createBorderLines`]: when offsets
+or dashes apply, the borders are built from the processed path (the stretches actually stroked).
+A solid border on a dashed line is therefore dashed like it; a dashed border runs its own pattern
+on that path, which freemapper-print computes on [S, E] and cuts to the main dashes.
 
 ---
 
@@ -559,7 +670,11 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
 - Rotation: `rotatable` attribute; if absent, rotatable only for file version < 9 [TS `loadImpl`].
   991–993 have no attribute in a v9 file -> **not rotatable, object rotation ignored** [OBJ
   `Object::load`]. If rotatable: rotate by -rotation (CCW on paper for positive values) about the
-  anchor [RI `TextRenderable`, TO `calcTextToMapTransform`].
+  anchor [RI `TextRenderable`, TO `calcTextToMapTransform`]. `TextRenderable` builds
+  `translate(anchor) · scale · rotate(-degrees(rotation))` (Qt, y down), so a glyph origin at text
+  coordinates (x, y) lands at `anchor + (x cos r + y sin r, -x sin r + y cos r)`. In PDF (y up)
+  the text matrix is `[cos r, sin r, -sin r, cos r, x, y]`. freemapper-print reads only version 9
+  files, so a text symbol without `rotatable="true"` is not rotatable.
 - Object: `<object type="4" h_align v_align>` (missing -> 0), anchor = first coordinate; a second
   coordinate or `<size>` makes it a box text (word wrap) [OBJ `Object::load`].
   `h_align`: 0 Left, 1 HCenter, 2 Right; `v_align`: 0 Baseline, 1 Top, 2 VCenter, 3 Bottom [TOH].
@@ -589,9 +704,23 @@ map position of glyph origin = anchor + R(-rotation) * (x_k, y_k)   [mm, y down]
 - Colour: `<text color>` fill (BrushOnly) with **non-zero winding** (`path.setFillRule(WindingFill)`)
   [RI `TextRenderable`]. OOM writes glyph outlines as filled paths (`ForceOutline`), not PDF text;
   real PDF text with the same font, size and positions is visually equivalent.
-- Framing (not used): line framing = stroke of the glyph outlines, width `2*line_half_width`,
-  miter join (PDF limit √2), colour `framing color`, its own priority; shadow framing = copy offset
-  by `shadow_x/y_offset` [TS `createRenderables`; RI `TextFramingRenderable`].
+- Framing (rules taken from OOM **v0.9.6**) [TS `loadImpl`, `createRenderables`; RI
+  `TextFramingRenderable`]: `<framing color mode line_half_width shadow_x_offset shadow_y_offset>`;
+  `mode` 0 NoFraming, 1 LineFraming, 2 ShadowFraming [TSH `FramingMode`]; a missing attribute reads
+  as 0. Drawn only with a framing colour (`color` -1 means none).
+  - Line framing (if `line_half_width > 0`): the glyph outlines **stroked only** (PenOnly), width
+    `2·0.001·line_half_width` mm, miter join with Qt limit 0.5 -> PDF √2, colour = framing
+    colour.
+  - Shadow framing: the same text filled in the framing colour at
+    `anchor + 0.001·(shadow_x_offset, shadow_y_offset)` (offset in paper coordinates, not turned
+    with the text; the text then turns about the shifted anchor).
+  - Each is its own renderable with the framing colour's priority, so the colour priority decides
+    whether it lies below the text. OOM inserts it after the text; freemapper-print emits it first,
+    which only matters when both colours are equal and then looks the same.
+  - Even without a text colour the framing is drawn.
+  - freemapper-print (no glyph outlines yet) writes line framing as PDF text with render mode 1
+    (stroke) in its own `q … Q`.
+- `<line_below>` (a line under each paragraph) is not supported yet.
 
 ---
 
@@ -671,6 +800,15 @@ last coordinate of the object is harmless.
     visually irrelevant.
 16. **Areas need >= 3 coordinates; lines >= 2** per part; zero-length parts produce nothing
     [AS `createRenderables`; LS `createSinglePathRenderables`].
+17. **Dash points split patterns**: dashes and mid symbols restart at every dash point, and the
+    dashes on either side join into one dash through it (2.2, 2.4, 2.5). A renderer that ignores
+    dash points draws wrong tick spacing on fences and fence-like lines.
+18. **Pointed caps are offsets**: the cap length is `start_offset` / `end_offset`, the stroke cap is
+    flat, and a cap of a line shorter than both offsets never reaches full width (2.7).
+19. **Offsets that exceed the line** suppress the main line, its borders and its mid symbols, not
+    only the stroke (2.7).
+20. **Dash symbols scale only their elements**, by 1/cos(half the turn), at most 2 (2.7).
+21. **Text framing has its own colour priority**; shadow offsets are not rotated (6).
 
 ---
 

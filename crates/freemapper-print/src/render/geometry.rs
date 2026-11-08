@@ -4,9 +4,9 @@
 //!
 //! Coordinates are paper millimetres with y down, as in OOM.
 
-use super::symbols::{Dash, Mid};
+use super::symbols::{Dash, Mid, MidPlacement};
 use crate::omap::MapCoord;
-use crate::omap::coord::{FLAG_CLOSE, FLAG_CURVE_START, FLAG_HOLE};
+use crate::omap::coord::{FLAG_CLOSE, FLAG_CURVE_START, FLAG_DASH, FLAG_HOLE};
 
 pub type Pt = (f64, f64);
 
@@ -15,6 +15,8 @@ pub type Pt = (f64, f64);
 pub struct Part {
     pub points: Vec<Pt>,
     pub closed: bool,
+    /// Indices in `points` of the coordinates flagged as dash points, ascending.
+    pub dash_points: Vec<usize>,
 }
 
 /// Bézier flattening: chords at most 1 mm, control polygon at most 0.005 mm longer than the chord.
@@ -77,26 +79,37 @@ pub fn parts(coords: &[MapCoord]) -> Vec<Part> {
     let n = coords.len();
     let mut parts = Vec::new();
     let mut points: Vec<Pt> = Vec::new();
+    let mut dash_points = Vec::new();
+    // The point just pushed for `c`: a dash point if `c` is flagged.
+    let mark = |c: MapCoord, points: &Vec<Pt>, dash_points: &mut Vec<usize>| {
+        if c.flags & FLAG_DASH != 0 {
+            dash_points.push(points.len() - 1);
+        }
+    };
     let mut i = 0;
     // At each step `coords[i]` is the last point of the part so far.
     while i < n {
         if points.is_empty() {
             points.push(mm(coords[i]));
+            mark(coords[i], &points, &mut dash_points);
         }
         let c = coords[i];
         if c.flags & FLAG_HOLE != 0 || i + 1 == n {
             parts.push(Part {
                 points: std::mem::take(&mut points),
                 closed: c.flags & FLAG_CLOSE != 0,
+                dash_points: std::mem::take(&mut dash_points),
             });
             i += 1;
         } else if c.flags & FLAG_CURVE_START != 0 && i + 3 < n {
             let p0 = mm(c);
             let (p1, p2, p3) = (mm(coords[i + 1]), mm(coords[i + 2]), mm(coords[i + 3]));
             flatten_cubic(p0, p1, p2, p3, &mut points, 0);
+            mark(coords[i + 3], &points, &mut dash_points);
             i += 3;
         } else {
             points.push(mm(coords[i + 1]));
+            mark(coords[i + 1], &points, &mut dash_points);
             i += 1;
         }
     }
@@ -212,95 +225,469 @@ pub fn end_angle(part: &Part) -> f64 {
 
 /// The polyline between arc lengths `a` and `b`, through the vertices in between.
 fn between(points: &[Pt], cum: &[f64], a: f64, b: f64) -> Vec<Pt> {
+    between_lengths(points, cum, a, b).0
+}
+
+/// [`between`] with the arc length of every point.
+fn between_lengths(points: &[Pt], cum: &[f64], a: f64, b: f64) -> (Vec<Pt>, Vec<f64>) {
     let (start, i) = locate(points, cum, a);
     let (end, j) = locate(points, cum, b);
     let mut out = vec![start];
+    let mut lengths = vec![a];
     for k in i + 1..=j {
         if cum[k] > a && cum[k] < b {
             out.push(points[k]);
+            lengths.push(cum[k]);
         }
     }
     out.push(end);
-    out
+    lengths.push(b);
+    (out, lengths)
 }
 
-/// The dashes of a part as polylines; one polyline (the whole part) when it is too short
-/// (reference §2.2). The dash length is stretched so that the line starts and ends with a full
-/// dash; on closed parts the two halves at the closing point form one dash.
+/// The arc lengths that end the sections of [start, end] (reference §2.2): every dash point
+/// strictly inside, then `end` [VP `PathCoordVector::findNextDashPoint`].
+fn section_ends(part: &Part, cum: &[f64], start: f64, end: f64) -> Vec<f64> {
+    let mut ends: Vec<f64> = part
+        .dash_points
+        .iter()
+        .filter_map(|&i| cum.get(i).copied())
+        .filter(|&c| c > start && c < end)
+        .collect();
+    ends.dedup();
+    ends.push(end);
+    ends
+}
+
+/// The dashes of a part as polylines ([`dash_pattern`] over the whole part, halves at the
+/// closing point joined); one polyline (the whole part) when it is too short.
 ///
 /// At most `max` dashes; the flag is true when that limit, or `MAX_REPEATS` (the part is then
 /// drawn solid), changed the result.
 pub fn dashes(part: &Part, dash: &Dash, max: usize) -> (Vec<Vec<Pt>>, bool) {
-    let points = &part.points;
-    let cum = cumulative(points);
-    let l = *cum.last().unwrap_or(&0.0);
+    let pattern = dash_pattern(part, 0.0, length(&part.points), dash, None, max);
+    let pieces = pieces(part, &pattern.intervals);
+    (
+        pieces.into_iter().map(|(p, _)| p).collect(),
+        pattern.limited,
+    )
+}
+
+/// Dashes and mid-symbol spots of a dashed line.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DashPattern {
+    /// Arc-length intervals [a, b] to stroke, in order.
+    pub intervals: Vec<(f64, f64)>,
+    /// Positions and directions of the mid symbols.
+    pub spots: Vec<(Pt, f64)>,
+    /// The output limit or `MAX_REPEATS` changed the result.
+    pub limited: bool,
+    /// Steps taken: every interval and spot, and every mid-symbol position tried and skipped.
+    pub steps: usize,
+}
+
+/// Why dashing stopped early.
+enum Stop {
+    /// The step limit: keep what there is.
+    Full,
+    /// More than `MAX_REPEATS` steps: a broken definition, drawn solid without mid symbols.
+    Repeats,
+}
+
+/// The state of [`dash_pattern`]: OOM's `processDashedLine` and `createDashGroups` on arc
+/// lengths (mm).
+struct Dasher<'a> {
+    part: &'a Part,
+    cum: &'a [f64],
+    total: f64,
+    /// Dash, break and in-group break length, dashes per group.
+    d: f64,
+    b: f64,
+    g: f64,
+    k: u32,
+    half_outer: bool,
+    placement: Option<MidPlacement>,
+    /// Mid symbols per spot, their distance, `show_at_least_one_symbol`.
+    m: u32,
+    q: f64,
+    at_least_one: bool,
+    out: DashPattern,
+    max: usize,
+    steps: usize,
+}
+
+impl Dasher<'_> {
+    /// Takes one step: past `MAX_REPEATS` the definition is broken, past `max` the caller's
+    /// limit is reached.
+    fn step(&mut self) -> Result<(), Stop> {
+        if self.steps >= MAX_REPEATS {
+            return Err(Stop::Repeats);
+        }
+        if self.steps >= self.max {
+            return Err(Stop::Full);
+        }
+        self.steps += 1;
+        Ok(())
+    }
+
+    fn interval(&mut self, a: f64, b: f64) -> Result<(), Stop> {
+        self.step()?;
+        self.out.intervals.push((a, b));
+        Ok(())
+    }
+
+    fn place(&mut self, p: f64) -> Result<(), Stop> {
+        self.step()?;
+        self.out.spots.push(at_on(self.part, self.cum, p));
+        Ok(())
+    }
+
+    /// [LS `processContinuousLine`]: the stretch [a, b], and if `set_mid` the spot's mid symbols
+    /// centred on it.
+    fn continuous(&mut self, a: f64, b: f64, set_mid: bool) -> Result<(), Stop> {
+        self.interval(a, b)?;
+        if set_mid {
+            let msl = f64::from(self.m - 1) * self.q;
+            if msl <= b - a {
+                let mut pos = (a + b - msl) / 2.0;
+                self.place(pos)?;
+                for _ in 1..self.m {
+                    pos += self.q;
+                    self.place(pos)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// [LS `createDashGroups`] for the section [start, end], the dash so far starting at
+    /// `line_start`; returns where the next section's first dash starts.
+    fn groups(
+        &mut self,
+        line_start: f64,
+        start: f64,
+        end: f64,
+        is_part_start: bool,
+        is_part_end: bool,
+    ) -> Result<f64, Stop> {
+        let (d, b, g, k, q, m) = (self.d, self.b, self.g, self.k, self.q, self.m);
+        let (kf, mf) = (f64::from(k), f64::from(m));
+        let closed = self.part.closed;
+        // Inside a part the sections meet at dash points.
+        let half_first = if is_part_start {
+            self.half_outer || closed
+        } else {
+            k == 1
+        };
+        let half_last = if is_part_end {
+            self.half_outer || closed
+        } else {
+            k == 1
+        };
+        let h = u32::from(half_first) + u32::from(half_last);
+        let hf = f64::from(h);
+        let period = kf * d + (kf - 1.0) * g + b;
+        let length = end - start;
+        let lpb = length + b;
+        let nf = hf + (lpb - hf * d / 2.0) / period;
+        let lo = nf.floor();
+        let min_opt_dashes = 2.0 * kf - f64::from(h / 2);
+        let sw = 0.2 * period / kf;
+        let at_dash = self.placement == Some(MidPlacement::CentreOfDash);
+        let mut set_mid = self.placement.is_some() && (length >= d - sw || self.at_least_one);
+        if at_dash {
+            if line_start < start || !is_part_start {
+                // The dash through the dash point is drawn here: its mid symbols too.
+                set_mid = false;
+                let mut pos = start - (mf - 1.0) * q / 2.0;
+                for _ in (0..m).step_by(2) {
+                    if pos >= 0.0 {
+                        self.place(pos)?;
+                    } else {
+                        self.step()?;
+                    }
+                    pos += q;
+                }
+            }
+            if half_first {
+                let mut pos = start + f64::from(m % 2 + 1) * q / 2.0;
+                let mut s = 1;
+                while s < m && pos <= self.total {
+                    self.place(pos)?;
+                    pos += q;
+                    s += 2;
+                }
+            }
+        }
+        if length <= 0.0 || (lo <= 1.0 && length < 2.0 * period - min_opt_dashes * sw) {
+            // Too short for dashes: solid if it ends the part, else handed to the next section.
+            if !is_part_end {
+                return Ok(line_start);
+            }
+            self.continuous(line_start, end, set_mid)?;
+            return Ok(end);
+        }
+        let hi = nf.ceil();
+        let n = if lo < 1.0 {
+            hi
+        } else {
+            let dlo = (lpb - lo * period) / lo;
+            let dhi = (hi * period - lpb) / hi;
+            if dlo > dhi { hi } else { lo }
+        };
+        if n * kf > MAX_REPEATS as f64 {
+            return Err(Stop::Repeats);
+        }
+        let dash_len =
+            ((length - (n - 1.0) * b - n * (kf - 1.0) * g) * 2.0 / (2.0 * n * kf - hf)).max(0.0);
+        let groups = n as u32;
+        let mut cur = start;
+        let mut dash_start = line_start;
+        for grp in 1..=groups {
+            let (first_grp, last_grp) = (grp == 1, grp == groups);
+            if self.placement == Some(MidPlacement::CentreOfDashGroup) {
+                let mut pos = cur;
+                if last_grp && half_last {
+                    pos = end;
+                } else if !(first_grp && half_first) {
+                    pos += (dash_len * kf + g * (kf - 1.0)) / 2.0;
+                }
+                pos -= q * (mf - 1.0) / 2.0;
+                for _ in 0..m {
+                    if pos > end {
+                        break;
+                    }
+                    if pos > start {
+                        self.place(pos)?;
+                    } else {
+                        self.step()?;
+                    }
+                    pos += q;
+                }
+            }
+            for i in 1..=k {
+                let first = first_grp && i == 1;
+                let last = last_grp && i == k;
+                let has_start = !(first && half_first);
+                let has_end = !(last && half_last);
+                let half = has_start != has_end;
+                let len = if half { dash_len / 2.0 } else { dash_len };
+                if !first {
+                    dash_start = cur;
+                }
+                if last && !is_part_end {
+                    // The last dash before a dash point continues in the next section.
+                    return Ok(dash_start);
+                }
+                let dash_end = cur + len;
+                self.continuous(dash_start, dash_end, at_dash && !half)?;
+                cur += len;
+                dash_start = dash_end;
+                if i < k {
+                    cur += g;
+                }
+            }
+            if grp < groups {
+                if self.placement == Some(MidPlacement::CentreOfGap) {
+                    let mut pos = cur + (b - q * (mf - 1.0)) / 2.0;
+                    for _ in 0..m {
+                        if pos > end {
+                            break;
+                        }
+                        if pos < start {
+                            self.step()?;
+                        } else {
+                            self.place(pos)?;
+                        }
+                        pos += q;
+                    }
+                }
+                cur += b;
+            }
+        }
+        if half_last && at_dash {
+            // The half dash at the closing point (or end) carries the joined dash's symbols.
+            let mut pos = end - (mf - 1.0) * q / 2.0;
+            for _ in (0..m).step_by(2) {
+                self.place(pos)?;
+                pos += q;
+            }
+        }
+        Ok(end)
+    }
+}
+
+/// The dashes (arc-length intervals) and mid-symbol spots of a dashed line on [start, end] of
+/// `part` (reference §2.2, §2.5) [LS `processDashedLine`, `createDashGroups`]. The pattern
+/// restarts at dash points. `mid`: the mid symbol of the dashed line, placed by its
+/// [`MidPlacement`].
+///
+/// At most `max` steps (intervals, spots and skipped mid-symbol positions together); `limited`
+/// is true when that limit, or `MAX_REPEATS` steps (the stretch is then one solid interval
+/// without spots), changed the result.
+pub fn dash_pattern(
+    part: &Part,
+    start: f64,
+    end: f64,
+    dash: &Dash,
+    mid: Option<&Mid>,
+    max: usize,
+) -> DashPattern {
+    let cum = cumulative(&part.points);
     let (d, b, g) = (
         dash.dash / 1000.0,
         dash.gap / 1000.0,
         dash.in_group_gap / 1000.0,
     );
     let k = dash.group.max(1);
-    let kf = f64::from(k);
-    let half = dash.half_outer || part.closed;
-    let h = if half { 2u32 } else { 0 };
-    let hf = f64::from(h);
-    let group = kf * d + (kf - 1.0) * g;
-    let period = group + b;
-    let nf = hf + (l + b - hf * d / 2.0) / period;
-    let lo = nf.floor();
-    let min_opt_dashes = 2.0 * kf - f64::from(h / 2);
-    let sw = 0.2 * period / kf;
-    let usable = d > 0.0 && b >= 0.0 && g >= 0.0 && period.is_finite() && nf.is_finite();
-    if !usable || l <= 0.0 || (lo <= 1.0 && l < 2.0 * period - min_opt_dashes * sw) {
-        return (vec![points.clone()], false);
-    }
-    let hi = nf.ceil();
-    let n = if lo < 1.0 {
-        hi
-    } else {
-        let dlo = (l + b - lo * period) / lo;
-        let dhi = (hi * period - (l + b)) / hi;
-        if dlo > dhi { hi } else { lo }
+    let q = mid.map_or(0.0, |m| m.distance / 1000.0);
+    let period = f64::from(k) * d + f64::from(k - 1) * g + b;
+    let solid = |limited, steps| DashPattern {
+        intervals: vec![(start, end)],
+        spots: Vec::new(),
+        limited,
+        steps,
     };
-    if n * kf > MAX_REPEATS as f64 {
-        return (vec![points.clone()], true);
+    let usable = d > 0.0
+        && b >= 0.0
+        && g >= 0.0
+        && q >= 0.0
+        && period.is_finite()
+        && q.is_finite()
+        && start.is_finite()
+        && end.is_finite();
+    if !usable || end <= start {
+        return solid(false, 1);
     }
-    let dash_len = ((l - (n - 1.0) * b - n * (kf - 1.0) * g) * 2.0 / (2.0 * n * kf - hf)).max(0.0);
-    let groups = n as u32;
-    let mut out = Vec::new();
-    let mut pos = 0.0;
-    for grp in 1..=groups {
-        for i in 1..=k {
-            if out.len() >= max {
-                return (out, true);
-            }
-            let first = grp == 1 && i == 1;
-            let last = grp == groups && i == k;
-            let halved = (first && half) != (last && half);
-            let len = if halved { dash_len / 2.0 } else { dash_len };
-            out.push(between(points, &cum, pos, pos + len));
-            pos += len;
-            if i < k {
-                pos += g;
-            }
+    let mut dasher = Dasher {
+        part,
+        total: *cum.last().unwrap_or(&0.0),
+        cum: &cum,
+        d,
+        b,
+        g,
+        k,
+        half_outer: dash.half_outer,
+        placement: mid.map(|m| m.placement),
+        m: mid.map_or(1, |m| m.per_spot.max(1)),
+        q,
+        at_least_one: mid.is_some_and(|m| m.at_least_one),
+        out: DashPattern::default(),
+        max,
+        steps: 0,
+    };
+    let ends = section_ends(part, &cum, start, end);
+    let mut run = || -> Result<(), Stop> {
+        let (mut line_start, mut groups_start) = (start, start);
+        for (i, &groups_end) in ends.iter().enumerate() {
+            let is_part_end = i + 1 == ends.len();
+            line_start =
+                dasher.groups(line_start, groups_start, groups_end, i == 0, is_part_end)?;
+            groups_start = groups_end;
         }
-        if grp < groups {
-            pos += b;
-        }
+        Ok(())
+    };
+    let result = run();
+    let steps = dasher.steps;
+    match result {
+        Ok(()) => DashPattern {
+            steps,
+            ..dasher.out
+        },
+        Err(Stop::Full) => DashPattern {
+            limited: true,
+            steps,
+            ..dasher.out
+        },
+        Err(Stop::Repeats) => solid(true, steps),
     }
-    if part.closed && out.len() > 1 {
-        let first = out.remove(0);
-        let last = out.last_mut().expect("more than one");
-        last.extend(first.into_iter().skip(1));
-    }
-    (out, false)
 }
 
-/// Positions and directions of a line's mid symbols (reference §2.4), at most `max`; the flag is
-/// true when that limit, or `MAX_REPEATS` (no mid symbols then), changed the result.
-pub fn mid_positions(part: &Part, mid: &Mid, max: usize) -> (Vec<(Pt, f64)>, bool) {
+/// The polylines of arc-length `intervals` of `part` and whether each is closed: the whole part
+/// is the part itself (closed if the part is); on a closed part the first piece is appended to
+/// the last when they meet at the closing point [RI `LineRenderable`, `connectPath`].
+pub fn pieces(part: &Part, intervals: &[(f64, f64)]) -> Vec<(Vec<Pt>, bool)> {
     let cum = cumulative(&part.points);
-    let l = *cum.last().unwrap_or(&0.0);
+    let total = *cum.last().unwrap_or(&0.0);
+    const EPS: f64 = 1e-9;
+    if let [(a, b)] = intervals
+        && *a <= EPS
+        && *b >= total - EPS
+    {
+        return vec![(part.points.clone(), part.closed)];
+    }
+    let mut out: Vec<(Vec<Pt>, bool)> = intervals
+        .iter()
+        .map(|&(a, b)| (between(&part.points, &cum, a, b), false))
+        .collect();
+    let meet = intervals.first().is_some_and(|f| f.0 <= EPS)
+        && intervals.last().is_some_and(|l| l.1 >= total - EPS);
+    if part.closed && out.len() > 1 && meet {
+        let (first, _) = out.remove(0);
+        let last = &mut out.last_mut().expect("more than one").0;
+        last.extend(first.into_iter().skip(1));
+    }
+    out
+}
+
+/// The parts of the arc-length intervals `a` that lie inside intervals of `b` (both ascending).
+pub fn intersect(a: &[(f64, f64)], b: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() && j < b.len() {
+        let lo = a[i].0.max(b[j].0);
+        let hi = a[i].1.min(b[j].1);
+        if lo < hi {
+            out.push((lo, hi));
+        }
+        if a[i].1 < b[j].1 {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    out
+}
+
+/// Positions and directions of a line's mid symbols over the whole part (reference §2.4), at
+/// most `max`; the flag is true when that limit, or `MAX_REPEATS` (no mid symbols then), changed
+/// the result.
+pub fn mid_positions(part: &Part, mid: &Mid, max: usize) -> (Vec<(Pt, f64)>, bool) {
+    mid_positions_in(part, 0.0, length(&part.points), mid, max)
+}
+
+/// Collects mid-symbol spots up to a limit.
+struct Spots<'a> {
+    part: &'a Part,
+    cum: &'a [f64],
+    out: Vec<(Pt, f64)>,
+    max: usize,
+    limited: bool,
+}
+
+impl Spots<'_> {
+    /// False once the limit is reached.
+    fn place(&mut self, p: f64) -> bool {
+        if self.out.len() < self.max {
+            self.out.push(at_on(self.part, self.cum, p));
+            true
+        } else {
+            self.limited = true;
+            false
+        }
+    }
+}
+
+/// [`mid_positions`] on [start, end] of the part (start and end offsets), the pattern restarting
+/// at every dash point [LS `createMidSymbolRenderables`].
+pub fn mid_positions_in(
+    part: &Part,
+    start: f64,
+    end: f64,
+    mid: &Mid,
+    max: usize,
+) -> (Vec<(Pt, f64)>, bool) {
+    let cum = cumulative(&part.points);
     let (s, e, q) = (
         mid.segment / 1000.0,
         mid.end / 1000.0,
@@ -308,76 +695,198 @@ pub fn mid_positions(part: &Part, mid: &Mid, max: usize) -> (Vec<(Pt, f64)>, boo
     );
     let m = mid.per_spot.max(1);
     let msl = f64::from(m - 1) * q;
-    let mut spots = Vec::new();
-    let mut limited = false;
-    if !(s > 0.0 && s.is_finite() && e >= 0.0 && q >= 0.0 && msl.is_finite()) || l <= 0.0 {
-        return (spots, limited);
+    let mut spots = Spots {
+        part,
+        cum: &cum,
+        out: Vec::new(),
+        max,
+        limited: false,
+    };
+    let usable = s > 0.0 && s.is_finite() && e >= 0.0 && q >= 0.0 && msl.is_finite();
+    if !usable || !start.is_finite() || !end.is_finite() || end <= start {
+        return (spots.out, spots.limited);
     }
     // Spots per section, bounded: a broken definition gets no mid symbols.
     let bound = |n: f64| (n + 1.0) * f64::from(m) <= MAX_REPEATS as f64;
-    let mut place = |p: f64| {
-        if spots.len() < max {
-            spots.push(at_on(part, &cum, p));
-        } else {
-            limited = true;
-        }
-    };
-    if e == 0.0 && !part.closed {
-        place(0.0);
+    if e == 0.0 && !part.closed && !spots.place(start) {
+        return (spots.out, spots.limited);
     }
-    let seg = (l - 2.0 * e).max(0.0) - msl;
-    let raw = (seg / (s + msl)).max(if e == 0.0 { 1.0 } else { 0.0 });
-    let (lo, hi) = (raw.floor(), raw.ceil());
-    if e > 0.0 {
-        if l <= msl {
-            if mid.at_least_one {
-                place(0.0);
-                place(l);
-            }
-        } else {
-            let dlo = (l - lo * s - (lo + 1.0) * msl - 2.0 * e).abs();
-            let dhi = (l - hi * s - (hi + 1.0) * msl - 2.0 * e).abs();
-            let (n, dev) = if dlo >= dhi { (hi, -dhi) } else { (lo, dlo) };
-            if !bound(n) {
-                return (Vec::new(), true);
-            }
-            let ideal = n * s + 2.0 * e;
-            let e2 = e + dev * e / ideal;
-            let s2 = s + dev * s / ideal;
-            if s2 >= 0.0 && (mid.at_least_one || hi > 0.0 || l > 2.0 * e - (s + msl) / 2.0) {
-                for i in 0..=n as u32 {
-                    for j in 0..m {
-                        place(e2 + f64::from(i) * (s2 + msl) + f64::from(j) * q);
+    let mut a = start;
+    for b in section_ends(part, &cum, start, end) {
+        let l = b - a;
+        let seg = (l - 2.0 * e).max(0.0) - msl;
+        let raw = (seg / (s + msl)).max(if e == 0.0 { 1.0 } else { 0.0 });
+        let (lo, hi) = (raw.floor(), raw.ceil());
+        if e > 0.0 {
+            if l <= msl {
+                if mid.at_least_one && !(spots.place(a) && spots.place(b)) {
+                    return (spots.out, spots.limited);
+                }
+            } else {
+                let dlo = (l - lo * s - (lo + 1.0) * msl - 2.0 * e).abs();
+                let dhi = (l - hi * s - (hi + 1.0) * msl - 2.0 * e).abs();
+                let (n, dev) = if dlo >= dhi { (hi, -dhi) } else { (lo, dlo) };
+                if !bound(n) {
+                    return (Vec::new(), true);
+                }
+                let ideal = n * s + 2.0 * e;
+                let e2 = e + dev * e / ideal;
+                let s2 = s + dev * s / ideal;
+                if s2 >= 0.0 && (mid.at_least_one || hi > 0.0 || l > 2.0 * e - (s + msl) / 2.0) {
+                    for i in 0..=n as u32 {
+                        for j in 0..m {
+                            if !spots.place(a + e2 + f64::from(i) * (s2 + msl) + f64::from(j) * q) {
+                                return (spots.out, spots.limited);
+                            }
+                        }
                     }
                 }
             }
-        }
-    } else {
-        if l > msl {
-            let dlo = (l - lo * s - (lo + 1.0) * msl).abs() / lo;
-            let dhi = (l - hi * s - (hi + 1.0) * msl).abs() / hi;
-            let n = if dlo > dhi { hi } else { lo };
-            if !bound(n) {
-                return (Vec::new(), true);
-            }
-            let a = (l - (n + 1.0) * msl) / n + msl;
-            if a >= msl {
-                'spots: for i in 0..=n as u32 {
-                    for j in 0..m {
-                        if i == 0 && j == 0 {
-                            continue;
+        } else {
+            if l > msl {
+                let dlo = (l - lo * s - (lo + 1.0) * msl).abs() / lo;
+                let dhi = (l - hi * s - (hi + 1.0) * msl).abs() / hi;
+                let n = if dlo > dhi { hi } else { lo };
+                if !bound(n) {
+                    return (Vec::new(), true);
+                }
+                let step = (l - (n + 1.0) * msl) / n + msl;
+                if step >= msl {
+                    'spots: for i in 0..=n as u32 {
+                        for j in 0..m {
+                            if i == 0 && j == 0 {
+                                continue;
+                            }
+                            if i == n as u32 && j == m - 1 {
+                                break 'spots;
+                            }
+                            if !spots.place(a + f64::from(i) * step + f64::from(j) * q) {
+                                return (spots.out, spots.limited);
+                            }
                         }
-                        if i == n as u32 && j == m - 1 {
-                            break 'spots;
-                        }
-                        place(f64::from(i) * a + f64::from(j) * q);
                     }
                 }
             }
+            if !spots.place(b) {
+                return (spots.out, spots.limited);
+            }
         }
-        place(l);
+        a = b;
     }
-    (spots, limited)
+    (spots.out, spots.limited)
+}
+
+/// Direction (radians, y down) and scale at point `i` of a polyline: the bisector of the
+/// incoming and outgoing direction and 1 / cos(half the turn), the single direction and 1 at an
+/// end, perpendicular and infinite at a reversal. Neighbours within 0.025 mm are skipped; closed
+/// lines wrap around [VP `calculateTangentScaling`, `calculateIncomingTangent`,
+/// `calculateOutgoingTangent`].
+pub fn tangent_scaling(points: &[Pt], closed: bool, i: usize) -> (f64, f64) {
+    let (dir, scale) = tangent_scaling_vector(points, closed, i);
+    (dir.1.atan2(dir.0), scale)
+}
+
+fn incoming(points: &[Pt], closed: bool, i: usize) -> Option<Pt> {
+    let far = |k: &usize| dist(points[i], points[*k]) > TANGENT_EPSILON;
+    let n = points.len();
+    (0..i)
+        .rev()
+        .find(far)
+        .or_else(|| {
+            (closed && n > i + 2)
+                .then(|| (i + 1..n).rev().find(far))
+                .flatten()
+        })
+        .map(|k| sub(points[i], points[k]))
+}
+
+fn outgoing(points: &[Pt], closed: bool, i: usize) -> Option<Pt> {
+    let far = |k: &usize| dist(points[i], points[*k]) > TANGENT_EPSILON;
+    (i + 1..points.len())
+        .find(far)
+        .or_else(|| closed.then(|| (0..i).find(far)).flatten())
+        .map(|k| sub(points[k], points[i]))
+}
+
+fn tangent_scaling_vector(points: &[Pt], closed: bool, i: usize) -> (Pt, f64) {
+    match (incoming(points, closed, i), outgoing(points, closed, i)) {
+        (inc, None) => (inc.map_or((0.0, 0.0), normalize), 1.0),
+        (None, Some(out)) => (normalize(out), 1.0),
+        (Some(inc), Some(out)) => {
+            let (inc, out) = (normalize(inc), normalize(out));
+            let sum = (inc.0 + out.0, inc.1 + out.1);
+            if sum.0.hypot(sum.1) < 1e-12 {
+                (perp_right(out), f64::INFINITY)
+            } else {
+                let dir = normalize(sum);
+                (dir, 1.0 / (dir.0 * inc.0 + dir.1 * inc.1))
+            }
+        }
+    }
+}
+
+/// Overlap of a pointed cap into the line (mm) [LS `createPointedLineCap`].
+const CAP_OVERLAP: f64 = 0.05;
+
+/// The filled taper of a pointed cap on [a, b] of `part` (reference §2.7)
+/// [LS `createPointedLineCap`]: the half width grows from 0 at the line's end to `half_width`
+/// at `cap_length` from it, widened by 1 / cos(half the turn) at corners (at most twice the
+/// half width); beyond 0.2 mm the cap reaches 0.05 mm into the line. The ring runs out along the
+/// right side and back along the left side.
+pub fn pointed_cap(
+    part: &Part,
+    a: f64,
+    b: f64,
+    is_end: bool,
+    half_width: f64,
+    cap_length: f64,
+) -> Vec<Pt> {
+    let cum = cumulative(&part.points);
+    let (middle, lengths) = between_lengths(&part.points, &cum, a, b);
+    let n = middle.len();
+    let mut right = Vec::with_capacity(n + 1);
+    let mut left = Vec::with_capacity(n + 1);
+    for (i, (&c, &len)) in middle.iter().zip(&lengths).enumerate() {
+        let from_tip = if is_end { b - len } else { len - a };
+        let factor = (from_tip / cap_length).clamp(0.0, 1.0);
+        let (dir, scale) = tangent_scaling_vector(&middle, false, i);
+        let side = normalize(perp_right(dir));
+        let radius = (half_width * factor * scale).clamp(0.0, 2.0 * half_width);
+        right.push((c.0 + radius * side.0, c.1 + radius * side.1));
+        left.push((c.0 - radius * side.0, c.1 - radius * side.1));
+    }
+    if b - a > 4.0 * CAP_OVERLAP {
+        // The tangent at the wide end, along the line towards its middle.
+        let wide = if is_end { 0 } else { n - 1 };
+        let tangent = if is_end {
+            outgoing(&middle, false, wide).map(|t| {
+                let t = normalize(t);
+                (-t.0 * CAP_OVERLAP, -t.1 * CAP_OVERLAP)
+            })
+        } else {
+            incoming(&middle, false, wide).map(|t| {
+                let t = normalize(t);
+                (t.0 * CAP_OVERLAP, t.1 * CAP_OVERLAP)
+            })
+        };
+        if let Some(t) = tangent {
+            let r = perp_right(if is_end { t } else { (-t.0, -t.1) });
+            let r_point = (right[wide].0 + t.0 + r.0, right[wide].1 + t.1 + r.1);
+            let l_point = (left[wide].0 + t.0 - r.0, left[wide].1 + t.1 - r.1);
+            if is_end {
+                right.insert(0, r_point);
+                left.insert(0, l_point);
+            } else {
+                right.push(r_point);
+                left.push(l_point);
+            }
+        }
+    }
+    // Right side, then the left side back (without its tip at an end cap).
+    let skip = usize::from(is_end);
+    let back = left.len() - skip;
+    right.extend(left[..back].iter().rev());
+    right
 }
 
 /// The polyline offset by `shift` mm to the right of travel (negative: left), mitred at corners
@@ -468,6 +977,7 @@ mod tests {
         Part {
             points: points.to_vec(),
             closed: false,
+            dash_points: Vec::new(),
         }
     }
 
@@ -563,6 +1073,7 @@ mod tests {
         let square = Part {
             points: vec![(0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)],
             closed: true,
+            dash_points: Vec::new(),
         };
         let dashes = dashes(&square, &dash_506(), usize::MAX).0;
         // The first and last half dashes form one dash across the closing point.
@@ -595,6 +1106,7 @@ mod tests {
             per_spot: 1,
             distance: 0.0,
             at_least_one: false,
+            placement: MidPlacement::CentreOfDash,
         }
     }
 
@@ -698,5 +1210,222 @@ mod tests {
         let left = offset(&[(0.0, 0.0), (5.0, 0.0), (5.0, 5.0)], false, -1.0);
         assert!(near(left[1].0, 6.0) && near(left[1].1, -1.0), "{left:?}");
         assert!(near(left[2].0, 6.0) && near(left[2].1, 5.0));
+    }
+
+    fn dot_mid(placement: MidPlacement) -> Mid {
+        Mid {
+            placement,
+            ..fence_mid()
+        }
+    }
+
+    /// x of every spot, rounded to 1 µm.
+    fn xs(spots: &[(Pt, f64)]) -> Vec<f64> {
+        spots
+            .iter()
+            .map(|s| (s.0.0 * 1000.0).round() / 1000.0)
+            .collect()
+    }
+
+    fn rounded(v: impl IntoIterator<Item = f64>) -> Vec<f64> {
+        v.into_iter()
+            .map(|x| (x * 1000.0).round() / 1000.0)
+            .collect()
+    }
+
+    #[test]
+    fn mid_symbols_on_dashed_line() {
+        // 10 mm of 506: six dashes of d = (10 − 5 · 0.37) / 6 (reference §2.2).
+        let part = line(&[(0.0, 0.0), (10.0, 0.0)]);
+        let d = (10.0 - 5.0 * 0.37) / 6.0;
+        let on_dash = dash_pattern(
+            &part,
+            0.0,
+            10.0,
+            &dash_506(),
+            Some(&dot_mid(MidPlacement::CentreOfDash)),
+            usize::MAX,
+        );
+        assert_eq!(on_dash.intervals.len(), 6);
+        let centres = rounded((0..6).map(|i| f64::from(i) * (d + 0.37) + d / 2.0));
+        assert_eq!(xs(&on_dash.spots), centres);
+        assert!(on_dash.spots.iter().all(|s| near(s.1, 0.0)));
+        // A group of one dash: the group centre is the dash centre.
+        let on_group = dash_pattern(
+            &part,
+            0.0,
+            10.0,
+            &dash_506(),
+            Some(&dot_mid(MidPlacement::CentreOfDashGroup)),
+            usize::MAX,
+        );
+        assert_eq!(xs(&on_group.spots), centres);
+        let on_gap = dash_pattern(
+            &part,
+            0.0,
+            10.0,
+            &dash_506(),
+            Some(&dot_mid(MidPlacement::CentreOfGap)),
+            usize::MAX,
+        );
+        let gaps = rounded((0..5).map(|i| f64::from(i) * (d + 0.37) + d + 0.185));
+        assert_eq!(xs(&on_gap.spots), gaps);
+    }
+
+    #[test]
+    fn mid_symbols_in_dash_groups_and_short_lines() {
+        // Groups of two 1 mm dashes, 0.2 mm apart, 0.5 mm between groups, on 10 mm: n = 4
+        // groups (deviation 0.1 < 0.45), dashes stretched to (10 − 3 · 0.5 − 4 · 0.2) / 8.
+        let part = line(&[(0.0, 0.0), (10.0, 0.0)]);
+        let pairs = Dash {
+            dash: 1000.0,
+            gap: 500.0,
+            group: 2,
+            in_group_gap: 200.0,
+            half_outer: false,
+        };
+        let p = dash_pattern(
+            &part,
+            0.0,
+            10.0,
+            &pairs,
+            Some(&dot_mid(MidPlacement::CentreOfDashGroup)),
+            usize::MAX,
+        );
+        assert_eq!(p.intervals.len(), 8);
+        let d = (10.0 - 3.0 * 0.5 - 4.0 * 0.2) / 8.0;
+        let group = 2.0 * d + 0.2;
+        let centres = rounded((0..4).map(|i| f64::from(i) * (group + 0.5) + group / 2.0));
+        assert_eq!(xs(&p.spots), centres);
+        // Too short for dashes: drawn solid, with one mid symbol in its middle.
+        let short = line(&[(0.0, 0.0), (2.5, 0.0)]);
+        let p = dash_pattern(
+            &short,
+            0.0,
+            2.5,
+            &dash_506(),
+            Some(&dot_mid(MidPlacement::CentreOfDash)),
+            usize::MAX,
+        );
+        assert_eq!(p.intervals, [(0.0, 2.5)]);
+        assert_eq!(xs(&p.spots), [1.25]);
+    }
+
+    #[test]
+    fn closed_dashed_line_has_its_mid_symbol_at_the_closing_point() {
+        let square = Part {
+            points: vec![(0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0), (0.0, 0.0)],
+            closed: true,
+            dash_points: Vec::new(),
+        };
+        let p = dash_pattern(
+            &square,
+            0.0,
+            20.0,
+            &dash_506(),
+            Some(&dot_mid(MidPlacement::CentreOfDash)),
+            usize::MAX,
+        );
+        // Half dashes at both ends form one dash: one spot per joined dash, the last at the
+        // closing point, none at the start.
+        assert_eq!(p.spots.len(), p.intervals.len() - 1);
+        let last = p.spots.last().unwrap().0;
+        assert!(near(last.0, 0.0) && near(last.1, 0.0), "{last:?}");
+        let pieces = pieces(&square, &p.intervals);
+        assert_eq!(pieces.len(), p.intervals.len() - 1, "halves joined");
+    }
+
+    #[test]
+    fn dashes_restart_at_dash_points() {
+        // A dash point at 4 mm splits the pattern: [0, 4] and [4, 10] are stretched on their own,
+        // and the half dashes on either side of the dash point form one dash through it.
+        let mut part = line(&[(0.0, 0.0), (4.0, 0.0), (10.0, 0.0)]);
+        part.dash_points = vec![1];
+        let p = dash_pattern(&part, 0.0, 10.0, &dash_506(), None, usize::MAX);
+        assert!(near(p.intervals[0].0, 0.0));
+        assert!(near(p.intervals.last().unwrap().1, 10.0));
+        let through = p
+            .intervals
+            .iter()
+            .filter(|(a, b)| *a < 4.0 && *b > 4.0)
+            .count();
+        assert_eq!(through, 1, "{:?}", p.intervals);
+        // First section: H = 1, n = 2 (deviation 0.065 < 0.935), so D = (4 − 0.37) · 2 / 3.
+        let d1 = (4.0 - 0.37) * 2.0 / 3.0;
+        assert!(near(p.intervals[0].1, d1), "{:?}", p.intervals);
+        // Without the dash point, the 10 mm line has six whole dashes.
+        part.dash_points.clear();
+        assert_eq!(
+            dash_pattern(&part, 0.0, 10.0, &dash_506(), None, usize::MAX)
+                .intervals
+                .len(),
+            6
+        );
+    }
+
+    #[test]
+    fn mid_symbols_restart_at_dash_points() {
+        // End length 0: a symbol at every section end; 3 mm segments in [0, 4] and [4, 10].
+        let mut mid = fence_mid();
+        mid.segment = 3000.0;
+        mid.end = 0.0;
+        let mut part = line(&[(0.0, 0.0), (4.0, 0.0), (10.0, 0.0)]);
+        part.dash_points = vec![1];
+        let spots = mid_positions(&part, &mid, usize::MAX).0;
+        assert_eq!(xs(&spots), [0.0, 4.0, 7.0, 10.0]);
+    }
+
+    #[test]
+    fn pointed_cap_polygon() {
+        // Start cap over 2 mm of a line 1 mm wide: from the tip at (0, 0) to the full half width
+        // at 2 mm, plus the 0.05 mm overlap into the line [LS `createPointedLineCap`].
+        let part = line(&[(0.0, 0.0), (10.0, 0.0)]);
+        let ring = pointed_cap(&part, 0.0, 2.0, false, 0.5, 2.0);
+        assert_eq!(ring.first(), Some(&(0.0, 0.0)));
+        assert_eq!(ring.last(), Some(&(0.0, 0.0)));
+        let has = |p: Pt| ring.iter().any(|q| near(q.0, p.0) && near(q.1, p.1));
+        assert!(has((2.0, 0.5)) && has((2.0, -0.5)), "{ring:?}");
+        assert!(has((2.05, 0.45)) && has((2.05, -0.45)), "{ring:?}");
+        // End cap: tip at (10, 0).
+        let ring = pointed_cap(&part, 8.0, 10.0, true, 0.5, 2.0);
+        assert!(ring.iter().any(|q| near(q.0, 10.0) && near(q.1, 0.0)));
+        assert!(
+            ring.iter()
+                .all(|q| q.1.abs() <= 0.5 + 1e-9 && q.0 >= 7.95 - 1e-9)
+        );
+        // At a corner inside the cap the half width grows by 1 / cos(half the angle).
+        let bent = line(&[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]);
+        let ring = pointed_cap(&bent, 0.0, 2.0, false, 0.5, 2.0);
+        let r = 0.25 * std::f64::consts::SQRT_2;
+        assert!(
+            ring.iter()
+                .any(|q| near(q.0, 1.0 - r * 0.5f64.sqrt()) && near(q.1, r * 0.5f64.sqrt())),
+            "{ring:?}"
+        );
+    }
+
+    #[test]
+    fn tangent_scaling_at_a_corner() {
+        let points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)];
+        let (angle, scale) = tangent_scaling(&points, false, 1);
+        assert!(near(angle, std::f64::consts::FRAC_PI_4));
+        assert!(near(scale, std::f64::consts::SQRT_2));
+        assert_eq!(tangent_scaling(&points, false, 0), (0.0, 1.0));
+        let (end, scale) = tangent_scaling(&points, false, 2);
+        assert!(near(end, std::f64::consts::FRAC_PI_2) && scale == 1.0);
+        // Reversal: perpendicular, unbounded scale.
+        let back = [(0.0, 0.0), (1.0, 0.0), (0.0, 0.0)];
+        assert_eq!(tangent_scaling(&back, false, 1).1, f64::INFINITY);
+    }
+
+    #[test]
+    fn parts_record_dash_points() {
+        let mut coords = vec![
+            MapCoord::new(0, 0),
+            MapCoord::new(1000, 0),
+            MapCoord::new(2000, 0),
+        ];
+        coords[1].flags = FLAG_DASH;
+        assert_eq!(parts(&coords)[0].dash_points, [1]);
     }
 }

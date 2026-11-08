@@ -46,6 +46,19 @@ pub struct Border {
     pub dash: Option<Dash>,
 }
 
+/// Where the mid symbols of a dashed line go: OOM's `mid_symbol_placement`
+/// (`LineSymbol::MidSymbolPlacement`, reference §2.5). Solid lines ignore it; 99 (`NoMidSymbols`)
+/// is read as no [`Mid`] on a dashed line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MidPlacement {
+    /// 0: centre of every full dash.
+    CentreOfDash,
+    /// 1: centre of every dash group.
+    CentreOfDashGroup,
+    /// 2: centre of every main gap (not the gaps inside a group).
+    CentreOfGap,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mid {
     pub symbol: Box<PointDef>,
@@ -54,6 +67,8 @@ pub struct Mid {
     pub per_spot: u32,
     pub distance: f64,
     pub at_least_one: bool,
+    /// Used on dashed lines only.
+    pub placement: MidPlacement,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,13 +76,33 @@ pub struct LineDef {
     /// −1: no main line.
     pub color: i32,
     pub width: f64,
+    /// Stroke cap; a pointed cap (`cap_style` 3) is stroked flat (reference §2.1).
     pub cap: Cap,
     pub join: Join,
+    /// `cap_style` 3: the stretches cut off by the start and end offsets are drawn as filled
+    /// tapers (reference §2.7).
+    pub pointed_caps: bool,
+    /// Length cut off an open line at its start and end (0.001 mm, reference §2.7).
+    pub start_offset: f64,
+    pub end_offset: f64,
     pub dash: Option<Dash>,
     pub border: Option<Border>,
     pub mid: Option<Mid>,
     pub start: Option<Box<PointDef>>,
     pub end: Option<Box<PointDef>>,
+    /// Drawn at every coordinate flagged as dash point (reference §2.7).
+    pub dash_symbol: Option<DashSymbol>,
+}
+
+/// The symbol at the dash points of a line (`<dash_symbol>`, reference §2.7).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DashSymbol {
+    pub symbol: Box<PointDef>,
+    /// `suppress_dash_symbol_at_ends`: none at the first and last coordinate.
+    pub suppress_at_ends: bool,
+    /// `scale_dash_symbol` (default true): elements scaled by 1 / cos(half the corner angle),
+    /// at most 2.
+    pub scale: bool,
 }
 
 /// One element of a point symbol: a symbol drawn on local coordinates (0.001 mm, y down).
@@ -95,6 +130,20 @@ pub struct TextDef {
     pub bold: bool,
     pub italic: bool,
     pub line_spacing: f64,
+    /// `rotatable="true"`: the object's rotation applies (reference §6; version 9 files only).
+    pub rotatable: bool,
+    pub framing: Option<Framing>,
+}
+
+/// Text framing (`<framing>` of a text symbol, OOM `TextSymbol::FramingMode`, reference §6).
+/// Mode 0 (`NoFraming`), a framing without colour and a line framing without width are read as
+/// no framing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Framing {
+    /// Mode 1: the glyph outlines stroked `2 · half_width` wide (0.001 mm).
+    Line { color: i32, half_width: f64 },
+    /// Mode 2: the text again in `color`, moved by `dx`, `dy` (0.001 mm, y down).
+    Shadow { color: i32, dx: f64, dy: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -322,26 +371,73 @@ fn line_def(node: &Node) -> LineDef {
         })
         .filter(|b| b.width > 0.0 && b.color >= 0);
     let dash = dash(node);
+    // Solid lines need a segment length [LS `createSinglePathRenderables`]; dashed lines a
+    // placement other than 99 and at least one symbol per spot [LS `createDashGroups`].
+    let per_spot = node.num("mid_symbols_per_spot");
+    let placement = match node.num("mid_symbol_placement") as i32 {
+        0 => Some(MidPlacement::CentreOfDash),
+        1 => Some(MidPlacement::CentreOfDashGroup),
+        2 => Some(MidPlacement::CentreOfGap),
+        _ => None,
+    };
     let mid = nested_point(node.child("mid_symbol"))
-        .filter(|_| node.num("segment_length") > 0.0 && dash.is_none())
-        .map(|symbol| Mid {
+        .filter(|s| !s.is_empty())
+        .and_then(|symbol| {
+            let placement = match dash {
+                None => (node.num("segment_length") > 0.0).then_some(MidPlacement::CentreOfDash),
+                Some(_) => placement.filter(|_| per_spot >= 1.0),
+            }?;
+            Some(Mid {
+                symbol,
+                segment: node.num("segment_length"),
+                end: node.num("end_length"),
+                per_spot: (per_spot as u32).max(1),
+                distance: node.num("mid_symbol_distance"),
+                at_least_one: node.flag("show_at_least_one_symbol"),
+                placement,
+            })
+        });
+    // Offsets since version 8; before, a pointed cap had one `pointed_cap_length` for both ends
+    // [LS `loadImpl`].
+    let pointed_caps = node.num("cap_style") as i32 == 3;
+    let (start_offset, end_offset) =
+        if node.attr("start_offset").is_some() || node.attr("end_offset").is_some() {
+            (node.num("start_offset"), node.num("end_offset"))
+        } else if pointed_caps {
+            let length = node.num("pointed_cap_length");
+            (length, length)
+        } else {
+            (0.0, 0.0)
+        };
+    let finite = |v: f64| if v.is_finite() { v } else { 0.0 };
+    let dash_symbol = nested_point(node.child("dash_symbol"))
+        .filter(|s| !s.is_empty())
+        .map(|symbol| DashSymbol {
             symbol,
-            segment: node.num("segment_length"),
-            end: node.num("end_length"),
-            per_spot: (node.num("mid_symbols_per_spot") as u32).max(1),
-            distance: node.num("mid_symbol_distance"),
-            at_least_one: node.flag("show_at_least_one_symbol"),
+            suppress_at_ends: node.flag("suppress_dash_symbol_at_ends"),
+            scale: node.attr("scale_dash_symbol") != Some("false"),
         });
     LineDef {
         color: node.color("color"),
         width: node.num("line_width"),
         cap,
         join,
+        pointed_caps,
+        start_offset: finite(start_offset),
+        end_offset: finite(end_offset),
         dash,
         border,
         mid,
         start: nested_point(node.child("start_symbol")),
         end: nested_point(node.child("end_symbol")),
+        dash_symbol,
+    }
+}
+
+impl PointDef {
+    /// No elements, dot or ring [PS `isEmpty`]: OOM drops such symbols from lines.
+    pub fn is_empty(&self) -> bool {
+        self.elements.is_empty() && self.dot.is_none() && self.ring.is_none()
     }
 }
 
@@ -418,6 +514,26 @@ fn pattern(node: &Node) -> Option<Pattern> {
     }
 }
 
+/// A `<framing>` element [TS `loadImpl`, `createRenderables`].
+fn framing(node: &Node) -> Option<Framing> {
+    let color = node.color("color");
+    if color < 0 {
+        return None;
+    }
+    let finite = |v: f64| v.is_finite().then_some(v);
+    match node.num("mode") as i32 {
+        1 => finite(node.num("line_half_width"))
+            .filter(|&w| w > 0.0)
+            .map(|half_width| Framing::Line { color, half_width }),
+        2 => Some(Framing::Shadow {
+            color,
+            dx: finite(node.num("shadow_x_offset"))?,
+            dy: finite(node.num("shadow_y_offset"))?,
+        }),
+        _ => None,
+    }
+}
+
 fn symbol(node: &Node) -> Option<Symbol> {
     match node.num("type") as u32 {
         1 => node
@@ -446,6 +562,8 @@ fn symbol(node: &Node) -> Option<Symbol> {
                     .and_then(|t| t.attr("line_spacing"))
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(1.0),
+                rotatable: t.flag("rotatable"),
+                framing: t.child("framing").and_then(framing),
             }))
         }
         16 => {
@@ -750,6 +868,139 @@ mod tests {
             .filter(|p| matches!(p, Pattern::Points { .. }))
             .count();
         assert_eq!((all.len(), points), (23, 9));
+    }
+
+    fn line_of(attrs: &str, children: &str) -> LineDef {
+        let xml = format!(
+            r#"<symbol type="2" id="1"><line_symbol color="2" line_width="300" {attrs}>{children}</line_symbol></symbol>"#
+        );
+        match symbol(&parse(&xml).children[0]) {
+            Some(Symbol::Line(l)) => l,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn pointed_caps_and_offsets() {
+        let l = line_of(r#"cap_style="3" start_offset="1121" end_offset="900""#, "");
+        assert!(l.pointed_caps);
+        assert_eq!(l.cap, Cap::Flat, "stroked flat");
+        assert_eq!((l.start_offset, l.end_offset), (1121.0, 900.0));
+        // Before version 8: one length for both ends of a pointed line [LS `loadImpl`].
+        let l = line_of(r#"cap_style="3" pointed_cap_length="500""#, "");
+        assert_eq!((l.start_offset, l.end_offset), (500.0, 500.0));
+        let l = line_of(r#"cap_style="1" pointed_cap_length="500""#, "");
+        assert!(!l.pointed_caps);
+        assert_eq!((l.start_offset, l.end_offset), (0.0, 0.0));
+    }
+
+    #[test]
+    fn dash_symbol_and_mid_placement() {
+        let l = line_of(
+            r#"suppress_dash_symbol_at_ends="true""#,
+            &format!("<dash_symbol>{DOT}</dash_symbol>"),
+        );
+        let d = l.dash_symbol.unwrap();
+        assert!(d.suppress_at_ends && d.scale);
+        assert_eq!(d.symbol.dot, Some((5, 100.0)));
+        let l = line_of(
+            r#"scale_dash_symbol="false""#,
+            &format!("<dash_symbol>{DOT}</dash_symbol>"),
+        );
+        assert!(!l.dash_symbol.unwrap().scale);
+        // An empty dash symbol is dropped.
+        let empty = r#"<symbol type="1" code=""><point_symbol inner_radius="0" inner_color="-1" outer_width="0" outer_color="-1"/></symbol>"#;
+        assert!(
+            line_of("", &format!("<dash_symbol>{empty}</dash_symbol>"))
+                .dash_symbol
+                .is_none()
+        );
+        // Mid symbols on a dashed line: placement 0..2; 99 and zero per spot mean none.
+        let dashed = |placement: &str, per_spot: &str| {
+            line_of(
+                &format!(r#"dashed="true" dash_length="2000" break_length="500" segment_length="0" mid_symbol_placement="{placement}" mid_symbols_per_spot="{per_spot}""#),
+                &format!("<mid_symbol>{DOT}</mid_symbol>"),
+            )
+            .mid
+            .map(|m| m.placement)
+        };
+        assert_eq!(dashed("0", "1"), Some(MidPlacement::CentreOfDash));
+        assert_eq!(dashed("1", "1"), Some(MidPlacement::CentreOfDashGroup));
+        assert_eq!(dashed("2", "2"), Some(MidPlacement::CentreOfGap));
+        assert_eq!(dashed("99", "1"), None);
+        assert_eq!(dashed("0", "0"), None);
+    }
+
+    fn text_of(children: &str, rotatable: &str) -> TextDef {
+        let xml = format!(
+            r#"<symbol type="8" id="1"><text_symbol {rotatable}><font family="Arial" size="3000"/><text color="2" line_spacing="1"/>{children}</text_symbol></symbol>"#
+        );
+        match symbol(&parse(&xml).children[0]) {
+            Some(Symbol::Text(t)) => t,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn text_framing_and_rotation() {
+        let framed = |mode: &str, color: &str| {
+            text_of(
+                &format!(r#"<framing color="{color}" mode="{mode}" line_half_width="150" shadow_x_offset="200" shadow_y_offset="-100"/>"#),
+                "",
+            )
+            .framing
+        };
+        assert_eq!(
+            framed("1", "5"),
+            Some(Framing::Line {
+                color: 5,
+                half_width: 150.0
+            })
+        );
+        assert_eq!(
+            framed("2", "5"),
+            Some(Framing::Shadow {
+                color: 5,
+                dx: 200.0,
+                dy: -100.0
+            })
+        );
+        assert_eq!(framed("0", "5"), None);
+        assert_eq!(framed("1", "-1"), None);
+        assert!(text_of("", r#"rotatable="true""#).rotatable);
+        assert!(!text_of("", "").rotatable, "version 9: not rotatable");
+    }
+
+    #[test]
+    fn forest_sample_line_features_parse() {
+        let doc = crate::omap::read::read_map_file(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/maps/forest-sample.omap"
+        )))
+        .unwrap();
+        let r = RenderSymbols::from_set(&doc.symbol_set);
+        let lines: Vec<&LineDef> = r
+            .symbols
+            .values()
+            .filter_map(|s| match s {
+                Symbol::Line(l) => Some(l),
+                _ => None,
+            })
+            .collect();
+        let pointed = lines.iter().filter(|l| l.pointed_caps).count();
+        let offset = lines.iter().filter(|l| l.start_offset > 0.0).count();
+        let dash_symbols = lines.iter().filter(|l| l.dash_symbol.is_some()).count();
+        let mid_on_dashes = lines
+            .iter()
+            .filter(|l| l.dash.is_some() && l.mid.is_some())
+            .count();
+        assert_eq!((pointed, offset, dash_symbols, mid_on_dashes), (1, 1, 3, 3));
+        let rotatable = r
+            .symbols
+            .values()
+            .filter(|s| matches!(s, Symbol::Text(t) if t.rotatable))
+            .count();
+        assert_eq!(rotatable, 2);
     }
 
     #[test]

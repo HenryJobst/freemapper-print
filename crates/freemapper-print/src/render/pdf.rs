@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use pdf_writer::types::{LineCapStyle, LineJoinStyle};
+use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
 use super::draw::{Primitive, Shape};
@@ -20,6 +20,8 @@ const MARGIN_MM: f64 = 5.0;
 const PAGES: [(f64, f64); 2] = [(210.0, 297.0), (297.0, 420.0)];
 /// OOM's miter limit for PDF (reference §2.1).
 const MITER_LIMIT: f32 = 2.236_068;
+/// OOM's miter limit for text framing in PDF: Qt 0.5 → √(1 + 4 · 0.5²) = √2 (reference §2.1).
+const TEXT_FRAMING_MITER_LIMIT: f32 = std::f32::consts::SQRT_2;
 
 /// An axis-parallel rectangle on paper (mm, y down).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,14 +55,19 @@ fn shape_bounds(shape: &Shape) -> Option<PaperBox> {
             size,
             bold,
             text,
+            rotation,
+            stroke,
         } => {
             let w = super::metrics::text_width(text, *bold) * size;
+            // The box in text coordinates, turned about the origin as the text is.
+            let (sin, cos) = rotation.sin_cos();
+            let corners = [(0.0, -size), (w, -size), (w, size / 3.0), (0.0, size / 3.0)];
             (
-                vec![
-                    (origin.0, origin.1 - size),
-                    (origin.0 + w, origin.1 + size / 3.0),
-                ],
-                0.0,
+                corners
+                    .iter()
+                    .map(|&(x, y)| (origin.0 + x * cos + y * sin, origin.1 - x * sin + y * cos))
+                    .collect(),
+                stroke.unwrap_or(0.0) / 2.0,
             )
         }
         // What is painted lies inside both the clip and the inner shape.
@@ -192,18 +199,41 @@ fn paint(
             size,
             bold,
             text,
+            rotation,
+            stroke,
         } => {
             let (x, y0) = t.pt(*origin);
             let bytes: Vec<u8> = text.chars().map(win_ansi).collect();
-            content.set_fill_cmyk(c, m, y, k);
+            match stroke {
+                // Text line framing: the glyph outlines stroked, miter-joined with OOM's limit
+                // for framing; in its own graphics state, which holds the render mode.
+                Some(width) => {
+                    content.save_state();
+                    content.set_stroke_cmyk(c, m, y, k);
+                    content.set_line_width((width * PT_PER_MM) as f32);
+                    content.set_line_join(LineJoinStyle::MiterJoin);
+                    content.set_miter_limit(TEXT_FRAMING_MITER_LIMIT);
+                }
+                None => {
+                    content.set_fill_cmyk(c, m, y, k);
+                }
+            }
             content.begin_text();
             content.set_font(
                 Name(if *bold { b"F2" } else { b"F1" }),
                 (size * PT_PER_MM) as f32,
             );
-            content.set_text_matrix([1.0, 0.0, 0.0, 1.0, x, y0]);
+            if stroke.is_some() {
+                content.set_text_rendering_mode(TextRenderingMode::Stroke);
+            }
+            // Counter-clockwise on paper is counter-clockwise in PDF too.
+            let (sin, cos) = rotation.sin_cos();
+            content.set_text_matrix([cos as f32, sin as f32, -sin as f32, cos as f32, x, y0]);
             content.show(Str(&bytes));
             content.end_text();
+            if stroke.is_some() {
+                content.restore_state();
+            }
         }
         Shape::Clipped { rings, inner } => {
             begin_clip(content, t, rings);
@@ -482,6 +512,8 @@ mod tests {
                 size: 2.5,
                 bold: true,
                 text: "Maßstab ©".into(),
+                rotation: 0.0,
+                stroke: None,
             },
         };
         let pdf = write_pdf(&[], &[text], clip(), &colours(), "Test");
@@ -490,6 +522,70 @@ mod tests {
         let pdf = content_of(&pdf);
         // ß = 0xDF, © = 0xA9 in WinAnsi.
         assert!(find(&pdf, b"<4D61DF7374616220A9> Tj").is_some());
+    }
+
+    fn text(rotation: f64, stroke: Option<f64>) -> Primitive {
+        Primitive {
+            priority: 2,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: 2.5,
+                bold: false,
+                text: "Wald".into(),
+                rotation,
+                stroke,
+            },
+        }
+    }
+
+    #[test]
+    fn line_framing_strokes_the_glyphs() {
+        let pdf = content_of(&write_pdf(
+            &[],
+            &[text(0.0, Some(0.3)), text(0.0, None)],
+            clip(),
+            &colours(),
+            "Test",
+        ));
+        let at = |needle: &[u8]| {
+            find(&pdf, needle).unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(needle)))
+        };
+        // Stroke only (render mode 1), framing colour, 2 × half width, miter join with OOM's
+        // text framing limit √2 [RI `TextFramingRenderable`], inside q … Q so that the fill text
+        // after it is not stroked.
+        let (save, mode, restore) = (at(b"q\n"), at(b"1 Tr"), at(b"Q\n"));
+        assert!(save < mode && mode < restore);
+        assert!(find(&pdf, b"0 0 0 1 K").is_some());
+        assert!(find(&pdf, b"0.8503937 w").is_some(), "0.3 mm");
+        assert!(find(&pdf, b"1.4142135 M").is_some());
+        assert_eq!(pdf.windows(2).filter(|w| w == b"Tj").count(), 2);
+        assert!(
+            find(&pdf[restore..], b"Tr").is_none(),
+            "fill text in the default mode"
+        );
+    }
+
+    #[test]
+    fn rotated_text_turns_its_text_matrix() {
+        let pdf = content_of(&write_pdf(
+            &[],
+            &[text(std::f64::consts::FRAC_PI_6, None)],
+            clip(),
+            &colours(),
+            "Test",
+        ));
+        // Counter-clockwise on paper is counter-clockwise in PDF (y up).
+        let tm = String::from_utf8_lossy(&pdf);
+        let line = tm.lines().find(|l| l.ends_with("Tm")).unwrap();
+        let v: Vec<f64> = line
+            .split_whitespace()
+            .take(4)
+            .map(|x| x.parse().unwrap())
+            .collect();
+        let (s, c) = std::f64::consts::FRAC_PI_6.sin_cos();
+        for (a, b) in v.iter().zip([c, s, -s, c]) {
+            assert!((a - b).abs() < 1e-6, "{line}");
+        }
     }
 
     #[test]

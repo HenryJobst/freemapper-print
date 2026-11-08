@@ -5,11 +5,12 @@
 
 use std::sync::Arc;
 
-use super::geometry::{self, Part, Pt};
+use super::geometry::{self, Pt};
+use super::line::line;
 use super::metrics::{ASCENT, LINE_SPACING, text_width};
 use super::pattern::area_pattern;
 use super::symbols::{
-    Cap, Element, Join, LineDef, Part as SymbolPart, PointDef, RenderSymbols, Symbol, TextDef,
+    Cap, Element, Framing, Join, Part as SymbolPart, PointDef, RenderSymbols, Symbol, TextDef,
 };
 use crate::omap::{MapCoord, MapObject, MapObjectKind, PatternOrigin};
 
@@ -24,12 +25,16 @@ pub enum Shape {
         cap: Cap,
         join: Join,
     },
-    /// One line of text; `origin` is the start of the baseline.
+    /// One line of text; `origin` is the start of the baseline. The baseline runs at `rotation`
+    /// (radians, counter-clockwise on paper, as OOM's object rotation) about `origin`. `stroke`:
+    /// the glyph outlines are stroked this wide (mm, text line framing) instead of filled.
     Text {
         origin: Pt,
         size: f64,
         bold: bool,
         text: String,
+        rotation: f64,
+        stroke: Option<f64>,
     },
     /// `inner` painted inside the even-odd clip of the closed `rings` (area patterns). All
     /// pattern shapes of one area share the same `rings`.
@@ -230,15 +235,15 @@ pub(super) fn draw_object(object: &MapObject, symbols: &RenderSymbols, sink: &mu
             text,
             h_align,
             v_align,
-            ..
+            rotation_rad,
         } => {
             if let (Symbol::Text(def), Some(c)) = (symbol, object.coords.first()) {
                 text_primitives(
                     def,
                     text,
-                    *h_align,
-                    *v_align,
+                    (*h_align, *v_align),
                     (mm(f64::from(c.x)), mm(f64::from(c.y))),
+                    *rotation_rad,
                     sink,
                 );
             }
@@ -337,131 +342,6 @@ pub(super) fn stroke(
     })
 }
 
-fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut Sink, depth: u32) {
-    let parts: Vec<Part> = geometry::parts(coords)
-        .into_iter()
-        .filter(|p| p.points.len() >= 2 && geometry::length(&p.points) > 0.0)
-        .collect();
-    let width = mm(def.width);
-    for part in &parts {
-        if sink.stop() {
-            return;
-        }
-        // Main line, whole or dashed; a line without colour or width draws nothing.
-        match &def.dash {
-            _ if def.color < 0 || width <= 0.0 => {}
-            Some(dash) => {
-                let (dashes, limited) = geometry::dashes(part, dash, sink.left());
-                if limited {
-                    sink.mark_cut();
-                }
-                let solid = dashes.len() == 1 && dashes[0] == part.points;
-                for d in dashes {
-                    if sink.stop() {
-                        return;
-                    }
-                    sink.extend(stroke(
-                        def.color,
-                        d,
-                        solid && part.closed,
-                        width,
-                        def.cap,
-                        def.join,
-                    ));
-                }
-            }
-            None => sink.extend(stroke(
-                def.color,
-                part.points.clone(),
-                part.closed,
-                width,
-                def.cap,
-                def.join,
-            )),
-        }
-        // Borders on both sides, flat caps, miter (round if the line is round); a border
-        // without colour or width draws nothing.
-        if let Some(border) = def
-            .border
-            .as_ref()
-            .filter(|b| b.color >= 0 && b.width > 0.0)
-        {
-            let shift = width / 2.0 + mm(border.shift);
-            let join = if def.join == Join::Round {
-                Join::Round
-            } else {
-                Join::Miter
-            };
-            let pieces: Vec<(Vec<Pt>, bool)> = match &border.dash {
-                Some(dash) => {
-                    let (dashes, limited) = geometry::dashes(part, dash, sink.left());
-                    if limited {
-                        sink.mark_cut();
-                    }
-                    let solid = dashes.len() == 1 && dashes[0] == part.points;
-                    dashes
-                        .into_iter()
-                        .map(|d| (d, solid && part.closed))
-                        .collect()
-                }
-                None => vec![(part.points.clone(), part.closed)],
-            };
-            for (piece, closed) in pieces {
-                if sink.stop() {
-                    return;
-                }
-                // A piece without output (a degenerate offset) still costs one unit.
-                let len = sink.out.len();
-                for side in [-1.0, 1.0] {
-                    let path = geometry::offset(&piece, closed, side * shift);
-                    sink.extend(stroke(
-                        border.color,
-                        path,
-                        closed,
-                        mm(border.width),
-                        Cap::Flat,
-                        join,
-                    ));
-                }
-                sink.settle(len);
-            }
-        }
-        // Mid symbols, local +y to the right of travel.
-        if let Some(mid) = &def.mid {
-            let (spots, limited) = geometry::mid_positions(part, mid, sink.left());
-            if limited {
-                sink.mark_cut();
-            }
-            for (at, angle) in spots {
-                if sink.stop() {
-                    return;
-                }
-                let r = if mid.symbol.rotatable { angle } else { 0.0 };
-                point_symbol(&mid.symbol, at, r, symbols, sink, depth + 1);
-            }
-        }
-    }
-    // Start symbol on the first part (outgoing direction), end symbol on the last (incoming
-    // direction), also on closed lines (reference §2.6).
-    if let (Some(start), Some(first)) = (&def.start, parts.first()) {
-        let angle = if start.rotatable {
-            geometry::start_angle(first)
-        } else {
-            0.0
-        };
-        point_symbol(start, first.points[0], angle, symbols, sink, depth + 1);
-    }
-    if let (Some(end), Some(last)) = (&def.end, parts.last()) {
-        let angle = if end.rotatable {
-            geometry::end_angle(last)
-        } else {
-            0.0
-        };
-        let at = *last.points.last().expect("parts have two points");
-        point_symbol(end, at, angle, symbols, sink, depth + 1);
-    }
-}
-
 /// The primitives of a point symbol at `at` (mm), rotated by `rotation` (radians, y down).
 pub fn point_primitives(
     def: &PointDef,
@@ -505,13 +385,25 @@ pub(super) fn element_coords(
     rotation: f64,
     sink: &mut Sink,
 ) -> Vec<MapCoord> {
+    element_coords_scaled(element, at, rotation, 1.0, sink)
+}
+
+/// [`element_coords`] with the element coordinates scaled by `scale` first
+/// [PS `createRenderablesScaled`].
+fn element_coords_scaled(
+    element: &Element,
+    at: Pt,
+    rotation: f64,
+    scale: f64,
+    sink: &mut Sink,
+) -> Vec<MapCoord> {
     sink.charge_points(element.coords.len());
     let (sin, cos) = rotation.sin_cos();
     element
         .coords
         .iter()
         .map(|c| {
-            let (ox, oy) = (f64::from(c.x), f64::from(c.y));
+            let (ox, oy) = (scale * f64::from(c.x), scale * f64::from(c.y));
             MapCoord {
                 x: (ox * cos - oy * sin + at.0 * 1000.0).round() as i32,
                 y: (oy * cos + ox * sin + at.1 * 1000.0).round() as i32,
@@ -529,6 +421,20 @@ pub(super) fn point_symbol(
     sink: &mut Sink,
     depth: u32,
 ) {
+    point_symbol_scaled(def, at, rotation, 1.0, symbols, sink, depth);
+}
+
+/// [`point_symbol`] with the element coordinates scaled by `scale` (dash symbols); dot and ring
+/// keep their size [PS `createRenderablesScaled`].
+pub(super) fn point_symbol_scaled(
+    def: &PointDef,
+    at: Pt,
+    rotation: f64,
+    scale: f64,
+    symbols: &RenderSymbols,
+    sink: &mut Sink,
+    depth: u32,
+) {
     if depth > MAX_DEPTH || sink.stop() {
         return;
     }
@@ -539,23 +445,74 @@ pub(super) fn point_symbol(
         if sink.stop() {
             break;
         }
-        let coords = element_coords(element, at, rotation, sink);
+        let coords = element_coords_scaled(element, at, rotation, scale, sink);
         path_symbol(&element.symbol, &coords, None, symbols, sink, depth + 1);
     }
     sink.settle(len);
 }
 
-/// One text primitive per line, laid out per reference §6 (no rotation: the sheet texts are not
-/// rotatable).
+/// The text primitives of a text object, laid out per reference §6: the framing first (a stroke
+/// of the glyph outlines or the shadow copy, in the framing colour), then the text, one primitive
+/// per line [TS `createRenderables`]. A rotatable text symbol turns the lines about the anchor by
+/// the object's rotation, counter-clockwise on paper [RI `TextRenderable`].
 fn text_primitives(
     def: &TextDef,
     text: &str,
-    h_align: u8,
-    v_align: u8,
+    align: (u8, u8),
     anchor: Pt,
+    rotation: f64,
     sink: &mut Sink,
 ) {
-    if def.color < 0 {
+    let rotation = if def.rotatable { rotation } else { 0.0 };
+    match def.framing {
+        Some(Framing::Line { color, half_width }) => {
+            let layer = Layer {
+                color,
+                anchor,
+                stroke: Some(2.0 * mm(half_width)),
+            };
+            text_lines(def, text, align, layer, rotation, sink);
+        }
+        // The shadow offset is not turned with the text [TS `createRenderables`].
+        Some(Framing::Shadow { color, dx, dy }) => {
+            let layer = Layer {
+                color,
+                anchor: (anchor.0 + mm(dx), anchor.1 + mm(dy)),
+                stroke: None,
+            };
+            text_lines(def, text, align, layer, rotation, sink);
+        }
+        None => {}
+    }
+    let layer = Layer {
+        color: def.color,
+        anchor,
+        stroke: None,
+    };
+    text_lines(def, text, align, layer, rotation, sink);
+}
+
+/// One painting of a text: its colour, anchor and stroke width (line framing, mm).
+struct Layer {
+    color: i32,
+    anchor: Pt,
+    stroke: Option<f64>,
+}
+
+/// One text primitive per line of `layer` [TO `prepareLineInfos`].
+fn text_lines(
+    def: &TextDef,
+    text: &str,
+    (h_align, v_align): (u8, u8),
+    Layer {
+        color,
+        anchor,
+        stroke,
+    }: Layer,
+    rotation: f64,
+    sink: &mut Sink,
+) {
+    if color < 0 {
         return;
     }
     let em = mm(def.size);
@@ -567,6 +524,8 @@ fn text_primitives(
         let height = ascent + (lines.len().saturating_sub(1)) as f64 * line_step;
         y -= if v_align == 2 { height / 2.0 } else { height };
     }
+    // Text coordinates (x, y) → paper: turned by −rotation (y down) about the anchor.
+    let (sin, cos) = rotation.sin_cos();
     for line in lines {
         let width = text_width(line, def.bold) * em;
         let x = match h_align {
@@ -576,12 +535,14 @@ fn text_primitives(
         };
         if !line.is_empty() {
             sink.push(Primitive {
-                priority: def.color,
+                priority: color,
                 shape: Shape::Text {
-                    origin: (anchor.0 + x, anchor.1 + y),
+                    origin: (anchor.0 + x * cos + y * sin, anchor.1 - x * sin + y * cos),
                     size: em,
                     bold: def.bold,
                     text: line.to_string(),
+                    rotation,
+                    stroke,
                 },
             });
         }
@@ -591,7 +552,7 @@ fn text_primitives(
 
 #[cfg(test)]
 mod tests {
-    use super::super::symbols::{Clipping, Dash, Pattern};
+    use super::super::symbols::{Clipping, Dash, LineDef, Pattern};
     use super::*;
     use crate::omap::coord::{FLAG_CLOSE, FLAG_HOLE};
     use crate::omap::{PatternOrigin, SymbolSet, closed_ring};
@@ -759,6 +720,135 @@ mod tests {
         }
     }
 
+    const TEXT: u32 = 9_997;
+
+    /// The primitives of `text` in a text symbol `def` at (50, 20) mm.
+    fn text_with(def: TextDef, text: &str, h_align: u8, rotation_rad: f64) -> Vec<Primitive> {
+        let (mut r, _) = set();
+        r.symbols.insert(TEXT, Symbol::Text(def));
+        let object = MapObject {
+            symbol_id: TEXT,
+            kind: MapObjectKind::Text {
+                text: text.into(),
+                h_align,
+                v_align: 0,
+                rotation_rad,
+            },
+            coords: vec![MapCoord::new(50_000, 20_000)],
+            tags: Vec::new(),
+            pattern: None,
+        };
+        primitives(&object, &r)
+    }
+
+    fn text_def(framing: Option<super::super::symbols::Framing>) -> TextDef {
+        TextDef {
+            color: 2,
+            size: 4_000.0,
+            bold: false,
+            italic: false,
+            line_spacing: 1.0,
+            rotatable: true,
+            framing,
+        }
+    }
+
+    #[test]
+    fn text_line_framing() {
+        use super::super::symbols::Framing;
+        let p = text_with(
+            text_def(Some(Framing::Line {
+                color: 10,
+                half_width: 150.0,
+            })),
+            "Wald",
+            0,
+            0.0,
+        );
+        assert_eq!(p.len(), 2);
+        // The framing first, so that it lies below the glyphs where the colours are equal; its
+        // own colour decides the order otherwise [TS `createRenderables`].
+        let (
+            Shape::Text {
+                stroke,
+                origin,
+                text,
+                size,
+                ..
+            },
+            Shape::Text {
+                stroke: fill,
+                origin: o2,
+                text: t2,
+                ..
+            },
+        ) = (&p[0].shape, &p[1].shape)
+        else {
+            panic!("{p:?}")
+        };
+        assert_eq!((p[0].priority, p[1].priority), (10, 2));
+        assert_eq!(*stroke, Some(0.3), "2 × half width");
+        assert_eq!(*fill, None);
+        assert_eq!((origin, text), (o2, t2));
+        assert_eq!((*origin, *size), ((50.0, 20.0), 4.0));
+    }
+
+    #[test]
+    fn text_shadow_framing() {
+        use super::super::symbols::Framing;
+        let p = text_with(
+            text_def(Some(Framing::Shadow {
+                color: 10,
+                dx: 200.0,
+                dy: -100.0,
+            })),
+            "Wald",
+            0,
+            0.0,
+        );
+        assert_eq!(p.len(), 2);
+        let Shape::Text { origin, stroke, .. } = &p[0].shape else {
+            panic!()
+        };
+        assert_eq!(p[0].priority, 10);
+        assert_eq!(*stroke, None);
+        assert!((origin.0 - 50.2).abs() < 1e-9 && (origin.1 - 19.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rotatable_text_turns_about_its_anchor() {
+        // Right-aligned, turned a quarter counter-clockwise: the line runs north and ends at the
+        // anchor [RI `TextRenderable`].
+        let quarter = std::f64::consts::FRAC_PI_2;
+        let width = text_width("Wald", false) * 4.0;
+        let p = text_with(text_def(None), "Wald", 2, quarter);
+        let Shape::Text {
+            origin, rotation, ..
+        } = &p[0].shape
+        else {
+            panic!()
+        };
+        assert_eq!(*rotation, quarter);
+        assert!(
+            (origin.0 - 50.0).abs() < 1e-9 && (origin.1 - (20.0 + width)).abs() < 1e-9,
+            "{origin:?}"
+        );
+        // Not rotatable: the object's rotation is ignored.
+        let fixed = TextDef {
+            rotatable: false,
+            ..text_def(None)
+        };
+        let p = text_with(fixed, "Wald", 2, quarter);
+        let Shape::Text {
+            origin, rotation, ..
+        } = &p[0].shape
+        else {
+            panic!()
+        };
+        assert_eq!(*rotation, 0.0);
+        assert!((origin.0 - (50.0 - width)).abs() < 1e-9 && origin.1 == 20.0);
+    }
+
     fn closed_square(side: i32) -> Vec<MapCoord> {
         closed_ring(&[(0, 0), (side, 0), (side, side), (0, side)])
     }
@@ -891,6 +981,10 @@ mod tests {
                 mid: None,
                 start: None,
                 end: None,
+                pointed_caps: false,
+                start_offset: 0.0,
+                end_offset: 0.0,
+                dash_symbol: None,
             })
         };
         let line_object = |coords| MapObject {
@@ -978,6 +1072,10 @@ mod tests {
                 mid: None,
                 start: None,
                 end: None,
+                pointed_caps: false,
+                start_offset: 0.0,
+                end_offset: 0.0,
+                dash_symbol: None,
             };
             let object = ten_long_parts(&mut r, def);
             let before = work_units();
@@ -1172,6 +1270,10 @@ mod tests {
                     mid: None,
                     start: None,
                     end: None,
+                    pointed_caps: false,
+                    start_offset: 0.0,
+                    end_offset: 0.0,
+                    dash_symbol: None,
                 }),
                 coords: vec![MapCoord::new(0, 0), MapCoord::new(1_000, 0)],
             }],
