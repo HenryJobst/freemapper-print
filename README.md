@@ -27,6 +27,19 @@ Geplant ist:
 Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows. Meldungen und Hilfe gibt es ab M2 auf
 Deutsch und Englisch.
 
+## Beispiele
+
+Fertige Beispiele liegen in [`examples/`](examples/README.md). Ein Klick auf das Bild öffnet das Beispiel mit
+den PDFs.
+
+<a href="examples/luebeck-scales/README.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
+alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
+
+**Lübeck in zwei Maßstäben** ([`luebeck-scales`](examples/luebeck-scales/README.md)): dieselbe Sprintkarte in
+1:4000 auf A4 und in 1:3000 auf A3. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf 133 %. Weitere Beispiele
+kommen mit jedem Meilenstein dazu: ein Wettkampf mit zwei Layouts und Logos (M2), Bahnen aus Purple Pen (M3),
+Fenster- und Korridor-OL (M4).
+
 ## Status
 
 Aktuelle Version ist [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) vom

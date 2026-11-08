@@ -27,6 +27,19 @@ Planned:
 The program needs no OCAD and runs on macOS, Linux and Windows. Messages and help come in German and English
 from M2.
 
+## Examples
+
+Finished examples are in [`examples/`](examples/README.en.md). Click the picture to open the example with its
+PDFs.
+
+<a href="examples/luebeck-scales/README.en.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
+alt="The same sprint map of Lübeck old town at 1:4000 and 1:3000"></a>
+
+**Lübeck at two scales** ([`luebeck-scales`](examples/luebeck-scales/README.en.md)): the same sprint map at 1:4000
+on A4 and at 1:3000 on A3. At 1:3000 every symbol grows to 133 % as ISSprOM requires. Each milestone adds
+examples: a competition with two layouts and logos (M2), courses from Purple Pen (M3), window and corridor
+orienteering (M4).
+
 ## Status
 
 The current version is [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) of
