@@ -1,7 +1,7 @@
 # 0012. Symbols keep the printed size the standard sets
 
 Date: 2026-11-08
-Status: Accepted
+Status: Superseded by 0018
 
 ## Context
 
