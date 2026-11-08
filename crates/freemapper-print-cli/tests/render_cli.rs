@@ -245,14 +245,25 @@ fn kind_makes_an_uninferable_map_printable() {
 }
 
 #[test]
-fn show_sheet_objects_is_accepted() {
+fn show_sheet_objects_adds_content() {
     let dir = tempfile::tempdir().unwrap();
     let plain = dir.path().join("a.pdf");
     let sheet = dir.path().join("b.pdf");
     assert!(render(LUEBECK, &plain, &[]).status.success());
     let o = render(LUEBECK, &sheet, &["--show-sheet-objects"]);
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(sheet.exists());
+    // The sheet objects add painting operations, so the PDF changes and grows.
+    let (plain, sheet) = (
+        std::fs::read(&plain).unwrap(),
+        std::fs::read(&sheet).unwrap(),
+    );
+    assert_ne!(plain, sheet);
+    assert!(
+        sheet.len() > plain.len(),
+        "{} vs {}",
+        sheet.len(),
+        plain.len()
+    );
 }
 
 #[test]

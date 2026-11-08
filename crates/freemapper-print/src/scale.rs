@@ -27,7 +27,8 @@ impl MapKind {
         }
     }
 
-    fn allowed_scales(self) -> &'static [u32] {
+    /// The scales (denominators) a map of this kind may be printed at and drawn at.
+    pub fn allowed_scales(self) -> &'static [u32] {
         match self {
             MapKind::Sprint => &[3000, 4000, 5000],
             MapKind::Schoolyard => &[1000],

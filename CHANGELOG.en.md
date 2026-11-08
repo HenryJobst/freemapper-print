@@ -16,4 +16,4 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   draws the north lines and the information block. The program says how many millimetres of the map do not
   fit on the page. It also reports objects it did not draw, simplified or cut short, substituted fonts and
   missing glyphs, and it reminds you to print at actual size. Text from the map reaches the terminal with
-  control characters escaped.
+  control and format characters escaped, and so do error messages.

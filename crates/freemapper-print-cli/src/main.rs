@@ -145,7 +145,13 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
     let (pdf, report) = print_map(&map, &options, &title)?;
     std::fs::write(&args.out, pdf)
         .with_context(|| format!("could not write {}", args.out.display()))?;
-    for line in report_lines(&report, args.paper, map.georef.scale_denominator, &args.out) {
+    for line in report_lines(
+        &report,
+        args.paper,
+        kind,
+        map.georef.scale_denominator,
+        &args.out,
+    ) {
         eprintln!("{line}");
     }
     Ok(())
@@ -169,13 +175,22 @@ fn same_file(map: &Path, out: &Path) -> bool {
     }
 }
 
-/// Map text for the terminal: control characters (such as ESC) become visible escapes, so a map
+/// Unicode format characters (category Cf): bidi controls, zero-width characters, joiners, tags.
+fn is_format(c: char) -> bool {
+    matches!(c as u32,
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
+        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
+        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
+        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
+}
+
+/// Map text for the terminal: control and format characters (such as ESC or a bidi override) become visible escapes, so a map
 /// cannot drive the terminal.
 fn printable(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
-        if c.is_control() {
-            out.extend(c.escape_debug());
+        if c.is_control() || is_format(c) {
+            out.extend(c.escape_unicode());
         } else {
             out.push(c);
         }
@@ -198,7 +213,13 @@ fn objects(count: usize, is: &str, are: &str) -> String {
 }
 
 /// The messages for a finished print, in the order they appear on stderr.
-fn report_lines(report: &PrintReport, paper: PaperArg, map_scale: u32, out: &Path) -> Vec<String> {
+fn report_lines(
+    report: &PrintReport,
+    paper: PaperArg,
+    kind: MapKind,
+    map_scale: u32,
+    out: &Path,
+) -> Vec<String> {
     let paper_name = paper
         .to_possible_value()
         .map_or_else(String::new, |v| v.get_name().to_uppercase());
@@ -212,7 +233,9 @@ fn report_lines(report: &PrintReport, paper: PaperArg, map_scale: u32, out: &Pat
         report.geometry_factor,
         report.symbol_factor,
     )];
-    if let Some((x, y)) = report.overflow_mm {
+    if let Some((x, y)) = report.overflow_mm
+        && (x > 0.0 || y > 0.0)
+    {
         let mut cut = Vec::new();
         if x > 0.0 {
             cut.push(format!("{} mm too wide", mm(x)));
@@ -220,15 +243,27 @@ fn report_lines(report: &PrintReport, paper: PaperArg, map_scale: u32, out: &Pat
         if y > 0.0 {
             cut.push(format!("{} mm too tall", mm(y)));
         }
-        let a3 = if matches!(paper, PaperArg::A4) {
-            "A3 paper, "
-        } else {
-            ""
-        };
+        let mut hints = Vec::new();
+        if matches!(paper, PaperArg::A4) {
+            hints.push("A3 paper".to_string());
+        }
+        hints.push("the other orientation".into());
+        // The next larger allowed number shrinks the map on the page.
+        match kind
+            .allowed_scales()
+            .iter()
+            .find(|&&s| s > report.print_scale)
+        {
+            Some(next) => hints.push(format!(
+                "a print scale with a larger number, for example 1:{next}"
+            )),
+            None => hints.push("a print scale with a larger number".into()),
+        }
+        let last = hints.pop().unwrap_or_default();
         lines.push(format!(
-            "Warning: the map does not fit on the page. It is {} for the printable area. \
-             Try {a3}the other orientation, or a print scale with a larger number, for example 1:5000.",
-            cut.join(" and ")
+            "Warning: the map does not fit on the page. It is {} for the printable area. Try {}, or {last}.",
+            cut.join(" and "),
+            hints.join(", ")
         ));
     }
     if report.skipped_objects > 0 {
@@ -272,9 +307,17 @@ fn report_lines(report: &PrintReport, paper: PaperArg, map_scale: u32, out: &Pat
     lines
 }
 
-fn main() -> anyhow::Result<()> {
-    match Cli::parse().command {
+fn main() -> std::process::ExitCode {
+    let result = match Cli::parse().command {
         Commands::Render(args) => render(&args),
+    };
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            // Errors can quote map content, so they get the same escaping as the notes.
+            eprintln!("Error: {}", printable(&format!("{err:#}")));
+            std::process::ExitCode::FAILURE
+        }
     }
 }
 
@@ -297,7 +340,7 @@ mod tests {
     }
 
     fn lines(r: &PrintReport, paper: PaperArg) -> Vec<String> {
-        report_lines(r, paper, 4000, Path::new("o.pdf"))
+        report_lines(r, paper, MapKind::Sprint, 4000, Path::new("o.pdf"))
     }
 
     #[test]
@@ -342,6 +385,35 @@ mod tests {
     }
 
     #[test]
+    fn zero_overflow_prints_no_note() {
+        let r = PrintReport {
+            overflow_mm: Some((0.0, 0.0)),
+            ..report()
+        };
+        assert_eq!(lines(&r, PaperArg::A4).len(), 2);
+    }
+
+    #[test]
+    fn hint_names_the_next_allowed_scale_only() {
+        let r = PrintReport {
+            overflow_mm: Some((1.0, 0.0)),
+            ..report()
+        };
+        let l = lines(&r, PaperArg::A4);
+        assert!(l[1].contains("for example 1:5000"), "{l:?}");
+        let r = PrintReport {
+            print_scale: 5000,
+            ..r
+        };
+        let l = lines(&r, PaperArg::A4);
+        assert!(!l[1].contains("for example"), "{l:?}");
+        assert!(
+            l[1].contains("a print scale with a larger number."),
+            "{l:?}"
+        );
+    }
+
+    #[test]
     fn single_object_uses_singular() {
         let r = PrintReport {
             skipped_objects: 1,
@@ -378,11 +450,14 @@ mod tests {
     fn map_text_cannot_inject_escape_sequences() {
         let r = PrintReport {
             substituted_fonts: vec!["Evil\u{1b}[2J".into()],
-            missing_glyphs: vec!['\u{1b}', '\u{7}'],
+            missing_glyphs: vec!['\u{1b}', '\u{7}', '\u{202e}'],
             ..report()
         };
         let all = lines(&r, PaperArg::A4).join("\n");
-        assert!(!all.contains('\u{1b}') && !all.contains('\u{7}'), "{all:?}");
+        assert!(
+            !all.contains('\u{1b}') && !all.contains('\u{7}') && !all.contains('\u{202e}'),
+            "{all:?}"
+        );
         assert!(all.contains("Evil\\u{1b}[2J"), "{all:?}");
     }
 }

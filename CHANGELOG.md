@@ -15,5 +15,5 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Ausrichtung und Druckmaßstab sind wählbar, `--kind` gibt die Kartenart vor, `--show-sheet-objects` zeichnet
   Nordlinien und Informationsblock mit. Das Programm meldet, wie viele Millimeter der Karte nicht auf die Seite
   passen, außerdem nicht gezeichnete, vereinfachte oder abgeschnittene Objekte, ersetzte Schriften und fehlende
-  Zeichen. Zum Schluss erinnert es ans Drucken in Originalgröße. Text aus der Karte erscheint nur mit
-  maskierten Steuerzeichen in der Ausgabe.
+  Zeichen. Zum Schluss erinnert es ans Drucken in Originalgröße. Steuerzeichen aus der Kartendatei gibt das
+  Programm nur maskiert aus, Fehlermeldungen eingeschlossen.
