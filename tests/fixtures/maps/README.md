@@ -15,3 +15,9 @@ Real OpenOrienteering Mapper maps used by the reader tests (`crates/freemapper-p
 - Source: OpenOrienteering Mapper, https://github.com/OpenOrienteering/mapper, tag `v0.9.6`,
   `examples/forest sample.omap`.
 - Licence: GPL-3 (OpenOrienteering Mapper).
+
+## Renderer provenance
+
+The render code in `crates/freemapper-print/src/render/` matches freemapper `743ce4b`. freemapper `a0cc8ef`
+changed only tests there; the paint-order test `training_pdf_paints_water_under_paved_areas_and_buildings` in
+`render/draw.rs` came from `a0cc8ef`.

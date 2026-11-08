@@ -14,37 +14,38 @@ Ablage in diesem Ordner (`tests/fixtures/oom/`):
 
 | Datei | Karte | Papier |
 |---|---|---|
-| `luebeck-4000-a3-portrait.pdf` | `tests/fixtures/maps/luebeck.omap` | A3 hoch |
-| `forest-sample-10000-a4-portrait.pdf` | `tests/fixtures/maps/forest-sample.omap` | A4 hoch |
+| `luebeck-4000-a3-landscape.pdf` | `tests/fixtures/maps/luebeck.omap` | A3 quer |
+| `forest-sample-10000-a4-landscape.pdf` | `tests/fixtures/maps/forest-sample.omap` | A4 quer |
 
 Das Papier ist so gewählt, dass die ganze Karte im Maßstab der Karte ohne Überlauf draufpasst. Dann vergleicht
-der Zuschnitt auf den Inhalt die komplette Karte. Der Test wählt es selbst: erst A4, dann A3, Ausrichtung
-automatisch, die erste Größe ohne Überlauf gewinnt. Ändert sich eine Karte, ändert sich vielleicht auch der
+der Zuschnitt auf den Inhalt die komplette Karte. Der Test sucht es selbst: erst A4, dann A3. Innerhalb eines
+Papiers kommt zuerst die Ausrichtung, die zur Form der Karte passt (quer für eine Karte, die breiter als hoch
+ist), dann die andere. Die erste Kombination ohne Überlauf gewinnt. Lübeck passt nicht auf A4, auf A3 quer
+schon. Die Waldbeispielkarte passt auf A4 quer. Ändert sich eine Karte, ändert sich vielleicht auch der
 erwartete Dateiname. Die Zeile "SKIP ... is missing" im Testlauf nennt dann den richtigen.
 
 ## Export in OOM 0.9.6
 
-Für jede der beiden Karten:
+Die Bezeichnungen unten stammen aus dem Quelltext von OOM 0.9.6 (englisch, in Klammern die deutsche
+Übersetzung). Für jede der beiden Karten:
 
-1. Karte in OOM öffnen (`File > Open...`).
-2. `File > Export as...` und dort `PDF` wählen. Je nach Anordnung der Menüs steckt dieselbe Funktion unter
-   `File > Print...` mit der Option "Export to PDF". Beide führen in den Dialog für Druck und Export.
-3. Seitenformat: im Reiter für das Seitenformat das Papier aus der Tabelle oben einstellen und die
-   Ausrichtung auf "Portrait" (hoch) setzen. Seitenränder und Überlappung so lassen, wie sie sind. Der
-   Zuschnitt im Test schneidet Ränder ohnehin ab.
-4. Maßstab: "Scale" auf den Kartenmaßstab setzen, also 1 : 4000 für Lübeck und 1 : 10000 für die
-   Waldbeispielkarte. Nicht auf "Fit to page" gehen.
-5. Druckbereich: den Druckbereich auf die Karte zentrieren (Schaltfläche "Center print area on map", falls
-   vorhanden; sonst den Bereich von Hand so setzen, dass die ganze Karte darin liegt). Kontrolle in der
-   Vorschau: Die Karte liegt vollständig auf der Seite, und es gibt nur eine Seite.
-6. Modus: "Vector graphics" (nicht "Raster graphics", nicht "Separations").
-7. Optionen ausschalten: "Show templates" (Vorlagen) aus, "Show grid" (Gitter) aus, "Simulate overprinting"
-   (Überdruck simulieren) aus.
-8. "Export" wählen, als Zielordner `tests/fixtures/oom/` dieses Repositorys angeben und den Dateinamen aus der
-   Tabelle oben eintragen.
+1. Karte in OOM öffnen.
+2. Im Menü `File > Export as... > PDF` wählen (deutsch `Datei > Exportieren als... > PDF`). Es öffnet sich der
+   Druckdialog, und als Ziel steht dort "Save to PDF" ("Als PDF speichern").
+3. "Page format:" ("Seitenformat:") auf das Papier aus der Tabelle oben stellen. "Page orientation:" auf
+   "Landscape" ("Querformat") stellen, in beiden Fällen.
+4. "Map area:" ("Kartenfläche:") auf "Single page" ("Einzelne Seite") stellen und "Center print area"
+   ("Druckbereich zentrieren") ankreuzen.
+5. "Print in different scale:" ("In anderem Maßstab drucken:") nicht ankreuzen. Dann gilt der Maßstab der Karte
+   selbst.
+6. "Mode:" ("Modus:") auf "Vector graphics" ("Vektorgrafik") lassen. Das ist die Voreinstellung.
+7. "Show templates" ("Vorlagen ausgeben"), "Show grid" ("Gitter anzeigen") und "Simulate overprinting"
+   ("Überdruck-Simulation") nicht ankreuzen.
+8. "Export..." ("Exportieren...") wählen, als Zielordner `tests/fixtures/oom/` dieses Repositorys angeben und
+   den Dateinamen aus der Tabelle oben eintragen.
 
-Wenn eine Bezeichnung in deiner OOM-Version anders lautet, gilt der Sinn: Papier, Maßstab gleich Kartenmaßstab,
-ganze Karte auf einer Seite, Vektor, keine Vorlagen, kein Gitter, kein Überdruck.
+Kontrolle vor dem Export: Die Karte liegt vollständig auf der einen Seite. Passt sie nicht, war das Papier oder
+die Ausrichtung falsch.
 
 ## Test starten
 
@@ -83,43 +84,58 @@ Nach dem ersten Lauf mit echten OOM-Dateien hier eintragen.
 
 - Datum:
 - OOM-Version:
-- `luebeck-4000-a3-portrait`: Größe (unser PDF / OOM) in px, Anteil abweichender Pixel in %:
-- `forest-sample-10000-a4-portrait`: Größe (unser PDF / OOM) in px, Anteil abweichender Pixel in %:
+- `luebeck-4000-a3-landscape`: Größe (unser PDF / OOM) in px, Anteil abweichender Pixel in %:
+- `forest-sample-10000-a4-landscape`: Größe (unser PDF / OOM) in px, Anteil abweichender Pixel in %:
 - Gefundene Abweichungen im Differenzbild und was daraus wurde (Fehler behoben oder als erwartet akzeptiert):
 
 ## Probedruck
 
 Der Test prüft Bilder, nicht Papier. Ob der Maßstab auf dem Drucker wirklich stimmt, zeigt nur ein Ausdruck.
-Eine Maßstabsleiste gibt es erst mit M2, deshalb wird eine bekannte Strecke nachgemessen.
+Eine Maßstabsleiste gibt es erst mit M2, deshalb misst du eine bekannte Strecke nach. Der Test
+`probedruck_distances_match_readme` rechnet die Zahlen unten aus der Karte nach, sie veralten also nicht still.
+
+### Variante A4 (Standard)
 
 1. PDF erzeugen:
 
    ```sh
-   freemapper-print render tests/fixtures/maps/luebeck.omap --out luebeck-a3.pdf --paper a3 --orientation portrait
+   freemapper-print render tests/fixtures/maps/luebeck.omap --out luebeck-a4.pdf --paper a4
    ```
 
-2. Auf A3 in 100 % ausdrucken, "An Seite anpassen" aus. Im Druckdialog von macOS heißt das "Tatsächliche
-   Größe". Ein A3-Drucker ist nötig; auf A4 läuft die Karte über (das Programm meldet 62,6 mm Überlauf)
-   und lässt sich so nicht prüfen. Notfalls im Copyshop drucken.
-3. Zwei Gebäudeecken suchen und den Abstand mit einem Lineal messen. Die Ecken sind die Anfangspunkte zweier
-   Gebäude (Symbol 521) aus `luebeck.omap`. Ihre Lage auf dem A3-Blatt, gemessen von der linken und oberen
-   Papierkante:
+   Das Programm warnt, dass die Karte 3,9 mm zu hoch für den bedruckbaren Bereich ist, und schreibt das PDF trotzdem. Das ist erwartet und kein Fehler. Die
+   Karte ist etwas höher als ein A4-Blatt, der Rand wird abgeschnitten. Die beiden Messpunkte liegen
+   innerhalb des bedruckten Bereichs.
+2. In 100 % ausdrucken, "An Seite anpassen" aus (im Druckdialog von macOS "Tatsächliche Größe"). Quer, A4.
+3. Zwei Gebäudeecken suchen und den Abstand messen. Es sind die ersten Eckpunkte zweier Gebäude (Symbol 521)
+   aus `luebeck.omap`. Lage auf dem Blatt, von der linken und der oberen Papierkante gemessen:
 
    | Ecke | von links | von oben |
    |---|---|---|
-   | A (Anfang des Gebäudes bei Karten-Koordinate -80,780 / 20,866 mm) | 68,2 mm | 231,0 mm |
-   | B (Anfang des Gebäudes bei Karten-Koordinate -107,548 / -71,778 mm) | 41,5 mm | 138,3 mm |
+   | P (Karten-Koordinate -114,203 / -65,073 mm) | 34,8 mm | 40,1 mm |
+   | Q (Karten-Koordinate 116,555 / 3,974 mm) | 265,6 mm | 109,1 mm |
 
-   Soll-Abstand: 96,4 mm auf dem Papier. Das sind bei 1 : 4000 rund 385,7 m in der Natur.
-   Die Lage auf dem Blatt gilt für den Standard-Aufruf oben (Karte zentriert). Die Ecken sind kurze Gebäudekanten
-   von etwa 2 bis 3 mm. Wenn du sie nicht eindeutig findest, miss stattdessen von der linken Papierkante bis zum
-   Gebäude A (Soll 68,2 mm) und bis zum Gebäude B (Soll 41,5 mm), das ergibt dieselbe Aussage.
-4. Ergebnis eintragen. Eine Abweichung bis etwa 0,5 mm (0,5 %) ist Messung und Drucker. Mehr deutet auf
-   Skalierung im Druckdialog hin.
+   Soll-Abstand P-Q: 240,9 mm auf dem Papier, bei 1 : 4000 sind das 963,5 m in der Natur. Du brauchst ein
+   Lineal oder Maßband von mindestens 25 cm. Die Gebäude sind etwa 3 mm groß. Findest du die Ecken nicht
+   genau, miss von der linken Papierkante bis zu den Gebäuden P (Soll 34,8 mm) und Q (Soll 265,6 mm). Das
+   Ergebnis ist dasselbe.
 
-Ergebnis des Probedrucks:
+### Variante A3 (falls ein A3-Drucker da ist)
+
+1. PDF mit `--paper a3 --orientation portrait` erzeugen, dann in 100 % auf A3 hoch drucken.
+2. Lage der Ecken:
+
+   | Ecke | von links | von oben |
+   |---|---|---|
+   | A (Karten-Koordinate -80,780 / 20,866 mm) | 68,2 mm | 231,0 mm |
+   | B (Karten-Koordinate -107,548 / -71,778 mm) | 41,5 mm | 138,3 mm |
+
+   Soll-Abstand A-B: 96,4 mm auf dem Papier, das sind 385,7 m in der Natur.
+
+### Ergebnis eintragen
+
+Eine Abweichung bis etwa 0,5 mm ist Messung und Drucker. Mehr deutet auf Skalierung im Druckdialog hin.
 
 - Datum:
 - Drucker und Papier:
-- Gemessener Abstand A-B (Soll 96,4 mm):
+- Variante (A4 oder A3) und gemessener Abstand (Soll 240,9 mm bzw. 96,4 mm):
 - Bemerkung:
