@@ -8,6 +8,9 @@ const LINE_SYMBOL_ATTRS: &[&str] = &[
     "minimum_length",
     "start_offset",
     "end_offset",
+    // Before file version 8 the length of both pointed caps; OOM turns it into the offsets when
+    // loading and then scales those.
+    "pointed_cap_length",
     "segment_length",
     "end_length",
     // OOM scales these two counts as well; keep its behaviour.
@@ -192,7 +195,26 @@ mod tests {
         assert!(out.contains(r#"dash_length="5000""#));
         assert!(out.contains(r#"color="8""#));
         assert!(out.contains(r#"dashes_in_group="1""#));
-        assert!(out.contains(r#"pointed_cap_length="750""#));
+        assert!(out.contains(r#"pointed_cap_length="938""#), "{out}");
+    }
+
+    #[test]
+    fn task_5_lengths_scaled() {
+        // Offsets, the dash symbol's dot and element coordinates, and text framing.
+        let xml = r#"<symbols><symbol type="2" id="0"><line_symbol line_width="200" start_offset="800" end_offset="400"><dash_symbol><symbol type="1"><point_symbol inner_radius="400" inner_color="1" outer_width="80" outer_color="1" elements="1"><element><symbol type="2"><line_symbol line_width="100"/></symbol><object type="1"><coords count="2">0 -400;0 400;</coords></object></element></point_symbol></symbol></dash_symbol></line_symbol></symbol><symbol type="8" id="1"><text_symbol><font size="4000"/><text color="1"/><framing color="2" mode="1" line_half_width="200" shadow_x_offset="80" shadow_y_offset="-40"/></text_symbol></symbol></symbols>"#;
+        let out = enlarge(xml);
+        for scaled in [
+            r#"start_offset="1000""#,
+            r#"end_offset="500""#,
+            r#"inner_radius="500""#,
+            r#"outer_width="100""#,
+            "0 -500;0 500;",
+            r#"line_half_width="250""#,
+            r#"shadow_x_offset="100""#,
+            r#"shadow_y_offset="-50""#,
+        ] {
+            assert!(out.contains(scaled), "{scaled}: {out}");
+        }
     }
 
     #[test]

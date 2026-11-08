@@ -3,8 +3,11 @@
 //!
 //! Paper millimetres with y down.
 
-use super::draw::{Primitive, Shape, Sink, mm, point_symbol, point_symbol_scaled, stroke};
-use super::geometry::{self, Part, Pt};
+use super::dash::{self, DashPattern};
+use super::draw::{
+    POINTS_PER_UNIT, Primitive, Shape, Sink, mm, point_symbol, point_symbol_scaled, stroke,
+};
+use super::geometry::{self, Part, Pt, Walker};
 use super::symbols::{Border, Cap, DashSymbol, Join, LineDef, PointDef, RenderSymbols};
 use crate::omap::MapCoord;
 
@@ -60,6 +63,9 @@ fn dash_symbols(
     depth: u32,
 ) {
     let last = part.points.len() - 1;
+    // One search structure for all dash points; its distance checks are charged as they go.
+    let mut walker = Walker::new(&part.points, part.closed);
+    let mut charged = 0;
     for &i in &part.dash_points {
         if sink.stop() {
             return;
@@ -73,7 +79,15 @@ fn dash_symbols(
         if skip {
             continue;
         }
-        let (angle, scaling) = geometry::tangent_scaling(&part.points, part.closed, i);
+        walker.allow(dash::check_room(sink.left(), walker.checks()));
+        let (angle, scaling) = walker.tangent_scaling(i);
+        let units = walker.checks() / POINTS_PER_UNIT;
+        sink.charge(units - charged);
+        charged = units;
+        if walker.exhausted() {
+            sink.mark_cut();
+            return;
+        }
         let rotation = if dash_symbol.symbol.rotatable {
             angle
         } else {
@@ -134,9 +148,10 @@ fn single_path(def: &LineDef, part: &Part, symbols: &RenderSymbols, sink: &mut S
     }
     // The stretches of the main line, and the mid symbols.
     let processed = match &def.dash {
+        // Dashed without dash length: nothing but the caps, dash, start and end symbols.
+        Some(dash) if dash.is_empty() => return,
         Some(dash) => {
-            let pattern =
-                geometry::dash_pattern(part, start, end, dash, def.mid.as_ref(), sink.left());
+            let pattern = dash::dash_pattern(part, start, end, dash, def.mid.as_ref(), sink.left());
             charge_skipped(&pattern, sink);
             if let Some(mid) = &def.mid {
                 mid_symbols(&mid.symbol, &pattern.spots, symbols, sink, depth);
@@ -145,12 +160,9 @@ fn single_path(def: &LineDef, part: &Part, symbols: &RenderSymbols, sink: &mut S
         }
         None => {
             if let Some(mid) = &def.mid {
-                let (spots, limited) =
-                    geometry::mid_positions_in(part, start, end, mid, sink.left());
-                if limited {
-                    sink.mark_cut();
-                }
-                mid_symbols(&mid.symbol, &spots, symbols, sink, depth);
+                let pattern = dash::mid_positions_in(part, start, end, mid, sink.left());
+                charge_skipped(&pattern, sink);
+                mid_symbols(&mid.symbol, &pattern.spots, symbols, sink, depth);
             }
             vec![(start, end)]
         }
@@ -174,7 +186,7 @@ fn single_path(def: &LineDef, part: &Part, symbols: &RenderSymbols, sink: &mut S
 
 /// Charges the steps of a dash pattern that draw nothing themselves (skipped mid-symbol
 /// positions, the work before a fallback to solid) and marks a limited pattern as cut.
-fn charge_skipped(pattern: &geometry::DashPattern, sink: &mut Sink) {
+fn charge_skipped(pattern: &DashPattern, sink: &mut Sink) {
     if pattern.limited {
         sink.mark_cut();
     }
@@ -210,7 +222,20 @@ fn pointed_cap(def: &LineDef, part: &Part, range: (f64, f64), is_end: bool, sink
     } else {
         def.start_offset
     });
-    let ring = geometry::pointed_cap(part, range.0, range.1, is_end, width / 2.0, cap_length);
+    if sink.stop() {
+        return;
+    }
+    let left = sink.left();
+    let max_checks = dash::check_room(left, 0);
+    let Some((ring, checks)) =
+        geometry::pointed_cap(part, range, is_end, (width / 2.0, cap_length), max_checks)
+    else {
+        // The tangent searches used up the budget.
+        sink.charge(left);
+        sink.mark_cut();
+        return;
+    };
+    sink.charge(checks / POINTS_PER_UNIT);
     sink.charge_points(ring.len());
     sink.push(Primitive {
         priority: def.color,
@@ -237,7 +262,7 @@ fn borders(
     };
     let intervals = match &border.dash {
         Some(dash) => {
-            let pattern = geometry::dash_pattern(part, range.0, range.1, dash, None, sink.left());
+            let pattern = dash::dash_pattern(part, range.0, range.1, dash, None, sink.left());
             charge_skipped(&pattern, sink);
             if def.dash.is_some() {
                 geometry::intersect(&pattern.intervals, processed)
@@ -524,6 +549,48 @@ mod tests {
     }
 
     #[test]
+    fn dashed_without_dash_length_keeps_only_the_symbols() {
+        // OOM: no main line, mid symbols or borders; dash, start and end symbols remain.
+        let mut coords = ten_mm();
+        coords[1].flags = FLAG_DASH;
+        let def = LineDef {
+            dash: Some(super::super::symbols::Dash {
+                dash: 0.0,
+                gap: 370.0,
+                group: 1,
+                in_group_gap: 0.0,
+                half_outer: false,
+            }),
+            mid: Some(Mid {
+                symbol: dot(5),
+                segment: 0.0,
+                end: 0.0,
+                per_spot: 1,
+                distance: 0.0,
+                at_least_one: true,
+                placement: MidPlacement::CentreOfDash,
+            }),
+            border: Some(super::super::symbols::Border {
+                color: 4,
+                width: 100.0,
+                shift: 0.0,
+                dash: None,
+            }),
+            start: Some(dot(6)),
+            dash_symbol: Some(DashSymbol {
+                symbol: dot(3),
+                suppress_at_ends: false,
+                scale: true,
+            }),
+            ..plain(300.0)
+        };
+        let p = draw(def, coords);
+        let mut priorities: Vec<i32> = p.iter().map(|p| p.priority).collect();
+        priorities.sort_unstable();
+        assert_eq!(priorities, [3, 6], "dash symbol at the end, start symbol");
+    }
+
+    #[test]
     fn borders_follow_offsets_and_main_dashes() {
         let border = super::super::symbols::Border {
             color: 4,
@@ -565,7 +632,33 @@ mod tests {
             ..plain(400.0)
         };
         let p = draw(def, ten_mm());
-        assert_eq!(p.iter().filter(|p| p.priority == 4).count(), 12);
+        let mains: Vec<&Vec<Pt>> = p
+            .iter()
+            .filter(|p| p.priority == 2)
+            .filter_map(|p| match &p.shape {
+                Shape::Stroke { path, .. } => Some(path),
+                _ => None,
+            })
+            .collect();
+        let borders: Vec<&Vec<Pt>> = p
+            .iter()
+            .filter(|p| p.priority == 4)
+            .filter_map(|p| match &p.shape {
+                Shape::Stroke { path, .. } => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!((mains.len(), borders.len()), (6, 12));
+        // Every border piece runs alongside one main dash, from its start to its end.
+        for border in borders {
+            let (x0, x1) = (border[0].0, border.last().unwrap().0);
+            assert!(
+                mains
+                    .iter()
+                    .any(|m| near(m[0].0, x0) && near(m.last().unwrap().0, x1)),
+                "{border:?}"
+            );
+        }
     }
 
     fn dot(color: i32) -> Box<PointDef> {
@@ -721,5 +814,96 @@ mod tests {
         assert_eq!((n, cut), (20, false));
         // Each cap ring of about 20 000 points costs 20 000 / 64 units.
         assert!(work >= 20 * (20_000 / 64), "{work}");
+    }
+
+    /// `n` dash points at (1, 0) mm, all identical (`spread` 0) or alternating 0.01 mm apart
+    /// (`spread` 10, within the 0.025 mm of the tangent searches), between (0, 0) and (4, 0).
+    fn cluster(n: i32, spread: i32) -> Vec<MapCoord> {
+        let mut coords = vec![MapCoord::new(0, 0)];
+        coords.extend((0..n).map(|i| MapCoord {
+            flags: FLAG_DASH,
+            ..MapCoord::new(1_000 + (i % 2) * spread, 0)
+        }));
+        coords.push(MapCoord::new(4_000, 0));
+        coords
+    }
+
+    fn dash_symbol_line() -> LineDef {
+        LineDef {
+            dash_symbol: Some(DashSymbol {
+                symbol: dot(3),
+                suppress_at_ends: false,
+                scale: true,
+            }),
+            ..plain(200.0)
+        }
+    }
+
+    fn pointed() -> LineDef {
+        // 3 + 3 mm on 4 mm: scaled to 2 + 2, the start cap covers the cluster at 1 mm.
+        LineDef {
+            pointed_caps: true,
+            start_offset: 3_000.0,
+            end_offset: 3_000.0,
+            ..plain(400.0)
+        }
+    }
+
+    #[test]
+    fn coincident_dash_points_are_linear() {
+        // 300 000 identical dash points: each tangent search skips the run in one step, so the
+        // dots, not the searches, use the budget.
+        let (n, cut, work) = counted(dash_symbol_line(), cluster(300_000, 0));
+        assert!(cut && n < MAX_PRIMITIVES_PER_OBJECT, "{n}");
+        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // A pointed cap over them: two caps, nothing cut; the ring of 300 000 points is
+        // charged, the searches cost a few checks per point.
+        let (n, cut, work) = counted(pointed(), cluster(300_000, 0));
+        assert_eq!((n, cut), (2, false));
+        // Linear: about 600 000 ring points and four checks per cap point, over 64.
+        assert!(work < 40_000, "{work}");
+    }
+
+    #[test]
+    fn clustered_points_charge_their_searches() {
+        // 300 000 dash points alternating 0.01 mm apart: every tangent search runs through the
+        // whole cluster. Those checks are charged, so the budget stops the object.
+        let (_, cut, work) = counted(dash_symbol_line(), cluster(300_000, 10));
+        assert!(cut);
+        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        assert!(work >= MAX_PRIMITIVES_PER_OBJECT, "{work}");
+        // The zigzag is 3 m long: caps of 10 m each, scaled to half the line, cover it.
+        let long_caps = LineDef {
+            start_offset: 10_000_000.0,
+            end_offset: 10_000_000.0,
+            ..pointed()
+        };
+        let (_, cut, work) = counted(long_caps, cluster(300_000, 10));
+        assert!(cut);
+        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
+        // Mid symbols in every dash of a line that zigzags inside the cluster: the position
+        // searches are charged too.
+        let dashed = LineDef {
+            dash: Some(super::super::symbols::Dash {
+                dash: 1500.0,
+                gap: 370.0,
+                group: 1,
+                in_group_gap: 0.0,
+                half_outer: false,
+            }),
+            mid: Some(Mid {
+                symbol: dot(3),
+                segment: 0.0,
+                end: 0.0,
+                per_spot: 1,
+                distance: 0.0,
+                at_least_one: false,
+                placement: MidPlacement::CentreOfDash,
+            }),
+            ..plain(200.0)
+        };
+        let (_, cut, work) = counted(dashed, cluster(300_000, 10));
+        assert!(cut);
+        assert!(work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK, "{work}");
     }
 }

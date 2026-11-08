@@ -54,6 +54,12 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |
 | Farbpriorität | colour priority | Reihenfolge, in der Farben übereinander gedruckt werden, wie in OOM. | `ColorPriority` |
+| Strichpunkt | dash point | Koordinate einer Linie mit dem Dash-Point-Flag (32). Strichmuster und Mittelsymbole fangen dort neu an; ein Strichpunktsymbol wird dort gezeichnet. | `FLAG_DASH`, `Part::dash_points` |
+| Strichpunktsymbol | dash symbol | Punktsymbol einer Liniensignatur, das an jedem Strichpunkt steht, zur Winkelhalbierenden gedreht. | `DashSymbol` |
+| Mittelsymbol | mid symbol | Punktsymbol, das eine Liniensignatur in Abständen entlang der Linie wiederholt (z. B. Zaunstriche); auf gestrichelten Linien je Strich, Strichgruppe oder Lücke. | `Mid`, `MidPlacement` |
+| Anfangs- und Endabstand | start and end offset | Strecke, um die eine offene Linie am Anfang und am Ende gekürzt gezeichnet wird. | `LineDef::start_offset`, `LineDef::end_offset` |
+| spitzes Linienende | pointed cap | Linienende, das über den Anfangs- oder Endabstand von der vollen Breite bis auf null zuläuft (OOM-Linienende 3). | `LineDef::pointed_caps` |
+| Textrahmen | text framing | Umrandung einer Textsignatur: die Buchstabenumrisse in einer zweiten Farbe nachgezogen oder als versetzter Schatten gedruckt. | `Framing` |
 
 ## Bahnen / courses
 

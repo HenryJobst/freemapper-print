@@ -1015,7 +1015,12 @@ mod tests {
             .collect();
         let (p, cut) = primitives_counted(&line_object(coords), &r);
         assert!(cut);
-        assert_eq!(p.len(), MAX_PRIMITIVES_PER_OBJECT);
+        // The rest went to one unit per dash section: the parts begun before the budget ran out.
+        assert!(
+            (MAX_PRIMITIVES_PER_OBJECT - 10..=MAX_PRIMITIVES_PER_OBJECT).contains(&p.len()),
+            "{}",
+            p.len()
+        );
         // Both objects together: one budget plus the slack, plus the solid kilometre.
         let work = work_units() - before;
         assert!(

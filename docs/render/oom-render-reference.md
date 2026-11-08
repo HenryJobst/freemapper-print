@@ -180,6 +180,12 @@ under every black-100% symbol; 418's white dot (21) shows over green areas of pr
 Only if `dashed="true"` and `dash_length > 0`. A part is split into sections at coordinates with
 the DashPoint flag (32); freemapper paths normally have one section = the whole part.
 
+`dashed="true"` with `dash_length <= 0`: `processDashedLine` is not called, so there is no
+processed path: no main line, no mid symbols and no borders; dash, start and end symbols and
+pointed caps remain [LS `createSinglePathRenderables`]. A border with `dashed="true"` and
+`dash_length == 0` is invisible [LS `LineSymbolBorder::isVisible`]; with a dash length but no
+break length it is solid.
+
 Sections (taken from OOM **v0.9.6**) [LS `processDashedLine`; VP `PathCoordVector::findNextDashPoint`]:
 the sections of [S, E] (E, S after the offsets of 2.7) end at every dash point strictly between
 S and E, the last at E. Each section runs the algorithm below with `is_part_start` (first section)
@@ -383,8 +389,9 @@ continuous(a, b, set_mid) [processContinuousLine]:
   the placement.
 - Orientation as in 2.4 (tangent at the position, local +y right).
 - The `s += 2` loops advance `pos` by q per iteration, not 2q (ported as is).
-- freemapper-print bounds the steps (dashes, spots and skipped positions) by its per-object budget
-  and by 100 000; past 100 000 the stretch is drawn solid without mid symbols.
+- freemapper-print bounds the steps (sections, dashes, spots and skipped positions, plus the
+  tangent searches) by its per-object budget and by 100 000; past 100 000 steps the stretch is
+  drawn solid without mid symbols.
 
 ### 2.6 Start and end symbols (541, 543) [LS `createStartEndSymbolRenderables`]
 - Start symbol at the **first coordinate of the first part**, end symbol at the **last coordinate
@@ -453,6 +460,11 @@ Dash symbols [LS `createDashSymbolRenderables`; VP `calculateTangentScaling`]:
   `createRenderablesScaled`, `coord_scale`].
 - freemapper-print takes the tangents from the flattened polyline; at a dash point on a Bézier
   the direction can differ slightly from OOM's control-point tangent.
+- The searches for the nearest point farther than 0.025 mm (`calculateIncoming/OutgoingTangent`,
+  `SplitPathCoord::tangentVector`) are linear scans in OOM, quadratic over many dash points or cap
+  vertices in a cluster. freemapper-print gives the same answers but skips each run of identical
+  points in one step, and counts every distance check against the object's budget (64 checks
+  per unit), so a cluster of distinct points within 0.025 mm stops at the budget.
 
 Borders of a non-trivial line [LS `createSinglePathRenderables`, `createBorderLines`]: when offsets
 or dashes apply, the borders are built from the processed path (the stretches actually stroked).
@@ -673,8 +685,9 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   anchor [RI `TextRenderable`, TO `calcTextToMapTransform`]. `TextRenderable` builds
   `translate(anchor) · scale · rotate(-degrees(rotation))` (Qt, y down), so a glyph origin at text
   coordinates (x, y) lands at `anchor + (x cos r + y sin r, -x sin r + y cos r)`. In PDF (y up)
-  the text matrix is `[cos r, sin r, -sin r, cos r, x, y]`. freemapper-print reads only version 9
-  files, so a text symbol without `rotatable="true"` is not rotatable.
+  the text matrix is `[cos r, sin r, -sin r, cos r, x, y]`. freemapper-print takes the version from
+  `<map version="…">` (9 if absent): without the attribute a text symbol is rotatable in files
+  before version 9 and not rotatable from version 9 on.
 - Object: `<object type="4" h_align v_align>` (missing -> 0), anchor = first coordinate; a second
   coordinate or `<size>` makes it a box text (word wrap) [OBJ `Object::load`].
   `h_align`: 0 Left, 1 HCenter, 2 Right; `v_align`: 0 Baseline, 1 Top, 2 VCenter, 3 Bottom [TOH].
@@ -791,6 +804,7 @@ last coordinate of the object is harmless.
     baseline on the anchor (6).
 14. **Combined part references are symbol indices** (5); keep ids = indices when adding symbols.
 15. **enlarge.rs**: `segment_length`, `end_length`, `mid_symbol_distance`, dash/break lengths,
+    start/end offsets and the old `pointed_cap_length`, text framing widths and offsets,
     border width/shift/dash/break, point radii/widths, element coordinates and pattern lengths are
     lengths and scale linearly; `min_area` quadratically; counts (`mid_symbols_per_spot`,
     `dashes_in_group`, `elements`) stay; OOM's `LineSymbol::scale` also multiplies the two

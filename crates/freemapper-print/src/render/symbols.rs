@@ -31,11 +31,21 @@ pub enum Join {
 /// Dash pattern of a line or border.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dash {
+    /// Dash length; not above 0 on a main line: see [`Dash::is_empty`].
     pub dash: f64,
     pub gap: f64,
     pub group: u32,
     pub in_group_gap: f64,
     pub half_outer: bool,
+}
+
+impl Dash {
+    /// `dashed="true"` without a dash length: OOM draws no main line, no mid symbols and no
+    /// borders for such a line; dash, start and end symbols remain
+    /// [LS `createSinglePathRenderables`].
+    pub fn is_empty(&self) -> bool {
+        self.dash.is_nan() || self.dash <= 0.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -326,8 +336,9 @@ fn coords(node: &Node) -> Vec<MapCoord> {
         .collect()
 }
 
+/// The dash pattern of a `dashed="true"` line, also an empty one ([`Dash::is_empty`]).
 fn dash(node: &Node) -> Option<Dash> {
-    (node.flag("dashed") && node.num("dash_length") > 0.0).then(|| Dash {
+    node.flag("dashed").then(|| Dash {
         dash: node.num("dash_length"),
         gap: node.num("break_length"),
         group: (node.num("dashes_in_group") as u32).max(1),
@@ -337,12 +348,12 @@ fn dash(node: &Node) -> Option<Dash> {
 }
 
 /// The point symbol nested in `<mid_symbol>`, `<start_symbol>` … (`<symbol><point_symbol>`).
-fn nested_point(node: Option<&Node>) -> Option<Box<PointDef>> {
+fn nested_point(node: Option<&Node>, version: u32) -> Option<Box<PointDef>> {
     let point = node?.child("symbol")?.child("point_symbol")?;
-    Some(Box::new(point_def(point)))
+    Some(Box::new(point_def(point, version)))
 }
 
-fn line_def(node: &Node) -> LineDef {
+fn line_def(node: &Node, version: u32) -> LineDef {
     let cap = match node.num("cap_style") as i32 {
         1 => Cap::Round,
         2 => Cap::Square,
@@ -356,20 +367,31 @@ fn line_def(node: &Node) -> LineDef {
     let border = node
         .child("borders")
         .and_then(|b| b.child("border"))
-        .map(|b| Border {
-            color: b.color("color"),
-            width: b.num("width"),
-            shift: b.num("shift"),
-            dash: (b.flag("dashed") && b.num("dash_length") > 0.0 && b.num("break_length") > 0.0)
-                .then(|| Dash {
-                    dash: b.num("dash_length"),
-                    gap: b.num("break_length"),
-                    group: 1,
-                    in_group_gap: 0.0,
-                    half_outer: false,
-                }),
+        .map(|b| {
+            let border = Border {
+                color: b.color("color"),
+                width: b.num("width"),
+                shift: b.num("shift"),
+                dash: (b.flag("dashed")
+                    && b.num("dash_length") > 0.0
+                    && b.num("break_length") > 0.0)
+                    .then(|| Dash {
+                        dash: b.num("dash_length"),
+                        gap: b.num("break_length"),
+                        group: 1,
+                        in_group_gap: 0.0,
+                        half_outer: false,
+                    }),
+            };
+            (border, b)
         })
-        .filter(|b| b.width > 0.0 && b.color >= 0);
+        // A dashed border without dash length is invisible [LS `LineSymbolBorder::isVisible`].
+        .filter(|(b, node)| {
+            b.width > 0.0
+                && b.color >= 0
+                && !(node.flag("dashed") && node.num("dash_length") == 0.0)
+        })
+        .map(|(b, _)| b);
     let dash = dash(node);
     // Solid lines need a segment length [LS `createSinglePathRenderables`]; dashed lines a
     // placement other than 99 and at least one symbol per spot [LS `createDashGroups`].
@@ -380,7 +402,7 @@ fn line_def(node: &Node) -> LineDef {
         2 => Some(MidPlacement::CentreOfGap),
         _ => None,
     };
-    let mid = nested_point(node.child("mid_symbol"))
+    let mid = nested_point(node.child("mid_symbol"), version)
         .filter(|s| !s.is_empty())
         .and_then(|symbol| {
             let placement = match dash {
@@ -410,7 +432,7 @@ fn line_def(node: &Node) -> LineDef {
             (0.0, 0.0)
         };
     let finite = |v: f64| if v.is_finite() { v } else { 0.0 };
-    let dash_symbol = nested_point(node.child("dash_symbol"))
+    let dash_symbol = nested_point(node.child("dash_symbol"), version)
         .filter(|s| !s.is_empty())
         .map(|symbol| DashSymbol {
             symbol,
@@ -428,8 +450,8 @@ fn line_def(node: &Node) -> LineDef {
         dash,
         border,
         mid,
-        start: nested_point(node.child("start_symbol")),
-        end: nested_point(node.child("end_symbol")),
+        start: nested_point(node.child("start_symbol"), version),
+        end: nested_point(node.child("end_symbol"), version),
         dash_symbol,
     }
 }
@@ -441,7 +463,7 @@ impl PointDef {
     }
 }
 
-fn point_def(node: &Node) -> PointDef {
+fn point_def(node: &Node, version: u32) -> PointDef {
     let (inner, radius) = (node.color("inner_color"), node.num("inner_radius"));
     let (outer, width) = (node.color("outer_color"), node.num("outer_width"));
     PointDef {
@@ -454,7 +476,7 @@ fn point_def(node: &Node) -> PointDef {
             .filter(|c| c.name == "element")
             .filter_map(|e| {
                 Some(Element {
-                    symbol: symbol(e.child("symbol")?)?,
+                    symbol: symbol(e.child("symbol")?, version)?,
                     coords: e.child("object")?.child("coords").map(coords)?,
                 })
             })
@@ -465,7 +487,7 @@ fn point_def(node: &Node) -> PointDef {
 /// One `<pattern>` of an area symbol [AS `FillPattern::load`]; `None` for an unknown type, a
 /// point pattern without a point symbol (OOM draws nothing for it), a non-finite number or a
 /// spacing or point distance below [`MIN_PATTERN_STEP`].
-fn pattern(node: &Node) -> Option<Pattern> {
+fn pattern(node: &Node, version: u32) -> Option<Pattern> {
     let angle_rad = node.num("angle");
     let rotatable = node.flag("rotatable");
     let spacing = node.num("line_spacing");
@@ -496,7 +518,10 @@ fn pattern(node: &Node) -> Option<Pattern> {
         2 => {
             let offset_along = node.num("offset_along_line");
             let distance = node.num("point_distance");
-            let symbol = Box::new(point_def(node.child("symbol")?.child("point_symbol")?));
+            let symbol = Box::new(point_def(
+                node.child("symbol")?.child("point_symbol")?,
+                version,
+            ));
             usable(&[angle_rad, offset, offset_along], &[spacing, distance]).then_some(
                 Pattern::Points {
                     angle_rad,
@@ -534,19 +559,22 @@ fn framing(node: &Node) -> Option<Framing> {
     }
 }
 
-fn symbol(node: &Node) -> Option<Symbol> {
+/// One `<symbol>`; `version` is the file format version (defaults that changed with it).
+fn symbol(node: &Node, version: u32) -> Option<Symbol> {
     match node.num("type") as u32 {
         1 => node
             .child("point_symbol")
-            .map(|p| Symbol::Point(point_def(p))),
-        2 => node.child("line_symbol").map(|l| Symbol::Line(line_def(l))),
+            .map(|p| Symbol::Point(point_def(p, version))),
+        2 => node
+            .child("line_symbol")
+            .map(|l| Symbol::Line(line_def(l, version))),
         4 => node.child("area_symbol").map(|a| Symbol::Area {
             color: a.color("inner_color"),
             patterns: a
                 .children
                 .iter()
                 .filter(|c| c.name == "pattern")
-                .filter_map(pattern)
+                .filter_map(|p| pattern(p, version))
                 .collect(),
         }),
         8 => {
@@ -562,7 +590,11 @@ fn symbol(node: &Node) -> Option<Symbol> {
                     .and_then(|t| t.attr("line_spacing"))
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(1.0),
-                rotatable: t.flag("rotatable"),
+                // Without the attribute, rotatable before version 9 [TS `loadImpl`].
+                rotatable: match t.attr("rotatable") {
+                    Some(v) => v == "true",
+                    None => version < 9,
+                },
                 framing: t.child("framing").and_then(framing),
             }))
         }
@@ -575,7 +607,7 @@ fn symbol(node: &Node) -> Option<Symbol> {
                     .filter_map(|p| {
                         if p.flag("private") {
                             p.child("symbol")
-                                .and_then(symbol)
+                                .and_then(|s| symbol(s, version))
                                 .map(|s| Part::Inline(Box::new(s)))
                         } else {
                             p.attr("symbol")?.parse().ok().map(Part::Ref)
@@ -606,7 +638,7 @@ impl RenderSymbols {
             .iter()
             .flat_map(|s| s.children.iter().chain(std::iter::once(s)))
             .filter(|s| s.name == "symbol")
-            .filter_map(|s| Some((s.attr("id")?.parse().ok()?, symbol(s)?)))
+            .filter_map(|s| Some((s.attr("id")?.parse().ok()?, symbol(s, set.version)?)))
             .collect();
         Self { colours, symbols }
     }
@@ -739,7 +771,7 @@ mod tests {
                 <symbol type="1" code=""><point_symbol inner_radius="100" inner_color="5" outer_width="0" outer_color="-1" elements="0"/></symbol>
             </pattern>
         </area_symbol></symbol>"#;
-        let Some(Symbol::Area { color, patterns }) = symbol(&parse(xml).children[0]) else {
+        let Some(Symbol::Area { color, patterns }) = symbol(&parse(xml).children[0], 9) else {
             panic!()
         };
         assert_eq!(color, -1);
@@ -788,7 +820,7 @@ mod tests {
         let xml = format!(
             r#"<symbol type="4" id="1"><area_symbol inner_color="-1" patterns="1">{pattern}</area_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0]) {
+        match symbol(&parse(&xml).children[0], 9) {
             Some(Symbol::Area { patterns, .. }) => patterns,
             other => panic!("{other:?}"),
         }
@@ -874,7 +906,7 @@ mod tests {
         let xml = format!(
             r#"<symbol type="2" id="1"><line_symbol color="2" line_width="300" {attrs}>{children}</line_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0]) {
+        match symbol(&parse(&xml).children[0], 9) {
             Some(Symbol::Line(l)) => l,
             other => panic!("{other:?}"),
         }
@@ -931,11 +963,34 @@ mod tests {
         assert_eq!(dashed("0", "0"), None);
     }
 
+    #[test]
+    fn dashed_without_dash_length() {
+        let l = line_of(r#"dashed="true" dash_length="0" break_length="500""#, "");
+        assert!(l.dash.unwrap().is_empty());
+        assert!(
+            line_of(r#"dashed="false" dash_length="0""#, "")
+                .dash
+                .is_none()
+        );
+        // Borders: dashed with dash length 0 is invisible; without a break it is solid.
+        let border = |attrs: &str| {
+            line_of(
+                "",
+                &format!(r#"<borders><border color="3" width="100" shift="0" {attrs}/></borders>"#),
+            )
+            .border
+        };
+        assert!(border(r#"dashed="true" dash_length="0" break_length="200""#).is_none());
+        let solid = border(r#"dashed="true" dash_length="1000" break_length="0""#).unwrap();
+        assert!(solid.dash.is_none());
+        assert!(border(r#"dashed="false" dash_length="0""#).is_some());
+    }
+
     fn text_of(children: &str, rotatable: &str) -> TextDef {
         let xml = format!(
             r#"<symbol type="8" id="1"><text_symbol {rotatable}><font family="Arial" size="3000"/><text color="2" line_spacing="1"/>{children}</text_symbol></symbol>"#
         );
-        match symbol(&parse(&xml).children[0]) {
+        match symbol(&parse(&xml).children[0], 9) {
             Some(Symbol::Text(t)) => t,
             other => panic!("{other:?}"),
         }
@@ -969,6 +1024,24 @@ mod tests {
         assert_eq!(framed("1", "-1"), None);
         assert!(text_of("", r#"rotatable="true""#).rotatable);
         assert!(!text_of("", "").rotatable, "version 9: not rotatable");
+    }
+
+    #[test]
+    fn text_rotatable_by_default_before_version_9() {
+        // The same text symbol without `rotatable` in a version 8 and a version 9 file.
+        let text = |version: u32| {
+            let map = format!(
+                r#"<map version="{version}"><georeferencing scale="10000"/><colors count="1"><color priority="0" c="0" m="0" y="0" k="1"/></colors><barrier><symbols count="1" id="x"><symbol type="8" id="0" code="1"><text_symbol><font family="Arial" size="3000"/><text color="0"/></text_symbol></symbol></symbols></barrier></map>"#
+            );
+            let set = SymbolSet::from_omap_xml(&map).unwrap();
+            match &RenderSymbols::from_set(&set).symbols[&0] {
+                Symbol::Text(t) => t.rotatable,
+                other => panic!("{other:?}"),
+            }
+        };
+        assert!(text(8));
+        assert!(!text(9));
+        assert!(!text_of("", r#"rotatable="false""#).rotatable);
     }
 
     #[test]

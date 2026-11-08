@@ -17,6 +17,9 @@ pub struct SymbolSet {
     pub colors_xml: String,
     pub symbols_xml: String,
     pub grid_xml: String,
+    /// `<map version="…">` of the file (9 when absent): some symbol defaults depend on it, e.g.
+    /// text symbols are rotatable by default before version 9 [TS `loadImpl`].
+    pub version: u32,
     codes: Vec<(SymbolCode, u32)>,
     hidden: Vec<u32>,
 }
@@ -26,6 +29,10 @@ const SCHOOL_2019_ADDITIONS: &str =
 const SHEET_ADDITIONS: &str = include_str!("../../../../assets/symbol-sets/sheet-additions.xml");
 /// IOF school symbol set 2019: all ISSprOM 2019 symbols are enlarged to 125 %.
 pub const SCHOOL_SYMBOL_ENLARGEMENT: f64 = 1.25;
+
+/// The OOM file format version freemapper-print is written against, assumed when a file does not
+/// say.
+pub const CURRENT_VERSION: u32 = 9;
 
 const ISSPROM_2019_4000: &str =
     include_str!("../../../../assets/symbol-sets/ISSprOM 2019_4000.omap");
@@ -39,6 +46,7 @@ impl SymbolSet {
         let mut reader = Reader::from_str(xml);
         let mut stack: Vec<String> = Vec::new();
         let mut scale_denominator = None;
+        let mut version = None;
         let mut name = None;
         let (mut colors, mut symbols, mut grid) = (None, None, None);
         let (mut colors_start, mut symbols_start) = (0, 0);
@@ -69,6 +77,9 @@ impl SymbolSet {
             let tag = e.name().as_ref().to_string();
             let parent = stack.last().map(String::as_str);
             match (tag.as_str(), parent) {
+                ("map", None) => {
+                    version = attribute(&e, "version")?.and_then(|v| v.trim().parse().ok());
+                }
                 ("georeferencing", _) => {
                     scale_denominator = attribute(&e, "scale")?.and_then(|v| v.parse().ok());
                 }
@@ -102,6 +113,7 @@ impl SymbolSet {
             colors_xml: colors.ok_or(OmapError::MissingElement("colors"))?,
             symbols_xml: symbols.ok_or(OmapError::MissingElement("symbols"))?,
             grid_xml: grid.unwrap_or_default(),
+            version: version.unwrap_or(CURRENT_VERSION),
             codes,
             hidden,
         })
@@ -199,8 +211,8 @@ impl SymbolSet {
             1,
         );
         let map = format!(
-            r#"<map><georeferencing scale="{}"/>{}<barrier>{symbols}<view>{}</view></barrier></map>"#,
-            self.scale_denominator, self.colors_xml, self.grid_xml
+            r#"<map version="{}"><georeferencing scale="{}"/>{}<barrier>{symbols}<view>{}</view></barrier></map>"#,
+            self.version, self.scale_denominator, self.colors_xml, self.grid_xml
         );
         Self::from_omap_xml(&map).expect("symbol set with additions is valid")
     }
@@ -284,6 +296,20 @@ mod tests {
 
     fn first_attr<'a>(xml: &'a str, anchor: &str, name: &str) -> &'a str {
         first_attribute_after(xml, anchor, name).unwrap_or_else(|| panic!("{anchor} {name}"))
+    }
+
+    #[test]
+    fn file_version_is_kept() {
+        let map = |version: &str| {
+            format!(
+                r#"<map {version}><georeferencing scale="10000"/><colors count="0"></colors><barrier><symbols count="0" id="x"></symbols></barrier></map>"#
+            )
+        };
+        let old = SymbolSet::from_omap_xml(&map(r#"version="8""#)).unwrap();
+        assert_eq!(old.version, 8);
+        assert_eq!(old.with_sheet_symbols().version, 8, "kept by additions");
+        assert_eq!(SymbolSet::from_omap_xml(&map("")).unwrap().version, 9);
+        assert_eq!(SymbolSet::issprom_2019().version, 9);
     }
 
     #[test]
