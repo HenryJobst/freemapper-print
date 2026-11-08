@@ -407,6 +407,14 @@ planned beforehand or split on the day. It delivers data only; freemapper-print 
   layer in freemapper-courseplan); tape and closures are course objects. freemapper-print adds a print profile
   "gym" (scales 1:100–1:500, values are assumptions until ISInOM is final).
 
+### 5.10 Follow-ups from M1 (for M2)
+
+- Line patterns pay their clip outline before the first line is drawn; pay lazily so an object with clipped
+  patterns that draw nothing is not cut (safe today, reported as cut).
+- ADR 0019 and the `MAX_UNITS_PER_PAGE` doc: "fewer than eight points per unit" should read "at most eight".
+- PDF output: check free disk space against the PDF size plus a reserve before writing, write to a temporary
+  file and rename, report "disk full" without leaving a partial PDF (suite rule from freemapper, adapted).
+
 ## 6. Testing and quality
 
 - Readers (`.omap`, IOF XML, `.ppen`) test-first with small fixtures and real files from Purple Pen, Condes and

@@ -31,6 +31,7 @@ before changing code.
 - Branch and worktree per plan under `.worktrees/<branch>`. Before a merge: fmt, clippy and tests green on the
   branch; merge with `--no-ff` into main; run them again on main; push to both remotes; watch CI on GitHub;
   then remove the worktree and branch and run `cargo clean` (target/ grows to tens of GB).
+  Delete temporary builds in the session scratchpad too (reviewers' probe builds reach gigabytes).
 - Commits: Conventional Commits with a scope (`feat(render): …`, `fix(omap): …`, `docs(adr): …`), English
   subject, small logical units.
 - Release when the user asks: bump `[workspace.package] version`, `cargo update -w`, turn "Unveröffentlicht"/
