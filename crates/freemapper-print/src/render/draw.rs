@@ -78,20 +78,59 @@ pub(super) const POINTS_PER_UNIT: usize = 64;
 pub(super) struct Sink {
     pub(super) out: Vec<Primitive>,
     left: usize,
+    /// Every unit asked for, also beyond the budget: the proof in tests that drawing stays
+    /// within it.
+    spent: usize,
     /// The budget ran out and output was dropped.
     pub(super) cut: bool,
 }
+
+// Units asked for by all sinks of this thread, so tests also see work done in a sink other than
+// the object's own.
+#[cfg(test)]
+thread_local! {
+    static WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Units asked for by all sinks of this thread so far.
+#[cfg(test)]
+pub(super) fn work_units() -> usize {
+    WORK.with(std::cell::Cell::get)
+}
+
+/// How far a drawing call may ask beyond its budget: the steps in progress when the budget runs
+/// out still ask for their units before the loops around them stop, at most one step per
+/// nesting level (a settle, a push, an outline test or element copy of n / 64 units). The
+/// test objects stay well inside it; an element or outline with more than 64 000 points could
+/// exceed it.
+#[cfg(test)]
+pub(super) const BUDGET_SLACK: usize = 1_000;
 
 impl Sink {
     pub(super) fn new(budget: usize) -> Self {
         Self {
             out: Vec::new(),
             left: budget,
+            spent: 0,
             cut: false,
         }
     }
 
+    /// Records `units` asked for.
+    fn request(&mut self, units: usize) {
+        self.spent = self.spent.saturating_add(units);
+        #[cfg(test)]
+        WORK.with(|w| w.set(w.get().saturating_add(units)));
+    }
+
+    /// Units asked for so far, also beyond the budget.
+    #[cfg(test)]
+    pub(super) fn spent(&self) -> usize {
+        self.spent
+    }
+
     pub(super) fn push(&mut self, primitive: Primitive) {
+        self.request(1);
         if self.stop() {
             return;
         }
@@ -120,6 +159,7 @@ impl Sink {
 
     /// Charges `units` of work that drew nothing.
     pub(super) fn charge(&mut self, units: usize) {
+        self.request(units);
         if units > self.left {
             self.cut = true;
         }
@@ -317,6 +357,9 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
                 }
                 let solid = dashes.len() == 1 && dashes[0] == part.points;
                 for d in dashes {
+                    if sink.stop() {
+                        return;
+                    }
                     sink.extend(stroke(
                         def.color,
                         d,
@@ -336,8 +379,13 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
                 def.join,
             )),
         }
-        // Borders on both sides, flat caps, miter (round if the line is round).
-        if let Some(border) = &def.border {
+        // Borders on both sides, flat caps, miter (round if the line is round); a border
+        // without colour or width draws nothing.
+        if let Some(border) = def
+            .border
+            .as_ref()
+            .filter(|b| b.color >= 0 && b.width > 0.0)
+        {
             let shift = width / 2.0 + mm(border.shift);
             let join = if def.join == Join::Round {
                 Join::Round
@@ -359,6 +407,11 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
                 None => vec![(part.points.clone(), part.closed)],
             };
             for (piece, closed) in pieces {
+                if sink.stop() {
+                    return;
+                }
+                // A piece without output (a degenerate offset) still costs one unit.
+                let len = sink.out.len();
                 for side in [-1.0, 1.0] {
                     let path = geometry::offset(&piece, closed, side * shift);
                     sink.extend(stroke(
@@ -370,6 +423,7 @@ fn line(def: &LineDef, coords: &[MapCoord], symbols: &RenderSymbols, sink: &mut 
                         join,
                     ));
                 }
+                sink.settle(len);
             }
         }
         // Mid symbols, local +y to the right of travel.
@@ -846,7 +900,7 @@ mod tests {
             tags: Vec::new(),
             pattern: None,
         };
-        let start = std::time::Instant::now();
+        let before = work_units();
         // 1 µm dashes on 1 km of paper: 5 · 10⁸ dashes, beyond the repeat limit, drawn solid.
         r.symbols.insert(PATTERNED, dashed(1.0));
         let km = line_object(vec![MapCoord::new(0, 0), MapCoord::new(1_000_000_000, 0)]);
@@ -868,11 +922,71 @@ mod tests {
         let (p, cut) = primitives_counted(&line_object(coords), &r);
         assert!(cut);
         assert_eq!(p.len(), MAX_PRIMITIVES_PER_OBJECT);
+        // Both objects together: one budget plus the slack, plus the solid kilometre.
+        let work = work_units() - before;
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(10),
-            "{:?}",
-            start.elapsed()
+            work <= MAX_PRIMITIVES_PER_OBJECT + BUDGET_SLACK + 1,
+            "{work}"
         );
+    }
+
+    /// Ten 900 mm parts, `def` on each.
+    fn ten_long_parts(r: &mut RenderSymbols, def: LineDef) -> MapObject {
+        r.symbols.insert(PATTERNED, Symbol::Line(def));
+        MapObject {
+            symbol_id: PATTERNED,
+            kind: MapObjectKind::Path,
+            coords: (0..10)
+                .flat_map(|i| {
+                    [
+                        MapCoord::new(0, i * 1_000),
+                        MapCoord {
+                            flags: FLAG_HOLE,
+                            ..MapCoord::new(900_000, i * 1_000)
+                        },
+                    ]
+                })
+                .collect(),
+            tags: Vec::new(),
+            pattern: None,
+        }
+    }
+
+    #[test]
+    fn invalid_border_costs_nothing() {
+        let (mut r, _) = set();
+        // No main line, a border with 5 µm dashes (90 000 per part) but no width or no colour.
+        for (color, width) in [(3, 0.0), (-1, 100.0)] {
+            let def = LineDef {
+                color: -1,
+                width: 100.0,
+                cap: Cap::Flat,
+                join: Join::Miter,
+                dash: None,
+                border: Some(super::super::symbols::Border {
+                    color,
+                    width,
+                    shift: 0.0,
+                    dash: Some(Dash {
+                        dash: 5.0,
+                        gap: 5.0,
+                        group: 1,
+                        in_group_gap: 0.0,
+                        half_outer: false,
+                    }),
+                }),
+                mid: None,
+                start: None,
+                end: None,
+            };
+            let object = ten_long_parts(&mut r, def);
+            let before = work_units();
+            let (p, cut) = primitives_counted(&object, &r);
+            let work = work_units() - before;
+            assert!(p.is_empty() && !cut, "{color} {width}");
+            // One settle for the object that drew nothing.
+            assert!(work <= 1, "{color} {width}: {work}");
+        }
     }
 
     #[test]

@@ -632,7 +632,6 @@ mod tests {
             in_group_gap: 0.0,
             half_outer: false,
         };
-        let start = std::time::Instant::now();
         let (pieces, limited) = dashes(&long, &tiny, usize::MAX);
         assert!(limited);
         assert!(pieces.len() <= MAX_REPEATS, "{}", pieces.len());
@@ -650,7 +649,6 @@ mod tests {
             (vec![long.points.clone()], false),
             "solid"
         );
-        assert!(start.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[test]

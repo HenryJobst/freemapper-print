@@ -944,18 +944,17 @@ mod tests {
             tags: Vec::new(),
             pattern: None,
         };
-        let start = std::time::Instant::now();
+        // Units asked for by every sink of this thread, the object's and any other.
+        let before = draw::work_units();
         let mut sink = Sink::new(MAX_PRIMITIVES_PER_OBJECT);
         draw::draw_object(&object, &r, &mut sink);
+        let work = draw::work_units() - before;
         assert!(sink.cut);
-        assert_eq!(sink.left(), 0, "all units spent, none more");
+        assert_eq!(sink.left(), 0);
         assert!(sink.out.len() <= MAX_PRIMITIVES_PER_OBJECT);
-        // The same object without the shared probe budget took 14.6 s (debug build).
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(5),
-            "{:?}",
-            start.elapsed()
-        );
+        let bound = MAX_PRIMITIVES_PER_OBJECT + draw::BUDGET_SLACK;
+        assert!(sink.spent() <= bound, "object's sink: {}", sink.spent());
+        assert!(work <= bound, "all sinks: {work}");
         let (_, cut) = primitives_counted(&object, &r);
         assert!(cut);
     }

@@ -521,7 +521,8 @@ Rules in §4.1–4.5 were taken from OOM **v0.9.6** (`src/core/symbols/area_symb
   as cut.
 - Dashes (§2.2) and mid symbols (§2.4) of a part are computed only up to the units left. A part
   that needs more than 100 000 of them (`geometry::MAX_REPEATS`) is drawn solid or without mid
-  symbols. Both cases also report the object as cut.
+  symbols. Both cases also report the object as cut. A main line or border without colour or
+  width is skipped before its dashes are computed (it draws nothing in OOM either).
 - All pattern shapes of one area hold the same outline (`Arc`); the PDF writer opens one clip
   block per run of shapes with the same outline.
 
