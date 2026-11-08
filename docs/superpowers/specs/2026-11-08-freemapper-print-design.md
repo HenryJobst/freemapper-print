@@ -54,6 +54,15 @@ a local browser editor, the CLI or an AI agent via MCP *(user)*.
 - Legibility warnings for symbols that move too close after a scale change *(Claude's call: deferred)*.
 - Entering control descriptions for courses imported from IOF XML *(user: `.ppen` only at first)*.
 - freemapper switching to this project's renderer *(user)*.
+- The sibling course-setting application as a course source *(proposal of the course-setting session,
+  2026-11-08; user decision pending)*. It will have its own project format, because IOF XML 3.0 and `.ppen`
+  cannot express team orienteering (mandatory controls plus free controls the team splits) or planned
+  control-placer tours. Instead of a third reader here, freemapper-print would use the course-setting
+  application's data model crate. Its number positions use the same form as §5.7 (direction, gap in print mm).
+- Course overprint for team orienteering: mandatory and free controls drawn and described differently. Needs
+  the course-setting application's format.
+- Maps for control-placer tours: open whether freemapper-print prints them with a layout of their own or the
+  course-setting application prints them *(the course-setting session clarifies with the user)*.
 - Maps from the author's own future map editor (separate project, not part of this design) *(user)*.
 
 **Non-goals**
@@ -320,7 +329,8 @@ command or through MCP. freemapper-print never moves a number silently.
 of their own with no dependency on the rest of freemapper-print, so the course-setting application can use the
 same algorithm. Callers add their own obstacles: course setting knows circles, legs and map detail;
 freemapper-print adds masks, sheet elements and the map frame. Like the renderer (ADR 0014), the module is
-developed here first and extracted into a shared crate later.
+developed here first and extracted into a shared crate later; the course-setting session agreed and will take
+it over once extracted.
 
 **Overprint and masks.** The course overprint lies above the masks, so a mask never hides a marked route, a
 crossing point, a forbidden route or an out-of-bounds area. `check` warns when such an object lies inside a
