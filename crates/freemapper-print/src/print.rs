@@ -30,7 +30,7 @@ pub const PAGE_MARGIN_MM: f64 = 5.0;
 /// it. A file that asks for more is broken or hostile; the objects after the limit are not
 /// drawn and counted ([`PrintReport::objects_not_drawn_page_limit`]).
 ///
-/// A page keeps fewer than four million points (500 000 units of fewer than eight points),
+/// A page keeps at most four million points (500 000 units of at most eight points each),
 /// clip outlines counted once per block. Measured peak memory (release build, macOS): about
 /// 200 MB on a 134 KB file of 500 000 strokes of seven points, the largest of the hostile
 /// files tried (ADR 0019).

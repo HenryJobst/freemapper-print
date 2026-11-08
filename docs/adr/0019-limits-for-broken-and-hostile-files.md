@@ -38,7 +38,7 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 
 ## Consequences
 
-- A page keeps fewer than four million points (500 000 units of fewer than 8 points each), and every clip
+- A page keeps at most four million points (500 000 units of at most eight points each), and every clip
   block the PDF writes counts among them. How many bytes that takes is measured, not derived. Peak memory on
   a release build on macOS:
   - 200 MB on a 134 KB file of 500 000 strokes of seven points, the most of all files tried;

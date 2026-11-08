@@ -151,8 +151,7 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
         .file_stem()
         .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned());
     let (pdf, report) = print_map(&map, &options, &title)?;
-    std::fs::write(&args.out, pdf)
-        .with_context(|| format!("could not write {}", args.out.display()))?;
+    freemapper_print::output::write_pdf_file(&args.out, &pdf)?;
     for line in report_lines(
         &report,
         args.paper,
