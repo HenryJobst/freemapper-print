@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+miniz_oxide.workspace = true
+pdf-writer.workspace = true
+quick-xml.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true
