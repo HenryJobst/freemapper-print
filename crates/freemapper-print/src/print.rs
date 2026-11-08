@@ -1,8 +1,8 @@
-//! Exact-scale page output (design §5.2, ADR 0012).
+//! Exact-scale page output (design §5.2, ADR 0018).
 //!
 //! One millimetre at print scale is one page millimetre, and the page is exactly the paper. When the
 //! print scale differs from the map scale, the geometry scales by map scale / print scale and the
-//! symbols by the symbol factor of the map kind. Nothing is fitted to the page: a map larger than
+//! symbols by the symbol factor the IOF standard sets for the map kind. Nothing is fitted to the page: a map larger than
 //! the page is clipped, and the report says by how much it overflows.
 
 use std::collections::BTreeSet;
@@ -15,7 +15,7 @@ use crate::render::fonts::substituted;
 use crate::render::geometry::Pt;
 use crate::render::pdf::{PdfMeta, write_pdf};
 use crate::render::symbols::{RenderSymbols, Symbol};
-use crate::scale::{MapKind, ScaleError, geometry_factor, symbol_factor};
+use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
 
 pub use crate::render::{PaperBox, RenderedPage};
 
@@ -64,7 +64,9 @@ pub struct PrintOptions {
     /// The map point (in the file's map coordinates) that lands at the centre of the page; `None`
     /// takes the centre of the bounding box of everything drawn.
     pub centre: Option<MapCoord>,
-    /// Draw the objects of the map's peripheral information (tagged `freemapper:source=sheet`).
+    /// Draw freemapper's information block (title, scale, scale bar, credits): the objects tagged
+    /// `freemapper:source=sheet`. North lines (601) carry the tag too but belong to the map and are
+    /// always drawn (ADR 0022).
     pub show_sheet_objects: bool,
 }
 
@@ -76,6 +78,9 @@ pub struct PrintReport {
     pub print_scale: u32,
     pub geometry_factor: f64,
     pub symbol_factor: f64,
+    /// The standard does not foresee the print scale for the map kind (a reduction below the base
+    /// scale): the symbols keep their base size, and the print is meant for training only.
+    pub non_standard_scale: bool,
     /// How far (mm) the bounding box of the drawn objects reaches beyond the clip rectangle in x
     /// and in y, both sides together; `None` when everything fits.
     pub overflow_mm: Option<(f64, f64)>,
@@ -116,7 +121,10 @@ pub fn render_page(
     let mut skipped_objects = 0;
     let mut objects = Vec::new();
     for object in map.parts.iter().flat_map(|p| &p.objects) {
-        if is_sheet_object(object) && !options.show_sheet_objects {
+        if is_sheet_object(object)
+            && !options.show_sheet_objects
+            && !is_north_line(&map.symbol_set, object)
+        {
             continue;
         }
         if map.symbol_set.is_hidden(object.symbol_id)
@@ -181,6 +189,7 @@ pub fn render_page(
         print_scale,
         geometry_factor,
         symbol_factor,
+        non_standard_scale: !is_standard(options.kind, print_scale),
         overflow_mm,
         skipped_objects,
         truncated_objects,
@@ -218,6 +227,13 @@ fn is_sheet_object(object: &MapObject) -> bool {
         .tags
         .iter()
         .any(|(k, v)| k == SHEET_TAG.0 && v == SHEET_TAG.1)
+}
+
+/// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
+/// as a sheet object (ADR 0022).
+fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
+    set.code_of(object.symbol_id)
+        .is_some_and(|code| code == "601" || code.starts_with("601."))
 }
 
 /// `v` µm times `factor`, rounded to whole µm.

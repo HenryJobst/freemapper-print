@@ -225,6 +225,14 @@ impl SymbolSet {
             .map(|(_, id)| *id)
     }
 
+    /// Code of the top-level symbol `id`, e.g. "601".
+    pub fn code_of(&self, id: u32) -> Option<&str> {
+        self.codes
+            .iter()
+            .find(|(_, i)| *i == id)
+            .map(|(c, _)| c.0.as_str())
+    }
+
     /// OOM type of the top-level symbol `id` (1 point, 2 line, 4 area, 8 text, 16 combined).
     pub fn symbol_type(&self, id: u32) -> Option<u32> {
         let marker = format!(r#"" id="{id}""#);

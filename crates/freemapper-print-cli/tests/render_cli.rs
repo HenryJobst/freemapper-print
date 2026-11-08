@@ -316,3 +316,22 @@ fn refuses_to_overwrite_the_map() {
 fn usage_errors_exit_with_2() {
     assert_eq!(run(&["render"]).status.code(), Some(2));
 }
+
+#[test]
+fn reduction_warns_enlargement_does_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let pdf = dir.path().join("o.pdf");
+    let o = render(LUEBECK, &pdf, &["--scale", "5000"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(
+        err.contains("1:5000 is not a standard scale for sprint maps")
+            && err.contains("training only"),
+        "{err}"
+    );
+    let o = render(LUEBECK, &pdf, &["--scale", "3000", "--paper", "a3"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("symbol factor 1.333"), "{err}");
+    assert!(!err.contains("not a standard scale"), "{err}");
+}

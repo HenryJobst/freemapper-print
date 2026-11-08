@@ -7,7 +7,7 @@ use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
-use freemapper_print::scale::{MapKind, infer_kind};
+use freemapper_print::scale::{MapKind, infer_kind, is_standard};
 
 #[derive(Parser)]
 #[command(
@@ -50,8 +50,8 @@ struct RenderArgs {
     /// Map kind. Needed only when the program cannot tell it from freemapper.toml or the map file.
     #[arg(long, value_enum)]
     kind: Option<KindArg>,
-    /// Also draw the north lines and the information block of the map. They scale with the
-    /// map at another print scale, so a printed scale label in them can be wrong.
+    /// Also draw freemapper's information block: title, scale, scale bar and credits. It scales
+    /// with the map at another print scale, so its scale text can be wrong then.
     #[arg(long)]
     show_sheet_objects: bool,
 }
@@ -62,7 +62,7 @@ enum PaperArg {
     A3,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum OrientationArg {
     Auto,
     Portrait,
@@ -148,6 +148,7 @@ fn render(args: &RenderArgs) -> anyhow::Result<()> {
     for line in report_lines(
         &report,
         args.paper,
+        args.orientation,
         kind,
         map.georef.scale_denominator,
         &args.out,
@@ -219,6 +220,7 @@ fn objects(count: usize, is: &str, are: &str) -> String {
 fn report_lines(
     report: &PrintReport,
     paper: PaperArg,
+    orientation_arg: OrientationArg,
     kind: MapKind,
     map_scale: u32,
     out: &Path,
@@ -236,6 +238,15 @@ fn report_lines(
         report.geometry_factor,
         report.symbol_factor,
     )];
+    if report.non_standard_scale {
+        lines.push(format!(
+            "Warning: 1:{} is not a standard scale for {} maps. The map is reduced and the symbols \
+             keep their 1:{} size. Use this print for training only.",
+            report.print_scale,
+            kind.name(),
+            kind.base_scale(),
+        ));
+    }
     if let Some((x, y)) = report.overflow_mm
         && (x > 0.0 || y > 0.0)
     {
@@ -250,15 +261,22 @@ fn report_lines(
         if matches!(paper, PaperArg::A4) {
             hints.push("A3 paper".to_string());
         }
-        hints.push("the other orientation".into());
+        // Auto already took the orientation that cuts off less.
+        if orientation_arg != OrientationArg::Auto {
+            hints.push("the other orientation".into());
+        }
         // The next larger allowed number shrinks the map on the page.
         match kind
             .allowed_scales()
-            .iter()
-            .find(|&&s| s > report.print_scale)
+            .into_iter()
+            .find(|&s| s > report.print_scale)
         {
-            Some(next) => hints.push(format!(
+            Some(next) if is_standard(kind, next) => hints.push(format!(
                 "a print scale with a larger number, for example 1:{next}"
+            )),
+            Some(next) => hints.push(format!(
+                "a print scale with a larger number, for example 1:{next} (not standard, for \
+                 training only)"
             )),
             None => hints.push("a print scale with a larger number".into()),
         }
@@ -334,6 +352,7 @@ mod tests {
             print_scale: 4000,
             geometry_factor: 1.0,
             symbol_factor: 1.0,
+            non_standard_scale: false,
             overflow_mm: None,
             skipped_objects: 0,
             truncated_objects: 0,
@@ -343,7 +362,14 @@ mod tests {
     }
 
     fn lines(r: &PrintReport, paper: PaperArg) -> Vec<String> {
-        report_lines(r, paper, MapKind::Sprint, 4000, Path::new("o.pdf"))
+        report_lines(
+            r,
+            paper,
+            OrientationArg::Auto,
+            MapKind::Sprint,
+            4000,
+            Path::new("o.pdf"),
+        )
     }
 
     #[test]
@@ -411,7 +437,17 @@ mod tests {
             ..report()
         };
         let l = lines(&r, PaperArg::A4);
-        assert!(l[1].contains("for example 1:5000"), "{l:?}");
+        assert!(
+            l[1].contains("for example 1:5000 (not standard, for training only)."),
+            "{l:?}"
+        );
+        let r = PrintReport {
+            print_scale: 3000,
+            symbol_factor: 4.0 / 3.0,
+            ..r
+        };
+        let l = lines(&r, PaperArg::A4);
+        assert!(l[1].ends_with("for example 1:4000."), "{l:?}");
         let r = PrintReport {
             print_scale: 5000,
             ..r
@@ -421,6 +457,43 @@ mod tests {
         assert!(
             l[1].contains("a print scale with a larger number."),
             "{l:?}"
+        );
+    }
+
+    #[test]
+    fn non_standard_scale_warns() {
+        let r = PrintReport {
+            print_scale: 5000,
+            non_standard_scale: true,
+            ..report()
+        };
+        let l = lines(&r, PaperArg::A4);
+        assert_eq!(l.len(), 3, "{l:?}");
+        assert_eq!(
+            l[1],
+            "Warning: 1:5000 is not a standard scale for sprint maps. The map is reduced and the \
+             symbols keep their 1:4000 size. Use this print for training only."
+        );
+    }
+
+    #[test]
+    fn other_orientation_hint_only_after_an_explicit_choice() {
+        let r = PrintReport {
+            overflow_mm: Some((1.0, 0.0)),
+            ..report()
+        };
+        assert!(!lines(&r, PaperArg::A4)[1].contains("orientation"));
+        let explicit = report_lines(
+            &r,
+            PaperArg::A4,
+            OrientationArg::Landscape,
+            MapKind::Sprint,
+            4000,
+            Path::new("o.pdf"),
+        );
+        assert!(
+            explicit[1].contains("the other orientation"),
+            "{explicit:?}"
         );
     }
 

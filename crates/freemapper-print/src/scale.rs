@@ -1,7 +1,9 @@
-//! Map kinds and the symbol factor table (ADR 0012).
+//! Map kinds and the symbol size table (ADR 0018).
 //!
 //! Printing at another scale than the map was drawn at scales geometry by the geometry factor and symbol
-//! dimensions by the symbol factor, which the IOF standards fix per map kind.
+//! dimensions by the symbol factor. The IOF standards fix the symbol sizes per map kind and print scale:
+//! an enlarged print enlarges every symbol in proportion, and a reduction below the base scale is not
+//! foreseen (the symbols keep their base size, and the print is flagged as non-standard).
 
 use std::path::Path;
 
@@ -10,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::omap::MapDocument;
 
 /// Kartenart: the kind of map, as defined by freemapper's glossary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MapKind {
     Sprint,
@@ -18,8 +20,53 @@ pub enum MapKind {
     Forest,
 }
 
+/// One row of the symbol size table: a map of `kind` at 1:`scale` has its symbols at `size` times
+/// their size at the base scale of the kind.
+struct ScaleRow {
+    kind: MapKind,
+    scale: u32,
+    size: f64,
+    /// The standard foresees this scale; `false` for a reduction below the base scale.
+    standard: bool,
+}
+
+const fn row(kind: MapKind, scale: u32, size: f64, standard: bool) -> ScaleRow {
+    ScaleRow {
+        kind,
+        scale,
+        size,
+        standard,
+    }
+}
+
+/// The symbol size table (ADR 0018), ordered by kind and scale.
+///
+/// - Sprint, ISSprOM 2019-2 §3.1 and §4.7: base 1:4000; 1:3000 enlarges every symbol to 133 %.
+/// - Forest, ISOM 2017-2 §2.9.1 and §3.7: base 1:15000; 1:10000 is 150 %, 1:7500 200 %, 1:5000 300 %.
+/// - Schoolyard: 1:1000 only (the IOF school set is drawn for that scale).
+/// - Reductions (sprint 1:5000, forest 1:20000) are not in the standards; the symbols keep their base
+///   size.
+const SCALE_TABLE: &[ScaleRow] = &[
+    row(MapKind::Sprint, 3000, 4.0 / 3.0, true),
+    row(MapKind::Sprint, 4000, 1.0, true),
+    row(MapKind::Sprint, 5000, 1.0, false),
+    row(MapKind::Schoolyard, 1000, 1.0, true),
+    row(MapKind::Forest, 5000, 3.0, true),
+    row(MapKind::Forest, 7500, 2.0, true),
+    row(MapKind::Forest, 10000, 1.5, true),
+    row(MapKind::Forest, 15000, 1.0, true),
+    row(MapKind::Forest, 20000, 1.0, false),
+];
+
+fn table_row(kind: MapKind, scale: u32) -> Option<&'static ScaleRow> {
+    SCALE_TABLE
+        .iter()
+        .find(|r| r.kind == kind && r.scale == scale)
+}
+
 impl MapKind {
-    fn name(self) -> &'static str {
+    /// The lower-case name used on the command line and in messages.
+    pub fn name(self) -> &'static str {
         match self {
             MapKind::Sprint => "sprint",
             MapKind::Schoolyard => "schoolyard",
@@ -27,13 +74,22 @@ impl MapKind {
         }
     }
 
-    /// The scales (denominators) a map of this kind may be printed at and drawn at.
-    pub fn allowed_scales(self) -> &'static [u32] {
+    /// The scale (denominator) the standard draws this kind of map at: symbols at 100 %.
+    pub fn base_scale(self) -> u32 {
         match self {
-            MapKind::Sprint => &[3000, 4000, 5000],
-            MapKind::Schoolyard => &[1000],
-            MapKind::Forest => &[5000, 7500, 10000, 15000],
+            MapKind::Sprint => 4000,
+            MapKind::Schoolyard => 1000,
+            MapKind::Forest => 15000,
         }
+    }
+
+    /// The scales (denominators) a map of this kind may be printed at and drawn at, ascending.
+    pub fn allowed_scales(self) -> Vec<u32> {
+        SCALE_TABLE
+            .iter()
+            .filter(|r| r.kind == self)
+            .map(|r| r.scale)
+            .collect()
     }
 }
 
@@ -45,11 +101,12 @@ fn join_scales(scales: &[u32]) -> String {
         .join(", ")
 }
 
-/// Errors for scales outside the standard table of a map kind.
+/// Errors for scales outside the table of a map kind.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ScaleError {
     #[error(
-        "a {kind:?} map cannot be printed at 1:{print_scale}; allowed print scales: {}",
+        "a {} map cannot be printed at 1:{print_scale}; allowed print scales: {}",
+        kind.name(),
         join_scales(allowed)
     )]
     PrintScaleNotAllowed {
@@ -58,9 +115,9 @@ pub enum ScaleError {
         allowed: Vec<u32>,
     },
     #[error(
-        "a {kind:?} map drawn at 1:{map_scale} is not a standard {name} map; allowed map scales: {}",
-        join_scales(allowed),
-        name = kind.name()
+        "a {} map cannot be drawn at 1:{map_scale}; allowed map scales: {}",
+        kind.name(),
+        join_scales(allowed)
     )]
     MapScaleNotAllowed {
         kind: MapKind,
@@ -69,32 +126,32 @@ pub enum ScaleError {
     },
 }
 
-/// Symbol enlargement of `scale` relative to the base scale of the kind (Sprint 1:4000, Forest 1:15000,
-/// Schoolyard 1:1000). `None` outside the standard table.
+/// Symbol size at `scale` relative to the base scale of the kind (sprint 1:4000, forest 1:15000,
+/// schoolyard 1:1000), as the standard sets it. `None` outside the table.
 pub fn standard_enlargement(kind: MapKind, scale: u32) -> Option<f64> {
-    match (kind, scale) {
-        (MapKind::Sprint, 3000 | 4000 | 5000) => Some(1.0),
-        (MapKind::Forest, 15000) => Some(1.0),
-        (MapKind::Forest, 10000 | 7500 | 5000) => Some(1.5),
-        (MapKind::Schoolyard, 1000) => Some(1.0),
-        _ => None,
-    }
+    table_row(kind, scale).map(|r| r.size)
 }
 
-/// Factor for symbol dimensions when a map drawn at `map_scale` is printed at `print_scale`.
+/// Whether the standard foresees printing a map of `kind` at `scale`. Reductions below the base scale
+/// and scales outside the table are not standard.
+pub fn is_standard(kind: MapKind, scale: u32) -> bool {
+    table_row(kind, scale).is_some_and(|r| r.standard)
+}
+
+/// Factor for symbol dimensions when a map drawn at `map_scale` is printed at `print_scale`: the
+/// standard size at the print scale divided by the standard size at the map scale.
 pub fn symbol_factor(kind: MapKind, map_scale: u32, print_scale: u32) -> Result<f64, ScaleError> {
-    let allowed = || kind.allowed_scales().to_vec();
     let from =
         standard_enlargement(kind, map_scale).ok_or_else(|| ScaleError::MapScaleNotAllowed {
             kind,
             map_scale,
-            allowed: allowed(),
+            allowed: kind.allowed_scales(),
         })?;
     let to = standard_enlargement(kind, print_scale).ok_or_else(|| {
         ScaleError::PrintScaleNotAllowed {
             kind,
             print_scale,
-            allowed: allowed(),
+            allowed: kind.allowed_scales(),
         }
     })?;
     Ok(to / from)
@@ -158,19 +215,58 @@ mod tests {
     }
 
     #[test]
-    fn sprint_keeps_symbol_size() {
-        assert_eq!(symbol_factor(MapKind::Sprint, 4000, 5000), Ok(1.0));
-        assert_eq!(symbol_factor(MapKind::Sprint, 4000, 3000), Ok(1.0));
+    fn sprint_enlarges_to_133_percent_at_3000() {
+        let f = symbol_factor(MapKind::Sprint, 4000, 3000).unwrap();
+        assert!(close(f, 4.0 / 3.0), "{f}");
+        // The 0.27 mm small footpath (506 in ISSprOM 2019) prints 0.36 mm wide.
+        assert!(close(270.0 * f, 360.0), "{}", 270.0 * f);
+        assert_eq!(symbol_factor(MapKind::Sprint, 4000, 4000), Ok(1.0));
     }
 
     #[test]
-    fn forest_enlarges_at_10000() {
+    fn sprint_at_5000_is_a_non_standard_reduction() {
+        assert_eq!(symbol_factor(MapKind::Sprint, 4000, 5000), Ok(1.0));
+        assert!(!is_standard(MapKind::Sprint, 5000));
+        assert!(is_standard(MapKind::Sprint, 4000) && is_standard(MapKind::Sprint, 3000));
+    }
+
+    #[test]
+    fn forest_enlarges_as_isom_says() {
         assert_eq!(symbol_factor(MapKind::Forest, 15000, 10000), Ok(1.5));
+        assert_eq!(symbol_factor(MapKind::Forest, 15000, 7500), Ok(2.0));
+        assert_eq!(symbol_factor(MapKind::Forest, 15000, 5000), Ok(3.0));
+        // A map drawn at 1:10000 (150 % symbols) printed at 1:15000 goes back to 100 %.
         assert!(close(
             symbol_factor(MapKind::Forest, 10000, 15000).unwrap(),
             1.0 / 1.5
         ));
-        assert_eq!(symbol_factor(MapKind::Forest, 15000, 7500), Ok(1.5));
+        assert_eq!(symbol_factor(MapKind::Forest, 15000, 20000), Ok(1.0));
+        assert!(!is_standard(MapKind::Forest, 20000));
+        for scale in [5000, 7500, 10000, 15000] {
+            assert!(is_standard(MapKind::Forest, scale), "{scale}");
+        }
+    }
+
+    #[test]
+    fn table_rows_are_unique_and_allowed_scales_follow_it() {
+        for kind in [MapKind::Sprint, MapKind::Schoolyard, MapKind::Forest] {
+            let scales = kind.allowed_scales();
+            assert!(
+                scales.windows(2).all(|w| w[0] < w[1]),
+                "{kind:?}: {scales:?}"
+            );
+            for s in scales {
+                assert!(standard_enlargement(kind, s).is_some());
+            }
+        }
+        assert_eq!(MapKind::Sprint.allowed_scales(), [3000, 4000, 5000]);
+        assert_eq!(
+            MapKind::Forest.allowed_scales(),
+            [5000, 7500, 10000, 15000, 20000]
+        );
+        assert_eq!(MapKind::Schoolyard.allowed_scales(), [1000]);
+        assert_eq!(standard_enlargement(MapKind::Schoolyard, 1000), Some(1.0));
+        assert_eq!(standard_enlargement(MapKind::Forest, 4000), None);
     }
 
     #[test]
@@ -193,11 +289,16 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        assert!(err.to_string().contains("1:3000, 1:4000, 1:5000"));
-        assert!(matches!(
-            symbol_factor(MapKind::Sprint, 10000, 4000),
-            Err(ScaleError::MapScaleNotAllowed { .. })
-        ));
+        assert_eq!(
+            err.to_string(),
+            "a sprint map cannot be printed at 1:10000; allowed print scales: 1:3000, 1:4000, 1:5000"
+        );
+        let err = symbol_factor(MapKind::Sprint, 10000, 4000).unwrap_err();
+        assert!(matches!(err, ScaleError::MapScaleNotAllowed { .. }));
+        assert_eq!(
+            err.to_string(),
+            "a sprint map cannot be drawn at 1:10000; allowed map scales: 1:3000, 1:4000, 1:5000"
+        );
     }
 
     #[test]

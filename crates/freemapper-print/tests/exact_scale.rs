@@ -1,5 +1,5 @@
 //! Exact-scale page output: one millimetre at print scale is one PDF millimetre, the page is the
-//! paper, and symbols keep the size the standard sets (ADR 0012).
+//! paper, and symbols have the size the standard sets for the print scale (ADR 0018).
 
 use freemapper_print::omap::{
     MapCoord, MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, SymbolSet,
@@ -148,31 +148,59 @@ fn line_length_at_print_scale() {
 }
 
 #[test]
-fn symbol_width_kept_at_5000() {
+fn reduction_keeps_symbol_width_and_is_flagged() {
+    // 1:5000 is below the sprint base scale 1:4000: not standard, symbols keep their size.
     let doc = map(4000, vec![line(symbol("501.1"), 25.0)]);
     let (pdf, report) = print_map(&doc, &options(MapKind::Sprint, Some(5000)), "Width").unwrap();
     assert_eq!(report.symbol_factor, 1.0);
+    assert!(report.non_standard_scale);
     let width = operands(&content(&pdf), "w");
     assert!(close(width[0], 0.2835, 0.01), "{width:?}");
 }
 
-#[test]
-fn forest_symbols_grow_at_10000() {
-    // 301.6 is a plain 0.18 mm line; the map is a forest map drawn at 1:15000.
-    let doc = map(15000, vec![line(symbol("301.6"), 25.0)]);
-    let (page, report) = render_page(&doc, &options(MapKind::Forest, Some(10000))).unwrap();
-    assert_eq!(report.symbol_factor, 1.5);
-    assert!(close(report.geometry_factor, 1.5, 1e-12));
-    let widths: Vec<f64> = page
-        .primitives
+/// The widths of all strokes on the page (mm).
+fn stroke_widths(page: &freemapper_print::print::RenderedPage) -> Vec<f64> {
+    page.primitives
         .iter()
         .filter_map(|p| match &p.shape {
             Shape::Stroke { width, .. } => Some(*width),
             _ => None,
         })
-        .collect();
-    assert_eq!(widths.len(), 1, "{:?}", page.primitives);
-    assert!(close(widths[0], 0.27, 1e-9), "{widths:?}");
+        .collect()
+}
+
+#[test]
+fn sprint_symbols_grow_to_133_percent_at_3000() {
+    // 506, the small footpath, is 0.27 mm wide at 1:4000 (ISSprOM 2019-2 §4.7: 133 % at 1:3000).
+    let doc = map(4000, vec![line(symbol("506"), 25.0)]);
+    let (page, report) = render_page(&doc, &options(MapKind::Sprint, Some(3000))).unwrap();
+    assert!(close(report.symbol_factor, 4.0 / 3.0, 1e-12));
+    assert!(!report.non_standard_scale);
+    let widths = stroke_widths(&page);
+    assert!(!widths.is_empty());
+    assert!(widths.iter().all(|w| close(*w, 0.36, 1e-9)), "{widths:?}");
+    let (page, report) = render_page(&doc, &options(MapKind::Sprint, None)).unwrap();
+    assert!(!report.non_standard_scale);
+    assert!(stroke_widths(&page).iter().all(|w| close(*w, 0.27, 1e-9)));
+}
+
+#[test]
+fn forest_symbols_grow_at_10000_and_5000() {
+    // 301.6 is a plain 0.18 mm line; the map is a forest map drawn at 1:15000.
+    let doc = map(15000, vec![line(symbol("301.6"), 25.0)]);
+    for (scale, factor) in [(10000, 1.5), (7500, 2.0), (5000, 3.0)] {
+        let (page, report) = render_page(&doc, &options(MapKind::Forest, Some(scale))).unwrap();
+        assert_eq!(report.symbol_factor, factor);
+        assert!(!report.non_standard_scale);
+        assert!(close(
+            report.geometry_factor,
+            15000.0 / f64::from(scale),
+            1e-12
+        ));
+        let widths = stroke_widths(&page);
+        assert_eq!(widths.len(), 1, "{:?}", page.primitives);
+        assert!(close(widths[0], 0.18 * factor, 1e-9), "{scale}: {widths:?}");
+    }
 }
 
 #[test]
@@ -229,6 +257,57 @@ fn sheet_objects_hidden_by_default() {
     };
     let (page, _) = render_page(&doc, &shown).unwrap();
     assert_eq!(page.primitives.len(), 1);
+}
+
+#[test]
+fn north_lines_are_map_content() {
+    // freemapper tags its north lines (601) as sheet objects; they belong to the map anyway.
+    let mut north = line(symbol("601"), 25.0);
+    north.tags = vec![("freemapper:source".into(), "sheet".into())];
+    let doc = map(4000, vec![north]);
+    let (page, _) = render_page(&doc, &options(MapKind::Sprint, None)).unwrap();
+    assert!(!page.primitives.is_empty());
+}
+
+const LUEBECK: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tests/fixtures/maps/luebeck.omap"
+);
+
+#[test]
+fn luebeck_north_lines_drawn_info_block_only_on_request() {
+    let mut doc =
+        freemapper_print::omap::read::read_map_file(std::path::Path::new(LUEBECK)).unwrap();
+    // Only the peripheral information: nine north lines (601) and the information block (991–994).
+    doc.parts.retain(|p| p.name == "peripheral information");
+    let codes: Vec<&str> = doc.parts[0]
+        .objects
+        .iter()
+        .filter_map(|o| doc.symbol_set.code_of(o.symbol_id))
+        .collect();
+    assert_eq!(codes.iter().filter(|c| **c == "601").count(), 9);
+    let texts = |page: &freemapper_print::print::RenderedPage| {
+        page.primitives
+            .iter()
+            .filter(|p| matches!(p.shape, Shape::Text { .. }))
+            .count()
+    };
+    let north_colour = |page: &freemapper_print::print::RenderedPage| {
+        page.primitives
+            .iter()
+            .filter(|p| matches!(p.shape, Shape::Stroke { width, .. } if close(width, 0.14, 1e-9)))
+            .count()
+    };
+    let (plain, _) = render_page(&doc, &options(MapKind::Sprint, None)).unwrap();
+    assert!(north_colour(&plain) >= 9, "north lines drawn");
+    assert_eq!(texts(&plain), 0, "no information block");
+    let shown = PrintOptions {
+        show_sheet_objects: true,
+        ..options(MapKind::Sprint, None)
+    };
+    let (full, _) = render_page(&doc, &shown).unwrap();
+    assert_eq!(north_colour(&full), north_colour(&plain));
+    assert!(texts(&full) > 0, "information block drawn");
 }
 
 #[test]
