@@ -8,7 +8,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::course::{Course, LoadedCourses, layout_for};
+use crate::course::Course;
+use crate::courses::{LoadedCourses, layout_for};
 use crate::omap::{MapCoord, MapDocument};
 use crate::output::{OutputError, write_pdf_file};
 use crate::project::{LayoutSpec, LoadedProject, SheetLang};
@@ -704,7 +705,7 @@ mod tests {
         // The minimal project has no course file: the layouts export as in M2, byte for byte as `sheet_pdf`.
         let p = minimal();
         let map = crate::omap::read::read_map_file(&p.map_path()).unwrap();
-        assert!(crate::course::load_courses(&p, &map).unwrap().is_none());
+        assert!(crate::courses::load_courses(&p, &map).unwrap().is_none());
         let dir = tempfile::tempdir().unwrap();
         let layouts = select_layouts(&p, &[]).unwrap();
         export_layouts(&p, &map, &layouts, dir.path(), |_| {}).unwrap();

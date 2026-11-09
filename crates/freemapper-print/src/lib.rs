@@ -5,6 +5,7 @@
 //! server and the layout editor (ADR 0001). Terms follow `docs/glossary.md`.
 
 pub mod course;
+pub mod courses;
 pub mod describe;
 pub mod export;
 pub mod numbers;
@@ -40,5 +41,99 @@ pub const fn credit_line(lang: project::SheetLang) -> &'static str {
     match lang {
         project::SheetLang::De => CREDIT_LINE_DE,
         project::SheetLang::En => CREDIT_LINE_EN,
+    }
+}
+
+#[cfg(test)]
+mod boundaries {
+    //! The module boundaries of ADR 0039: `course`, `render` and `omap` move into freemapper-core later, so they
+    //! must not reach into the parts of freemapper-print that stay here.
+
+    use std::path::{Path, PathBuf};
+
+    /// Every `.rs` file under `src/<dir>`, tests included.
+    fn sources(dir: &str) -> Vec<PathBuf> {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(dir),
+            &mut out,
+        );
+        assert!(!out.is_empty(), "no sources under src/{dir}");
+        out
+    }
+
+    /// The `crate::` paths of `forbidden` that the files under `src/<dir>` use, as "file: path".
+    fn uses(dir: &str, forbidden: &[&str]) -> Vec<String> {
+        let mut found = Vec::new();
+        for file in sources(dir) {
+            let text = std::fs::read_to_string(&file).unwrap();
+            for module in forbidden {
+                let path = format!("crate::{module}");
+                // `crate::course` must not match `crate::courses`.
+                let hit = text.match_indices(&path).any(|(i, _)| {
+                    !text[i + path.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                });
+                if hit {
+                    found.push(format!("{}: {path}", file.display()));
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn course_uses_only_omap_and_rules() {
+        let found = uses(
+            "course",
+            &[
+                "project",
+                "courses",
+                "sheet",
+                "numbers",
+                "export",
+                "render",
+                "overprint",
+                "placement",
+                "describe",
+                "print",
+            ],
+        );
+        assert!(found.is_empty(), "{found:#?}");
+    }
+
+    #[test]
+    fn render_does_not_know_courses_or_sheets() {
+        let found = uses(
+            "render",
+            &[
+                "overprint",
+                "sheet",
+                "project",
+                "course",
+                "courses",
+                "numbers",
+                "export",
+                "describe",
+                "print",
+            ],
+        );
+        assert!(found.is_empty(), "{found:#?}");
+    }
+
+    #[test]
+    fn the_check_sees_a_forbidden_path() {
+        // The test above would pass on an empty list: one known use proves the walk reads the files.
+        assert!(!uses("sheet", &["project"]).is_empty());
+        assert!(uses("sheet", &["projec"]).is_empty());
     }
 }

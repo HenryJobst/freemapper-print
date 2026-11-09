@@ -2,10 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use freemapper_print::course::NumberPlacement;
 use freemapper_print::course::fit::{FitError, SkipReason, YAxis};
-use freemapper_print::course::{
-    CorrectionScope, CourseLoadError, LayoutNote, NumberPlacement, Stale, base_changed, layout_for,
-    load_courses,
+use freemapper_print::courses::{
+    CorrectionScope, CourseLoadError, LayoutNote, Stale, base_changed, layout_for, load_courses,
 };
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::project::{self, FILE_NAME};
@@ -37,7 +37,7 @@ fn project_dir(course_name: &str, body: &str) -> (tempfile::TempDir, PathBuf) {
 
 const LAYOUTS: &str = "[[layouts]]\nid = \"a4\"\n[[layouts]]\nid = \"a3\"\n";
 
-fn load_all(path: &Path) -> Option<freemapper_print::course::LoadedCourses> {
+fn load_all(path: &Path) -> Option<freemapper_print::courses::LoadedCourses> {
     let lp = project::load(path).unwrap();
     let map = read_map_file(&lp.map_path()).unwrap();
     load_courses(&lp, &map).unwrap()

@@ -1,5 +1,5 @@
 use super::*;
-use crate::course::{LoadedCourses, layout_for};
+use crate::courses::{LoadedCourses, layout_for};
 use crate::omap::MapDocument;
 use crate::render::page::{FillRule, Primitive, RenderColour};
 use crate::sheet::course_sheet::course_project;

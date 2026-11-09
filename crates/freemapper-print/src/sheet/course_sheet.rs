@@ -4,9 +4,8 @@
 
 use std::collections::HashSet;
 
-use crate::course::{
-    Course, CourseKind, FittedEvent, LoadedCourses, SourceFormat, Special, layout_for,
-};
+use crate::course::{Course, CourseKind, FittedEvent, SourceFormat, Special};
+use crate::courses::{LoadedCourses, layout_for};
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
 use crate::numbers::{place_on_sheet, resolve};
 use crate::omap::{MapCoord, MapDocument};
@@ -596,7 +595,7 @@ pub(crate) fn course_project(
     std::fs::write(&path, format!("{head}{body}")).unwrap();
     let project = crate::project::load(&path).unwrap();
     let map = crate::omap::read::read_map_file(&project.map_path()).unwrap();
-    let courses = crate::course::load_courses(&project, &map)
+    let courses = crate::courses::load_courses(&project, &map)
         .unwrap()
         .unwrap();
     (dir, project, map, courses)

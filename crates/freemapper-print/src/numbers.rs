@@ -10,7 +10,8 @@
 use std::collections::HashMap;
 
 use crate::course::model::Offset;
-use crate::course::{Course, FittedEvent, NumberPlacement, Stale, Stop, base_changed, layout_for};
+use crate::course::{Course, FittedEvent, NumberPlacement, Stop};
+use crate::courses::{Stale, base_changed, layout_for};
 use crate::omap::MapCoord;
 use crate::overprint::{FullStrength, full_strength, labels, leg_lines, number_size, stop_symbols};
 use crate::placement::{

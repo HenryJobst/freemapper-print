@@ -10,9 +10,8 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::SkipReason;
-use freemapper_print::course::{
-    CorrectionScope, CourseNote, FitNote, LoadedCourses, Stale, load_courses,
-};
+use freemapper_print::course::{CourseNote, FitNote};
+use freemapper_print::courses::{CorrectionScope, LoadedCourses, Stale, load_courses};
 use freemapper_print::export::{
     ExportError, course_sheet_pdf, export_courses, export_courses_single_file, export_layouts,
     select_courses, select_layouts, sheet_pdf,
@@ -758,7 +757,7 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         )
         .into());
     }
-    let layout = freemapper_print::course::layout_for(&loaded.project, &course.name).0;
+    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
     // The scope: the sheet (the course) or every course on the course's layout.
     let (scope_layout, scope_course, scope_text) = if args.sheet {
         (

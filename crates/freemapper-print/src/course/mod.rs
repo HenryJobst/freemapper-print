@@ -1,9 +1,9 @@
-//! Courses from a course-setting program: the model that does not depend on the file format, and the
-//! readers. Terms follow `docs/glossary.md`.
+//! Courses from a course-setting program: the model that does not depend on the file format, the readers and
+//! the fit to the map. Terms follow `docs/glossary.md`. The module uses only the map model (`omap`); loading the
+//! course file a project names happens outside it (ADR 0039).
 
 pub mod fit;
 pub mod iof_xml;
-pub mod load;
 pub mod model;
 pub mod ppen;
 mod tm;
@@ -11,10 +11,6 @@ pub(crate) mod xml;
 
 pub use fit::{Fit, FitError, FitNote, SkipReason, fit};
 pub use iof_xml::read_iof_xml;
-pub use load::{
-    CorrectionScope, CourseLoadError, LayoutNote, LoadedCourses, Stale, base_changed, layout_for,
-    load_courses,
-};
 pub use model::{
     Control, ControlKind, Course, CourseEvent, CourseFilter, CourseKind, CourseNote, CourseSource,
     Description, FittedEvent, Leg, NumberPlacement, RawEvent, RawPoint, SourceFormat, Special,

@@ -16,7 +16,8 @@ mod text;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use crate::course::{CourseNote, FitNote, Stale};
+use crate::course::{CourseNote, FitNote};
+use crate::courses::Stale;
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};

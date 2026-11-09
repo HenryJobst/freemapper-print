@@ -1,14 +1,15 @@
-//! Loading the project's course file and comparing it with the project file (ADR 0025): assignments
-//! and number corrections that no longer match the course file are reported, never dropped.
+//! The project's courses: loading the course file the project names, fitting it to the map and comparing it
+//! with the project file (ADR 0025). Assignments and number corrections that no longer match the course file
+//! are reported, never dropped. This module sits above [`crate::course`], which knows nothing of the project
+//! file, so that `course` can move into a crate of its own (ADR 0039).
 
 use std::path::Path;
 
+use crate::course::fit::{FitError, FitNote, FitOptions};
+use crate::course::model::{Course, FittedEvent, MAX_COURSE_FILE_BYTES, NumberPlacement};
+use crate::course::{CourseError, CourseNote, fit, read_iof_xml, read_ppen};
 use crate::omap::MapDocument;
 use crate::project::{LayoutSpec, LoadedProject, NumberCorrection, Project};
-
-use super::fit::{FitError, FitNote, FitOptions};
-use super::model::{FittedEvent, MAX_COURSE_FILE_BYTES, NumberPlacement};
-use super::{CourseError, CourseNote, fit, read_iof_xml, read_ppen};
 
 /// Largest difference in direction (degrees) after which a course file's number placement counts as moved.
 pub const BASE_TOLERANCE_DEG: f64 = 0.5;
@@ -199,7 +200,7 @@ fn read_capped(path: &Path, file: &str) -> Result<Vec<u8>, CourseLoadError> {
 
 fn stale_entries(project: &Project, event: &FittedEvent) -> Vec<Stale> {
     let has_course = |name: &str| event.courses.iter().any(|c| c.name == name);
-    let stops = |c: &super::Course<_>, control: &str| c.stops.iter().any(|s| s.control == control);
+    let stops = |c: &Course<_>, control: &str| c.stops.iter().any(|s| s.control == control);
     let mut stale = Vec::new();
     for a in &project.assignments {
         if !has_course(&a.course) {
