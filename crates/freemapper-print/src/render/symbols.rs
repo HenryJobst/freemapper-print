@@ -12,6 +12,8 @@ use crate::omap::{MAX_XML_DEPTH, MapCoord, OmapError, SymbolSet, too_deep};
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderColour {
     pub priority: i32,
+    /// The colour's name in the map file (`name`, empty when missing).
+    pub name: String,
     pub cmyk: [f64; 4],
     /// OOM's RGB for the screen; without `<rgb>` derived from CMYK.
     pub rgb: [f64; 3],
@@ -37,6 +39,7 @@ fn colour(c: &Node) -> RenderColour {
         .map_or(1.0, |v| v.clamp(0.0, 1.0));
     RenderColour {
         priority: c.num("priority") as i32,
+        name: c.attr("name").unwrap_or_default().to_string(),
         cmyk,
         rgb,
         opacity,

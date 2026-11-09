@@ -16,7 +16,10 @@
 #   course_symbol      sizes in mm of the course planning symbols (7xx), split by symbol:
 #                      start_side_mm, circle_diameter_mm, number_height_mm, line_width_mm,
 #                      finish_inner_mm, finish_outer_mm, marked_route_dash_mm,
-#                      marked_route_gap_mm, out_of_bounds_line_mm, crossing_point_mm.
+#                      marked_route_gap_mm, out_of_bounds_line_mm, crossing_point_mm,
+#                      out_of_bounds_hatch_angle_degrees, out_of_bounds_hatch_second_angle_degrees
+#                      (optional, for a cross hatch), out_of_bounds_hatch_spacing_mm (centre to
+#                      centre), out_of_bounds_hatch_line_mm. Angles run counter-clockwise from east.
 #                      Circle diameters are measured from line centre to line centre.
 #   description_box    cell_mm: side of a control description cell printed on the map
 #   course_colour      cyan_percent, magenta_percent, yellow_percent, black_percent
@@ -202,6 +205,14 @@ map_kinds = ["sprint"]
 values = { crossing_point_mm = 3.0 }
 source = { doc = "ISSprOM", section = "4.7, symbol 710.1 Crossing point (3.0 mm outside measure)" }
 
+[[rules]]
+id = "iofprint.course.out_of_bounds_area_sprint"
+key = "course_symbol"
+severity = "warning"
+map_kinds = ["sprint"]
+values = { out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
+source = { doc = "ISSprOM", section = "4.7, symbol 709 Out-of-bounds area (cross hatch at 45°, 1.2 mm centre to centre, 0.2 mm lines; changed from 0.8 mm and 0.25 mm on 2022-01-02); Purple Pen 201417f OOBCourseObj agrees" }
+
 # --- Course planning symbols, schoolyard maps -------------------------------------------------
 
 [[rules]]
@@ -209,7 +220,7 @@ id = "iofprint.course.schoolyard"
 key = "course_symbol"
 severity = "warning"
 map_kinds = ["schoolyard"]
-values = { start_side_mm = 7.0, circle_diameter_mm = 6.0, number_height_mm = 4.0, line_width_mm = 0.35, finish_inner_mm = 5.0, finish_outer_mm = 7.0, marked_route_dash_mm = 2.0, marked_route_gap_mm = 0.5, out_of_bounds_line_mm = 1.0, crossing_point_mm = 3.0 }
+values = { start_side_mm = 7.0, circle_diameter_mm = 6.0, number_height_mm = 4.0, line_width_mm = 0.35, finish_inner_mm = 5.0, finish_outer_mm = 7.0, marked_route_dash_mm = 2.0, marked_route_gap_mm = 0.5, out_of_bounds_line_mm = 1.0, crossing_point_mm = 3.0, out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
 source = { doc = "fmp", section = "ADR 0031 (the ISSprOM 2019-2 values of section 4.7, symbols 701 to 710.1, assumed at 1:1000)" }
 note = { de = "Annahme: Schulhofkarten übernehmen die Sprintwerte aus ISSprOM 2019-2 §4.7 bei 1:1000. Der IOF-Schulsymbolsatz ist dafür nicht geprüft.", en = "Assumption: schoolyard maps take the sprint values of ISSprOM 2019-2 section 4.7 at 1:1000. Not checked against the IOF school symbol set." }
 
@@ -278,6 +289,14 @@ severity = "warning"
 map_kinds = ["forest"]
 values = { crossing_point_mm = 3.0 }
 source = { doc = "ISOM", section = "3.7, symbol 710 Crossing point (drawn 3.0 mm long; the lines follow the length of the crossing)" }
+
+[[rules]]
+id = "iofprint.course.out_of_bounds_area_forest"
+key = "course_symbol"
+severity = "warning"
+map_kinds = ["forest"]
+values = { out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
+source = { doc = "ISOM", section = "3.7, symbol 709 Out-of-bounds area (cross hatch at 45°, 1.2 mm centre to centre, 0.2 mm lines; ISOM 2000 had vertical stripes); Purple Pen 201417f OOBCourseObj agrees" }
 
 # --- Control descriptions on the map -----------------------------------------------------------
 

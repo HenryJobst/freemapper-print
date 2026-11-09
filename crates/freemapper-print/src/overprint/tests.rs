@@ -588,66 +588,209 @@ fn marked_route_leg_is_dashed_upper() {
 }
 
 #[test]
-fn full_strength_by_cmyk() {
+fn full_strength_by_name_or_cmyk() {
+    use FullStrength::{Black, Blue, Brown};
+    let fs = full_strength;
+    // By name: black, brown or blue, alone or at 100 %, whatever the CMYK.
+    assert_eq!(fs("Black", [0.0, 0.0, 0.0, 0.9]), Some(Black));
+    assert_eq!(fs("  brown 100 % ", [0.0, 0.5, 0.8, 0.0]), Some(Brown));
+    assert_eq!(fs("Blue 100%", [0.87, 0.18, 0.0, 0.0]), Some(Blue));
+    assert_eq!(fs("BLUE", [0.87, 0.18, 0.0, 0.0]), Some(Blue));
+    assert_eq!(fs("Blue 50%", [0.435, 0.09, 0.0, 0.0]), None);
+    assert_eq!(fs("Brown 50%", [0.0, 0.28, 0.5, 0.09]), None);
+    assert_eq!(fs("Blue100%", [0.87, 0.18, 0.0, 0.0]), None);
+    // By CMYK, ±0.02: black, blue, brown of Rev. 4 and of Rev. 3.
+    assert_eq!(fs("Black for open land", [0.0, 0.0, 0.0, 1.0]), Some(Black));
+    assert_eq!(fs("x", [0.0, 0.0, 0.0, 0.985]), Some(Black));
+    assert_eq!(fs("x", [0.0, 0.0, 0.0, 0.97]), None);
+    assert_eq!(fs("x", [1.0, 0.0, 0.0, 0.0]), Some(Blue));
+    assert_eq!(fs("x", [0.25, 0.75, 1.0, 0.0]), Some(Brown));
+    assert_eq!(fs("x", [0.0, 0.56, 1.0, 0.18]), Some(Brown));
+    assert_eq!(fs("x", [0.015, 0.545, 0.985, 0.195]), Some(Brown));
+    assert_eq!(fs("x", [0.03, 0.56, 1.0, 0.18]), None);
+    assert_eq!(fs("x", [0.0, 0.27, 0.79, 0.0]), None, "brown 50 %");
     assert_eq!(
-        full_strength([0.0, 0.0, 0.0, 1.0]),
-        Some(FullStrength::Black)
+        fs("OpenOrienteering Orange", [0.125, 0.544, 0.895, 0.0]),
+        None
     );
-    assert_eq!(full_strength([0.0, 0.0, 0.0, 0.6]), None);
-    assert_eq!(
-        full_strength([0.25, 0.75, 1.0, 0.0]),
-        Some(FullStrength::Brown)
-    );
-    assert_eq!(
-        full_strength([0.0, 0.56, 1.0, 0.18]),
-        Some(FullStrength::Brown)
-    );
-    assert_eq!(full_strength([0.0, 0.27, 0.79, 0.0]), None, "brown 50 %");
-    assert_eq!(
-        full_strength([1.0, 0.0, 0.0, 0.0]),
-        Some(FullStrength::Blue)
-    );
-    assert_eq!(full_strength([0.87, 0.18, 0.0, 0.0]), None);
-    assert_eq!(full_strength([0.35, 0.85, 0.0, 0.0]), None, "purple");
+    assert_eq!(fs("Black 60%", [0.0, 0.0, 0.0, 0.6]), None);
+    assert_eq!(fs("Purple", [0.35, 0.85, 0.0, 0.0]), None);
 }
 
 #[test]
-fn luebeck_full_strength_priority() {
-    let map = crate::omap::read::read_map_file(&std::path::PathBuf::from(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/fixtures/maps/luebeck.omap"
+fn lower_purple_goes_above_the_topmost_colour_that_is_not_full_strength() {
+    let named = |priority: i32, name: &str, cmyk: [f64; 4]| RenderColour {
+        name: name.into(),
+        ..colour(priority, cmyk)
+    };
+    let black = named(1, "Black", [0.0, 0.0, 0.0, 1.0]);
+    let green = named(2, "Green", [0.76, 0.0, 0.91, 0.0]);
+    let blue = named(3, "Blue", [1.0, 0.0, 0.0, 0.0]);
+    let grey = named(9, "Black 60%", [0.0, 0.0, 0.0, 0.6]);
+    assert_eq!(
+        full_strength_priority(&[black.clone(), green.clone(), blue.clone(), grey]),
+        Some(1)
+    );
+    // Order in the slice does not matter, only priorities.
+    assert_eq!(
+        full_strength_priority(&[blue.clone(), green, black.clone()]),
+        Some(1)
+    );
+    assert_eq!(full_strength_priority(&[black, blue]), None, "all full");
+    assert_eq!(full_strength_priority(&[]), None, "no colours");
+}
+
+/// The map colours of a fixture and the page rendered from it at its own scale on A3.
+fn fixture_page(file: &str, kind: MapKind) -> RenderedPage {
+    let map = crate::omap::read::read_map_file(&std::path::PathBuf::from(format!(
+        "{}/../../tests/fixtures/maps/{file}",
+        env!("CARGO_MANIFEST_DIR")
     )))
     .unwrap();
-    let colours = crate::render::symbols::RenderSymbols::from_set(&map.symbol_set)
-        .unwrap()
-        .colours;
-    let matched: Vec<(i32, FullStrength)> = colours
+    let options = crate::print::PrintOptions {
+        print_scale: None,
+        kind,
+        paper: crate::print::Paper::A3,
+        orientation: crate::print::Orientation::Auto,
+        centre: None,
+        show_sheet_objects: false,
+        frame_margin_mm: None,
+    };
+    crate::print::render_page(&map, &options).unwrap().0
+}
+
+fn names(page: &RenderedPage, pick: impl Fn(&RenderColour) -> bool) -> Vec<(i32, String)> {
+    page.colours
         .iter()
-        .filter_map(|c| full_strength(c.cmyk).map(|k| (c.priority, k)))
-        .collect();
-    // Black 100 % (2), Blue 100 % (7), Brown 100 % (8), Black below lower light brown (15), Blue 100 %
-    // for area features (16), OpenOrienteering Orange (20, CMYK 12.5/54/90/0: brown by the rule) and Black
-    // for open land (29). The last one is painted first, so the lower purple goes below it: below every
-    // colour of the map except Yellow 100 % (30) and Yellow 50 % (31).
+        .filter(|c| pick(c))
+        .map(|c| (c.priority, c.name.clone()))
+        .collect()
+}
+
+#[test]
+fn luebeck_lower_purple_above_buildings_and_roads() {
+    let page = fixture_page("luebeck.omap", MapKind::Sprint);
+    let full = names(&page, |c| full_strength(&c.name, c.cmyk).is_some());
     assert_eq!(
-        matched,
+        full,
         [
-            (2, FullStrength::Black),
-            (7, FullStrength::Blue),
-            (8, FullStrength::Brown),
-            (15, FullStrength::Black),
-            (16, FullStrength::Blue),
-            (20, FullStrength::Brown),
-            (29, FullStrength::Black),
+            (2, "Black 100%".to_string()),
+            (7, "Blue 100%".to_string()),
+            (8, "Brown 100%".to_string()),
+            (15, "Black below lower light brown".to_string()),
+            (16, "Blue 100% for area features".to_string()),
+            (29, "Black for open land".to_string()),
         ]
     );
-    assert_eq!(full_strength_priority(&colours), Some(29));
+    // Over all colours of the set, the course purple itself (0) is the topmost colour that is not full
+    // strength: the lower purple would go over everything. Only the colours the page paints count.
+    assert_eq!(full_strength_priority(&page.colours), Some(-1));
+    let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
+    // The page paints 2 (Black 100%), 10 (Black 50%, buildings), 14 (Lower brown 30%, roads), 15 and 16:
+    // the lower purple goes right above the buildings, below black.
+    assert_eq!(o.below_priority, Some(9));
+    let below = o.below_priority.unwrap();
+    for (priority, what) in [(10, "Black 50%"), (14, "Lower brown 30%")] {
+        assert!(
+            page.primitives.iter().any(|p| p.priority == priority),
+            "{what}"
+        );
+        assert!(priority > below, "{what} lies under the lower purple");
+    }
+    assert!(2 <= below, "Black 100% lies over it");
+}
+
+#[test]
+fn forest_lower_purple_above_brown_50_below_black() {
+    let page = fixture_page("forest-sample.omap", MapKind::Forest);
+    let full = names(&page, |c| full_strength(&c.name, c.cmyk).is_some());
+    assert_eq!(
+        full,
+        [
+            (1, "Black".to_string()),
+            (3, "Black below light browns".to_string()),
+            // "Opaque Blue" (4) is 87/18/0/0 and has no plain name: not full strength.
+            (5, "Blue".to_string()),
+            (7, "Brown".to_string()),
+        ]
+    );
+    let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
+    // The topmost painted colour that is not full strength is Brown 50% (2).
+    assert_eq!(o.below_priority, Some(1));
+}
+
+#[test]
+fn out_of_bounds_hatch_follows_the_profile() {
+    /// Directions (degrees, counter-clockwise on paper, 0..180), spacing and width of the hatch lines.
+    fn hatch_of(sizes: &CourseSymbolSizes) -> (Vec<i64>, f64, f64) {
+        let (_, upper) = {
+            let ev = event(
+                Vec::new(),
+                vec![Special::OutOfBounds {
+                    rings: ring(),
+                    courses: CourseFilter::All,
+                }],
+            );
+            let c = course(CourseKind::Normal, Vec::new());
+            let o = overprint(&c, &ev, &[], page_of(1.0), sizes, 1.0);
+            (o.lower, o.upper)
+        };
+        let mut lines: Vec<(i64, Pt, Pt, f64)> = upper
+            .iter()
+            .map(|s| match s {
+                Shape::Clipped { inner, .. } => match &**inner {
+                    Shape::Stroke { path, width, .. } => {
+                        let (a, b) = (path[0], path[1]);
+                        // Paper y points down: counter-clockwise is -y.
+                        let deg = (-(b.1 - a.1))
+                            .atan2(b.0 - a.0)
+                            .to_degrees()
+                            .rem_euclid(180.0);
+                        (deg.round() as i64 % 180, a, b, *width)
+                    }
+                    other => panic!("{other:?}"),
+                },
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        lines.sort_by_key(|l| l.0);
+        let mut angles: Vec<i64> = lines.iter().map(|l| l.0).collect();
+        angles.dedup();
+        // Spacing: distance between the first two parallel lines of the first direction.
+        let first: Vec<_> = lines.iter().filter(|l| l.0 == angles[0]).collect();
+        let (p, q) = (first[0], first[1]);
+        let d = (p.2.0 - p.1.0, p.2.1 - p.1.1);
+        let len = d.0.hypot(d.1);
+        let spacing = ((q.1.0 - p.1.0) * d.1 - (q.1.1 - p.1.1) * d.0).abs() / len;
+        (angles, spacing, first[0].3)
+    }
+    let base = crate::rules::base();
+    // ISSprOM 2019-2 and ISOM 2017-2, symbol 709: cross hatch at 45° and 135°, 1.2 mm apart, 0.2 mm wide.
+    for kind in [MapKind::Sprint, MapKind::Forest] {
+        let (angles, spacing, width) = hatch_of(&base.course_symbol(kind));
+        assert_eq!(angles, [45, 135], "{kind:?}");
+        assert!((spacing - 1.2).abs() < 1e-9, "{kind:?} {spacing}");
+        assert!((width - 0.2).abs() < 1e-9, "{kind:?} {width}");
+    }
+    // The values come from the profile: ISOM 2000's vertical stripes (0.25 mm, 0.6 mm apart) as one
+    // direction without a second.
+    let isom2000 = CourseSymbolSizes {
+        out_of_bounds_hatch_angle_degrees: 90.0,
+        out_of_bounds_hatch_second_angle_degrees: None,
+        out_of_bounds_hatch_spacing_mm: 0.6,
+        out_of_bounds_hatch_line_mm: 0.25,
+        ..base.course_symbol(MapKind::Forest)
+    };
+    let (angles, spacing, width) = hatch_of(&isom2000);
+    assert_eq!(angles, [90]);
+    assert!((spacing - 0.6).abs() < 1e-9 && (width - 0.25).abs() < 1e-9);
 }
 
 // --- The written PDF --------------------------------------------------------------------------
 
 fn colour(priority: i32, cmyk: [f64; 4]) -> RenderColour {
     RenderColour {
+        name: format!("colour {priority}"),
         priority,
         cmyk,
         rgb: [0.0; 3],
@@ -665,14 +808,19 @@ fn square(priority: i32) -> Primitive {
     }
 }
 
-/// A page with a grey (9), a black (2) and a light green (1) square and the overprint of
+/// A page with squares of priority 9, 2 and 1 and the overprint of
 /// [`three_stops`] with numbers, laid on `colours`.
 fn course_page(colours: Vec<RenderColour>) -> RenderedPage {
     let (c, ev) = three_stops();
     let numbers = file_numbers(&c, &ev, page_of(1.0), &sizes(), 1.0);
-    let o = overprint(&c, &ev, &numbers, page_of(1.0), &sizes(), 1.0).on_map(IOF_PURPLE, &colours);
+    let primitives = vec![square(9), square(2), square(1)];
+    let o = overprint(&c, &ev, &numbers, page_of(1.0), &sizes(), 1.0).on_map(
+        IOF_PURPLE,
+        &colours,
+        &primitives,
+    );
     RenderedPage {
-        primitives: vec![square(9), square(2), square(1)],
+        primitives,
         clip: PaperBox {
             min: (0.0, 0.0),
             max: (210.0, 297.0),
@@ -704,12 +852,13 @@ const MULTIPLY: &[u8] = b"/Mul gs";
 #[test]
 fn lower_layer_below_black_upper_above() {
     let colours = vec![
-        colour(1, [0.2, 0.0, 0.4, 0.0]),
-        colour(2, [0.0, 0.0, 0.0, 1.0]),
+        colour(1, [0.0, 0.0, 0.0, 1.0]),
+        colour(2, [0.2, 0.0, 0.4, 0.0]),
         colour(9, [0.0, 0.0, 0.0, 0.6]),
     ];
     let page = course_page(colours);
-    assert_eq!(page.overprint.below_priority, Some(2));
+    // Green (2) is the topmost colour that is not full strength.
+    assert_eq!(page.overprint.below_priority, Some(1));
     let (pdf, _) = write_pdf(&page, &PdfMeta::new("t")).unwrap();
     let content = content_of(&pdf);
     let gs = positions(&content, MULTIPLY);
@@ -719,13 +868,16 @@ fn lower_layer_below_black_upper_above() {
     let green = positions(&content, GREEN)[0];
     let strokes = positions(&content, PURPLE_STROKE);
     let fills = positions(&content, PURPLE_FILL);
-    // grey (9) → lower purple → black (2) → green (1) → upper purple.
-    assert!(grey < gs[0] && gs[0] < black, "{grey} {gs:?} {black}");
+    // grey (9) → green (2) → lower purple → black (1) → upper purple.
+    assert!(
+        grey < green && green < gs[0] && gs[0] < black,
+        "{grey} {green} {gs:?} {black}"
+    );
     assert!(
         strokes.iter().any(|&s| gs[0] < s && s < black),
         "lower purple strokes"
     );
-    assert!(green < gs[1], "upper purple after the last map primitive");
+    assert!(black < gs[1], "upper purple after the last map primitive");
     assert!(fills.iter().all(|&f| f > gs[1]), "numbers are upper purple");
     // Both layers are clipped to the map frame: inside the page's clip block.
     let text = String::from_utf8_lossy(&content);
@@ -759,7 +911,8 @@ fn no_full_strength_colours_paints_lower_on_top() {
         colour(9, [0.0, 0.0, 0.0, 0.6]),
     ];
     let page = course_page(colours);
-    assert_eq!(page.overprint.below_priority, None);
+    // Above the topmost colour (1): after every map primitive.
+    assert_eq!(page.overprint.below_priority, Some(0));
     let (pdf, _) = write_pdf(&page, &PdfMeta::new("t")).unwrap();
     let content = content_of(&pdf);
     let gs = positions(&content, MULTIPLY);

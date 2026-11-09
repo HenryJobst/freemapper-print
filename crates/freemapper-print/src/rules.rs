@@ -35,7 +35,7 @@ pub const BASE_PROFILE: &str = "iof-print";
 const EMBEDDED: &[(&str, &str)] = &[("iof-print", include_str!("../rules/iof-print.toml"))];
 
 /// The value names of `course_symbol` rules, one per field of [`CourseSymbolSizes`].
-const COURSE_SYMBOL_VALUES: [&str; 10] = [
+const COURSE_SYMBOL_VALUES: [&str; 14] = [
     "circle_diameter_mm",
     "line_width_mm",
     "start_side_mm",
@@ -46,6 +46,10 @@ const COURSE_SYMBOL_VALUES: [&str; 10] = [
     "marked_route_gap_mm",
     "out_of_bounds_line_mm",
     "crossing_point_mm",
+    "out_of_bounds_hatch_angle_degrees",
+    "out_of_bounds_hatch_second_angle_degrees",
+    "out_of_bounds_hatch_spacing_mm",
+    "out_of_bounds_hatch_line_mm",
 ];
 
 /// The rule keys this program reads, each with the value names a rule of that key may give.
@@ -241,6 +245,15 @@ pub struct CourseSymbolSizes {
     pub out_of_bounds_line_mm: f64,
     /// Length of a crossing point (710).
     pub crossing_point_mm: f64,
+    /// Direction of the hatch lines of an out-of-bounds area (709), in degrees counter-clockwise from
+    /// east on paper.
+    pub out_of_bounds_hatch_angle_degrees: f64,
+    /// Direction of a second set of hatch lines, for a cross hatch; `None` for one set.
+    pub out_of_bounds_hatch_second_angle_degrees: Option<f64>,
+    /// Distance between the centres of two hatch lines.
+    pub out_of_bounds_hatch_spacing_mm: f64,
+    /// Width of a hatch line.
+    pub out_of_bounds_hatch_line_mm: f64,
 }
 
 /// How much a mm² of map detail under a control number counts, by colour class.
@@ -670,6 +683,15 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
             marked_route_gap_mm: course("marked_route_gap_mm")?,
             out_of_bounds_line_mm: course("out_of_bounds_line_mm")?,
             crossing_point_mm: course("crossing_point_mm")?,
+            out_of_bounds_hatch_angle_degrees: course("out_of_bounds_hatch_angle_degrees")?,
+            out_of_bounds_hatch_second_angle_degrees: optional(
+                rules,
+                "course_symbol",
+                "out_of_bounds_hatch_second_angle_degrees",
+                k,
+            )?,
+            out_of_bounds_hatch_spacing_mm: course("out_of_bounds_hatch_spacing_mm")?,
+            out_of_bounds_hatch_line_mm: course("out_of_bounds_hatch_line_mm")?,
         },
         description_cell_mm: needed(rules, "description_box", "cell_mm", k)?,
     })
@@ -1329,6 +1351,10 @@ mod tests {
                 marked_route_gap_mm: 0.5,
                 out_of_bounds_line_mm: 1.0,
                 crossing_point_mm: 3.0,
+                out_of_bounds_hatch_angle_degrees: 45.0,
+                out_of_bounds_hatch_second_angle_degrees: Some(135.0),
+                out_of_bounds_hatch_spacing_mm: 1.2,
+                out_of_bounds_hatch_line_mm: 0.2,
             }
         );
         // Schoolyard maps take the sprint values (an assumption the rule's note states).
@@ -1358,6 +1384,10 @@ mod tests {
                 marked_route_gap_mm: 0.5,
                 out_of_bounds_line_mm: 0.7,
                 crossing_point_mm: 3.0,
+                out_of_bounds_hatch_angle_degrees: 45.0,
+                out_of_bounds_hatch_second_angle_degrees: Some(135.0),
+                out_of_bounds_hatch_spacing_mm: 1.2,
+                out_of_bounds_hatch_line_mm: 0.2,
             }
         );
     }

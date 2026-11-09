@@ -4,14 +4,14 @@
 
 mod symbols;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::f64::consts::PI;
 
 use crate::course::{
     Control, ControlKind, Course, CourseFilter, CourseKind, FittedEvent, Special, Stop,
 };
 use crate::omap::MapCoord;
-use crate::render::page::{DirectColour, Pt, RenderColour, Shape};
+use crate::render::page::{DirectColour, Primitive, Pt, RenderColour, Shape};
 use crate::rules::CourseSymbolSizes;
 
 /// The course colour of IOF Rev. 4, CMYK 35/85/0/0, until a rule set gives its own
@@ -57,12 +57,25 @@ impl Overprint {
         self.lower.is_empty() && self.upper.is_empty()
     }
 
-    /// The overprint in `purple` (the rule set's course colour), with its lower layer below the
-    /// full-strength colours among `colours` (the page's map colours).
-    pub fn on_map(self, purple: [f64; 4], colours: &[RenderColour]) -> Self {
+    /// The overprint in `purple` (the rule set's course colour), with its lower layer placed among the
+    /// page's map `primitives` by [`full_strength_priority`] of the `colours` they paint in. Colours no
+    /// primitive uses do not count: map symbol sets carry the course purple itself as their topmost
+    /// colour, and it would put the lower layer over everything.
+    pub fn on_map(
+        self,
+        purple: [f64; 4],
+        colours: &[RenderColour],
+        primitives: &[Primitive],
+    ) -> Self {
+        let used: BTreeSet<i32> = primitives.iter().map(|p| p.priority).collect();
+        let painted: Vec<RenderColour> = colours
+            .iter()
+            .filter(|c| used.contains(&c.priority))
+            .cloned()
+            .collect();
         Overprint {
             colour: DirectColour { cmyk: purple },
-            below_priority: full_strength_priority(colours),
+            below_priority: full_strength_priority(&painted),
             ..self
         }
     }
@@ -73,7 +86,7 @@ impl Overprint {
 /// [`Overprint::cut`] is set.
 pub const MAX_REPEATS: usize = 200_000;
 
-/// A full-strength map colour, by CMYK.
+/// A full-strength map colour (IOF Rev. 4: lower purple lies below these).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FullStrength {
     Black,
@@ -81,37 +94,56 @@ pub enum FullStrength {
     Blue,
 }
 
-/// Tolerance for the exact CMYK values (0 and 1) of [`full_strength`].
-const CMYK_EPS: f64 = 1e-3;
+/// How far each CMYK component may lie from a full-strength colour of [`FULL_STRENGTH_CMYK`].
+const CMYK_TOLERANCE: f64 = 0.02;
 
-/// The full-strength class of `cmyk`: black is 0/0/0/1; brown has m ≥ 0.5, y ≥ 0.75, c ≤ 0.3 and
-/// k ≤ 0.2; blue has c ≥ 0.9, m ≤ 0.1, y ≤ 0.1 and k = 0.
-pub fn full_strength(cmyk: [f64; 4]) -> Option<FullStrength> {
-    let [c, m, y, k] = cmyk;
-    let zero = |v: f64| v.abs() <= CMYK_EPS;
-    if zero(c) && zero(m) && zero(y) && (k - 1.0).abs() <= CMYK_EPS {
-        Some(FullStrength::Black)
-    } else if m >= 0.5 - CMYK_EPS
-        && y >= 0.75 - CMYK_EPS
-        && c <= 0.3 + CMYK_EPS
-        && k <= 0.2 + CMYK_EPS
-    {
-        Some(FullStrength::Brown)
-    } else if c >= 0.9 - CMYK_EPS && m <= 0.1 + CMYK_EPS && y <= 0.1 + CMYK_EPS && zero(k) {
-        Some(FullStrength::Blue)
-    } else {
-        None
-    }
+/// The full-strength colours by CMYK: black, blue, and brown of IOF Rev. 4 and of Rev. 3.
+const FULL_STRENGTH_CMYK: [(FullStrength, [f64; 4]); 4] = [
+    (FullStrength::Black, [0.0, 0.0, 0.0, 1.0]),
+    (FullStrength::Blue, [1.0, 0.0, 0.0, 0.0]),
+    (FullStrength::Brown, [0.25, 0.75, 1.0, 0.0]),
+    (FullStrength::Brown, [0.0, 0.56, 1.0, 0.18]),
+];
+
+/// The full-strength class of a map colour (ADR 0034). By name: "black", "brown" or "blue", alone or
+/// followed by " 100%" or " 100 %", ignoring case and surrounding white space. Otherwise by CMYK: within
+/// ±0.02 of black 0/0/0/100, blue 100/0/0/0 or brown 25/75/100/0 (Rev. 4) or 0/56/100/18 (Rev. 3).
+pub fn full_strength(name: &str, cmyk: [f64; 4]) -> Option<FullStrength> {
+    let name = name.trim().to_lowercase();
+    let by_name = [
+        ("black", FullStrength::Black),
+        ("brown", FullStrength::Brown),
+        ("blue", FullStrength::Blue),
+    ]
+    .into_iter()
+    .find_map(|(word, class)| {
+        let rest = name.strip_prefix(word)?;
+        matches!(rest, "" | " 100%" | " 100 %").then_some(class)
+    });
+    by_name.or_else(|| {
+        FULL_STRENGTH_CMYK
+            .iter()
+            .find(|(_, want)| {
+                want.iter()
+                    .zip(cmyk)
+                    .all(|(w, v)| (w - v).abs() <= CMYK_TOLERANCE)
+            })
+            .map(|(class, _)| *class)
+    })
 }
 
-/// The highest priority number among the full-strength black, brown and blue colours: the one painted
-/// first. `None` when the map has none of them.
+/// The priority before whose primitives the lower purple goes: right above the topmost colour (lowest
+/// priority number) that is not full strength, so it lies over every area colour and below the
+/// full-strength colours painted after them. Full-strength colours painted before that colour (a black
+/// duplicate deep in the order) stay below the purple; the fills over them cover them anyway. `None` when
+/// every colour is full strength or there are none.
 pub fn full_strength_priority(colours: &[RenderColour]) -> Option<i32> {
     colours
         .iter()
-        .filter(|c| full_strength(c.cmyk).is_some())
+        .filter(|c| full_strength(&c.name, c.cmyk).is_none())
         .map(|c| c.priority)
-        .max()
+        .min()
+        .map(|p| p.saturating_sub(1))
 }
 
 /// Whether a stop of effective kind `kind` at `control` carries a control number.
@@ -200,14 +232,12 @@ struct Scaled {
     gap: f64,
     boundary: f64,
     crossing: f64,
-    /// Width and spacing of the out-of-bounds and dangerous-area hatches.
+    /// Width, spacing and directions (radians, counter-clockwise on paper) of the out-of-bounds and
+    /// dangerous-area hatches.
     hatch_line: f64,
     hatch_spacing: f64,
+    hatch_angles: Vec<f64>,
 }
-
-/// Hatch line width and spacing at the base scale (mm): OOM's ISOM 2017 set, symbols 709 and 710.
-const HATCH_LINE_MM: f64 = 0.25;
-const HATCH_SPACING_MM: f64 = 0.6;
 
 impl Scaled {
     fn new(sizes: &CourseSymbolSizes, f: f64) -> Self {
@@ -222,8 +252,12 @@ impl Scaled {
             gap: sizes.marked_route_gap_mm * f,
             boundary: sizes.out_of_bounds_line_mm * f,
             crossing: sizes.crossing_point_mm * f,
-            hatch_line: HATCH_LINE_MM * f,
-            hatch_spacing: HATCH_SPACING_MM * f,
+            hatch_line: sizes.out_of_bounds_hatch_line_mm * f,
+            hatch_spacing: sizes.out_of_bounds_hatch_spacing_mm * f,
+            hatch_angles: std::iter::once(sizes.out_of_bounds_hatch_angle_degrees)
+                .chain(sizes.out_of_bounds_hatch_second_angle_degrees)
+                .map(f64::to_radians)
+                .collect(),
         }
     }
 }
@@ -436,16 +470,19 @@ fn special_shapes(
     let rings = |r: &[Vec<MapCoord>]| -> Vec<Vec<Pt>> { r.iter().map(|v| path(v)).collect() };
     match special {
         Special::OutOfBounds { rings: r, courses } if applies(courses, course) => {
-            // Vertical stripes.
+            // The profile's angles run counter-clockwise on paper; the page's y points down.
+            let angles: Vec<f64> = s.hatch_angles.iter().map(|a| -a).collect();
             o.upper.extend(symbols::hatch(
                 rings(r),
-                &[PI / 2.0],
+                &angles,
                 s.hatch_spacing,
                 s.hatch_line,
                 budget,
             ));
         }
         Special::Dangerous { rings: r, courses } if applies(courses, course) => {
+            // Always a cross hatch, with the line width and spacing of the out-of-bounds area, as Purple
+            // Pen draws it.
             o.upper.extend(symbols::hatch(
                 rings(r),
                 &[PI / 4.0, -PI / 4.0],

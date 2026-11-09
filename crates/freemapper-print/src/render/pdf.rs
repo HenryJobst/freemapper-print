@@ -475,12 +475,14 @@ mod tests {
         vec![
             RenderColour {
                 priority: 2,
+                name: "Black".into(),
                 cmyk: [0.0, 0.0, 0.0, 1.0],
                 rgb: [0.0, 0.0, 0.0],
                 opacity: 1.0,
             },
             RenderColour {
                 priority: 9,
+                name: "Black 60%".into(),
                 cmyk: [0.0, 0.0, 0.0, 0.6],
                 rgb: [0.4, 0.4, 0.4],
                 opacity: 1.0,
