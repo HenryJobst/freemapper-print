@@ -76,6 +76,28 @@ source, shared sheet elements and layouts.
   footer is still in the way there, no width helps and the next paper follows. At most ten sheets per paper.
 - `map_frame.crop = true` marks an intended crop (ADR 0028).
 
+## Addendum: courses, assignments and number corrections (M3 Task 5)
+
+- `[sources]` takes `courses`, the path of the course file relative to the project file. The reader follows the
+  extension, in any case: `.ppen` is Purple Pen, `.xml` is IOF XML 3.0. Another extension is an error that names
+  the file. The file is read again at every `check` and `export`, after its size passed the 50 MiB cap.
+- `course_y_axis` (`"up"` or `"down"`) and `course_georef_check` (default true) in `[sources]` become the fit's
+  `y_axis` and `check_georef` (ADR 0032). Both are left out of a written file while they have their default, as are
+  `courses`, `assignments` and `numbers`, so projects without courses write as before.
+- `[[assignments]]` has `course` and `layout`. The layout must exist. One course has at most one entry; a second
+  is an error with file and line. A course without an entry prints on the first layout, which `check` mentions as
+  information that does not count for its exit code.
+- `[[numbers]]` is a number correction with `control`, `direction` and an optional `gap_mm`, and exactly one of
+  `layout` (all courses on that layout) or `course`. `direction` must be finite and is read into [0, 360);
+  `gap_mm` lies between 0 and 20. Without `gap_mm`, the gap of the level below stays. `base_seen` holds the
+  course file's placement when the correction was made (`direction`, `gap_mm`); `numbers accept` writes it.
+  Loading only checks the entries. Applying them is the job of the overprint (Task 10).
+- Stale data stays in the file. An assignment whose course the course file lacks, and a correction whose control
+  is not in the file (or not in the course it names), are reported as `Stale` and counted as warnings. The other
+  courses load. A correction whose `base_seen` differs from the course file's placement by more than 0.5 degrees
+  or 0.05 mm is `CorrectionOverridesChangedBase`; `base_changed` makes the comparison, and the overprint calls
+  it once it has converted the file's raw number offsets to a placement.
+
 ## Consequences
 
 - Older programs refuse newer formats instead of misreading them.

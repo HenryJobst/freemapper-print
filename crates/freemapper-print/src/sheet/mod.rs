@@ -567,9 +567,7 @@ mod tests {
                     organiser: None,
                     lang: SheetLang::De,
                 },
-                sources: Sources {
-                    map: PathBuf::from("m.omap"),
-                },
+                sources: Sources::new(PathBuf::from("m.omap")),
                 map: MapSettings {
                     kind,
                     contour_interval_m: None,
@@ -577,6 +575,8 @@ mod tests {
                 print: PrintSettings::default(),
                 shared,
                 layouts: vec![layout.clone()],
+                assignments: Vec::new(),
+                numbers: Vec::new(),
             },
         }
     }

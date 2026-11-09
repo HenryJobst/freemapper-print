@@ -31,7 +31,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Blattsprache | sheet language | Sprache der gedruckten Blätter (`event.lang`, `de` oder `en`, Standard `de`): Dezimalzeichen, Datumsformat, Namensnennung. Unabhängig von der Programmsprache. | `SheetLang` |
 | Programmsprache | program language | Sprache der Meldungen und der Hilfe: `--lang`, sonst `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`; Deutsch oder Englisch, Englisch als Rückfall (ADR 0024). | `Lang`, `detect_lang` |
 | sicheres Schreiben | safe writing | So schreibt `export` (und `render`) ein PDF: freien Platz prüfen (PDF plus 50 MB Reserve), in `<Name>.pdf.part` schreiben, synchronisieren, umbenennen. Ein voller Datenträger hinterlässt kein halbes PDF (ADR 0030). | `write_pdf_file`, `DISK_RESERVE_BYTES` |
-| Zuordnung | assignment | Welche Bahn mit welchem Layout und welcher Abdeckungsvariante gedruckt wird. | `Assignment` |
+| Zuordnung | assignment | Welche Bahn mit welchem Layout gedruckt wird (`[[assignments]]` in der Projektdatei; ab M4 auch mit Abdeckungsvariante). Eine Bahn hat höchstens eine Zuordnung; ohne sie nimmt sie das erste Layout, mit einem Hinweis. | `Assignment`, `layout_for` |
 
 ## Layout & Blatt / layout & sheet
 
@@ -124,7 +124,8 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Pflichtstrecke | marked route | Abgeflaggter Weg, dem der Läufer folgen muss, z. B. vom letzten Posten zum Ziel. Wird in der Bahnlegung festgelegt. | `MarkedRoute` |
 | Nummernlage | number placement | Richtung und Abstand der Postennummer vom Kreis in Druckmillimetern. Die Bahnlegung legt sie fest; freemapper-print korrigiert sie je Layout oder je Blatt (ADR 0015). | `NumberPlacement` |
 | automatische Platzierung | automatic placement | Wahl der Nummernlage durch das gemeinsame Platzierungsmodul. In freemapper-print nur, wenn die Bahndatei keine Lage enthält, und als Vorschlag bei Konflikten. | `auto_place` |
-| Nummernkorrektur | number correction | Abweichende Nummernlage je Layout oder je Blatt in der Projektdatei; ändert die Bahndatei nicht. | `NumberCorrection` |
+| Nummernkorrektur | number correction | Abweichende Nummernlage (Richtung, optional Abstand) eines Postens je Layout oder je Bahn in der Projektdatei (`[[numbers]]`); ändert die Bahndatei nicht. Das Feld `base_seen` hält die Lage, die die Bahndatei bei der Korrektur hatte. | `NumberCorrection` |
+| veraltete Angaben | stale data | Einträge der Projektdatei, die zur Bahndatei nicht mehr passen: eine Zuordnung zu einer Bahn, die es nicht mehr gibt, eine Nummernkorrektur für einen fehlenden Posten, eine Korrektur über einer geänderten Lage der Bahndatei. Sie bleiben in der Datei, werden bei jeder Prüfung gemeldet (Exit-Code 1) und lassen die übrigen Bahnen laden. | `Stale` |
 | Bahnaufdruck | course overprint | Die violetten Bahnsymbole über der Karte. | `CourseOverprint` |
 | Postenbeschreibung | control descriptions | Tabelle der Posten nach IOF-Postenbeschreibung (Spalten A bis H). | `ControlDescriptions` |
 | Bahndatei | course file | Datei einer Bahnlegung: IOF-XML 3.0 `CourseData` oder `.ppen`; liest `CourseEvent`. Die Bahnquelle ist die Datei, aus der ein Projekt seine Bahnen nimmt. | `CourseEvent` |

@@ -21,7 +21,8 @@ pub const MARGIN_MM: f64 = 10.0;
 pub const GEOREF_TOLERANCE_M: f64 = 20.0;
 
 /// The direction of y in a course file's map positions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum YAxis {
     /// y grows north, as Purple Pen, Condes and OCAD write it.
     Up,

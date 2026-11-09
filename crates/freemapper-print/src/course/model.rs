@@ -214,7 +214,8 @@ pub struct Leg<P> {
 }
 
 /// Where a control number sits relative to its circle. Agreed with freemapper-courseplan.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NumberPlacement {
     /// Degrees; 0 is east, counter-clockwise.
     pub direction: f64,

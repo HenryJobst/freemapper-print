@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::course::{NumberPlacement, fit::YAxis};
 use crate::print::{Orientation, Paper};
 use crate::rules::RuleSet;
 use crate::scale::MapKind;
@@ -47,7 +48,44 @@ pub struct Project {
     pub shared: Vec<ElementSpec>,
     #[serde(default)]
     pub layouts: Vec<LayoutSpec>,
+    /// Which layout prints which course (ADR 0025). A course without an entry takes the first layout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignments: Vec<Assignment>,
+    /// Number placements that differ from the course file, per layout or per course.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub numbers: Vec<NumberCorrection>,
 }
+
+/// One course printed on one layout. The course name is the course file's; the entry stays in the
+/// file when the course file no longer has the course (stale data, ADR 0025).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Assignment {
+    pub course: String,
+    pub layout: String,
+}
+
+/// A control number placement that overrides the course file's. Exactly one of `layout` and `course`
+/// is set. Without `gap_mm`, the gap from the level below is kept.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NumberCorrection {
+    pub control: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub course: Option<String>,
+    /// Degrees, 0 is east, counter-clockwise; normalised to [0, 360) when the file is read.
+    pub direction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_mm: Option<f64>,
+    /// The course file's placement when the correction was made; `numbers accept` writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_seen: Option<NumberPlacement>,
+}
+
+/// The largest `gap_mm` of a number correction (print mm).
+pub const MAX_NUMBER_GAP_MM: f64 = 20.0;
 
 /// Language of the printed sheet: number formats and fixed sheet words. Independent of the program language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -75,6 +113,35 @@ pub struct Event {
 pub struct Sources {
     /// Path of the map, relative to the project file.
     pub map: PathBuf,
+    /// Path of the course file (`.ppen` or `.xml`), relative to the project file. It is read again at every
+    /// `check` and `export` (ADR 0025).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub courses: Option<PathBuf>,
+    /// The course file's y axis when it is set; unset, the fit detects it (ADR 0032).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub course_y_axis: Option<YAxis>,
+    /// Whether latitude and longitude in the course file check and place controls (ADR 0032).
+    #[serde(
+        default = "default_true",
+        skip_serializing_if = "std::clone::Clone::clone"
+    )]
+    pub course_georef_check: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Sources {
+    /// Sources with only a map.
+    pub fn new(map: PathBuf) -> Self {
+        Sources {
+            map,
+            courses: None,
+            course_y_axis: None,
+            course_georef_check: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -391,7 +458,13 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
             found: probe.format,
         });
     }
-    let project: Project = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    let mut project: Project = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    for n in &mut project.numbers {
+        n.direction = normalised_degrees(n.direction);
+        if let Some(b) = &mut n.base_seen {
+            b.direction = normalised_degrees(b.direction);
+        }
+    }
 
     let abs = std::path::absolute(path).map_err(|source| ProjectError::Io {
         file: file.clone(),
@@ -407,6 +480,16 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
     };
     validate(&file, &loaded).map_err(|e| with_line(e, &text))?;
     Ok(loaded)
+}
+
+/// `degrees` in [0, 360); a value that is not finite stays as it is for the validation to refuse.
+fn normalised_degrees(degrees: f64) -> f64 {
+    if !degrees.is_finite() {
+        return degrees;
+    }
+    let d = degrees.rem_euclid(360.0);
+    // `rem_euclid` of a tiny negative value rounds up to 360.
+    if d >= 360.0 { 0.0 } else { d }
 }
 
 /// `err` with the line and column of its field when the TOML text has the field, or of the
@@ -575,7 +658,97 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             ));
         }
     }
+    check_courses(file, p, &layout_ids)
+}
+
+/// Course assignments and number corrections: known layouts, no two entries for one course, values in
+/// range. Course names and controls are checked against the course file at load time, not here.
+fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<(), ProjectError> {
+    if let Some(c) = &p.sources.courses
+        && c.as_os_str().is_empty()
+    {
+        return Err(invalid(file, "sources.courses".into(), "must not be empty"));
+    }
+    let known = |id: &str| {
+        let mut ids: Vec<&str> = p.layouts.iter().map(|l| l.id.as_str()).collect();
+        ids.sort_unstable();
+        format!(
+            "there is no layout with the id `{id}`; available: {}",
+            ids.join(", ")
+        )
+    };
+    let mut courses = HashSet::new();
+    for (i, a) in p.assignments.iter().enumerate() {
+        non_empty(file, format!("assignments[{i}].course"), &a.course)?;
+        if !layout_ids.contains(a.layout.as_str()) {
+            return Err(invalid(
+                file,
+                format!("assignments[{i}].layout"),
+                &known(&a.layout),
+            ));
+        }
+        if !courses.insert(a.course.as_str()) {
+            return Err(ProjectError::DuplicateId {
+                file: file.to_string(),
+                field: format!("assignments[{i}].course"),
+                id: a.course.clone(),
+            });
+        }
+    }
+    for (i, n) in p.numbers.iter().enumerate() {
+        let at = |k: &str| format!("numbers[{i}].{k}");
+        non_empty(file, at("control"), &n.control)?;
+        match (&n.layout, &n.course) {
+            (Some(_), Some(_)) => {
+                return Err(invalid(
+                    file,
+                    format!("numbers[{i}]"),
+                    "set either `layout` or `course`, not both",
+                ));
+            }
+            (None, None) => {
+                return Err(invalid(
+                    file,
+                    format!("numbers[{i}]"),
+                    "needs `layout` (all courses on that layout) or `course` (one course)",
+                ));
+            }
+            (Some(l), None) if !layout_ids.contains(l.as_str()) => {
+                return Err(invalid(file, at("layout"), &known(l)));
+            }
+            (None, Some(c)) => non_empty(file, at("course"), c)?,
+            _ => {}
+        }
+        if !n.direction.is_finite() {
+            return Err(invalid(file, at("direction"), "must be a finite number"));
+        }
+        if let Some(g) = n.gap_mm {
+            gap_in_range(file, at("gap_mm"), g)?;
+        }
+        if let Some(b) = &n.base_seen {
+            if !b.direction.is_finite() {
+                return Err(invalid(
+                    file,
+                    at("base_seen.direction"),
+                    "must be a finite number",
+                ));
+            }
+            gap_in_range(file, at("base_seen.gap_mm"), b.gap_mm)?;
+        }
+    }
     Ok(())
+}
+
+fn gap_in_range(file: &str, field: String, gap_mm: f64) -> Result<(), ProjectError> {
+    if gap_mm.is_finite() && (0.0..=MAX_NUMBER_GAP_MM).contains(&gap_mm) {
+        Ok(())
+    } else {
+        Err(invalid(
+            file,
+            field,
+            &format!("must be between 0 and {MAX_NUMBER_GAP_MM} mm"),
+        ))
+    }
 }
 
 /// The rule set of `[print] rule_profile` and `rule_overlays`, which must name embedded profiles
@@ -1026,7 +1199,7 @@ pub fn starter(
             organiser: None,
             lang,
         },
-        sources: Sources { map },
+        sources: Sources::new(map),
         map: MapSettings {
             kind,
             contour_interval_m: kind.proposed_contour_interval_m(),
@@ -1051,6 +1224,8 @@ pub fn starter(
             elements: vec![],
             hide_shared: vec![],
         }],
+        assignments: Vec::new(),
+        numbers: Vec::new(),
     }
 }
 
@@ -1677,9 +1852,7 @@ mod tests {
                 organiser: Some("OC".into()),
                 lang: SheetLang::En,
             },
-            sources: Sources {
-                map: "m.omap".into(),
-            },
+            sources: Sources::new("m.omap".into()),
             map: MapSettings {
                 kind: MapKind::Forest,
                 contour_interval_m: Some(5.0),
@@ -1718,6 +1891,21 @@ mod tests {
                     hide_shared: vec![],
                 },
             ],
+            assignments: vec![Assignment {
+                course: "Men".into(),
+                layout: "a4".into(),
+            }],
+            numbers: vec![NumberCorrection {
+                control: "31".into(),
+                layout: None,
+                course: Some("Men".into()),
+                direction: 45.0,
+                gap_mm: Some(1.5),
+                base_seen: Some(NumberPlacement {
+                    direction: 90.0,
+                    gap_mm: 1.0,
+                }),
+            }],
         }
     }
 

@@ -16,6 +16,18 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Quelle. Die Projektdatei kann in `[print]` ein anderes Profil (`rule_profile`) und Aufsätze
   (`rule_overlays`) nennen; ein unbekannter Name ist ein Fehler mit Zeile und Spalte. Die gedruckten Blätter
   ändern sich nicht.
+- Die Projektdatei kann Bahnen einbinden. `[sources] courses` nennt die Bahndatei (`.ppen` oder IOF-XML,
+  relativ zur Projektdatei); sie wird bei jeder Prüfung und jedem Export neu gelesen. `course_y_axis`
+  („up“ oder „down“) legt die y-Achse der Datei fest, `course_georef_check = false` schaltet die Prüfung mit
+  Breite und Länge ab. `[[assignments]]` ordnet einer Bahn ein Layout zu, ohne Zuordnung gilt das erste Layout.
+  `[[numbers]]` korrigiert die Lage einer Postennummer je Layout oder je Bahn. Gibt es eine Bahn oder einen
+  Posten der Projektdatei in der Bahndatei nicht mehr, bleibt der Eintrag stehen und `check` meldet ihn; die
+  übrigen Bahnen werden trotzdem gelesen.
+
+### Behoben
+
+- Kreislücken von Bahnen aus Dateien mit nach oben wachsender y-Achse (Purple Pen) werden beim Einpassen
+  mitgespiegelt.
 
 ## [0.2.0] - 2026-11-09
 

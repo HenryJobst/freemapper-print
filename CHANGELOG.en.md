@@ -15,6 +15,17 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   and the cell size of control descriptions. Every value names its source. The project file can name another
   profile (`rule_profile`) and overlays (`rule_overlays`) under `[print]`; an unknown name is an error with
   line and column. Printed sheets do not change.
+- The project file can link courses. `[sources] courses` names the course file (`.ppen` or IOF XML, relative
+  to the project file); it is read again at every check and export. `course_y_axis` ("up" or "down") sets the
+  file's y axis, and `course_georef_check = false` switches off the check against latitude and longitude.
+  `[[assignments]]` gives a course a layout; a course without one takes the first layout. `[[numbers]]` corrects
+  the position of a control number per layout or per course. If the course file no longer has a course or
+  control that the project file names, the entry stays and `check` reports it; the other courses still load.
+
+### Fixed
+
+- Circle gaps of courses from files whose y axis grows upwards (Purple Pen) are now mirrored along with the
+  rest when the course is fitted to the map.
 
 ## [0.2.0] - 2026-11-09
 

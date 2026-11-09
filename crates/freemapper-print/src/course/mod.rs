@@ -3,6 +3,7 @@
 
 pub mod fit;
 pub mod iof_xml;
+pub mod load;
 pub mod model;
 pub mod ppen;
 mod tm;
@@ -10,6 +11,10 @@ mod xml;
 
 pub use fit::{Fit, FitError, FitNote, SkipReason, fit};
 pub use iof_xml::read_iof_xml;
+pub use load::{
+    CorrectionScope, CourseLoadError, LayoutNote, LoadedCourses, Stale, base_changed, layout_for,
+    load_courses,
+};
 pub use model::{
     Control, ControlKind, Course, CourseEvent, CourseFilter, CourseKind, CourseNote, CourseSource,
     Description, FittedEvent, Leg, NumberPlacement, RawEvent, RawPoint, SourceFormat, Special,
