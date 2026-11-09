@@ -1,0 +1,13 @@
+format = 1
+
+[event]
+title = "Minimal Sprint"
+
+[sources]
+map = "../../maps/luebeck.omap"
+
+[map]
+kind = "sprint"
+
+[[layouts]]
+id = "a4"

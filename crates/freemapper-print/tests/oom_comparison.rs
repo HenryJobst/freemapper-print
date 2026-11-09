@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use freemapper_print::omap::read::read_map_file;
-use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map, render_page};
+use freemapper_print::print::{Orientation, Paper, PrintOptions, render_page};
 use freemapper_print::render::page::{RenderedPage, Shape};
+use freemapper_print::render::pdf::{PdfMeta, write_pdf};
 use freemapper_print::scale::infer_kind;
 
 /// Rasterisation resolution (dpi).
@@ -176,7 +177,7 @@ fn drawn_extent(page: &RenderedPage) -> (f64, f64) {
     };
     for primitive in &page.primitives {
         match &primitive.shape {
-            Shape::Fill { rings } => rings.iter().flatten().for_each(&mut add),
+            Shape::Fill { rings, .. } => rings.iter().flatten().for_each(&mut add),
             Shape::Stroke { path, .. } => path.iter().for_each(&mut add),
             _ => {}
         }
@@ -198,6 +199,7 @@ fn paper_for(map: &Path) -> (String, PrintOptions) {
             orientation: Orientation::Auto,
             centre: None,
             show_sheet_objects: false,
+            frame_margin_mm: None,
         };
         let (page, _) = render_page(&doc, &options).unwrap();
         let (w, h) = drawn_extent(&page);
@@ -208,7 +210,7 @@ fn paper_for(map: &Path) -> (String, PrintOptions) {
         };
         for orientation in order {
             options.orientation = orientation;
-            let (_, report) = print_map(&doc, &options, "t").unwrap();
+            let (_, report) = render_page(&doc, &options).unwrap();
             if report.overflow_mm.is_none() {
                 let label = if orientation == Orientation::Landscape {
                     "landscape"
@@ -251,7 +253,9 @@ fn matches_oom_within_tolerance() {
         };
 
         let doc = read_map_file(&map).unwrap();
-        let (pdf, _) = print_map(&doc, &options, fixture).unwrap();
+        // The map alone, without the footer of `render`: OOM's export has none.
+        let (page, _) = render_page(&doc, &options).unwrap();
+        let (pdf, _) = write_pdf(&page, &PdfMeta::new(fixture)).unwrap();
         let ours_pdf = work.path().join(format!("{name}-ours.pdf"));
         std::fs::write(&ours_pdf, pdf).unwrap();
 
@@ -346,7 +350,7 @@ fn map_to_page(
     let edge = (c(coords[1].x - coords[0].x), c(coords[1].y - coords[0].y));
     let mut found = Vec::new();
     for primitive in &page.primitives {
-        if let Shape::Fill { rings } = &primitive.shape {
+        if let Shape::Fill { rings, .. } = &primitive.shape {
             for r in rings.iter().filter(|r| r.len() >= 2) {
                 let d = (r[1].0 - r[0].0, r[1].1 - r[0].1);
                 if (d.0 - edge.0).abs() < 0.002 && (d.1 - edge.1).abs() < 0.002 {
@@ -397,6 +401,7 @@ fn probedruck_distances_match_readme() {
             orientation,
             centre: None,
             show_sheet_objects: false,
+            frame_margin_mm: None,
         };
         let (page, _) = render_page(&doc, &options).unwrap();
         let offset = map_to_page(&doc, &page, p);

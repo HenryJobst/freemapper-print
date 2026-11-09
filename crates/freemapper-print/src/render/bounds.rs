@@ -43,7 +43,7 @@ fn intersection(a: Bounds, b: Bounds) -> Option<Bounds> {
 /// inner shape overlap.
 pub(crate) fn shape_bounds(shape: &Shape) -> Option<Bounds> {
     match shape {
-        Shape::Fill { rings } => extent(rings.iter().flatten(), 0.0),
+        Shape::Fill { rings, .. } => extent(rings.iter().flatten(), 0.0),
         Shape::Stroke { path, width, .. } => extent(path, width / 2.0),
         Shape::Text {
             origin,
@@ -87,6 +87,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::render::draw::FillRule;
     use crate::render::symbols::{Cap, Join};
 
     fn close(a: Bounds, b: Bounds) -> bool {
@@ -155,6 +156,7 @@ mod tests {
             rings: Arc::clone(&rings),
             inner: Box::new(Shape::Fill {
                 rings: vec![vec![(2.0, 2.0), (9.0, 2.0), (9.0, 9.0)]],
+                rule: FillRule::EvenOdd,
             }),
         };
         assert!(close(
@@ -165,6 +167,7 @@ mod tests {
             rings,
             inner: Box::new(Shape::Fill {
                 rings: vec![vec![(7.0, 7.0), (9.0, 7.0), (9.0, 9.0)]],
+                rule: FillRule::EvenOdd,
             }),
         };
         assert_eq!(shape_bounds(&outside), None);

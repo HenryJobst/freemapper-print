@@ -64,3 +64,10 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0021](0021-map-kind-older-files-and-exit-codes.md) | Map kind inference, older files and CLI exit codes | Accepted | 2026-11-08 |
 | [0022](0022-conformance-to-oom-checked-against-fixtures.md) | Conformance to OOM, checked against fixtures and OOM exports | Accepted | 2026-11-08 |
 | [0023](0023-north-lines-belong-to-the-map.md) | North lines belong to the map | Accepted | 2026-11-08 |
+| [0024](0024-program-texts-in-fluent-files.md) | Program texts in Fluent files (suite rule) | Accepted | 2026-11-08 |
+| [0025](0025-event-project-file-format.md) | Event project file format | Accepted | 2026-11-08 |
+| [0026](0026-logos-png-jpeg-and-svg-as-paths.md) | Logos: PNG and JPEG as images, SVG as paths from an allow-list | Accepted | 2026-11-08 |
+| [0027](0027-generated-north-lines.md) | Generated north lines | Accepted | 2026-11-09 |
+| [0028](0028-layout-geometry.md) | Layout geometry: map frame, passe-partout and anchors | Accepted | 2026-11-09 |
+| [0029](0029-footer-placement.md) | Footer placement: below the frame when the whole block fits | Accepted | 2026-11-09 |
+| [0030](0030-safe-pdf-writing.md) | Safe PDF writing: free-space check, `.part` file, 50 MB reserve | Accepted | 2026-11-09 |

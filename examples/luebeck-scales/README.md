@@ -26,18 +26,22 @@ ein Drittel mehr Papier in jeder Richtung und passt nur noch auf A3.
 Bei 1:4000 ist die Karte 4,0 mm zu hoch für den bedruckbaren Bereich von A4. Das Programm warnt und schreibt
 das PDF trotzdem. Das ist hier gewollt. Bei 1:3000 auf A3 passt die ganze Karte.
 
+Unten links steht auf einem weißen Kasten die Fußzeile: die Quellenangaben aus den Kartennotizen und die
+Namensnennung „Erstellt mit freemapper-print“. Der Rand von 5 mm ist zu schmal für sie, deshalb deckt sie
+eine Ecke der Karte ab, und `render` meldet das.
+
 ## Geprüft
 
 - Strichbreiten aus den PDF-Inhalten gelesen: Symbol 506 hat 0,27 mm in `luebeck-4000-a4.pdf` und 0,36 mm in
   `luebeck-3000-a3.pdf`, alle anderen Linien wachsen ebenso auf 133 %.
 - Seitengrößen: 297 × 210 mm und 420 × 297 mm (`/MediaBox` im PDF).
-- Die Vorschau angesehen: beide Karten vollständig, Wasser blau, Seitenrahmen grau.
+- Die Vorschau angesehen: beide Karten vollständig, Wasser blau, Seitenrahmen grau, Fußzeile unten links.
 
 ## Neu erzeugen
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
-freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
+freemapper-print --lang de render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
+freemapper-print --lang de render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
 Die Vorschau entsteht mit `pdftoppm` und ImageMagick in einem temporären Ordner. `FONT` ist unter macOS ein
@@ -60,11 +64,12 @@ rm -r "$tmp"
 
 ## Drucken
 
-Drucken Sie mit 100 % ("Tatsächliche Größe"), und schalten Sie "An Seite anpassen" aus. Jede andere Größe
+Drucken Sie mit 100 % („Tatsächliche Größe“), und schalten Sie „An Seite anpassen“ aus. Jede andere Größe
 verfälscht den Maßstab.
 
 ## Herkunft
 
-Karte von [freemapper](https://github.com/HenryJobst/freemapper) (Commit `a0cc8ef`, GPL-3.0-or-later),
-Datenquellen in den Kartennotizen (`<notes>`), erzeugt mit
-[freemapper-print](https://github.com/HenryJobst/freemapper-print).
+Karte aus dem Beispiel `schleswig-holstein-luebeck` von [freemapper](https://github.com/HenryJobst/freemapper),
+Version 0.5.0 (Commit `e8b6db9`), unverändert. Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und
+© GeoBasis-DE/LVermGeo SH (CC BY 4.0, Quelle verändert); die Kartennotizen (`<notes>`) nennen die Quellen. Die
+PDFs sind mit [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.

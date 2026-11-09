@@ -25,6 +25,9 @@ fn luebeck_object_count() {
     let doc = read_map_file(Path::new(&path)).unwrap();
     let read: usize = doc.parts.iter().map(|p| p.objects.len()).sum();
     assert_eq!(read, objects_in_parts(&path));
+    // freemapper v0.5.0 (e8b6db9): 2160 objects in the default part (with the nine north
+    // lines), 13 in "peripheral information" (the information block).
+    assert_eq!(read, 2173);
     assert_eq!(doc.georef.scale_denominator, 4000);
     assert_eq!(doc.georef.crs_spec.as_deref(), Some("+init=epsg:25832"));
     assert!(doc.georef.ref_projected.is_some());
@@ -33,7 +36,7 @@ fn luebeck_object_count() {
         .iter()
         .find(|p| p.name == "peripheral information")
         .expect("part peripheral information");
-    assert!(!sheet.objects.is_empty());
+    assert_eq!(sheet.objects.len(), 13);
     assert!(sheet.objects.iter().all(|o| {
         o.tags
             .iter()

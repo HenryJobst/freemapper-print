@@ -5,6 +5,7 @@ use freemapper_print::omap::{
     MapCoord, MapDocument, MapGeoref, MapObject, MapObjectKind, MapPart, SymbolSet,
 };
 use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map, render_page};
+use freemapper_print::project::SheetLang;
 use freemapper_print::render::page::{PaperBox, RenderedPage, Shape};
 use freemapper_print::scale::MapKind;
 
@@ -59,6 +60,7 @@ fn options(kind: MapKind, print_scale: Option<u32>) -> PrintOptions {
         orientation: Orientation::Portrait,
         centre: None,
         show_sheet_objects: false,
+        frame_margin_mm: None,
     }
 }
 
@@ -108,7 +110,8 @@ fn close(a: f64, b: f64, tolerance: f64) -> bool {
 #[test]
 fn a4_page_is_exact() {
     let doc = map(4000, vec![line(symbol("501.1"), 25.0)]);
-    let (pdf, report) = print_map(&doc, &options(MapKind::Sprint, None), "A4").unwrap();
+    let (pdf, report, _) =
+        print_map(&doc, &options(MapKind::Sprint, None), "A4", SheetLang::En).unwrap();
     let mb = media_box(&pdf);
     assert_eq!(mb.len(), 4);
     assert!(close(mb[0], 0.0, 1e-9) && close(mb[1], 0.0, 1e-9), "{mb:?}");
@@ -121,7 +124,7 @@ fn a4_page_is_exact() {
         orientation: Orientation::Landscape,
         ..options(MapKind::Sprint, None)
     };
-    let (pdf, report) = print_map(&doc, &a3, "A3").unwrap();
+    let (pdf, report, _) = print_map(&doc, &a3, "A3", SheetLang::En).unwrap();
     let mb = media_box(&pdf);
     assert!(close(mb[2], 1190.55, 0.01), "{mb:?}");
     assert!(close(mb[3], 841.89, 0.01), "{mb:?}");
@@ -132,7 +135,13 @@ fn a4_page_is_exact() {
 fn line_length_at_print_scale() {
     // 25 mm on the map = 100 m at 1:4000 = 20 mm at 1:5000.
     let doc = map(4000, vec![line(symbol("501.1"), 25.0)]);
-    let (pdf, report) = print_map(&doc, &options(MapKind::Sprint, Some(5000)), "Line").unwrap();
+    let (pdf, report, _) = print_map(
+        &doc,
+        &options(MapKind::Sprint, Some(5000)),
+        "Line",
+        SheetLang::En,
+    )
+    .unwrap();
     assert_eq!(report.print_scale, 5000);
     assert!(close(report.geometry_factor, 0.8, 1e-12));
     let content = content(&pdf);
@@ -151,7 +160,13 @@ fn line_length_at_print_scale() {
 fn reduction_keeps_symbol_width_and_is_flagged() {
     // 1:5000 is below the sprint base scale 1:4000: not standard, symbols keep their size.
     let doc = map(4000, vec![line(symbol("501.1"), 25.0)]);
-    let (pdf, report) = print_map(&doc, &options(MapKind::Sprint, Some(5000)), "Width").unwrap();
+    let (pdf, report, _) = print_map(
+        &doc,
+        &options(MapKind::Sprint, Some(5000)),
+        "Width",
+        SheetLang::En,
+    )
+    .unwrap();
     assert_eq!(report.symbol_factor, 1.0);
     assert!(report.non_standard_scale);
     let width = operands(&content(&pdf), "w");
@@ -236,7 +251,13 @@ fn overflow_is_reported_not_shrunk() {
     );
 
     // The PDF clips to the same rectangle.
-    let (pdf, _) = print_map(&doc, &options(MapKind::Sprint, None), "Overflow").unwrap();
+    let (pdf, _, _) = print_map(
+        &doc,
+        &options(MapKind::Sprint, None),
+        "Overflow",
+        SheetLang::En,
+    )
+    .unwrap();
     let rect = operands(&content(&pdf), "re");
     let expected = [5.0, 5.0, 200.0, 287.0].map(|v| v * PT_PER_MM);
     for (a, b) in rect.iter().zip(expected) {
@@ -280,11 +301,29 @@ const LUEBECK: &str = concat!(
 fn luebeck_north_lines_drawn_info_block_only_on_request() {
     let mut doc =
         freemapper_print::omap::read::read_map_file(std::path::Path::new(LUEBECK)).unwrap();
-    // Only the peripheral information: nine north lines (601) and the information block (991–994).
-    doc.parts.retain(|p| p.name == "peripheral information");
-    let codes: Vec<&str> = doc.parts[0]
-        .objects
+    // Only the north lines and the information block. Since freemapper v0.5.0 the nine north
+    // lines (601) lie in the default part with the tag `north-lines`; the part "peripheral
+    // information" holds only the information block (991–994), tagged `sheet`.
+    let info = doc
+        .parts
         .iter()
+        .find(|p| p.name == "peripheral information")
+        .expect("part peripheral information");
+    assert!(
+        info.objects
+            .iter()
+            .all(|o| doc.symbol_set.code_of(o.symbol_id) != Some("601"))
+    );
+    let set = doc.symbol_set.clone();
+    for part in &mut doc.parts {
+        let keep_all = part.name == "peripheral information";
+        part.objects
+            .retain(|o| keep_all || set.code_of(o.symbol_id) == Some("601"));
+    }
+    let codes: Vec<&str> = doc
+        .parts
+        .iter()
+        .flat_map(|p| &p.objects)
         .filter_map(|o| doc.symbol_set.code_of(o.symbol_id))
         .collect();
     assert_eq!(codes.iter().filter(|c| **c == "601").count(), 9);
@@ -355,7 +394,13 @@ fn creator_names_freemapper_print() {
         "freemapper-print – https://github.com/HenryJobst/freemapper-print"
     );
     let doc = map(4000, vec![line(symbol("501.1"), 25.0)]);
-    let (pdf, _) = print_map(&doc, &options(MapKind::Sprint, None), "Credit").unwrap();
+    let (pdf, _, _) = print_map(
+        &doc,
+        &options(MapKind::Sprint, None),
+        "Credit",
+        SheetLang::En,
+    )
+    .unwrap();
     // UTF-16BE (the en dash is not ASCII): "freemapper-print".
     assert!(
         find(

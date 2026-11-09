@@ -2,16 +2,18 @@
 //! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted in the page's order, texts in
 //! embedded subsets of Arimo (ADR 0017).
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
-use pdf_writer::{Content, Filter, Finish, Pdf, Rect, Ref, Str, TextStr};
+use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
-use super::draw::Shape;
+use super::draw::{FillRule, Shape};
 use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
-use super::page::RenderedPage;
+use super::image::RasterImage;
+use super::page::{RenderedPage, SheetItem};
 use super::symbols::{Cap, Join, RenderColour};
 
 /// Points per millimetre.
@@ -21,16 +23,42 @@ const MITER_LIMIT: f32 = 2.236_068;
 /// OOM's miter limit for text framing in PDF: Qt 0.5 → √(1 + 4 · 0.5²) = √2 (reference §2.1).
 const TEXT_FRAMING_MITER_LIMIT: f32 = std::f32::consts::SQRT_2;
 
-/// Page mm (y down) → page points (y up).
+/// Page mm (y down) → page points (y up). Every number written to the page goes through
+/// [`Transform::num`], which notes one that is not finite as an `f32`.
 struct Transform {
     page_height: f64,
+    /// A number was not finite: the page is refused ([`PdfError::NotFinite`]).
+    not_finite: Cell<bool>,
 }
 
 impl Transform {
+    fn new(page_height: f64) -> Self {
+        Transform {
+            page_height,
+            not_finite: Cell::new(false),
+        }
+    }
+
+    /// `v` as written to the PDF. `inf` and `NaN` are no PDF numbers; one that is (or overflows
+    /// `f32` into) one is a bug upstream, noted here and refused by [`write_pdf`].
+    fn num(&self, v: f64) -> f32 {
+        let n = v as f32;
+        if !n.is_finite() {
+            self.not_finite.set(true);
+            return 0.0;
+        }
+        n
+    }
+
+    /// A length in mm as points.
+    fn len(&self, mm: f64) -> f32 {
+        self.num(mm * PT_PER_MM)
+    }
+
     fn pt(&self, p: Pt) -> (f32, f32) {
         (
-            (p.0 * PT_PER_MM) as f32,
-            ((self.page_height - p.1) * PT_PER_MM) as f32,
+            self.num(p.0 * PT_PER_MM),
+            self.num((self.page_height - p.1) * PT_PER_MM),
         )
     }
 }
@@ -59,28 +87,34 @@ fn begin_clip(content: &mut Content, t: &Transform, rings: &[Vec<Pt>]) {
     content.end_path();
 }
 
-/// Paints `shape` in the colour of `priority`. A clipped shape gets its own clip block here;
+/// The CMYK of the map colour with `priority` (black if the page has none).
+fn map_cmyk(colours: &[RenderColour], priority: i32) -> [f64; 4] {
+    colours
+        .iter()
+        .find(|c| c.priority == priority)
+        .map_or([0.0, 0.0, 0.0, 1.0], |c| c.cmyk)
+}
+
+/// Paints `shape` in `cmyk`. A clipped shape gets its own clip block here;
 /// [`write_pdf`] shares one block among consecutive shapes with the same clip instead.
 fn paint(
     content: &mut Content,
     t: &Transform,
-    priority: i32,
+    cmyk: [f64; 4],
     shape: &Shape,
-    colours: &[RenderColour],
     fonts: &mut PageFonts,
 ) {
-    let [c, m, y, k] = colours
-        .iter()
-        .find(|c| c.priority == priority)
-        .map_or([0.0, 0.0, 0.0, 1.0], |c| c.cmyk)
-        .map(|v| v as f32);
+    let [c, m, y, k] = cmyk.map(|v| t.num(v));
     match shape {
-        Shape::Fill { rings } => {
+        Shape::Fill { rings, rule } => {
             content.set_fill_cmyk(c, m, y, k);
             for ring in rings {
                 path(content, t, ring, true);
             }
-            content.fill_even_odd();
+            match rule {
+                FillRule::EvenOdd => content.fill_even_odd(),
+                FillRule::NonZero => content.fill_nonzero(),
+            };
         }
         Shape::Stroke {
             path: points,
@@ -90,7 +124,7 @@ fn paint(
             join,
         } => {
             content.set_stroke_cmyk(c, m, y, k);
-            content.set_line_width((width * PT_PER_MM) as f32);
+            content.set_line_width(t.len(*width));
             content.set_line_cap(match cap {
                 Cap::Flat => LineCapStyle::ButtCap,
                 Cap::Round => LineCapStyle::RoundCap,
@@ -123,7 +157,7 @@ fn paint(
                 Some(width) => {
                     content.save_state();
                     content.set_stroke_cmyk(c, m, y, k);
-                    content.set_line_width((width * PT_PER_MM) as f32);
+                    content.set_line_width(t.len(*width));
                     content.set_line_join(LineJoinStyle::MiterJoin);
                     content.set_miter_limit(TEXT_FRAMING_MITER_LIMIT);
                 }
@@ -132,16 +166,14 @@ fn paint(
                 }
             }
             content.begin_text();
-            content.set_font(
-                PageFonts::resource_name(font_face),
-                (size * PT_PER_MM) as f32,
-            );
+            content.set_font(PageFonts::resource_name(font_face), t.len(*size));
             if stroke.is_some() {
                 content.set_text_rendering_mode(TextRenderingMode::Stroke);
             }
             // Counter-clockwise on paper is counter-clockwise in PDF too.
             let (sin, cos) = rotation.sin_cos();
-            content.set_text_matrix([cos as f32, sin as f32, -sin as f32, cos as f32, x, y0]);
+            let (cos, sin) = (t.num(cos), t.num(sin));
+            content.set_text_matrix([cos, sin, -sin, cos, x, y0]);
             content.show(Str(&cids));
             content.end_text();
             if stroke.is_some() {
@@ -150,9 +182,40 @@ fn paint(
         }
         Shape::Clipped { rings, inner } => {
             begin_clip(content, t, rings);
-            paint(content, t, priority, inner, colours, fonts);
+            paint(content, t, cmyk, inner, fonts);
             content.restore_state();
         }
+    }
+}
+
+/// The resource name of the `index`-th image of a page.
+fn image_name(index: usize) -> String {
+    format!("Im{index}")
+}
+
+/// `image` as a Flate-compressed DeviceRGB XObject, with a DeviceGray soft mask for its alpha.
+fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
+    // The whole image is held in memory; pixel limits are enforced where images are decoded (Task 8).
+    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), 6);
+    let mut x = pdf.image_xobject(id, &data);
+    x.filter(Filter::FlateDecode);
+    x.width(image.width() as i32);
+    x.height(image.height() as i32);
+    x.color_space().device_rgb();
+    x.bits_per_component(8);
+    if let Some(mask) = mask {
+        x.s_mask(mask);
+    }
+    x.finish();
+    if let (Some(mask), Some(alpha)) = (mask, image.alpha()) {
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, 6);
+        let mut x = pdf.image_xobject(mask, &data);
+        x.filter(Filter::FlateDecode);
+        x.width(image.width() as i32);
+        x.height(image.height() as i32);
+        x.color_space().device_gray();
+        x.bits_per_component(8);
+        x.finish();
     }
 }
 
@@ -161,6 +224,10 @@ fn paint(
 pub enum PdfError {
     #[error("could not embed the font {face}: {message}")]
     Font { face: &'static str, message: String },
+    /// A number on the page is infinite or not a number, or too large for a PDF number. That is
+    /// a bug: the project limits keep real input far below it.
+    #[error("a number on the page is not finite; the page is not written")]
+    NotFinite,
 }
 
 /// What a written page could not show as asked.
@@ -192,9 +259,7 @@ impl PdfMeta {
 /// not show.
 pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
     let (page_w, page_h) = page.page_mm;
-    let t = Transform {
-        page_height: page_h,
-    };
+    let t = Transform::new(page_h);
     let colours = &page.colours;
 
     // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
@@ -241,9 +306,8 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         paint(
             &mut content,
             &t,
-            primitive.priority,
+            map_cmyk(colours, primitive.priority),
             shape,
-            colours,
             &mut fonts,
         );
     }
@@ -254,30 +318,74 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         content.restore_state();
     }
 
+    // The sheet layer: over the whole page, in its own colours, one graphics state per item.
+    // Images are embedded once per `Arc`; the content names them by position.
+    let mut images: Vec<&Arc<RasterImage>> = Vec::new();
+    for item in &page.sheet {
+        content.save_state();
+        match item {
+            SheetItem::Shape { colour, shape } => {
+                paint(&mut content, &t, colour.cmyk, shape, &mut fonts);
+            }
+            SheetItem::Image { rect, image } => {
+                let index = images
+                    .iter()
+                    .position(|i| Arc::ptr_eq(i, image))
+                    .unwrap_or_else(|| {
+                        images.push(image);
+                        images.len() - 1
+                    });
+                let (x, y) = t.pt((rect.min.0, rect.max.1));
+                let w = t.len(rect.max.0 - rect.min.0);
+                let h = t.len(rect.max.1 - rect.min.1);
+                content.transform([w, 0.0, 0.0, h, x, y]);
+                content.x_object(Name(image_name(index).as_bytes()));
+            }
+        }
+        content.restore_state();
+    }
+
     // References come from a counter, so a page holds only the fonts it uses.
     let mut next = Ref::new(1);
     let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
     let fonts = fonts.finish(&mut next);
     let info = next.bump();
+    // Each image takes an object, and a second for its soft mask.
+    let image_refs: Vec<(Ref, Option<Ref>)> = images
+        .iter()
+        .map(|i| (next.bump(), i.alpha().is_some().then(|| next.bump())))
+        .collect();
     let mut pdf = Pdf::new();
     pdf.catalog(catalog).pages(pages);
     pdf.pages(pages).kids([page]).count(1);
     let mut p = pdf.page(page);
-    p.media_box(Rect::new(
-        0.0,
-        0.0,
-        (page_w * PT_PER_MM) as f32,
-        (page_h * PT_PER_MM) as f32,
-    ));
+    p.media_box(Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h)));
     p.parent(pages);
     p.contents(contents);
-    p.resources().fonts().pairs(fonts.resources());
+    let mut resources = p.resources();
+    resources.fonts().pairs(fonts.resources());
+    if !image_refs.is_empty() {
+        let names: Vec<String> = (0..image_refs.len()).map(image_name).collect();
+        resources.x_objects().pairs(
+            names
+                .iter()
+                .zip(&image_refs)
+                .map(|(name, (id, _))| (Name(name.as_bytes()), *id)),
+        );
+    }
+    resources.finish();
     p.finish();
+    if t.not_finite.get() {
+        return Err(PdfError::NotFinite);
+    }
     // The content stream comes first, the font programs after it.
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
     pdf.stream(contents, &compressed)
         .filter(Filter::FlateDecode);
     fonts.write(&mut pdf)?;
+    for (image, (id, mask)) in images.iter().zip(&image_refs) {
+        write_image(&mut pdf, image, *id, *mask);
+    }
     pdf.document_info(info)
         .title(TextStr(&meta.title))
         .creator(TextStr(&meta.creator));
@@ -299,7 +407,7 @@ pub(crate) fn content_of(pdf: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::super::draw::Primitive;
-    use super::super::page::PaperBox;
+    use super::super::page::{DirectColour, PaperBox, RasterImage, SheetItem};
     use super::*;
 
     fn colours() -> Vec<RenderColour> {
@@ -324,6 +432,7 @@ mod tests {
             priority,
             shape: Shape::Fill {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
+                rule: FillRule::EvenOdd,
             },
         }
     }
@@ -341,7 +450,9 @@ mod tests {
             primitives: primitives.to_vec(),
             clip: clip(),
             page_mm: (210.0, 297.0),
+            centre_mm: (0.0, 0.0),
             colours: colours(),
+            sheet: Vec::new(),
         }
     }
 
@@ -355,6 +466,51 @@ mod tests {
 
     fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    #[test]
+    fn numbers_beyond_f32_refuse_the_page() {
+        let far = Primitive {
+            priority: 2,
+            shape: Shape::Stroke {
+                path: vec![(1e300, 0.0), (0.0, 0.0)],
+                closed: false,
+                width: 0.1,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        };
+        let err = write_pdf(&page(&[far]), &PdfMeta::new("t")).unwrap_err();
+        assert!(matches!(err, PdfError::NotFinite), "{err}");
+        // A sheet item too: a text of infinite size.
+        let mut p = page(&[]);
+        p.sheet.push(SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: f64::INFINITY,
+                bold: false,
+                italic: false,
+                text: "x".into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        });
+        let err = write_pdf(&p, &PdfMeta::new("t")).unwrap_err();
+        assert!(matches!(err, PdfError::NotFinite), "{err}");
+        // A logo whose box is NaN wide.
+        let mut p = page(&[]);
+        p.sheet.push(SheetItem::Image {
+            rect: PaperBox {
+                min: (0.0, 0.0),
+                max: (f64::NAN, 1.0),
+            },
+            image: Arc::new(RasterImage::new(1, 1, vec![0, 0, 0], None).unwrap()),
+        });
+        assert!(matches!(
+            write_pdf(&p, &PdfMeta::new("t")),
+            Err(PdfError::NotFinite)
+        ));
     }
 
     #[test]
@@ -773,6 +929,215 @@ mod tests {
         assert!(
             find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some(),
             "A4"
+        );
+    }
+
+    fn sheet_page(sheet: Vec<SheetItem>, primitives: &[Primitive]) -> Vec<u8> {
+        let mut page = page(primitives);
+        page.sheet = sheet;
+        write_pdf(&page, &PdfMeta::new("Test")).unwrap().0
+    }
+
+    fn sheet_stroke(colour: DirectColour, y: f64) -> SheetItem {
+        SheetItem::Shape {
+            colour,
+            shape: Shape::Stroke {
+                path: vec![(150.0, y), (180.0, y)],
+                closed: false,
+                width: 0.5,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        }
+    }
+
+    #[test]
+    fn sheet_items_paint_after_map() {
+        let sheet = vec![
+            sheet_stroke(
+                DirectColour {
+                    cmyk: [0.1, 0.2, 0.3, 0.4],
+                },
+                200.0,
+            ),
+            sheet_stroke(
+                DirectColour {
+                    cmyk: [0.5, 0.6, 0.7, 0.8],
+                },
+                210.0,
+            ),
+        ];
+        let pdf = content_of(&sheet_page(sheet, &[square(2), square(9)]));
+        let pos =
+            |n: &[u8]| find(&pdf, n).unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(n)));
+        let (map1, map2) = (pos(b"0 0 0 1 k"), pos(b"0 0 0 0.6 k"));
+        let (s1, s2) = (pos(b"0.1 0.2 0.3 0.4 K"), pos(b"0.5 0.6 0.7 0.8 K"));
+        assert!(map1 < map2 && map2 < s1 && s1 < s2);
+        // The map's clip block is closed before the first sheet item: q (page clip) ... Q, then
+        // one q ... Q per sheet item.
+        let ops = |op: &[u8]| pdf.split(|&b| b == b'\n').filter(|l| *l == op).count();
+        assert_eq!((ops(b"q"), ops(b"Q")), (3, 3));
+        let page_restore = find(&pdf[map2..], b"Q\n").unwrap() + map2;
+        assert!(page_restore < s1, "map clip closed before the sheet");
+    }
+
+    #[test]
+    fn direct_cmyk_colour() {
+        let fill = SheetItem::Shape {
+            colour: DirectColour {
+                cmyk: [0.25, 0.5, 0.75, 0.125],
+            },
+            shape: Shape::Fill {
+                rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0)]],
+                rule: FillRule::EvenOdd,
+            },
+        };
+        let pdf = content_of(&sheet_page(vec![fill], &[]));
+        assert!(find(&pdf, b"0.25 0.5 0.75 0.125 k").is_some());
+        let pdf = content_of(&sheet_page(
+            vec![sheet_stroke(DirectColour::WHITE, 5.0)],
+            &[],
+        ));
+        assert!(find(&pdf, b"0 0 0 0 K").is_some());
+        assert_eq!(DirectColour::BLACK.cmyk, [0.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn map_clip_does_not_apply_to_sheet() {
+        // The map clip is (0,0)-(100,100); the sheet stroke at x 150..180 lies outside it.
+        let pdf = content_of(&sheet_page(
+            vec![sheet_stroke(DirectColour::BLACK, 50.0)],
+            &[square(2)],
+        ));
+        let clip_end = find(&pdf, b"Q\n").expect("map clip closed");
+        let stroke = find(&pdf, b"S\n").expect("sheet stroke");
+        assert!(clip_end < stroke);
+        // Only the map's page clip exists; the sheet adds no clip.
+        assert_eq!(pdf.windows(3).filter(|w| *w == b"W\nn").count(), 1);
+        // A sheet without map primitives has no clip block at all.
+        let pdf = content_of(&sheet_page(
+            vec![sheet_stroke(DirectColour::BLACK, 50.0)],
+            &[],
+        ));
+        assert!(find(&pdf, b"W\nn").is_none());
+    }
+
+    fn rgba_image() -> Arc<RasterImage> {
+        Arc::new(RasterImage::new(2, 1, vec![255, 0, 0, 0, 255, 0], Some(vec![255, 128])).unwrap())
+    }
+
+    fn logo(image: &Arc<RasterImage>) -> SheetItem {
+        SheetItem::Image {
+            rect: PaperBox {
+                min: (10.0, 20.0),
+                max: (30.0, 25.0),
+            },
+            image: Arc::clone(image),
+        }
+    }
+
+    #[test]
+    fn image_xobject_with_smask() {
+        let image = rgba_image();
+        let pdf = sheet_page(vec![logo(&image)], &[]);
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Subtype /Image"), "image XObject");
+        assert!(text.contains("/SMask"), "soft mask");
+        assert!(text.contains("/ColorSpace /DeviceRGB"));
+        assert!(text.contains("/ColorSpace /DeviceGray"));
+        assert!(text.contains("/XObject"));
+        // 20 x 5 mm at (10, 297 - 25) mm, in points.
+        let content = content_of(&pdf);
+        let pt = |mm: f64| format!("{}", (mm * PT_PER_MM) as f32);
+        let cm = format!("{} 0 0 {} {} {} cm", pt(20.0), pt(5.0), pt(10.0), pt(272.0));
+        assert!(
+            find(&content, cm.as_bytes()).is_some(),
+            "{cm} in {}",
+            String::from_utf8_lossy(&content)
+        );
+        assert!(find(&content, b"/Im0 Do").is_some());
+    }
+
+    #[test]
+    fn image_without_alpha_has_no_smask() {
+        let image = Arc::new(RasterImage::new(1, 1, vec![1, 2, 3], None).unwrap());
+        let pdf = sheet_page(vec![logo(&image)], &[]);
+        assert!(!String::from_utf8_lossy(&pdf).contains("/SMask"));
+    }
+
+    #[test]
+    fn identical_images_are_embedded_once() {
+        let image = rgba_image();
+        let pdf = sheet_page(vec![logo(&image), logo(&image)], &[]);
+        let content = content_of(&pdf);
+        assert_eq!(content.windows(7).filter(|w| *w == b"/Im0 Do").count(), 2);
+        assert!(find(&content, b"/Im1").is_none());
+        let text = String::from_utf8_lossy(&pdf);
+        assert_eq!(
+            text.matches("/Subtype /Image").count(),
+            2,
+            "image and mask once"
+        );
+        // A different Arc with equal pixels is a separate image.
+        let other = Arc::new((*image).clone());
+        let pdf = sheet_page(vec![logo(&image), logo(&other)], &[]);
+        assert_eq!(
+            String::from_utf8_lossy(&pdf)
+                .matches("/Subtype /Image")
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn sheet_text_without_map_text_embeds_one_font() {
+        let item = SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: 3.0,
+                bold: false,
+                italic: false,
+                text: "A\u{4e2d}".into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        };
+        let mut p = page(&[square(2)]);
+        p.sheet = vec![item];
+        let (pdf, info) = write_pdf(&p, &PdfMeta::new("T")).unwrap();
+        assert!(info.missing_glyphs.contains(&'\u{4e2d}'));
+        assert_eq!(
+            String::from_utf8_lossy(&pdf)
+                .matches("/Subtype /Type0")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn sheet_text_shares_fonts_and_reports_missing_glyphs() {
+        let item = SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: 3.0,
+                bold: false,
+                italic: false,
+                text: "A\u{4e2d}".into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        };
+        let mut p = page(&[text(0.0, None)]);
+        p.sheet = vec![item];
+        let (pdf, info) = write_pdf(&p, &PdfMeta::new("T")).unwrap();
+        assert!(info.missing_glyphs.contains(&'\u{4e2d}'));
+        assert_eq!(
+            String::from_utf8_lossy(&pdf)
+                .matches("/Subtype /Type0")
+                .count(),
+            1
         );
     }
 }

@@ -9,7 +9,7 @@ use std::f64::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 
 use super::bounds::{extent, painted_bounds};
-use super::draw::{self, Primitive, Shape, Sink, mm};
+use super::draw::{self, FillRule, Primitive, Shape, Sink, mm};
 use super::geometry::Pt;
 use super::symbols::{Cap, Clipping, Join, Pattern, PointDef, RenderSymbols, Symbol};
 use crate::omap::PatternOrigin;
@@ -241,10 +241,6 @@ pub(super) fn area_pattern(
             if *color < 0 || width <= 0.0 {
                 return;
             }
-            // A clipped pattern shares one outline among its lines: one clip block.
-            if clipping == Clipping::Clip && !Outline::new(rings).pay(*color, sink) {
-                return;
-            }
             let m = width / 2.0;
             let (lines, _) = capped_lines(
                 canvas(((-m, -m), (m, m))),
@@ -254,8 +250,14 @@ pub(super) fn area_pattern(
                 origin,
                 sink,
             );
+            // A clipped pattern shares one outline among its lines: one clip block, paid just
+            // before the first line is pushed (as point patterns pay per shape).
+            let mut outline = Outline::new(rings);
             for (first, second) in lines {
                 if sink.stop() {
+                    return;
+                }
+                if clipping == Clipping::Clip && !outline.pay(*color, sink) {
                     return;
                 }
                 let stroke = Shape::Stroke {
@@ -403,7 +405,13 @@ fn place_point(
                     break;
                 }
                 let p = &mut sink.out[i];
-                let shape = std::mem::replace(&mut p.shape, Shape::Fill { rings: Vec::new() });
+                let shape = std::mem::replace(
+                    &mut p.shape,
+                    Shape::Fill {
+                        rings: Vec::new(),
+                        rule: FillRule::EvenOdd,
+                    },
+                );
                 p.shape = clip(clipping, outline.rings, shape);
             }
         }
@@ -581,7 +589,7 @@ mod tests {
     /// Centre of a dot drawn by `draw::dot` (its first ring point lies `radius` east of it).
     fn dot_centre(shape: &Shape, radius: f64) -> Option<Pt> {
         match shape {
-            Shape::Fill { rings } => Some((rings[0][0].0 - radius, rings[0][0].1)),
+            Shape::Fill { rings, .. } => Some((rings[0][0].0 - radius, rings[0][0].1)),
             _ => None,
         }
     }
@@ -704,6 +712,34 @@ mod tests {
         let mut sink = Sink::new(MAX_UNITS_PER_OBJECT);
         area_pattern(&unclipped, &rings, None, &render_symbols(), &mut sink, 0);
         assert!(sink.spent() < 10, "{}", sink.spent());
+    }
+
+    #[test]
+    fn clipped_pattern_without_lines_pays_nothing() {
+        // The only line falls 50 mm from the 10 mm square: nothing is drawn, so the clip outline
+        // is not paid for and nothing is cut, not even with a budget of a single unit.
+        let pattern = Pattern::Lines {
+            angle_rad: 0.0,
+            rotatable: false,
+            spacing: 100_000.0,
+            offset: 50_000.0,
+            color: 3,
+            width: 100.0,
+            clipping: Clipping::Clip,
+        };
+        let rings: Arc<[Vec<Pt>]> = vec![vec![
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+            (0.0, 0.0),
+        ]]
+        .into();
+        let mut sink = Sink::new(1);
+        area_pattern(&pattern, &rings, None, &render_symbols(), &mut sink, 0);
+        assert_eq!(sink.out.len(), 0);
+        assert!(!sink.cut);
+        assert_eq!(sink.spent(), 0);
     }
 
     #[test]

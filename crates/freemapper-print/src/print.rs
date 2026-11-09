@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::omap::enlarge::enlarge_symbols;
 use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, OmapError, SymbolSet};
+use crate::project::SheetLang;
 use crate::render::bounds::{Bounds, painted_bounds};
 use crate::render::draw::{MAX_UNITS_PER_OBJECT, Primitive, Shape, primitives_within};
 use crate::render::fonts::substituted;
@@ -18,8 +19,10 @@ use crate::render::page::{PaperBox, RenderedPage};
 use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
 use crate::render::symbols::{RenderSymbols, Symbol};
 use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
+use crate::sheet::SheetNote;
 
-/// White margin on each side of the page; the map is clipped to the page minus this margin (mm).
+/// White margin on each side of the page for the `render` command; the map is clipped to the page
+/// minus this margin (mm). A layout sets its own ([`PrintOptions::frame_margin_mm`]).
 pub const PAGE_MARGIN_MM: f64 = 5.0;
 
 /// Most units of work one page may use, counted as for one object (`MAX_UNITS_PER_OBJECT`): a
@@ -30,7 +33,7 @@ pub const PAGE_MARGIN_MM: f64 = 5.0;
 /// it. A file that asks for more is broken or hostile; the objects after the limit are not
 /// drawn and counted ([`PrintReport::objects_not_drawn_page_limit`]).
 ///
-/// A page keeps fewer than four million points (500 000 units of fewer than eight points),
+/// A page keeps at most four million points (500 000 units of at most eight points each),
 /// clip outlines counted once per block. Measured peak memory (release build, macOS): about
 /// 200 MB on a 134 KB file of 500 000 strokes of seven points, the largest of the hostile
 /// files tried (ADR 0019).
@@ -43,7 +46,7 @@ const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
 const UM_PER_MM: f64 = 1000.0;
 
 /// Paper sizes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Paper {
     A4,
     A3,
@@ -60,7 +63,8 @@ impl Paper {
 }
 
 /// Page orientation. `Auto` takes the orientation in which less of the map lies outside the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Orientation {
     Auto,
     Portrait,
@@ -84,6 +88,12 @@ pub struct PrintOptions {
     /// `freemapper:source=sheet`. North lines (601) carry the tag too but belong to the map and are
     /// always drawn (ADR 0023).
     pub show_sheet_objects: bool,
+    /// Width (mm) of the white border between the page edge and the map frame, the same on every
+    /// side: the map is clipped to the page minus this border, centred in what is left, and the
+    /// overflow is measured against it. `None` takes [`PAGE_MARGIN_MM`] (the `render` command);
+    /// a layout passes its passe-partout. A margin wider than half the page leaves a frame of
+    /// zero width or height.
+    pub frame_margin_mm: Option<f64>,
 }
 
 /// What a page shows and what it could not show.
@@ -121,11 +131,27 @@ pub struct PrintReport {
     pub missing_glyphs: Vec<char>,
 }
 
+impl PrintReport {
+    /// Whether the report has anything to tell beyond the scales and factors: a non-standard
+    /// scale, overflow, objects left out or cut, replaced fonts or missing glyphs.
+    pub fn has_notes(&self) -> bool {
+        self.non_standard_scale
+            || self.overflow_mm.is_some_and(|(x, y)| x > 0.0 || y > 0.0)
+            || self.skipped_objects > 0
+            || self.unknown_type_objects > 0
+            || self.truncated_objects > 0
+            || self.objects_not_drawn_page_limit > 0
+            || self.dropped_pattern_objects > 0
+            || !self.substituted_fonts.is_empty()
+            || !self.missing_glyphs.is_empty()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PrintError {
     #[error(transparent)]
     Scale(#[from] ScaleError),
-    #[error("could not resize the map symbols for the print scale: {0}")]
+    #[error("could not resize the map symbols for the print scale")]
     Symbols(#[from] OmapError),
     #[error(transparent)]
     Pdf(#[from] PdfError),
@@ -212,22 +238,24 @@ fn render_page_within(
         (None, Some((min, max))) => ((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0),
         (None, None) => (0.0, 0.0),
     };
-    let page_mm = page_size(options.paper, options.orientation, bounds, centre);
+    let margin = options.frame_margin_mm.unwrap_or(PAGE_MARGIN_MM);
+    let page_mm = page_size(options.paper, options.orientation, bounds, centre, margin);
+    let frame = frame_box(page_mm, margin);
+    // The centre of the frame is the centre of the page: the margin is the same on every side.
     let offset = (page_mm.0 / 2.0 - centre.0, page_mm.1 / 2.0 - centre.1);
     let overflow_mm = bounds
-        .map(|b| overflow(b, offset, page_mm))
+        .map(|b| overflow(b, offset, frame))
         .filter(|o| o.dx > 0.0 || o.dy > 0.0)
         .map(|o| (o.dx, o.dy));
     translate(&mut primitives, offset);
 
     let page = RenderedPage {
         primitives,
-        clip: PaperBox {
-            min: (PAGE_MARGIN_MM, PAGE_MARGIN_MM),
-            max: (page_mm.0 - PAGE_MARGIN_MM, page_mm.1 - PAGE_MARGIN_MM),
-        },
+        clip: frame,
         page_mm,
+        centre_mm: centre,
         colours: symbols.colours,
+        sheet: Vec::new(),
     };
     let report = PrintReport {
         page_mm,
@@ -247,16 +275,31 @@ fn render_page_within(
     Ok((page, report))
 }
 
-/// The office PDF of `map`: [`render_page`] written by [`write_pdf`].
+/// [`render_page`] with the default footer of the `render` command: the copyright lines from the
+/// map notes and the visible credit line in `lang` ([`crate::sheet::add_map_footer`]). The map
+/// stays where [`render_page`] puts it. The notes are about the footer.
+pub fn render_with_footer(
+    map: &MapDocument,
+    options: &PrintOptions,
+    lang: SheetLang,
+) -> Result<(RenderedPage, PrintReport, Vec<SheetNote>), PrintError> {
+    let (mut page, report) = render_page(map, options)?;
+    let notes = crate::sheet::add_map_footer(&mut page, map, lang);
+    Ok((page, report, notes))
+}
+
+/// The office PDF of `map`: [`render_with_footer`] written by [`write_pdf`], with the notes about
+/// the footer.
 pub fn print_map(
     map: &MapDocument,
     options: &PrintOptions,
     title: &str,
-) -> Result<(Vec<u8>, PrintReport), PrintError> {
-    let (page, mut report) = render_page(map, options)?;
+    lang: SheetLang,
+) -> Result<(Vec<u8>, PrintReport, Vec<SheetNote>), PrintError> {
+    let (page, mut report, notes) = render_with_footer(map, options, lang)?;
     let (pdf, info) = write_pdf(&page, &PdfMeta::new(title))?;
     report.missing_glyphs = info.missing_glyphs.into_iter().collect();
-    Ok((pdf, report))
+    Ok((pdf, report, notes))
 }
 
 /// The symbols of `set` with every dimension multiplied by `factor`.
@@ -279,7 +322,7 @@ fn is_sheet_object(object: &MapObject) -> bool {
 
 /// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
 /// as a sheet object (ADR 0023).
-fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
+pub(crate) fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
     set.code_of(object.symbol_id)
         .is_some_and(|code| code == "601" || code.starts_with("601."))
 }
@@ -329,16 +372,27 @@ struct Overflow {
     area: f64,
 }
 
-/// The overflow of `bounds` moved by `offset` on a page of `page_mm`.
-fn overflow((min, max): Bounds, offset: Pt, page_mm: (f64, f64)) -> Overflow {
-    let axis = |min: f64, max: f64, page: f64| {
-        let (lo, hi) = (PAGE_MARGIN_MM, page - PAGE_MARGIN_MM);
+/// The map frame on a page of `page_mm`: the page minus `margin_mm` on every side. A margin of
+/// more than half the page leaves a frame of zero width or height in the middle of the page.
+pub fn frame_box(page_mm: (f64, f64), margin_mm: f64) -> PaperBox {
+    // `max` first: a NaN margin becomes 0.
+    let mx = margin_mm.max(0.0).min(page_mm.0 / 2.0);
+    let my = margin_mm.max(0.0).min(page_mm.1 / 2.0);
+    PaperBox {
+        min: (mx, my),
+        max: (page_mm.0 - mx, page_mm.1 - my),
+    }
+}
+
+/// The overflow of `bounds` moved by `offset` beyond `frame`.
+fn overflow((min, max): Bounds, offset: Pt, frame: PaperBox) -> Overflow {
+    let axis = |min: f64, max: f64, lo: f64, hi: f64| {
         let out = (lo - min).max(0.0) + (max - hi).max(0.0);
         let inside = (max.min(hi) - min.max(lo)).max(0.0);
         (out, max - min, inside)
     };
-    let (dx, w, w_in) = axis(min.0 + offset.0, max.0 + offset.0, page_mm.0);
-    let (dy, h, h_in) = axis(min.1 + offset.1, max.1 + offset.1, page_mm.1);
+    let (dx, w, w_in) = axis(min.0 + offset.0, max.0 + offset.0, frame.min.0, frame.max.0);
+    let (dy, h, h_in) = axis(min.1 + offset.1, max.1 + offset.1, frame.min.1, frame.max.1);
     Overflow {
         dx,
         dy,
@@ -346,14 +400,15 @@ fn overflow((min, max): Bounds, offset: Pt, page_mm: (f64, f64)) -> Overflow {
     }
 }
 
-/// The page (mm) in the requested orientation. `Auto` takes the one whose overflowing area is
-/// smaller, then the one with the smaller overflow lengths (a map of a single straight line has
-/// almost no area), and portrait on a tie.
+/// The page (mm) in the requested orientation. `Auto` takes the one whose overflowing area beyond
+/// the frame (the page minus `margin_mm`) is smaller, then the one with the smaller overflow
+/// lengths (a map of a single straight line has almost no area), and portrait on a tie.
 fn page_size(
     paper: Paper,
     orientation: Orientation,
     bounds: Option<Bounds>,
     centre: Pt,
+    margin_mm: f64,
 ) -> (f64, f64) {
     let portrait = paper.size_mm();
     let landscape = (portrait.1, portrait.0);
@@ -362,7 +417,11 @@ fn page_size(
         (Orientation::Landscape, _) => landscape,
         (Orientation::Auto, Some(b)) => {
             let cost = |page: (f64, f64)| {
-                let o = overflow(b, (page.0 / 2.0 - centre.0, page.1 / 2.0 - centre.1), page);
+                let o = overflow(
+                    b,
+                    (page.0 / 2.0 - centre.0, page.1 / 2.0 - centre.1),
+                    frame_box(page, margin_mm),
+                );
                 (o.area, o.dx + o.dy)
             };
             let (p, l) = (cost(portrait), cost(landscape));
@@ -396,7 +455,7 @@ fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
         p.1 += d.1;
     };
     match shape {
-        Shape::Fill { rings } => rings.iter_mut().flatten().for_each(shift),
+        Shape::Fill { rings, .. } => rings.iter_mut().flatten().for_each(shift),
         Shape::Stroke { path, .. } => path.iter_mut().for_each(shift),
         Shape::Text { origin, .. } => shift(origin),
         Shape::Clipped { rings, inner } => {
@@ -418,6 +477,7 @@ fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
 mod tests {
     use super::*;
     use crate::omap::{MapGeoref, MapPart};
+    use crate::render::draw::FillRule;
 
     fn map(scale: u32, set: SymbolSet, objects: Vec<MapObject>) -> MapDocument {
         MapDocument {
@@ -461,6 +521,7 @@ mod tests {
             orientation,
             centre: None,
             show_sheet_objects: false,
+            frame_margin_mm: None,
         }
     }
 
@@ -684,8 +745,81 @@ mod tests {
             pattern: None,
         };
         let doc = map(4000, set, vec![text]);
-        let (_, report) = print_map(&doc, &options(Orientation::Portrait), "Glyphs").unwrap();
+        let (_, report, _) = print_map(
+            &doc,
+            &options(Orientation::Portrait),
+            "Glyphs",
+            SheetLang::En,
+        )
+        .unwrap();
         assert_eq!(report.missing_glyphs, ['✈']);
+    }
+
+    fn texts_of(page: &RenderedPage) -> Vec<(String, (f64, f64))> {
+        use crate::render::page::{Shape, SheetItem};
+        page.sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Text { text, origin, .. },
+                    ..
+                } => Some((text.clone(), *origin)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn render_gets_the_default_footer() {
+        let mut doc = map(
+            4000,
+            SymbolSet::issprom_2019(),
+            vec![line(edge(), (190_000, 280_000))],
+        );
+        doc.notes = "© OpenStreetMap contributors, ODbL\nCC BY 4.0".into();
+        let opts = options(Orientation::Portrait);
+        let (plain, plain_report) = render(&doc, &opts);
+        let (page, report, notes) = render_with_footer(&doc, &opts, SheetLang::En).unwrap();
+        // The map does not move: same primitives, frame, centre and report.
+        assert_eq!(page.primitives, plain.primitives);
+        assert_eq!(page.clip, plain.clip);
+        assert_eq!(page.centre_mm, plain.centre_mm);
+        assert_eq!(report, plain_report);
+        let t = texts_of(&page);
+        let names: Vec<&str> = t.iter().map(|x| x.0.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "© OpenStreetMap contributors, ODbL",
+                "CC BY 4.0",
+                crate::CREDIT_LINE_EN
+            ]
+        );
+        // The 5 mm margin is too narrow: on a white box in the bottom-left corner of the frame.
+        assert!(matches!(
+            page.sheet[0],
+            crate::render::page::SheetItem::Shape {
+                colour: crate::render::page::DirectColour::WHITE,
+                ..
+            }
+        ));
+        assert!(t.iter().all(|x| x.1.0 > 5.0 && x.1.1 < 292.0), "{t:?}");
+        // The line runs through the bottom-left corner: the footer covers part of it.
+        assert_eq!(
+            notes,
+            [crate::sheet::SheetNote::FooterOverlapsMap {
+                content: crate::sheet::FooterContent::CopyrightAndCredit
+            }]
+        );
+        // German, and nothing to note when the map keeps clear of the corner.
+        let small = map(
+            4000,
+            SymbolSet::issprom_2019(),
+            vec![line(edge(), (10_000, 0))],
+        );
+        let (page, _, notes) = render_with_footer(&small, &opts, SheetLang::De).unwrap();
+        assert_eq!(texts_of(&page)[0].0, crate::CREDIT_LINE_DE);
+        assert_eq!(notes, []);
     }
 
     /// A sprint set plus `999.1`, an area with a hatch `spacing` µm apart.
@@ -760,7 +894,7 @@ mod tests {
         page.primitives
             .iter()
             .map(|p| match &p.shape {
-                Shape::Fill { rings } => rings.iter().map(Vec::len).sum(),
+                Shape::Fill { rings, .. } => rings.iter().map(Vec::len).sum(),
                 Shape::Stroke { path, .. } => path.len(),
                 _ => 0,
             })
@@ -890,6 +1024,49 @@ mod tests {
         let (_, report) = render(&doc, &centred);
         let (dx, _) = report.overflow_mm.expect("the text sticks out");
         assert!(dx > 3.0, "{dx}");
+    }
+
+    #[test]
+    fn frame_box_is_the_page_minus_the_margin() {
+        let frame = |min, max| PaperBox { min, max };
+        assert_eq!(
+            frame_box((210.0, 297.0), PAGE_MARGIN_MM),
+            frame((5.0, 5.0), (205.0, 292.0))
+        );
+        // A margin wider than half the page leaves a frame of zero width, then zero height.
+        assert_eq!(
+            frame_box((210.0, 297.0), 120.0),
+            frame((105.0, 120.0), (105.0, 177.0))
+        );
+        assert_eq!(
+            frame_box((210.0, 297.0), 500.0),
+            frame((105.0, 148.5), (105.0, 148.5))
+        );
+        assert_eq!(
+            frame_box((210.0, 297.0), f64::NAN),
+            frame((0.0, 0.0), (210.0, 297.0))
+        );
+    }
+
+    #[test]
+    fn auto_orientation_measures_against_the_frame() {
+        // 196 mm wide, 150 mm tall: fits in portrait with the 5 mm margin (200 mm), and only in
+        // landscape with a 10 mm margin (190 mm wide in portrait).
+        let doc = map(
+            4000,
+            SymbolSet::issprom_2019(),
+            vec![line(edge(), (196_000, 150_000))],
+        );
+        let (page, _) = render(&doc, &options(Orientation::Auto));
+        assert_eq!(page.page_mm, (210.0, 297.0));
+        let wide = PrintOptions {
+            frame_margin_mm: Some(10.0),
+            ..options(Orientation::Auto)
+        };
+        let (page, report) = render(&doc, &wide);
+        assert_eq!(page.page_mm, (297.0, 210.0));
+        assert_eq!(page.clip, frame_box((297.0, 210.0), 10.0));
+        assert_eq!(report.overflow_mm, None);
     }
 
     #[test]
@@ -1027,6 +1204,7 @@ mod tests {
                 rings: Arc::clone(rings),
                 inner: Box::new(Shape::Fill {
                     rings: vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
+                    rule: FillRule::EvenOdd,
                 }),
             },
         };
@@ -1042,7 +1220,8 @@ mod tests {
         assert_eq!(
             **inner,
             Shape::Fill {
-                rings: vec![vec![(10.0, 20.0), (11.0, 21.0), (10.0, 21.0)]]
+                rings: vec![vec![(10.0, 20.0), (11.0, 21.0), (10.0, 21.0)]],
+                rule: FillRule::EvenOdd,
             }
         );
     }

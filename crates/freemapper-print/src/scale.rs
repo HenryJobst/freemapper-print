@@ -83,6 +83,17 @@ impl MapKind {
         }
     }
 
+    /// The contour interval (m) `init` proposes for a new project, for the user to confirm: 2 m
+    /// for sprint maps (ISSprOM 2019 and freemapper use 2 m), 5 m for forest maps, none for
+    /// schoolyard maps.
+    pub fn proposed_contour_interval_m(self) -> Option<f64> {
+        match self {
+            MapKind::Sprint => Some(2.0),
+            MapKind::Forest => Some(5.0),
+            MapKind::Schoolyard => None,
+        }
+    }
+
     /// The scales (denominators) a map of this kind may be printed at and drawn at, ascending.
     pub fn allowed_scales(self) -> Vec<u32> {
         SCALE_TABLE
@@ -99,6 +110,20 @@ fn join_scales(scales: &[u32]) -> String {
         .map(|s| format!("1:{s}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Ground distance (m) between north lines for a map of `kind` (ADR 0027): the standards set
+/// 30 mm at the base scale of sprint maps (ISSprOM 2019-2, 120 m at 1:4000) and 20 mm at 1:15000 for
+/// forest maps (ISOM 2017-2, 300 m).
+///
+/// UNVERIFIED: schoolyard 37.5 m (37.5 mm at 1:1000) is a working value the project owner gave; it
+/// is not checked against the IOF school set.
+pub fn north_line_spacing_m(kind: MapKind) -> f64 {
+    match kind {
+        MapKind::Sprint => 120.0,
+        MapKind::Forest => 300.0,
+        MapKind::Schoolyard => 37.5,
+    }
 }
 
 /// Errors for scales outside the table of a map kind.
@@ -170,7 +195,8 @@ struct Sidecar {
 /// `freemapper.toml` next to a map could not be used.
 #[derive(Debug, thiserror::Error)]
 pub enum SidecarError {
-    #[error("could not read {path}: {source}")]
+    /// The operating system's error is the `source`, not part of the message.
+    #[error("could not read {path}")]
     Read {
         path: std::path::PathBuf,
         source: std::io::Error,
@@ -240,6 +266,21 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/fixtures/maps/forest-sample.omap"
     );
+
+    #[test]
+    fn proposed_contour_intervals() {
+        // ISSprOM 2019 and freemapper both use 2 m for sprint maps.
+        assert_eq!(MapKind::Sprint.proposed_contour_interval_m(), Some(2.0));
+        assert_eq!(MapKind::Forest.proposed_contour_interval_m(), Some(5.0));
+        assert_eq!(MapKind::Schoolyard.proposed_contour_interval_m(), None);
+    }
+
+    #[test]
+    fn north_line_spacing_per_kind() {
+        assert_eq!(north_line_spacing_m(MapKind::Sprint), 120.0);
+        assert_eq!(north_line_spacing_m(MapKind::Forest), 300.0);
+        assert_eq!(north_line_spacing_m(MapKind::Schoolyard), 37.5);
+    }
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9

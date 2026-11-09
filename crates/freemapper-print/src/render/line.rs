@@ -5,7 +5,8 @@
 
 use super::dash::{self, DashPattern};
 use super::draw::{
-    POINTS_PER_UNIT, Primitive, Shape, Sink, mm, point_symbol, point_symbol_scaled, stroke,
+    FillRule, POINTS_PER_UNIT, Primitive, Shape, Sink, mm, point_symbol, point_symbol_scaled,
+    stroke,
 };
 use super::geometry::{self, Part, Pt, Walker};
 use super::symbols::{Border, Cap, DashSymbol, Join, LineDef, PointDef, RenderSymbols};
@@ -239,7 +240,10 @@ fn pointed_cap(def: &LineDef, part: &Part, range: (f64, f64), is_end: bool, sink
     sink.charge(checks / POINTS_PER_UNIT);
     sink.push(Primitive {
         priority: def.color,
-        shape: Shape::Fill { rings: vec![ring] },
+        shape: Shape::Fill {
+            rings: vec![ring],
+            rule: FillRule::EvenOdd,
+        },
     });
 }
 
@@ -357,7 +361,7 @@ mod tests {
     fn fills(p: &[Primitive]) -> Vec<&Vec<Pt>> {
         p.iter()
             .filter_map(|p| match &p.shape {
-                Shape::Fill { rings } => Some(&rings[0]),
+                Shape::Fill { rings, .. } => Some(&rings[0]),
                 _ => None,
             })
             .collect()

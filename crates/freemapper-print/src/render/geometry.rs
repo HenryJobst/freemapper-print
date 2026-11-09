@@ -60,7 +60,7 @@ fn lerp(a: Pt, b: Pt, t: f64) -> Pt {
 }
 
 /// Appends the cubic Bézier p0…p3 without p0, halving until flat enough.
-fn flatten_cubic(p0: Pt, p1: Pt, p2: Pt, p3: Pt, out: &mut Vec<Pt>, depth: u32) {
+pub(crate) fn flatten_cubic(p0: Pt, p1: Pt, p2: Pt, p3: Pt, out: &mut Vec<Pt>, depth: u32) {
     let chord = dist(p0, p3);
     let polygon = dist(p0, p1) + dist(p1, p2) + dist(p2, p3);
     if depth >= 16 || (chord <= MAX_CHORD && polygon - chord <= MAX_ERROR) {

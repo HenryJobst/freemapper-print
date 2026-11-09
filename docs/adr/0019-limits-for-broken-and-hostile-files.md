@@ -32,13 +32,32 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - A page has 500 000 units (`MAX_UNITS_PER_PAGE`). Each object takes the units it used from the page, and
   the objects after the page runs out are not drawn. Clipped shapes keep sharing their outlines when the
   page is moved into place, and the PDF writes each outline once per run, also inside another clip.
+- Logo files (ADR 0026) are read only if they are regular files of at most 10 MB. A PNG or JPEG may have at
+  most 25 megapixels and at most 65 535 pixels a side, checked on the header before any pixel is decoded, and
+  the decoder may allocate at most 116 MB. An SVG first passes a linear scan of its bytes: nesting at most 256
+  deep, at most 1000 attributes per element and 50 million attribute pairs in all, at most 64 namespace
+  declarations, a DTD of comments and at most 64 text entities (each at most 1024 bytes, no markup or
+  references, ADR 0026), `style` attributes of at most 2048 bytes and 64 declarations each and 256 KiB in
+  all, other attribute values except path data of at most 1 MiB (all measured with entities expanded), and
+  entity references that expand to at most about 50 MB in all, counted from the entities the
+  scan read. Then it is checked on its XML before `usvg` resolves it: at most 200 000 nodes, at most 256
+  stops per gradient, only the elements and
+  references of the allow-list in ADR 0026, nesting at most 256 levels deep with `use` resolved, and at most
+  1 000 000 units of work: one per element plus one per two bytes of path data, counted again for every `use`
+  and for every element a clip path clips, the stops of every gradient that takes them from another, and
+  shapes times the largest number of stops; and, counted again for every copy too, at most 256 KiB of
+  `style` and 4 MiB of attribute values. Then at most 20 000 path segments and 500 000 points after
+  flattening. A logo that breaks a limit is left out whole with `SheetNote::LogoSkipped`; none is drawn in
+  part. An earlier count of `use` and markers alone missed copies `usvg` makes of masks, patterns and clip
+  paths and resolved some `href` forms differently; the allow-list replaced it. Attributes are read as `usvg`
+  reads them, and any attribute two readers could take differently is refused (ADR 0026).
 - The report counts what the limits changed: objects cut short (`truncated_objects`), objects not drawn for
   the page limit, objects whose symbol lost a pattern, objects of unknown type. The CLI prints a note for
   each, and map text reaches the terminal with control and format characters escaped.
 
 ## Consequences
 
-- A page keeps fewer than four million points (500 000 units of fewer than 8 points each), and every clip
+- A page keeps at most four million points (500 000 units of at most eight points each), and every clip
   block the PDF writes counts among them. How many bytes that takes is measured, not derived. Peak memory on
   a release build on macOS:
   - 200 MB on a 134 KB file of 500 000 strokes of seven points, the most of all files tried;
@@ -51,4 +70,4 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - Cost if wrong: an extreme but real map loses detail. The notes name the count, and the constants can grow.
 
 Source: security reviews of M1 Tasks 4, 5 and 8, final review of M1 and its security review, controller
-rulings 2026-11-08.
+rulings 2026-11-08, M2 Task 8 (logos).
