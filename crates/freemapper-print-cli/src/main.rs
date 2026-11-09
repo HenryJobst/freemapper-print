@@ -444,6 +444,8 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
     new.layouts = fitted.iter().map(|(l, _, _)| l.clone()).collect();
     if let Some(plan) = &plan {
         new.sources.courses = Some(project::relative_path(&dir, &plan.file));
+        // A sheet without a description box (IOF XML) names its course only in the title block.
+        new.shared[0].lines[0] = "{event} \u{b7} {course}".into();
         for (name, scale) in &plan.courses {
             let layout = &fitted
                 .iter()

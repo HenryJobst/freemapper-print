@@ -980,6 +980,7 @@ fn init_with_ppen_proposes_layouts_and_assignments() {
         assert_eq!(assigned("Ohne Maßstab"), Some(at(4000).id.as_str()));
         assert_eq!(assigned("Lang"), Some(at(5000).id.as_str()));
         assert_ne!(at(4000).id, at(5000).id);
+        assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");
         for l in &p.layouts {
             assert!(l.map_frame.crop, "{}", l.id);
             let boxes: Vec<_> = l
@@ -1012,6 +1013,8 @@ fn init_with_iof_xml_makes_one_layout_without_description_box() {
     assert_eq!(p.layouts.len(), 1);
     assert_eq!(p.layouts[0].print_scale, Some(4000));
     assert!(p.layouts[0].elements.is_empty());
+    // Without a description box, only the title block names the course on the sheet.
+    assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");
     assert!(err.contains("IOF XML"), "{err}");
 }
 

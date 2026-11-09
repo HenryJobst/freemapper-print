@@ -58,7 +58,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   does not fit the map stops `init` before it writes anything. A `.ppen` gets one layout per print scale in the
   file, an assignment for every course, a control description box in the top-right corner of the map frame and
   `map_frame.crop = true`; a course without a print scale takes the map scale. IOF XML gets one layout at the map
-  scale and no description box. `init` says where each value came from.
+  scale and no description box. The title block starts with `{event} · {course}`, so every course sheet names
+  its course, including one from IOF XML without a description box. `init` says where each value came from.
 - `numbers accept <PROJECT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` writes a number correction
   into the project file. Without `--direction` and `--gap` it takes the proposal that `check` shows. It appends a
   `[[numbers]]` table and leaves everything before it unchanged, comments included, then loads the file again;
