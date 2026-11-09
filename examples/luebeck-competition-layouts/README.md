@@ -46,13 +46,13 @@ einem weißen Kasten in der Karte.
 Beide Blätter sind in Ordnung, `check` endet mit Exit-Code 0. Auf dem A4-Blatt ist die Karte in 1:4000 14,0 mm
 höher als der Kartenausschnitt (210 mm Papier minus zweimal 10 mm Passepartout). Das Programm schneidet oben und
 unten je 7 mm ab und verkleinert nichts. Das ist hier gewollt, deshalb steht im Layout `map_frame.crop = true`:
-Der Überstand erscheint als Hinweis und zählt nicht für den Exit-Code. Ohne `crop` wäre er eine Warnung, und
-`check` endete mit 1. Für einen echten Wettkampf legt man mit `map_frame.centre_map_mm` den Ausschnitt auf das
-Wettkampfgebiet.
+Der Überstand erscheint als Zeile „Zur Information“ und zählt nicht für den Exit-Code. Ohne `crop` wäre er eine
+Warnung, und `check` endete mit 1. Für einen echten Wettkampf legt man mit `map_frame.centre_map_mm` den
+Ausschnitt auf das Wettkampfgebiet.
 
 ```
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Hinweis: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
 2 Layouts geprüft, keine Hinweise.
 ```

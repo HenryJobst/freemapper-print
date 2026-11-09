@@ -46,17 +46,18 @@ enough, and the footer sits below the map frame instead of on a white box inside
 Both sheets are fine, and `check` ends with exit code 0. On the A4 sheet the map at 1:4000 is 14.0 mm taller
 than the map frame (210 mm of paper less twice the 10 mm passe-partout). The program cuts 7 mm at the top and
 the bottom and does not shrink anything. That is intended here, so the layout sets `map_frame.crop = true`: the
-overflow shows as a note and does not count for the exit code. Without `crop` it would be a warning, and `check`
-would end with 1. For a real competition, `map_frame.centre_map_mm` moves the frame onto the competition area.
+overflow shows as an "Info" line and does not count for the exit code. Without `crop` it would be a warning, and
+`check` would end with 1. For a real competition, `map_frame.centre_map_mm` moves the frame onto the competition
+area.
 
 ```
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Hinweis: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
 2 Layouts geprüft, keine Hinweise.
 ```
 
-With `--lang en` the same lines come in English ("Note: the map is 14.0 mm too tall for the map frame and is
+With `--lang en` the same lines come in English ("Info: the map is 14.0 mm too tall for the map frame and is
 cut there on purpose ...").
 
 ## How it was made
