@@ -298,6 +298,7 @@ note-stale-correction = Note: the project file corrects the number of control { 
 stale-scope-layout = layout { $name }
 stale-scope-course = course "{ $name }"
 note-stale-changed-base = Note: the course file has moved the number of control { $control } since the project file corrected it. Check whether the correction still fits.
+note-stale-mask = Note: the project file gives course "{ $course }" the mask "{ $mask }", but the course file has no such white-out area. The course prints without a mask; the assignment stays in the project file.
 note-map-cropped-to-course = Info: the map is { $cut } for the map frame. A course sheet shows the part around the course, so the rest is cut off on purpose.
 note-course-placeholder-not-filled = Info: the text { $id } uses { $name }, which is only filled on course sheets. On this sheet it stays empty.
 note-no-courses-to-export = Note: the course file has no course to export, so no PDF was written.

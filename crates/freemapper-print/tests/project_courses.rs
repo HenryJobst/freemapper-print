@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use freemapper_print::course::NumberPlacement;
 use freemapper_print::course::fit::{FitError, SkipReason, YAxis};
 use freemapper_print::courses::{
-    CorrectionScope, CourseLoadError, LayoutNote, Stale, base_changed, layout_for, load_courses,
+    CorrectionScope, CourseLoadError, LayoutNote, MaskNote, MaskRef, Stale, base_changed,
+    layout_for, load_courses, mask_for,
 };
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::project::{self, FILE_NAME};
@@ -419,4 +420,169 @@ fn the_luebeck_example_courses_load_through_the_course_crate() {
     // `<location x="-91.189" y="36.718">` in map µm, y turned down.
     let at = c51.position.unwrap();
     assert_eq!((at.x, at.y), (-91189, -36718));
+}
+
+const SQUARE_MASK: &str = "polygons = [[[[-100, -100], [100, -100], [100, 100], [-100, 100]], [[0, 0], [10, 0], [10, 10]]]]\n";
+
+#[test]
+fn unused_mask_is_noted() {
+    let (_d, path) = project_dir(
+        "c.xml",
+        &format!(
+            "{LAYOUTS}[[masks]]\nid = \"used\"\n{SQUARE_MASK}[[masks]]\nid = \"spare\"\n{SQUARE_MASK}\
+             [[assignments]]\ncourse = \"A\"\nlayout = \"a3\"\nmask = \"used\"\n"
+        ),
+    );
+    let lp = project::load(&path).unwrap();
+    let map = read_map_file(&lp.map_path()).unwrap();
+    let loaded = load_courses(&lp, &map).unwrap().unwrap();
+    assert_eq!(
+        loaded.mask_notes,
+        [MaskNote::MaskUnused { id: "spare".into() }]
+    );
+    assert!(!loaded.mask_notes[0].is_warning());
+    assert!(loaded.stale.is_empty(), "{:?}", loaded.stale);
+    // The assigned course gets its mask, the others none (the XML file has no white-out).
+    match mask_for(&lp.project, &loaded, "A") {
+        Some(MaskRef::Project(m)) => assert_eq!(m.id, "used"),
+        other => panic!("{other:?}"),
+    }
+    assert!(mask_for(&lp.project, &loaded, "B").is_none());
+    assert!(loaded.white_outs.is_empty());
+}
+
+/// A project folder with the Lübeck example's map and its `.ppen`, `specials` added to the course file.
+fn ppen_dir(specials: &str, body: &str) -> (tempfile::TempDir, PathBuf) {
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/luebeck-competition-courses");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::copy(example.join("luebeck.omap"), dir.path().join("m.omap")).unwrap();
+    let ppen = std::fs::read_to_string(example.join("courses.ppen")).unwrap();
+    let ppen = ppen.replace(
+        "</course-scribe-event>",
+        &format!("{specials}</course-scribe-event>"),
+    );
+    std::fs::write(dir.path().join("c.ppen"), ppen).unwrap();
+    let path = dir.path().join(FILE_NAME);
+    let head = "format = 1\n[event]\ntitle = \"T\"\n[sources]\nmap = \"m.omap\"\ncourses = \"c.ppen\"\n\
+                [map]\nkind = \"sprint\"\n[[layouts]]\nid = \"a4\"\n";
+    std::fs::write(&path, format!("{head}{body}")).unwrap();
+    (dir, path)
+}
+
+/// A Purple Pen white-out: a square of side `s` at (`x`, `y`) in file mm (y up) for `courses`.
+fn white_out(id: u32, x: f64, y: f64, s: f64, courses: &str) -> String {
+    let loc = |x: f64, y: f64| format!("<location x=\"{x}\" y=\"{y}\" />");
+    format!(
+        "<special-object id=\"{}\" kind=\"white-out\">{}{}{}{}{courses}</special-object>\n",
+        100 + id,
+        loc(x, y),
+        loc(x + s, y),
+        loc(x + s, y + s),
+        loc(x, y + s),
+    )
+}
+
+#[test]
+fn white_outs_become_mask_variants() {
+    // In file order: 1 for A (course id 1), 2 for all courses, 3 for C (id 3), overlapping 2.
+    let specials = format!(
+        "{}{}{}",
+        white_out(
+            1,
+            -80.0,
+            40.0,
+            10.0,
+            "<courses><course course=\"1\" /></courses>"
+        ),
+        white_out(2, 50.0, 40.0, 10.0, "<courses all=\"true\" />"),
+        white_out(
+            3,
+            55.0,
+            45.0,
+            10.0,
+            "<courses><course course=\"3\" /></courses>"
+        ),
+    );
+    let (_d, path) = ppen_dir(
+        &specials,
+        "[[assignments]]\ncourse = \"B\"\nlayout = \"a4\"\nmask = \"whiteout-3\"\n\
+         [[assignments]]\ncourse = \"A\"\nlayout = \"a4\"\n",
+    );
+    let lp = project::load(&path).unwrap();
+    let map = read_map_file(&lp.map_path()).unwrap();
+    let loaded = load_courses(&lp, &map).unwrap().unwrap();
+    let ids: Vec<&str> = loaded
+        .white_outs
+        .iter()
+        .map(|w| w.mask.id.as_str())
+        .collect();
+    assert_eq!(ids, ["whiteout-1", "whiteout-2", "whiteout-3"]);
+    // The coordinates are the file's, y up, as in a `[[masks]]` table.
+    assert_eq!(
+        loaded.white_outs[0].mask.polygons[0].outline,
+        [[-80.0, 40.0], [-70.0, 40.0], [-70.0, 50.0], [-80.0, 50.0]]
+    );
+    // A has white-outs 1 and 2: one variant with both polygons.
+    let a = mask_for(&lp.project, &loaded, "A").unwrap();
+    assert!(matches!(a, MaskRef::WhiteOut(_)));
+    assert_eq!(a.mask().id, "whiteout-1+whiteout-2");
+    assert_eq!(a.mask().polygons.len(), 2);
+    // B names white-out 3 itself, which wins over white-out 2 of all courses.
+    assert_eq!(
+        mask_for(&lp.project, &loaded, "B").unwrap().mask().id,
+        "whiteout-3"
+    );
+    // C has 2 and 3, which overlap: no mask, and a warning.
+    assert!(mask_for(&lp.project, &loaded, "C").is_none());
+    assert_eq!(loaded.mask_notes.len(), 1, "{:?}", loaded.mask_notes);
+    let MaskNote::WhiteOutUnusable { course, mask, .. } = &loaded.mask_notes[0] else {
+        panic!("{:?}", loaded.mask_notes);
+    };
+    assert_eq!(
+        (course.as_str(), mask.as_str()),
+        ("C", "whiteout-2+whiteout-3")
+    );
+    assert!(loaded.mask_notes[0].is_warning());
+
+    // A `[[masks]]` entry named like a white-out replaces it, for the white-out's courses, and counts as used.
+    // A white-out the course file lacks is stale data.
+    let (_d, path) = ppen_dir(
+        &specials,
+        "[[masks]]\nid = \"whiteout-3\"\n\
+         polygons = [[[[150, 40], [160, 40], [160, 50], [150, 50]]]]\n\
+         [[assignments]]\ncourse = \"B\"\nlayout = \"a4\"\nmask = \"whiteout-9\"\n",
+    );
+    let lp = project::load(&path).unwrap();
+    let loaded = load_courses(&lp, &map).unwrap().unwrap();
+    assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
+    assert_eq!(
+        loaded.stale,
+        [Stale::Mask {
+            course: "B".into(),
+            mask: "whiteout-9".into()
+        }]
+    );
+    assert!(mask_for(&lp.project, &loaded, "B").is_none());
+    let c = mask_for(&lp.project, &loaded, "C").unwrap();
+    assert_eq!(c.mask().id, "whiteout-2+whiteout-3");
+    assert_eq!(c.mask().polygons[1].outline[0], [150.0, 40.0]);
+    // A single replaced white-out is the project's own mask.
+    let (_d, path) = ppen_dir(
+        &white_out(
+            1,
+            -80.0,
+            40.0,
+            10.0,
+            "<courses><course course=\"1\" /></courses>",
+        ),
+        "[[masks]]\nid = \"whiteout-1\"\npolygons = [[[[150, 40], [160, 40], [160, 50]]]]\n",
+    );
+    let lp = project::load(&path).unwrap();
+    let loaded = load_courses(&lp, &map).unwrap().unwrap();
+    assert!(matches!(
+        mask_for(&lp.project, &loaded, "A"),
+        Some(MaskRef::Project(m)) if m.id == "whiteout-1"
+    ));
+    assert!(mask_for(&lp.project, &loaded, "B").is_none());
 }

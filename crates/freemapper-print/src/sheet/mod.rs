@@ -716,6 +716,7 @@ mod tests {
                 print: PrintSettings::default(),
                 shared,
                 layouts: vec![layout.clone()],
+                masks: Vec::new(),
                 assignments: Vec::new(),
                 numbers: Vec::new(),
             },

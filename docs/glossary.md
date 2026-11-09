@@ -152,7 +152,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Beschreibungskasten | description box | Die Postenbeschreibung einer Bahn als Blattelement der Art `control_descriptions`, mit weißem Hintergrund, am Anker aufgehängt. Größe: Kästchen mal `cell_mm`, unabhängig vom Druckmaßstab. Passt er nicht aufs Blatt, entfällt er mit einem Hinweis (ADR 0037). | `ElementKind::ControlDescriptions` |
 | Anweisungszeile | instruction row | Zeile der Postenbeschreibung, die über alle acht Kästchen ein Symbol zeigt statt Spalten: Ziel (14.1 bis 14.3, mit der Länge der letzten Strecke), Pflichtübergang (13.3), ausgeflaggte Strecke (13.2) und Strecke zum Kartenwechsel (13.5) mit ihrer Länge, Kartenwechsel am Posten (13.5control), Karte wenden (15.6, ab 2018). Längen auf 10 m gerundet. | `Row::Instruction` |
 | Bahndatei | course file | Datei einer Bahnlegung: IOF-XML 3.0 `CourseData` oder `.ppen`; liest `CourseEvent`. Die Bahnquelle ist die Datei, aus der ein Projekt seine Bahnen nimmt. | `CourseEvent` |
-| Zuordnung | assignment | Eintrag `[[assignments]]` der Projektdatei: Er nennt eine Bahn der Bahndatei und das Layout, auf dem sie gedruckt wird. Ohne Zuordnung gilt das erste Layout. Gibt es die Bahn nicht mehr, bleibt der Eintrag stehen und `check` meldet ihn (ADR 0025, ADR 0035). | `Assignment` |
+| Zuordnung | assignment | Eintrag `[[assignments]]` der Projektdatei: Er nennt eine Bahn der Bahndatei, das Layout, auf dem sie gedruckt wird, und auf Wunsch ihre Abdeckungsvariante (`mask`). Ohne Zuordnung gilt das erste Layout. Gibt es die Bahn nicht mehr, bleibt der Eintrag stehen und `check` meldet ihn (ADR 0025, ADR 0035, ADR 0045). | `Assignment` |
 | Stopp | stop | Ein Besuch eines Postens in einer Bahn (Start, Posten, Ziel, Querungsstelle); derselbe Posten kann mehrfach vorkommen. Trägt die Nummernlage, die Kreislücken und, falls die Bahn sie ändert, die Postenart (etwa Ziel in einer Bahn, normaler Posten in einer anderen). | `Stop` |
 | Sonderobjekt | special object | Bahnlegungs-Element außer Posten und Strecken: Sperrgebiet, Gefahrenstelle, Verbotene Strecke, Grenze, Erste Hilfe, Wasser, Text, Linie, Abdeckung. | `Special` |
 | Bahnblatt | course sheet | Blatt einer Bahn: ihr Layout mit dem Bahnaufdruck, ohne `centre_map_mm` auf die Bahn zentriert (Posten und Knickpunkte; Sonderobjekte der Bahn nur, solange der Rahmen sie noch fasst), mit den Bahnplatzhaltern. Dass die Karte über den Kartenausschnitt hinausreicht, ist hier erwartet und nur eine Information. Hinweise: Posten außerhalb des Kartenausschnitts, Standardlayout, keine Postenbeschreibung, gekürzter Aufdruck (ADR 0035). | `sheet::render_course_sheet`, `course_centre`, `course_length_m` |
@@ -168,8 +168,11 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 
 | Deutsch | English | Definition | Code |
 |---|---|---|---|
-| Abdeckung | mask | Weiße Fläche über der Karte mit Löchern; liegt unter Bahnaufdruck und Blattelementen. In Purple Pen „White-out“. | `Mask` |
-| Abdeckungsvariante | mask variant | Benannte Menge von Abdeckungen, die einer oder mehreren Bahnen zugeordnet wird. | `MaskVariant` |
+| Abdeckung | mask | Kurz für Abdeckungsvariante; auf dem Blatt die abgedeckten Flächen, in denen die Karte fehlt. Bahnaufdruck und Blattelemente deckt sie nie ab. Purple Pen nennt seine Abdeckflächen „White-out“. | `mask` |
+| Abdeckungsvariante | mask variant | Ein Eintrag `[[masks]]` der Projektdatei: eine ID (1 bis 64 Zeichen, ohne Steuerzeichen) und ein oder mehr Polygone, jedes ein Umriss mit Löchern, in Kartenkoordinaten (mm, y nach oben wie bei `centre_map_mm`). Die Umrisse einer Variante liegen auseinander. Eine Bahn wird mit keiner oder einer gedruckt; ihre Zuordnung nennt sie mit `mask`. Die Abdeckflächen einer `.ppen` werden zu den Varianten `whiteout-1`, `whiteout-2` … und gelten für die Bahnen ihres Filters (ADR 0045). | `Mask`, `MaskPolygon`, `courses::mask_for` |
+| abgedeckte Fläche | masked area | Der Umriss eines Polygons ohne die Vereinigung seiner Löcher. Dort fehlt die Karte. | `mask::contains`, `mask::masked_rings` |
+| Fenster | window | Ein Loch einer Abdeckungsvariante: Dort bleibt die Karte sichtbar. Überlappende Fenster verschmelzen zu einem. | `MaskPolygon::holes` |
+| Korridor | corridor | Ein langes, schmales Fenster entlang einer Linie, für Korridor-OL. | – |
 | Fenster-OL | window orienteering | Training, bei dem die Karte nur in Fenstern um Posten oder Strecken sichtbar ist. | – |
 | Korridor-OL | corridor orienteering | Training, bei dem nur ein schmaler Streifen entlang der Strecke sichtbar ist. | – |
 

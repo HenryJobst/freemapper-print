@@ -298,6 +298,7 @@ note-stale-correction = Hinweis: Die Projektdatei korrigiert die Nummer von Post
 stale-scope-layout = Layout { $name }
 stale-scope-course = Bahn „{ $name }“
 note-stale-changed-base = Hinweis: Die Bahndatei hat die Nummer von Posten { $control } verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.
+note-stale-mask = Hinweis: Die Projektdatei gibt der Bahn „{ $course }“ die Abdeckung „{ $mask }“, aber die Bahndatei hat keine solche Abdeckfläche (White-out). Die Bahn wird ohne Abdeckung gedruckt; die Zuordnung bleibt in der Projektdatei.
 note-map-cropped-to-course = Zur Information: Die Karte ist { $cut } für den Kartenausschnitt. Ein Bahnblatt zeigt den Teil um die Bahn, der Rest wird mit Absicht abgeschnitten.
 note-course-placeholder-not-filled = Zur Information: Der Text { $id } nutzt { $name }, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
 note-no-courses-to-export = Hinweis: Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.

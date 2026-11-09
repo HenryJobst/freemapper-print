@@ -471,6 +471,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             new.assignments.push(project::Assignment {
                 course: name.clone(),
                 layout: layout.id.clone(),
+                mask: None,
             });
         }
         if !plan.iof {
@@ -1859,6 +1860,10 @@ fn stale_line(texts: &Texts, stale: &Stale) -> String {
             "note-stale-changed-base",
             Some(&args!("control" => printable(control))),
         ),
+        Stale::Mask { course, mask } => texts.get(
+            "note-stale-mask",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ),
     }
 }
 
@@ -2574,6 +2579,13 @@ mod tests {
             (
                 SheetNote::Stale(Stale::CorrectionOverridesChangedBase { control: s("49") }),
                 vec!["49"],
+            ),
+            (
+                SheetNote::Stale(Stale::Mask {
+                    course: s("Kurz"),
+                    mask: s("whiteout-9"),
+                }),
+                vec!["Kurz", "whiteout-9"],
             ),
             (
                 SheetNote::NumberConflict(NumberConflict {

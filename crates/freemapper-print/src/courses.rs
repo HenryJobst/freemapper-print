@@ -3,13 +3,17 @@
 //! are reported, never dropped. This module sits above [`crate::course`], which knows nothing of the project
 //! file, so that `course` can move into a crate of its own (ADR 0039).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::course::fit::{FitError, FitNote, FitOptions};
 use crate::course::model::{Course, FittedEvent, MAX_COURSE_FILE_BYTES, NumberPlacement};
 use crate::course::{CourseError, CourseNote, fit, read_iof_xml, read_ppen};
+use crate::course::{CourseFilter, Special};
+use crate::mask::{Budget, MAX_CHECK_STEPS, Mask, MaskPolygon, Problem};
+use crate::omap::MapCoord;
 use crate::omap::MapDocument;
-use crate::project::{LayoutSpec, LoadedProject, NumberCorrection, Project};
+use crate::project::{LayoutSpec, LoadedProject, NumberCorrection, Project, white_out_id};
 
 /// Largest difference in direction (degrees) after which a course file's number placement counts as moved.
 pub const BASE_TOLERANCE_DEG: f64 = 0.5;
@@ -26,6 +30,13 @@ pub struct LoadedCourses {
     pub fit_notes: Vec<FitNote>,
     /// Entries of the project file that name courses or controls the course file does not have.
     pub stale: Vec<Stale>,
+    /// The white-outs of the course file as mask variants `whiteout-<n>`, in file order (ADR 0045).
+    pub white_outs: Vec<WhiteOut>,
+    /// Masks that no course uses, and white-outs that cannot make a mask.
+    pub mask_notes: Vec<MaskNote>,
+    /// What is wrong, if anything, with each mask made from white-outs, by id, so that [`mask_for`] checks a mask
+    /// once.
+    checked: BTreeMap<String, Option<Problem>>,
 }
 
 /// Where a number correction applies.
@@ -56,6 +67,9 @@ pub enum Stale {
     },
     /// A correction overrides a placement that the course file has changed since the correction was made.
     CorrectionOverridesChangedBase { control: String },
+    /// The assignment of `course` names the white-out `mask` (`whiteout-<n>`), which the course file does not
+    /// have; the course prints without a mask. Other unknown mask ids are refused when the project loads.
+    Mask { course: String, mask: String },
 }
 
 impl std::fmt::Display for Stale {
@@ -72,6 +86,10 @@ impl std::fmt::Display for Stale {
             Self::CorrectionOverridesChangedBase { control } => write!(
                 f,
                 "the number correction for control {control} overrides a placement that has changed in the course file since"
+            ),
+            Self::Mask { course, mask } => write!(
+                f,
+                "the assignment for course {course} names the white-out {mask}, which the course file does not have"
             ),
         }
     }
@@ -151,13 +169,18 @@ pub fn load_courses(
         check_georef: s.course_georef_check,
     };
     let fitted = fit(raw, map, &options).map_err(|source| CourseLoadError::Fit { file, source })?;
-    let mut stale = stale_entries(&project.project, &fitted.event);
+    let white_outs = white_outs_of(&fitted.event);
+    let mut stale = stale_entries(&project.project, &fitted.event, &white_outs);
     stale.extend(crate::numbers::changed_bases(project, &fitted.event));
+    let (checked, mask_notes) = mask_checks(&project.project, &fitted.event, &white_outs);
     Ok(Some(LoadedCourses {
         notes: fitted.event.notes.clone(),
         event: fitted.event,
         fit_notes: fitted.notes,
         stale,
+        white_outs,
+        mask_notes,
+        checked,
     }))
 }
 
@@ -196,7 +219,7 @@ fn read_capped(path: &Path, file: &str) -> Result<Vec<u8>, CourseLoadError> {
     Ok(bytes)
 }
 
-fn stale_entries(project: &Project, event: &FittedEvent) -> Vec<Stale> {
+fn stale_entries(project: &Project, event: &FittedEvent, white_outs: &[WhiteOut]) -> Vec<Stale> {
     let has_course = |name: &str| event.courses.iter().any(|c| c.name == name);
     let stops = |c: &Course<_>, control: &str| c.stops.iter().any(|s| s.control == control);
     let mut stale = Vec::new();
@@ -204,6 +227,18 @@ fn stale_entries(project: &Project, event: &FittedEvent) -> Vec<Stale> {
         if !has_course(&a.course) {
             stale.push(Stale::Assignment {
                 course: a.course.clone(),
+            });
+        }
+    }
+    // The loader refused every other unknown id; a `whiteout-<n>` waits for the course file.
+    for a in &project.assignments {
+        if let Some(m) = &a.mask
+            && !project.masks.iter().any(|own| &own.id == m)
+            && !white_outs.iter().any(|w| &w.mask.id == m)
+        {
+            stale.push(Stale::Mask {
+                course: a.course.clone(),
+                mask: m.clone(),
             });
         }
     }
@@ -270,4 +305,209 @@ pub fn layout_for<'a>(
             )
         }
     }
+}
+
+/// A white-out of the course file as a mask variant, with the courses it applies to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhiteOut {
+    pub mask: Mask,
+    pub courses: CourseFilter,
+}
+
+/// A remark about the mask variants.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MaskNote {
+    /// No assignment names the mask and no white-out of the course file has its id. Information only.
+    MaskUnused { id: String },
+    /// The white-outs of `course` (their ids joined by `+`) do not make a valid mask, for example because two
+    /// of them overlap; the course prints without a mask. A warning.
+    WhiteOutUnusable {
+        course: String,
+        mask: String,
+        problem: Problem,
+    },
+}
+
+impl MaskNote {
+    pub fn is_warning(&self) -> bool {
+        matches!(self, MaskNote::WhiteOutUnusable { .. })
+    }
+}
+
+/// The mask a course prints with: a `[[masks]]` entry of the project file, or one made from the course file's
+/// white-outs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MaskRef<'a> {
+    Project(&'a Mask),
+    WhiteOut(Mask),
+}
+
+impl MaskRef<'_> {
+    pub fn mask(&self) -> &Mask {
+        match self {
+            MaskRef::Project(m) => m,
+            MaskRef::WhiteOut(m) => m,
+        }
+    }
+}
+
+/// The mask `course` prints with (ADR 0045): the one its assignment names, otherwise the course file's white-outs
+/// for the course, otherwise none. A white-out with a `[[masks]]` entry of its id (`whiteout-<n>`) takes that
+/// entry's polygons. Several white-outs make one variant, their ids joined by `+`. `None` also when the named
+/// white-out is missing ([`Stale::Mask`]) or the white-outs make no valid mask ([`MaskNote::WhiteOutUnusable`]).
+pub fn mask_for<'a>(
+    project: &'a Project,
+    loaded: &LoadedCourses,
+    course: &str,
+) -> Option<MaskRef<'a>> {
+    let mut check = |m: &Mask| match loaded.checked.get(&m.id) {
+        Some(problem) => *problem,
+        None => check_white_out(m, &mut Budget::new(MAX_CHECK_STEPS)),
+    };
+    match resolve(project, &loaded.white_outs, course, &mut check) {
+        Resolved::Mask(m) => Some(m),
+        _ => None,
+    }
+}
+
+/// What [`mask_for`] finds for a course.
+enum Resolved<'a> {
+    None,
+    Mask(MaskRef<'a>),
+    /// The assignment names this white-out, which the course file lacks.
+    Missing,
+    /// The white-out mask with this id has this problem.
+    Unusable(String, Problem),
+}
+
+/// The rule of [`mask_for`]. `check` tells what is wrong with a mask made from white-outs; masks of the project
+/// file were checked when it was loaded.
+fn resolve<'a>(
+    project: &'a Project,
+    white_outs: &[WhiteOut],
+    course: &str,
+    check: &mut dyn FnMut(&Mask) -> Option<Problem>,
+) -> Resolved<'a> {
+    let own = |id: &str| project.masks.iter().find(|m| m.id == id);
+    let mut usable = |m: Mask| match check(&m) {
+        None => Resolved::Mask(MaskRef::WhiteOut(m)),
+        Some(problem) => Resolved::Unusable(m.id, problem),
+    };
+    let assigned = project
+        .assignments
+        .iter()
+        .find(|a| a.course == course)
+        .and_then(|a| a.mask.as_deref());
+    if let Some(id) = assigned {
+        if let Some(m) = own(id) {
+            return Resolved::Mask(MaskRef::Project(m));
+        }
+        return match white_outs.iter().find(|w| w.mask.id == id) {
+            Some(w) => usable(w.mask.clone()),
+            None => Resolved::Missing,
+        };
+    }
+    let mine: Vec<&Mask> = white_outs
+        .iter()
+        .filter(|w| white_out_applies(&w.courses, course))
+        .map(|w| own(&w.mask.id).unwrap_or(&w.mask))
+        .collect();
+    match mine.as_slice() {
+        [] => Resolved::None,
+        [one] => match own(&one.id) {
+            Some(m) => Resolved::Mask(MaskRef::Project(m)),
+            None => usable((*one).clone()),
+        },
+        many => usable(Mask {
+            id: many
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>()
+                .join("+"),
+            polygons: many.iter().flat_map(|m| m.polygons.clone()).collect(),
+        }),
+    }
+}
+
+/// Whether a white-out applies to `course`: all courses, or the courses of its filter; an empty filter means
+/// all courses.
+fn white_out_applies(filter: &CourseFilter, course: &str) -> bool {
+    match filter {
+        CourseFilter::All => true,
+        CourseFilter::Only(names) => names.is_empty() || names.iter().any(|n| n == course),
+    }
+}
+
+/// What is wrong with a mask made from white-outs, within `budget`.
+fn check_white_out(m: &Mask, budget: &mut Budget) -> Option<Problem> {
+    crate::mask::check(m, budget).err().map(|e| e.problem)
+}
+
+/// The white-outs of `event` as mask variants `whiteout-1`, `whiteout-2` … in file order. The first ring is the
+/// outline, any further ones holes; points in map mm, y up, as in a `[[masks]]` table.
+fn white_outs_of(event: &FittedEvent) -> Vec<WhiteOut> {
+    let pt = |c: &MapCoord| [f64::from(c.x) / 1000.0, -f64::from(c.y) / 1000.0];
+    event
+        .specials
+        .iter()
+        .filter_map(|s| match s {
+            Special::WhiteOut { rings, courses } => Some((rings, courses)),
+            _ => None,
+        })
+        .enumerate()
+        .map(|(i, (rings, courses))| {
+            let mut rings = rings.iter().map(|r| r.iter().map(pt).collect::<Vec<_>>());
+            let outline = rings.next().unwrap_or_default();
+            WhiteOut {
+                mask: Mask {
+                    id: white_out_id(i + 1),
+                    polygons: vec![MaskPolygon {
+                        outline,
+                        holes: rings.collect(),
+                    }],
+                },
+                courses: courses.clone(),
+            }
+        })
+        .collect()
+}
+
+/// The white-out masks of every course of `event` checked once, within one budget: the result for each id,
+/// and the notes about masks.
+fn mask_checks(
+    project: &Project,
+    event: &FittedEvent,
+    white_outs: &[WhiteOut],
+) -> (BTreeMap<String, Option<Problem>>, Vec<MaskNote>) {
+    let mut checked: BTreeMap<String, Option<Problem>> = BTreeMap::new();
+    let mut budget = Budget::new(MAX_CHECK_STEPS);
+    let mut notes: Vec<MaskNote> = project
+        .masks
+        .iter()
+        .filter(|m| {
+            let assigned = project
+                .assignments
+                .iter()
+                .any(|a| a.mask.as_deref() == Some(m.id.as_str()));
+            !assigned && !white_outs.iter().any(|w| w.mask.id == m.id)
+        })
+        .map(|m| MaskNote::MaskUnused { id: m.id.clone() })
+        .collect();
+    for course in &event.courses {
+        let mut check = |m: &Mask| {
+            *checked
+                .entry(m.id.clone())
+                .or_insert_with(|| check_white_out(m, &mut budget))
+        };
+        if let Resolved::Unusable(mask, problem) =
+            resolve(project, white_outs, &course.name, &mut check)
+        {
+            notes.push(MaskNote::WhiteOutUnusable {
+                course: course.name.clone(),
+                mask,
+                problem,
+            });
+        }
+    }
+    (checked, notes)
 }
