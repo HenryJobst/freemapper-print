@@ -90,11 +90,19 @@ pub fn check_out_folder(project_dir: &Path, folder: &Path) -> Result<(), OutputE
 }
 
 /// Removes partial files older than an hour that interrupted runs left in the output folder
-/// `folder` of the project in `project_dir`. Only a folder inside the project ([`names_inside`]) is cleaned,
-/// and only when no link leads it out; partial files that are links stay. Best effort.
+/// `folder` of the project in `project_dir`. Only the project's own `out` folder is cleaned, not any other
+/// folder inside the project, and only when no link leads it out; partial files that are links stay.
+/// Best effort.
 pub fn remove_stale_parts(project_dir: &Path, folder: &Path) {
     const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60 * 60);
-    if names_inside(project_dir, &folder.join("file")) {
+    let is_out = match (
+        std::path::absolute(project_dir.join("out")),
+        std::path::absolute(folder),
+    ) {
+        (Ok(out), Ok(folder)) => by_name(&out) == by_name(&folder),
+        _ => false,
+    };
+    if is_out && names_inside(project_dir, &folder.join("file")) {
         let _ = freemapper_fs::remove_stale_parts_inside(project_dir, folder, STALE_AFTER);
     }
 }
@@ -474,8 +482,14 @@ mod tests {
                 .unwrap();
             file.set_modified(old).unwrap();
         };
+        let other = dir.path().join("other");
+        fs::create_dir(&other).unwrap();
         plant(&out);
         plant(elsewhere.path());
+        plant(&other);
+        remove_stale_parts(dir.path(), &other);
+        remove_stale_parts(dir.path(), dir.path());
+        assert_eq!(leftovers(&other), ["a4.pdf.1.0.part", "fresh.part"]);
         remove_stale_parts(dir.path(), &out);
         remove_stale_parts(dir.path(), elsewhere.path());
         assert_eq!(leftovers(&out), ["fresh.part"]);
