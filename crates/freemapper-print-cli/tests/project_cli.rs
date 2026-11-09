@@ -157,7 +157,8 @@ fn init_writes_project() {
     assert_eq!(p.sources.map, Path::new("../maps/luebeck.omap"), "{text}");
     assert_eq!(p.event.title, "Stadtlauf");
     assert_eq!(p.map.kind, MapKind::Sprint);
-    assert_eq!(p.map.contour_interval_m, Some(2.5));
+    // ISSprOM 2019 and freemapper both use 2 m.
+    assert_eq!(p.map.contour_interval_m, Some(2.0));
     assert_eq!(p.layouts.len(), 1);
     // Lübeck does not fit A4 at 1:4000; A3 with room for the footer does.
     assert_eq!(p.layouts[0].id, "a3");
@@ -180,7 +181,7 @@ fn init_writes_project() {
         "{text}"
     );
     assert!(
-        err.contains("2.5 m") && err.contains("confirm") && err.contains("sprint"),
+        err.contains("2 m") && err.contains("confirm") && err.contains("sprint"),
         "{err}"
     );
     assert!(

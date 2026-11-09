@@ -83,11 +83,12 @@ impl MapKind {
         }
     }
 
-    /// The contour interval (m) `init` proposes for a new project, for the user to confirm: 2.5 m
-    /// for sprint maps, 5 m for forest maps, none for schoolyard maps.
+    /// The contour interval (m) `init` proposes for a new project, for the user to confirm: 2 m
+    /// for sprint maps (ISSprOM 2019 and freemapper use 2 m), 5 m for forest maps, none for
+    /// schoolyard maps.
     pub fn proposed_contour_interval_m(self) -> Option<f64> {
         match self {
-            MapKind::Sprint => Some(2.5),
+            MapKind::Sprint => Some(2.0),
             MapKind::Forest => Some(5.0),
             MapKind::Schoolyard => None,
         }
@@ -265,6 +266,14 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/fixtures/maps/forest-sample.omap"
     );
+
+    #[test]
+    fn proposed_contour_intervals() {
+        // ISSprOM 2019 and freemapper both use 2 m for sprint maps.
+        assert_eq!(MapKind::Sprint.proposed_contour_interval_m(), Some(2.0));
+        assert_eq!(MapKind::Forest.proposed_contour_interval_m(), Some(5.0));
+        assert_eq!(MapKind::Schoolyard.proposed_contour_interval_m(), None);
+    }
 
     #[test]
     fn north_line_spacing_per_kind() {
