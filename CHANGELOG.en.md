@@ -20,8 +20,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   elements and have elements of its own.
 - Sheet elements, each anchored to one of nine positions of the page or the map frame: title block and texts
   with placeholders (`{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`, `{contour_interval}`,
-  `{layout}`), logos and a scale check bar. A sheet that shows neither scale nor contour interval gets a note,
-  because the IOF requires both.
+  `{layout}`), logos and a scale check bar. A sheet that lacks either the scale or the contour interval gets a
+  note, because the IOF requires both.
 - A footer on every sheet: the copyright lines of the map (or from `print.copyright`), one per line, and below
   them the credit line "Created with freemapper-print" with the project address. The credit line cannot be
   switched off; an element only moves it. The footer goes below the map frame when all of it fits there,

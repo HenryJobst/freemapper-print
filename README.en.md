@@ -18,8 +18,9 @@ New since 0.1.0, not yet released (M2, on `main`):
 
 - one project file per event with any number of layouts, created with `init`, checked with `check` and written
   as PDFs with `export`;
-- on every sheet a passe-partout, a frame line, a title block and texts with placeholders, club and sponsor logos
-  (PNG, JPEG, SVG), a scale check bar to measure against, and the copyright and credit lines at the bottom left;
+- on every sheet a passe-partout, a frame line and a footer with the copyright and credit lines; as elements you
+  place, a title block and texts with placeholders, club and sponsor logos (PNG, JPEG, SVG) and a scale check bar
+  to measure against;
 - north lines added when the map has none;
 - messages and help in German and English;
 - a full disk leaves no half-written PDF.

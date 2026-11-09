@@ -18,9 +18,9 @@ Neu seit 0.1.0, noch nicht veröffentlicht (M2, auf `main`):
 
 - eine Projektdatei je Veranstaltung mit beliebig vielen Layouts, angelegt mit `init`, geprüft mit `check`, als
   PDFs geschrieben mit `export`;
-- auf jedem Blatt Passepartout, Rahmenlinie, Titelblock und Texte mit Platzhaltern, Vereins- und
-  Sponsorenlogos (PNG, JPEG, SVG), eine Kontrollstrecke zum Nachmessen und unten links Quellenangaben und
-  Namensnennung;
+- auf jedem Blatt Passepartout, Rahmenlinie und eine Fußzeile mit Quellenangaben und Namensnennung; als
+  Elemente, die man selbst platziert, Titelblock und Texte mit Platzhaltern, Vereins- und Sponsorenlogos (PNG,
+  JPEG, SVG) und eine Kontrollstrecke zum Nachmessen;
 - Nordlinien ergänzt das Programm, wenn die Karte keine hat;
 - Meldungen und Hilfe auf Deutsch und Englisch;
 - ein volles Laufwerk hinterlässt kein halbes PDF.

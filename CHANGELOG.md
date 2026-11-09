@@ -21,8 +21,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   und gemeinsame Blattelemente ausblenden und eigene Elemente haben.
 - Blattelemente, jedes an einer von neun Stellen des Blatts oder des Kartenausschnitts verankert: Titelblock und
   Texte mit Platzhaltern (`{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`,
-  `{contour_interval}`, `{layout}`), Logos und eine Kontrollstrecke. Fehlen auf einem Blatt Maßstab oder
-  Äquidistanz, gibt es einen Hinweis, denn die IOF verlangt beide.
+  `{contour_interval}`, `{layout}`), Logos und eine Kontrollstrecke. Fehlt auf einem Blatt der Maßstab oder
+  die Äquidistanz, gibt es einen Hinweis, denn die IOF verlangt beide.
 - Fußzeile auf jedem Blatt: die Quellenangaben der Karte (oder aus `print.copyright`), eine je Zeile, und
   darunter die Namensnennung „Erstellt mit freemapper-print“ mit der Adresse des Projekts. Die Namensnennung
   lässt sich nicht abschalten, ein Element verschiebt sie nur. Die Fußzeile steht unter dem Kartenausschnitt,
