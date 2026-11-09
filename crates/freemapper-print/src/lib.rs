@@ -10,6 +10,7 @@ pub mod output;
 pub mod print;
 pub mod project;
 pub mod render;
+pub mod rules;
 pub mod scale;
 pub mod sheet;
 

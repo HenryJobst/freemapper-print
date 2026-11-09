@@ -40,3 +40,8 @@ as non-standard, and the CLI says the print is for training only. Other scales a
 - Cost if wrong: a wrong row prints wrong symbol sizes. Each row quotes the standard's section.
 
 Source: ISSprOM 2019-2, ISOM 2017-2 Rev 6, user decision 2026-11-08 (final review of M1). Supersedes 0012.
+
+## Amendment 2026-11-09
+
+The table moved from `scale.rs` into the embedded rule profile `iof-print` (rules `iofprint.scale.*`, ADR 0031).
+The values are unchanged.

@@ -7,6 +7,16 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Druckregeln als Regelprofil im Format von freemapper-courseplan (ADR 0031). Das eingebettete Profil
+  `iof-print` enthält die Tabelle der Symbolgrößen je Maßstab, den Abstand der Nordlinien und die
+  vorgeschlagene Äquidistanz, dazu für den Bahnaufdruck die Größen der Bahnsymbole aus ISSprOM 2019-2 und
+  ISOM 2017-2, das Violett 35/85/0/0 und die Kästchengröße der Postenbeschreibung. Jeder Wert nennt seine
+  Quelle. Die Projektdatei kann in `[print]` ein anderes Profil (`rule_profile`) und Aufsätze
+  (`rule_overlays`) nennen; ein unbekannter Name ist ein Fehler mit Zeile und Spalte. Die gedruckten Blätter
+  ändern sich nicht.
+
 ## [0.2.0] - 2026-11-09
 
 ### Hinzugefügt

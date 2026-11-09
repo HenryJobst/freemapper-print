@@ -1,0 +1,264 @@
+# Druckregeln / Print rules
+
+[Deutsch](#deutsch) | [English](#english)
+
+## Deutsch
+
+Ein Regelprofil ist eine TOML-Datei in diesem Ordner. Sie enthält die Werte, nach denen freemapper-print
+druckt: die Tabelle der Symbolgrößen je Maßstab, den Abstand der Nordlinien, die Größen der Bahnsymbole, das
+Violett, die Kästchengröße der Postenbeschreibung und die Gewichte für die Lage der Postennummern. Jeder
+Wert nennt seine Quelle. Das Programm bettet die Dateien beim Bauen ein; ein neues oder geändertes Profil
+braucht einen neuen Build. ADR 0031 legt das fest, `src/rules.rs` liest die Dateien.
+
+Das Format ist das von freemapper-courseplan (dort ADR 0025), mit den Unterschieden aus ADR 0031.
+
+Es gibt zwei Arten von Regelprofilen:
+
+- Ein **Basisprofil** enthält alle Werte. Zurzeit gibt es genau eines: `iof-print.toml` mit den Werten aus
+  ISSprOM 2019-2, ISOM 2017-2 und den übrigen IOF-Dokumenten.
+- Ein **Aufsatz** ergänzt ein Basisprofil. Er fügt Regeln hinzu, ersetzt Regeln des Basisprofils oder
+  schaltet sie ab. M3 bettet noch keinen Aufsatz ein; die Tests prüfen das Verfahren mit eigenen Aufsätzen.
+
+Die Projektdatei nennt das Basisprofil in `[print] rule_profile` (Vorgabe `iof-print`) und die Aufsätze in
+`rule_overlays` (Vorgabe: keine). Die Aufsätze gelten in der angegebenen Reihenfolge. Eigene Profildateien
+neben der Projektdatei kann das Programm noch nicht lesen.
+
+### Ein Regelprofil hinzufügen
+
+1. `iof-print.toml` kopieren und umbenennen. Der Dateiname ohne `.toml` ist die Kennung des Profils, etwa
+   `dosv-print`. Erlaubt sind Kleinbuchstaben, Ziffern und Bindestriche.
+2. `[profile]`, `[sources]` und die Regeln ausfüllen, wie unten beschrieben.
+3. Die Datei in `EMBEDDED` in `src/rules.rs` eintragen.
+4. `cargo test -p freemapper-print rules` ausführen. Die Tests lesen jede eingebettete Datei und lehnen
+   unbekannte Schlüssel, Werte ohne Einheit, Regeln ohne Quelle und Tippfehler in Feldnamen ab.
+
+### Aufbau der Datei
+
+```toml
+format = 1
+
+[profile]
+id = "iof-print"           # der Dateiname ohne .toml
+kind = "base"              # "base" (Basisprofil) oder "overlay" (Aufsatz)
+# base = "iof-print"       # nur bei Aufsätzen: das Basisprofil, das sie ergänzen
+name = { de = "IOF-Druckregeln", en = "IOF print rules" }
+valid_from = 2026-03-01    # optional
+
+[sources.ISSprOM]
+title = "ISSprOM 2019-2, International Specification for Sprint Orienteering Maps"
+url = "https://..."        # optional
+
+[[rules]]
+id = "iofprint.course.control_sprint"
+key = "course_symbol"
+severity = "warning"
+enabled = true                       # optional, Vorgabe true
+map_kinds = ["sprint"]               # optionaler Filter
+print_scales = []                    # optionaler Filter
+values = { circle_diameter_mm = 6.0 }
+source = { doc = "ISSprOM", section = "4.7, symbol 703 Control point" }
+note = { de = "...", en = "..." }    # optional
+```
+
+Eine Datei ohne `format = 1` oder mit einem höheren Format lehnt das Programm ab, ebenso jeden Feldnamen,
+den das Format nicht kennt. Ein vertipptes `map_kind` ist also ein Fehler und heißt nicht still „alle
+Kartenarten“. Den Filter `disciplines` von freemapper-courseplan gibt es hier nicht.
+
+### Felder einer Regel
+
+`id` ist stabil, mit Punkten gegliedert und kleingeschrieben: `<profil>.<familie>.<name>`, die
+Profilkennung ohne Bindestriche (`iofprint.scale.sprint`). Ein Aufsatz ersetzt oder schaltet eine Regel über
+ihre `id` ab.
+
+`key` sagt, was die Regel festlegt. Das Programm kennt diese Schlüssel und Werte:
+
+| Schlüssel | Werte | Was sie festlegen |
+|---|---|---|
+| `scale_table` | `rows` | Maßstäbe einer Kartenart und die Symbolgröße relativ zum Basismaßstab (ADR 0018) |
+| `north_lines` | `spacing_metres` | Abstand der Nordlinien im Gelände (ADR 0027) |
+| `contour_interval` | `proposed_metres` | Äquidistanz, die `init` vorschlägt; ohne Regel kein Vorschlag |
+| `course_symbol` | `start_side_mm`, `circle_diameter_mm`, `number_height_mm`, `line_width_mm`, `finish_inner_mm`, `finish_outer_mm`, `marked_route_dash_mm`, `marked_route_gap_mm`, `out_of_bounds_line_mm`, `crossing_point_mm` | Größen der Bahnsymbole 701 bis 710; Kreisdurchmesser von Linienmitte zu Linienmitte |
+| `description_box` | `cell_mm` | Kästchengröße der Postenbeschreibung auf der Karte |
+| `course_colour` | `cyan_percent`, `magenta_percent`, `yellow_percent`, `black_percent` | Farbe des Bahnaufdrucks |
+| `placement_weights` | `black_factor`, `brown_factor`, `blue_factor`, `other_factor` | wie stark Kartendetails je Farbe unter einer Postennummer zählen |
+
+Eine Regel mit einem anderen Schlüssel oder einem Wert, den ihr Schlüssel nicht liest, lehnt das Programm
+ab. Ein neuer Schlüssel braucht Code und einen Eintrag in `KNOWN_KEYS` in `src/rules.rs`.
+
+Die Bahnsymbole verteilen sich auf mehrere Regeln, eine je Symbol und Norm. Jede nennt so ihren eigenen
+Abschnitt.
+
+`severity` ist `error`, `warning` oder `hint` und sagt, wie ernst eine Abweichung ist. M3 liest den Wert
+noch nicht; er steht da, weil das Format von freemapper-courseplan ihn verlangt.
+
+`note` bitte deutsch und englisch schreiben; der englische Text ist Pflicht.
+
+### Filter und Basismaßstab
+
+`map_kinds` (`sprint`, `schoolyard`, `forest`) und `print_scales` (Maßstabszahlen wie `4000`) schränken
+ein, wo eine Regel gilt. Ein leerer oder fehlender Filter heißt: überall.
+
+Jeder Wert gilt im Basismaßstab seiner Kartenart: Sprintkarte 1:4000, Waldkarte 1:15000, Schulhofkarte
+1:1000. Das Programm rechnet die Bahnsymbole mit dem Symbolfaktor auf den Druckmaßstab um. Ein Filter
+`print_scales` wird deshalb im Basismaßstab gelesen.
+
+Hat ein Wert für verschiedene Kartenarten verschiedene Größen, steht er in einer Regel je Kartenart, jede mit
+eigener `id` und eigenem Filter. Beim Laden prüft das Programm, dass jede Kartenart jeden Wert genau einmal
+bekommt. Fehlt einer, oder geben zwei Regeln denselben Wert, ist der Regelsatz unbrauchbar und das Programm
+sagt, welcher Wert und welche Regeln es sind. `course_colour` und `placement_weights` gelten für alle
+Kartenarten und nehmen keinen Filter.
+
+### Werte und Einheiten
+
+Eine Zahl trägt ihre Einheit im Namen: Der Name ist eine Einheit oder endet auf `_<einheit>`. Die Einheiten
+sind `metres`, `mm`, `degrees`, `percent` und `factor`. Werte in `mm` und `metres` sind größer als 0,
+`factor` ist 0 oder mehr, `percent` liegt zwischen 0 und 100.
+
+Die einzige Tabelle ist `rows` von `scale_table`, beschrieben in `TABLE_VALUES` in `src/rules.rs`:
+
+```toml
+values = { rows = [
+    { scale = 3000, size_factor = 1.3333333333333333 },
+    { scale = 4000, size_factor = 1.0 },
+    { scale = 5000, size_factor = 1.0, standard = false },
+] }
+```
+
+`scale` ist die Maßstabszahl, `size_factor` die Symbolgröße relativ zum Basismaßstab. `standard = false`
+markiert eine Verkleinerung, die die Norm nicht vorsieht. Die Zeilen stehen aufsteigend nach Maßstab.
+
+### Quellen
+
+Jede Regel nennt ein Dokument aus der `[sources]`-Tabelle ihrer Datei: `source = { doc, section }`.
+`iof-print.toml` nutzt ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD
+(Control Descriptions) und `fmp`. `fmp` steht für eine Entscheidung von freemapper-print, wo keine Norm eine
+Zahl nennt. Eine solche Regel braucht eine `note` und nennt als Abschnitt das ADR.
+
+Die Größen der Bahnsymbole stammen aus dem Text von ISSprOM 2019-2 §4.7 und ISOM 2017-2 §3.7. Purple Pen
+nutzt dieselben Werte (`NormalCourseAppearance`). Für Schulhofkarten nimmt das Profil die Sprintwerte an;
+die Notiz der Regel sagt das.
+
+### Aufsätze
+
+Ein Aufsatz nennt sein Basisprofil in `[profile] base`. Eine Projektdatei kann nur Aufsätze für ihr eigenes
+Basisprofil nutzen. Jede Regel eines Aufsatzes bewirkt eines von drei Dingen:
+
+- Eine Regel mit neuer `id` kommt nach den Regeln des Basisprofils dazu.
+- Eine Regel mit der `id` einer Basisregel ersetzt diese an ihrer Stelle.
+- Eine Regel mit der `id` einer Basisregel und `enabled = false` schaltet die Basisregel ab. Der Regelsatz
+  merkt sich, welches Profil sie abgeschaltet hat. Eine `id` abzuschalten, die das Basisprofil nicht hat, ist
+  ein Fehler. Wer eine Regel abschaltet, muss ihren Wert mit einer neuen Regel geben, sonst fehlt er.
+
+Regeln eines Aufsatzes verweisen auf die `[sources]` des Aufsatzes.
+
+## English
+
+A rule profile is a TOML file in this folder. It holds the values freemapper-print prints by: the symbol size
+table per scale, the north-line spacing, the course symbol sizes, the purple, the control description cell
+size and the weights for placing control numbers. Every value names its source. The program embeds the files
+at build time, so a new or changed profile needs a new build. ADR 0031 sets this, and `src/rules.rs` reads the
+files.
+
+The format is freemapper-courseplan's (its ADR 0025), with the differences listed in ADR 0031.
+
+There are two kinds of rule profile:
+
+- A **base profile** holds every value. There is one so far: `iof-print.toml`, with the values from ISSprOM
+  2019-2, ISOM 2017-2 and the other IOF documents.
+- An **overlay** extends one base profile. It adds rules, replaces base rules or switches them off. M3 embeds no
+  overlay yet; the tests check the mechanism with overlays of their own.
+
+The project file names the base profile in `[print] rule_profile` (default `iof-print`) and the overlays in
+`rule_overlays` (default none). Overlays apply in the order given. The program cannot read profile files next
+to the project file yet.
+
+### Adding a rule profile
+
+1. Copy `iof-print.toml` and rename it. The file name without `.toml` is the profile id, for example
+   `dosv-print`. Use lower-case letters, digits and hyphens.
+2. Fill in `[profile]`, `[sources]` and the rules as described below.
+3. Add the file to `EMBEDDED` in `src/rules.rs`.
+4. Run `cargo test -p freemapper-print rules`. The tests read every embedded file and reject unknown keys,
+   values without a unit, rules without a source and misspelt field names.
+
+### File layout
+
+The example in the German section above applies unchanged. A file without `format = 1`, or with a higher
+format, is rejected, and so is every field name the format does not know. A misspelt `map_kind` is an error
+and does not silently mean "all map kinds". freemapper-courseplan's `disciplines` filter does not exist here.
+
+### Fields of a rule
+
+`id` is stable, dotted and lower case: `<profile>.<family>.<name>`, with the profile id written without
+hyphens (`iofprint.scale.sprint`). An overlay replaces or switches off a rule by its `id`.
+
+`key` says what the rule sets. The program knows these keys and values:
+
+| Key | Values | What they set |
+|---|---|---|
+| `scale_table` | `rows` | scales of a map kind and the symbol size relative to the base scale (ADR 0018) |
+| `north_lines` | `spacing_metres` | ground distance between north lines (ADR 0027) |
+| `contour_interval` | `proposed_metres` | contour interval `init` proposes; no rule means no proposal |
+| `course_symbol` | `start_side_mm`, `circle_diameter_mm`, `number_height_mm`, `line_width_mm`, `finish_inner_mm`, `finish_outer_mm`, `marked_route_dash_mm`, `marked_route_gap_mm`, `out_of_bounds_line_mm`, `crossing_point_mm` | sizes of course symbols 701 to 710; circle diameters from line centre to line centre |
+| `description_box` | `cell_mm` | cell size of control descriptions on the map |
+| `course_colour` | `cyan_percent`, `magenta_percent`, `yellow_percent`, `black_percent` | colour of the course overprint |
+| `placement_weights` | `black_factor`, `brown_factor`, `blue_factor`, `other_factor` | how much map detail of each colour under a control number counts |
+
+A rule with another key, or with a value its key does not read, is rejected. A new key needs code and an entry
+in `KNOWN_KEYS` in `src/rules.rs`.
+
+The course symbols are split over several rules, one per symbol and standard, so each names its own section.
+
+`severity` is `error`, `warning` or `hint` and says how serious a deviation is. M3 does not read it yet; it is
+there because freemapper-courseplan's format requires it.
+
+Please write `note` in German and English; the English text is required.
+
+### Filters and the base scale
+
+`map_kinds` (`sprint`, `schoolyard`, `forest`) and `print_scales` (scale denominators such as `4000`) limit
+where a rule applies. An empty or missing filter means everywhere.
+
+Every value holds at the base scale of its map kind: sprint 1:4000, forest 1:15000, schoolyard 1:1000. The
+program scales course symbols to the print scale with the symbol factor, so a `print_scales` filter is read at
+the base scale.
+
+When a value differs between map kinds, it goes into one rule per map kind, each with its own `id` and filter.
+On loading, the program checks that each map kind gets each value exactly once. If a value is missing, or two
+rules give the same value, the rule set cannot be used, and the program names the value and the rules.
+`course_colour` and `placement_weights` hold for every map kind and take no filter.
+
+### Values and units
+
+A number carries its unit in its name: the name is a unit or ends in `_<unit>`. The units are `metres`, `mm`,
+`degrees`, `percent` and `factor`. Values in `mm` and `metres` are above 0, a `factor` is 0 or more, and a
+`percent` lies between 0 and 100.
+
+The only table is `rows` of `scale_table`, described in `TABLE_VALUES` in `src/rules.rs` and shown in the
+German section above. `scale` is the scale denominator and `size_factor` the symbol size relative to the base
+scale. `standard = false` marks a reduction the standard does not foresee. Rows are in ascending order of
+scale.
+
+### Sources
+
+Every rule names a document from its file's `[sources]` table: `source = { doc, section }`. `iof-print.toml`
+uses ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD (Control Descriptions) and
+`fmp`. `fmp` stands for a decision of freemapper-print where no standard gives a number. Such a rule needs a
+`note` and names the ADR as its section.
+
+The course symbol sizes come from the text of ISSprOM 2019-2 §4.7 and ISOM 2017-2 §3.7. Purple Pen uses the
+same values (`NormalCourseAppearance`). For schoolyard maps the profile assumes the sprint values, and the
+rule's note says so.
+
+### Overlays
+
+An overlay names its base profile in `[profile] base`. A project file can only use overlays for its own base
+profile. Each rule of an overlay does one of three things:
+
+- A rule with a new `id` is added after the base rules.
+- A rule with the `id` of a base rule replaces it in place.
+- A rule with the `id` of a base rule and `enabled = false` switches the base rule off. The rule set records
+  which profile switched it off. Switching off an `id` the base profile does not have is an error. An overlay
+  that switches a rule off has to give its value in a new rule, or the value is missing.
+
+Rules of an overlay cite the overlay's own `[sources]`.

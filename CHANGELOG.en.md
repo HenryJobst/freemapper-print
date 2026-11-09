@@ -7,6 +7,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- Print rules as a rule profile in freemapper-courseplan's format (ADR 0031). The embedded profile `iof-print`
+  holds the symbol size table per scale, the north-line spacing and the proposed contour interval. For the
+  course overprint it adds the course symbol sizes from ISSprOM 2019-2 and ISOM 2017-2, the purple 35/85/0/0
+  and the cell size of control descriptions. Every value names its source. The project file can name another
+  profile (`rule_profile`) and overlays (`rule_overlays`) under `[print]`; an unknown name is an error with
+  line and column. Printed sheets do not change.
+
 ## [0.2.0] - 2026-11-09
 
 ### Added

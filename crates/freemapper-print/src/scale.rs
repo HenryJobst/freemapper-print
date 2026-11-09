@@ -4,12 +4,16 @@
 //! dimensions by the symbol factor. The IOF standards fix the symbol sizes per map kind and print scale:
 //! an enlarged print enlarges every symbol in proportion, and a reduction below the base scale is not
 //! foreseen (the symbols keep their base size, and the print is flagged as non-standard).
+//!
+//! The table, the north-line spacing and the proposed contour intervals come from the embedded base
+//! rule profile `iof-print` ([`crate::rules::base`], ADR 0031).
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::omap::MapDocument;
+use crate::rules;
 
 /// Kartenart: the kind of map, as defined by freemapper's glossary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,51 +24,10 @@ pub enum MapKind {
     Forest,
 }
 
-/// One row of the symbol size table: a map of `kind` at 1:`scale` has its symbols at `size` times
-/// their size at the base scale of the kind.
-struct ScaleRow {
-    kind: MapKind,
-    scale: u32,
-    size: f64,
-    /// The standard foresees this scale; `false` for a reduction below the base scale.
-    standard: bool,
-}
-
-const fn row(kind: MapKind, scale: u32, size: f64, standard: bool) -> ScaleRow {
-    ScaleRow {
-        kind,
-        scale,
-        size,
-        standard,
-    }
-}
-
-/// The symbol size table (ADR 0018), ordered by kind and scale.
-///
-/// - Sprint, ISSprOM 2019-2 §3.1 and §4.7: base 1:4000; 1:3000 enlarges every symbol to 133 %.
-/// - Forest, ISOM 2017-2 §2.9.1 and §3.7: base 1:15000; 1:10000 is 150 %, 1:7500 200 %, 1:5000 300 %.
-/// - Schoolyard: 1:1000 only (the IOF school set is drawn for that scale).
-/// - Reductions (sprint 1:5000, forest 1:20000) are not in the standards; the symbols keep their base
-///   size.
-const SCALE_TABLE: &[ScaleRow] = &[
-    row(MapKind::Sprint, 3000, 4.0 / 3.0, true),
-    row(MapKind::Sprint, 4000, 1.0, true),
-    row(MapKind::Sprint, 5000, 1.0, false),
-    row(MapKind::Schoolyard, 1000, 1.0, true),
-    row(MapKind::Forest, 5000, 3.0, true),
-    row(MapKind::Forest, 7500, 2.0, true),
-    row(MapKind::Forest, 10000, 1.5, true),
-    row(MapKind::Forest, 15000, 1.0, true),
-    row(MapKind::Forest, 20000, 1.0, false),
-];
-
-fn table_row(kind: MapKind, scale: u32) -> Option<&'static ScaleRow> {
-    SCALE_TABLE
-        .iter()
-        .find(|r| r.kind == kind && r.scale == scale)
-}
-
 impl MapKind {
+    /// Every map kind, in the order rule profiles list them.
+    pub const ALL: [MapKind; 3] = [MapKind::Sprint, MapKind::Schoolyard, MapKind::Forest];
+
     /// The lower-case name used on the command line and in messages.
     pub fn name(self) -> &'static str {
         match self {
@@ -84,22 +47,18 @@ impl MapKind {
     }
 
     /// The contour interval (m) `init` proposes for a new project, for the user to confirm: 2 m
-    /// for sprint maps (ISSprOM 2019 and freemapper use 2 m), 5 m for forest maps, none for
+    /// for sprint maps (ISSprOM 2019-2 §3.2), 5 m for forest maps (ISOM 2017-2 §2.10), none for
     /// schoolyard maps.
     pub fn proposed_contour_interval_m(self) -> Option<f64> {
-        match self {
-            MapKind::Sprint => Some(2.0),
-            MapKind::Forest => Some(5.0),
-            MapKind::Schoolyard => None,
-        }
+        rules::base().proposed_contour_interval_m(self)
     }
 
     /// The scales (denominators) a map of this kind may be printed at and drawn at, ascending.
     pub fn allowed_scales(self) -> Vec<u32> {
-        SCALE_TABLE
+        rules::base()
+            .scale_entries(self)
             .iter()
-            .filter(|r| r.kind == self)
-            .map(|r| r.scale)
+            .map(|e| e.scale)
             .collect()
     }
 }
@@ -119,11 +78,7 @@ fn join_scales(scales: &[u32]) -> String {
 /// UNVERIFIED: schoolyard 37.5 m (37.5 mm at 1:1000) is a working value the project owner gave; it
 /// is not checked against the IOF school set.
 pub fn north_line_spacing_m(kind: MapKind) -> f64 {
-    match kind {
-        MapKind::Sprint => 120.0,
-        MapKind::Forest => 300.0,
-        MapKind::Schoolyard => 37.5,
-    }
+    rules::base().north_line_spacing_m(kind)
 }
 
 /// Errors for scales outside the table of a map kind.
@@ -153,14 +108,23 @@ pub enum ScaleError {
 
 /// Symbol size at `scale` relative to the base scale of the kind (sprint 1:4000, forest 1:15000,
 /// schoolyard 1:1000), as the standard sets it. `None` outside the table.
+///
+/// The table (ADR 0018), from the rule profile:
+/// - Sprint, ISSprOM 2019-2 §3.1 and §4.7: base 1:4000; 1:3000 enlarges every symbol to 133 %.
+/// - Forest, ISOM 2017-2 §2.9.1 and §3.7: base 1:15000; 1:10000 is 150 %, 1:7500 200 %, 1:5000 300 %.
+/// - Schoolyard: 1:1000 only (the IOF school set is drawn for that scale).
+/// - Reductions (sprint 1:5000, forest 1:20000) are not in the standards; the symbols keep their base
+///   size.
 pub fn standard_enlargement(kind: MapKind, scale: u32) -> Option<f64> {
-    table_row(kind, scale).map(|r| r.size)
+    rules::base()
+        .scale_entry(kind, scale)
+        .map(|e| e.size_factor)
 }
 
 /// Whether the standard foresees printing a map of `kind` at `scale`. Reductions below the base scale
 /// and scales outside the table are not standard.
 pub fn is_standard(kind: MapKind, scale: u32) -> bool {
-    table_row(kind, scale).is_some_and(|r| r.standard)
+    rules::base().is_standard_scale(kind, scale)
 }
 
 /// Factor for symbol dimensions when a map drawn at `map_scale` is printed at `print_scale`: the

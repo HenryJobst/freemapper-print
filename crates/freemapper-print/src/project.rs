@@ -84,11 +84,39 @@ pub struct MapSettings {
     pub contour_interval_m: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrintSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
+    /// The embedded base rule profile the print rules come from (ADR 0031). Left out of a written
+    /// file while it is the default `iof-print`.
+    #[serde(
+        default = "default_rule_profile",
+        skip_serializing_if = "is_default_rule_profile"
+    )]
+    pub rule_profile: String,
+    /// Embedded overlays on the base profile, applied in order. Left out while empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rule_overlays: Vec<String>,
+}
+
+fn default_rule_profile() -> String {
+    crate::rules::BASE_PROFILE.to_string()
+}
+
+fn is_default_rule_profile(id: &str) -> bool {
+    id == crate::rules::BASE_PROFILE
+}
+
+impl Default for PrintSettings {
+    fn default() -> Self {
+        PrintSettings {
+            copyright: None,
+            rule_profile: default_rule_profile(),
+            rule_overlays: Vec::new(),
+        }
+    }
 }
 
 impl PrintSettings {
@@ -475,6 +503,7 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             "m",
         )?;
     }
+    check_rule_profiles(file, &p.print)?;
     let mut layout_ids = HashSet::new();
     // Lower-case id -> the id as written: the PDFs `<id>.pdf` of `A4` and `a4` are one file on
     // macOS and Windows.
@@ -541,6 +570,41 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
         }
     }
     Ok(())
+}
+
+/// `[print] rule_profile` and `rule_overlays` must name embedded profiles that load together. The
+/// error names the field of the profile that is wrong.
+fn check_rule_profiles(file: &str, print: &PrintSettings) -> Result<(), ProjectError> {
+    use crate::rules::{RuleError, load_rule_set};
+    let Err(err) = load_rule_set(&print.rule_profile, &print.rule_overlays) else {
+        return Ok(());
+    };
+    let overlay_field = |id: &str| {
+        print
+            .rule_overlays
+            .iter()
+            .position(|o| o == id)
+            .map(|i| format!("print.rule_overlays[{i}]"))
+    };
+    let named = match &err {
+        // The base profile loads first, so an unknown id that is the base's is the base.
+        RuleError::UnknownProfile { id, .. } if id == &print.rule_profile => None,
+        RuleError::UnknownProfile { id, .. } | RuleError::NotAnOverlay(id) => overlay_field(id),
+        RuleError::OverlayForAnotherBase { overlay, .. }
+        | RuleError::UnknownRule { overlay, .. } => overlay_field(overlay),
+        RuleError::Malformed { profile, .. } | RuleError::UnknownKey { profile, .. } => {
+            overlay_field(profile)
+        }
+        RuleError::NotABase(_) | RuleError::Incomplete { .. } => None,
+    };
+    let field = named.unwrap_or_else(|| {
+        if print.rule_overlays.is_empty() || matches!(err, RuleError::NotABase(_)) {
+            "print.rule_profile".to_string()
+        } else {
+            "print.rule_overlays".to_string()
+        }
+    });
+    Err(invalid(file, field, &err.to_string()))
 }
 
 fn positive(file: &str, field: String, v: f64) -> Result<(), ProjectError> {
@@ -1228,6 +1292,67 @@ mod tests {
     }
 
     #[test]
+    fn rule_profile_defaults_to_iof_print() {
+        let lp = load(&minimal_path()).unwrap();
+        assert_eq!(lp.project.print.rule_profile, "iof-print");
+        assert!(lp.project.print.rule_overlays.is_empty());
+        assert!(lp.project.print.is_empty());
+        // Written out as the default, both are named; the file loads the same.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_profile = \"iof-print\"\nrule_overlays = []\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let print = load(&path).unwrap().project.print;
+        assert_eq!(print, PrintSettings::default());
+        // Only values other than the default are written, so the committed example writes as before.
+        assert_eq!(toml::to_string(&PrintSettings::default()).unwrap(), "");
+        let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/luebeck-competition-layouts")
+            .join(FILE_NAME);
+        let written = toml::to_string(&load(&example).unwrap().project).unwrap();
+        assert!(!written.contains("rule_"), "{written}");
+        let other = PrintSettings {
+            rule_profile: "x-print".into(),
+            rule_overlays: vec!["y".into()],
+            ..PrintSettings::default()
+        };
+        assert_eq!(
+            toml::to_string(&other).unwrap(),
+            "rule_profile = \"x-print\"\nrule_overlays = [\"y\"]\n"
+        );
+    }
+
+    #[test]
+    fn unknown_rule_profile_names_its_line() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_profile = \"iof-2099\"\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains(&format!("{FILE_NAME}:9:16: field `print.rule_profile`"))
+                && msg.contains("iof-2099")
+                && msg.contains("available: iof-print"),
+            "{msg}"
+        );
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_overlays = [\"iof-print\", \"nor-bb\"]\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        // The first overlay is the base profile itself, not an overlay.
+        assert!(
+            msg.contains(":9:18: field `print.rule_overlays[0]`") && msg.contains("not an overlay"),
+            "{msg}"
+        );
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_overlays = [\n  \"nor-bb\",\n]\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains(":10:3: field `print.rule_overlays[0]`") && msg.contains("nor-bb"),
+            "{msg}"
+        );
+    }
+
+    #[test]
     fn credit_line_switch_is_gone() {
         let (_d, path) = temp_project(&format!(
             "{HEAD}[print]\ncredit_line = false\n[[layouts]]\nid = \"a\"\n"
@@ -1550,6 +1675,7 @@ mod tests {
             },
             print: PrintSettings {
                 copyright: Some("(c) OC".into()),
+                ..PrintSettings::default()
             },
             shared: vec![title, el("bar", ElementKind::ScaleCheckBar)],
             layouts: vec![

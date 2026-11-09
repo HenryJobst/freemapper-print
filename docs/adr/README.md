@@ -71,3 +71,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0028](0028-layout-geometry.md) | Layout geometry: map frame, passe-partout and anchors | Accepted | 2026-11-09 |
 | [0029](0029-footer-placement.md) | Footer placement: below the frame when the whole block fits | Accepted | 2026-11-09 |
 | [0030](0030-safe-pdf-writing.md) | Safe PDF writing: free-space check, `.part` file, 50 MB reserve | Accepted | 2026-11-09 |
+| [0031](0031-print-rules-as-data-profiles.md) | Print rules as data profiles | Accepted | 2026-11-09 |

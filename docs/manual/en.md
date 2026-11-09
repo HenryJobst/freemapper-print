@@ -118,6 +118,8 @@ print_scale = 4000
 | `[map]` | `kind` | map kind: `sprint`, `schoolyard` or `forest`. It decides how the symbols grow at another print scale (chapter 9) and how far apart north lines lie. |
 | | `contour_interval_m` | contour interval in metres, larger than 0 and at most 100 |
 | `[print]` | `copyright` | copyright lines, one per line. Without the key the program takes the map notes. |
+| | `rule_profile` | rule profile with the print rules, default `iof-print`, the only one so far. `crates/freemapper-print/rules/README.md` describes the profiles. |
+| | `rule_overlays` | overlays on the rule profile, as a list in the order they apply. Default: none. |
 | `[[shared]]` | | one shared sheet element; the section may appear many times |
 | `[[layouts]]` | | one layout; at least one, any number |
 

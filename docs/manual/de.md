@@ -120,6 +120,8 @@ print_scale = 4000
 | `[map]` | `kind` | Kartenart: `sprint`, `schoolyard` oder `forest`. Sie bestimmt, wie die Symbole bei einem anderen Druckmaßstab wachsen (Kapitel 9) und wie weit Nordlinien auseinanderliegen. |
 | | `contour_interval_m` | Äquidistanz in Metern, größer als 0 und höchstens 100 |
 | `[print]` | `copyright` | Quellenangaben, eine je Zeile. Ohne den Schlüssel nimmt das Programm die Kartennotizen. |
+| | `rule_profile` | Regelprofil mit den Druckregeln, Vorgabe `iof-print`, zurzeit das einzige. Die Profile beschreibt `crates/freemapper-print/rules/README.md`. |
+| | `rule_overlays` | Aufsätze auf das Regelprofil, als Liste in der Reihenfolge, in der sie gelten. Vorgabe: keine. |
 | `[[shared]]` | | ein gemeinsames Blattelement; der Abschnitt darf mehrfach vorkommen |
 | `[[layouts]]` | | ein Layout; mindestens eines, beliebig viele |
 
