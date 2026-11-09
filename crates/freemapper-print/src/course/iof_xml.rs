@@ -221,6 +221,7 @@ impl State {
                         climb_m: None,
                         length_m: None,
                         print_scale_hint: None,
+                        course_obj_ratio: None,
                         secondary_title: None,
                     },
                     alternatives: false,

@@ -150,11 +150,7 @@ pub fn load_courses(
     };
     let fitted = fit(raw, map, &options).map_err(|source| CourseLoadError::Fit { file, source })?;
     let mut stale = stale_entries(&project.project, &fitted.event);
-    stale.extend(crate::numbers::changed_bases(
-        project,
-        &fitted.event,
-        map.georef.scale_denominator,
-    ));
+    stale.extend(crate::numbers::changed_bases(project, &fitted.event));
     Ok(Some(LoadedCourses {
         notes: fitted.event.notes.clone(),
         event: fitted.event,

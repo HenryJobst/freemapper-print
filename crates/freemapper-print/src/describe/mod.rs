@@ -805,6 +805,7 @@ pub(crate) mod tests {
                 climb_m: Some(25.0),
                 length_m: None,
                 print_scale_hint: None,
+                course_obj_ratio: None,
                 secondary_title: None,
             }],
             specials: Vec::new(),

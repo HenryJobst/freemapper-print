@@ -927,6 +927,26 @@ impl State {
         }
     }
 
+    /// `CourseView.CourseObjRatio`: map mm per mm of a course symbol's nominal size. `ScaleRatio` (print scale
+    /// over map scale, 1 when either is unknown) without item scaling.
+    fn course_obj_ratio(&self, course: &PCourse) -> f64 {
+        let print = course.print_scale.unwrap_or(DEFAULT_PRINT_SCALE);
+        let map = self.map_scale.filter(|m| *m > 0.0 && m.is_finite());
+        let ratio = match (self.item_scaling, map) {
+            (_, None) => 1.0,
+            (ItemScaling::None, Some(m)) if print > 0.0 && print.is_finite() => print / m,
+            (ItemScaling::None, Some(_)) => 1.0,
+            (ItemScaling::RelativeToMap, Some(_)) => 1.0,
+            (ItemScaling::RelativeTo15000, Some(m)) => 15000.0 / m,
+        };
+        // Purple Pen rounds a ratio this close to 1 to 1.
+        if (ratio - 1.0).abs() < 1e-5 {
+            1.0
+        } else {
+            ratio
+        }
+    }
+
     /// `CourseView.CircleGapScale`, rounded as Purple Pen keys the gaps.
     fn gap_key(&self, course: &PCourse) -> i64 {
         let print = course.print_scale.unwrap_or(DEFAULT_PRINT_SCALE);
@@ -1117,6 +1137,7 @@ impl State {
                 climb_m: pc.climb,
                 length_m: pc.length,
                 print_scale_hint: pc.print_scale.and_then(scale),
+                course_obj_ratio: Some(self.course_obj_ratio(pc)),
                 secondary_title: pc
                     .secondary_title
                     .as_deref()
@@ -1416,5 +1437,31 @@ mod tests {
             "><circle-gaps scale=\"10000\">1:2</circle-gaps><circle-gaps scale=\"7500\">3:4</circle-gaps>",
         );
         assert_eq!(ev.courses[0].stops[0].circle_gaps, vec![(1.0, 2.0)]);
+    }
+
+    #[test]
+    fn course_obj_ratio_follows_item_scaling() {
+        // Map 1:10000; course A at 1:7500, course B without a print scale (Purple Pen's default 1:15000).
+        let ratios = |appearance: &str| -> Vec<Option<f64>> {
+            event(appearance, ">")
+                .courses
+                .iter()
+                .map(|c| c.course_obj_ratio)
+                .collect()
+        };
+        // No item scaling: the symbols keep their size on paper, so they take print over map scale in map mm.
+        assert_eq!(ratios(""), [Some(0.75), Some(1.5)]);
+        assert_eq!(
+            ratios("<course-appearance scale-sizes=\"None\"/>"),
+            [Some(0.75), Some(1.5)]
+        );
+        assert_eq!(
+            ratios("<course-appearance scale-sizes=\"RelativeToMap\"/>"),
+            [Some(1.0), Some(1.0)]
+        );
+        assert_eq!(
+            ratios("<course-appearance scale-sizes=\"RelativeTo15000\"/>"),
+            [Some(1.5), Some(1.5)]
+        );
     }
 }

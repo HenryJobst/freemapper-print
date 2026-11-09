@@ -390,6 +390,15 @@ impl RuleSet {
         &self.kind(kind).scales
     }
 
+    /// How large course symbols print at 1:`print_scale`, relative to the values of [`Self::course_symbol`]
+    /// (ADR 0018, ruling R35): the size factor of the print scale's row of the symbol size table, as the standard
+    /// sets course symbols for that scale (ISOM 2017-2 section 3.7, ISSprOM 2019-2 section 4.7). It does not
+    /// depend on the scale the map is drawn at. 1.0 for a scale outside the table.
+    pub fn course_factor(&self, kind: MapKind, print_scale: u32) -> f64 {
+        self.scale_entry(kind, print_scale)
+            .map_or(1.0, |e| e.size_factor)
+    }
+
     /// The row of the symbol size table for `kind` at 1:`scale`.
     pub fn scale_entry(&self, kind: MapKind, scale: u32) -> Option<ScaleEntry> {
         self.kind(kind)

@@ -168,9 +168,9 @@ pub(crate) fn stop_symbols(
     event: &FittedEvent,
     to_page: impl Fn(MapCoord) -> Pt,
     sizes: &CourseSymbolSizes,
-    symbol_factor: f64,
+    course_factor: f64,
 ) -> Vec<(usize, Pt, f64)> {
-    let s = Scaled::new(sizes, symbol_factor);
+    let s = Scaled::new(sizes, course_factor);
     placed_stops(course, event, &to_page)
         .iter()
         .enumerate()
@@ -193,12 +193,12 @@ pub(crate) fn leg_lines(
     event: &FittedEvent,
     to_page: impl Fn(MapCoord) -> Pt,
     sizes: &CourseSymbolSizes,
-    symbol_factor: f64,
+    course_factor: f64,
 ) -> Vec<(usize, Vec<Pt>)> {
     if course.kind != CourseKind::Normal {
         return Vec::new();
     }
-    let s = Scaled::new(sizes, symbol_factor);
+    let s = Scaled::new(sizes, course_factor);
     let placed = placed_stops(course, event, &to_page);
     let at = |i: usize| placed.get(i).and_then(Option::as_ref);
     let mut out = Vec::new();
@@ -250,7 +250,7 @@ fn placed_stops<'a>(
         .collect()
 }
 
-/// The course symbol sizes on the page: the profile's sizes times the symbol factor, radii from
+/// The course symbol sizes on the page: the profile's sizes times the course factor, radii from
 /// diameters.
 struct Scaled {
     circle_r: f64,
@@ -341,19 +341,19 @@ pub(crate) fn applies(filter: &CourseFilter, course: &str) -> bool {
 
 /// The overprint of `course`: its stops, legs, the specials that apply to it and the control numbers at
 /// `numbers` (control code and text centre in page mm, matched to the numbered stops in order; a stop
-/// without an entry gets no number). [`crate::numbers::place_on_sheet`] gives the centres. `to_page` maps a map coordinate to page mm (the map frame and the page
-/// share the y direction); sizes are `sizes` × `symbol_factor`, leg gaps and offsets scale with the
-/// geometry factor `to_page` applies. Returns `below_priority` unset and the IOF purple:
-/// [`on_map`] sets both for a page.
+/// without an entry gets no number). [`crate::numbers::place_on_sheet`] gives the centres. `to_page` maps a map
+/// coordinate to page mm (the map frame and the page share the y direction). Sizes are `sizes` × `course_factor`,
+/// the [`crate::rules::RuleSet::course_factor`] of the print scale; leg gaps and offsets scale with the geometry
+/// factor `to_page` applies. Returns `below_priority` unset and the IOF purple: [`on_map`] sets both for a page.
 pub fn overprint(
     course: &Course<MapCoord>,
     event: &FittedEvent,
     numbers: &[(String, Pt)],
     to_page: impl Fn(MapCoord) -> Pt,
     sizes: &CourseSymbolSizes,
-    symbol_factor: f64,
+    course_factor: f64,
 ) -> Overprint {
-    let s = Scaled::new(sizes, symbol_factor);
+    let s = Scaled::new(sizes, course_factor);
     // The geometry factor, from the transform itself: page mm per map mm.
     let geometry = symbols::dist(
         to_page(MapCoord::new(0, 0)),

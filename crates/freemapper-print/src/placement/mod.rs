@@ -541,8 +541,8 @@ pub struct Target {
     pub circle_outer_r: f64,
     /// Width and height of the number box.
     pub size: (f64, f64),
-    /// Coordinate millimetres per gap millimetre: a gap of `g` lies `g × unit` from the circle. The symbol
-    /// factor when placements hold print mm at the base scale and coordinates are page mm.
+    /// Coordinate millimetres per gap millimetre: a gap of `g` lies `g × unit` from the circle. The size
+    /// factor of the course symbols when placements hold mm at the base scale and coordinates are page mm.
     pub unit: f64,
     pub legs: Legs,
     /// The gaps the search tries; the "behind is blocked" test uses the smallest.

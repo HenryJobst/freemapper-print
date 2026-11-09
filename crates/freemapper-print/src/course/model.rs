@@ -113,6 +113,7 @@ impl<P> CourseEvent<P> {
                     climb_m: c.climb_m,
                     length_m: c.length_m,
                     print_scale_hint: c.print_scale_hint,
+                    course_obj_ratio: c.course_obj_ratio,
                     secondary_title: c.secondary_title,
                 })
                 .collect(),
@@ -183,6 +184,11 @@ pub struct Course<P> {
     pub climb_m: Option<f64>,
     pub length_m: Option<f64>,
     pub print_scale_hint: Option<u32>,
+    /// Purple Pen's `CourseView.CourseObjRatio` for this course: how many map mm one mm of a course symbol's
+    /// nominal size takes in the file, by `course-appearance/@scale-sizes` (none: print scale over map scale;
+    /// relative to the map: 1; relative to 1:15000: 15000 over map scale). A number offset divided by it is in
+    /// mm at the nominal size. `None` when the file does not scale course symbols (IOF XML): 1.
+    pub course_obj_ratio: Option<f64>,
     /// A second title line for the description box (Purple Pen `secondary-title`); `|` separates lines.
     pub secondary_title: Option<String>,
 }

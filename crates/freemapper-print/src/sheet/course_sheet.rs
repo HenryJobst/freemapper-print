@@ -96,17 +96,19 @@ pub fn render_course_sheet(
     };
     let kind = project.project.map.kind;
     let sizes = project.rules.course_symbol(kind);
-    let sf = report.print.symbol_factor;
+    // Course symbols take the standard's size at the print scale (ruling R35): the profile gives them at the base
+    // scale, while the map's own symbols come enlarged for the scale the map is drawn at.
+    let cf = project.rules.course_factor(kind, report.print.print_scale);
     // Numbers sit where their level puts them (spec §5.7); a conflict is reported, never moved away.
     let placed = place_on_sheet(
         course,
         event,
-        resolve(course, event, project, &layout.id, map_scale),
+        resolve(course, event, project, &layout.id),
         &page,
         to_page,
         &rects,
         &sizes,
-        sf,
+        cf,
         &project.rules.placement_weights(),
         project
             .rules
@@ -124,7 +126,7 @@ pub fn render_course_sheet(
         .map(|n| (n.resolved.control.clone(), n.centre))
         .collect();
     page.overprint = on_map(
-        overprint(course, event, &centres, to_page, &sizes, sf),
+        overprint(course, event, &centres, to_page, &sizes, cf),
         project.rules.purple_cmyk(),
         &page.colours,
         &page.primitives,
@@ -144,7 +146,7 @@ pub fn render_course_sheet(
                 max: g.max,
             }),
     );
-    let r = (sizes.circle_diameter_mm / 2.0 + sizes.line_width_mm / 2.0) * sf;
+    let r = (sizes.circle_diameter_mm / 2.0 + sizes.line_width_mm / 2.0) * cf;
     let frame = page.clip;
     let mut outside: Vec<String> = Vec::new();
     for stop in &course.stops {
@@ -172,7 +174,7 @@ pub fn render_course_sheet(
         });
     }
     notes.extend(elements_over_course(
-        &rects, course, event, &to_page, &sizes, sf,
+        &rects, course, event, &to_page, &sizes, cf,
     ));
     if page.overprint.cut {
         notes.push(SheetNote::OverprintCut {
@@ -263,9 +265,10 @@ pub(super) fn place_descriptions(
 
 /// [`SheetNote::ElementCoversCourse`] for each element in `rects` (id and page box) that intersects the control
 /// circle, start triangle or finish circles of a stop of `course` (ruling R27). A symbol counts as the circle
-/// around it out to the outer edge of its line at the symbol factor `sf`: the control circle, the outer finish
+/// around it out to the outer edge of its line at the size factor `sf`: the control circle, the outer finish
 /// circle, and the circle through the corners of the start (or map exchange) triangle, so a box may count just
-/// before it touches a triangle's side. Crossing points and ends of marked routes do not count.
+/// before it touches a triangle's side. Crossing points and ends of marked routes do not count. `sf` is the course
+/// factor ([`crate::rules::RuleSet::course_factor`]).
 fn elements_over_course(
     rects: &[(String, crate::render::page::PaperBox)],
     course: &Course<MapCoord>,
@@ -1217,5 +1220,245 @@ mod tests {
             "{:?}",
             report.notes
         );
+    }
+
+    /// A project on the map fixture `map` (with `alter` applied to the map after reading it) of `kind`, with
+    /// the IOF XML `xml` as course file read y down, the course "K" at 1:`print_scale` on an A4 portrait layout,
+    /// and its loaded courses.
+    fn project_on(
+        map: &str,
+        alter: impl FnOnce(&mut MapDocument),
+        kind: &str,
+        xml: &str,
+        print_scale: u32,
+    ) -> (tempfile::TempDir, LoadedProject, MapDocument, LoadedCourses) {
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(
+            manifest.join("../../tests/fixtures/maps").join(map),
+            dir.path().join("m.omap"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("c.xml"), xml).unwrap();
+        let path = dir.path().join(crate::project::FILE_NAME);
+        std::fs::write(
+            &path,
+            format!(
+                "format = 1\n[event]\ntitle = \"T\"\nlang = \"en\"\n[sources]\nmap = \"m.omap\"\ncourses = \"c.xml\"\n\
+                 course_y_axis = \"down\"\n[map]\nkind = \"{kind}\"\ncontour_interval_m = 5.0\n[[layouts]]\nid = \"p\"\n\
+                 paper = \"A4\"\norientation = \"portrait\"\nprint_scale = {print_scale}\nnorth_lines = \"never\"\n"
+            ),
+        )
+        .unwrap();
+        let project = crate::project::load(&path).unwrap();
+        let mut map = crate::omap::read::read_map_file(&project.map_path()).unwrap();
+        alter(&mut map);
+        let courses = crate::courses::load_courses(&project, &map)
+            .unwrap()
+            .unwrap();
+        (dir, project, map, courses)
+    }
+
+    /// Start at (80, 40), control 31 at (100, 50), a crossing point at (105, 60) and the finish at (110, 70) map
+    /// mm, y down; `scale` is the map scale the file states.
+    fn probe_xml(scale: Option<u32>) -> String {
+        let scale = scale.map_or(String::new(), |s| format!("<Map><Scale>{s}</Scale></Map>"));
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<CourseData xmlns="http://www.orienteering.org/datastandard/3.0" iofVersion="3.0" creator="test">
+  <Event><Name>Probe</Name></Event>
+  <RaceCourseData>{scale}
+    <Control type="Start"><Id>S1</Id><MapPosition x="80" y="40" unit="mm"/></Control>
+    <Control type="Control"><Id>31</Id><MapPosition x="100" y="50" unit="mm"/></Control>
+    <Control type="CrossingPoint"><Id>X1</Id><MapPosition x="105" y="60" unit="mm"/></Control>
+    <Control type="Finish"><Id>F1</Id><MapPosition x="110" y="70" unit="mm"/></Control>
+    <Course><Name>K</Name>
+      <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Control"><Control>31</Control></CourseControl>
+      <CourseControl type="CrossingPoint"><Control>X1</Control></CourseControl>
+      <CourseControl type="Finish"><Control>F1</Control></CourseControl>
+    </Course>
+  </RaceCourseData>
+</CourseData>"#
+        )
+    }
+
+    /// What the course sheet of "K" prints, in mm on paper.
+    #[derive(Debug)]
+    struct Printed {
+        circle_diameter: f64,
+        line: f64,
+        start_side: f64,
+        finish: (f64, f64),
+        number_height: f64,
+        crossing_reach: f64,
+        first_aid: (f64, f64),
+        hatch_line: f64,
+        forbidden_arm: f64,
+    }
+
+    /// The sizes on the sheet of "K" with a first aid post at (90, 60), a single forbidden-route cross at
+    /// (85, 70) and an out-of-bounds square from (60, 60) to (70, 70) added.
+    fn printed(
+        (_dir, project, map, mut courses): (
+            tempfile::TempDir,
+            LoadedProject,
+            MapDocument,
+            LoadedCourses,
+        ),
+    ) -> Printed {
+        let at = |x: f64, y: f64| MapCoord::new((x * 1000.0) as i32, (y * 1000.0) as i32);
+        let all = crate::course::CourseFilter::All;
+        courses.event.specials.extend([
+            Special::FirstAid {
+                pt: at(90.0, 60.0),
+                courses: all.clone(),
+            },
+            Special::ForbiddenRoute {
+                path: vec![at(85.0, 70.0)],
+                courses: all.clone(),
+            },
+            Special::OutOfBounds {
+                rings: vec![vec![
+                    at(60.0, 60.0),
+                    at(70.0, 60.0),
+                    at(70.0, 70.0),
+                    at(60.0, 70.0),
+                ]],
+                courses: all,
+            },
+        ]);
+        let course = course(&courses, "K");
+        let layout = layout_for(&project.project, "K").0;
+        let (page, report) =
+            render_course_sheet(&project, &map, &courses, course, layout, &LogoCache::new())
+                .unwrap();
+        let gf = report.print.geometry_factor;
+        let p = |x: f64, y: f64| on_page(&page, gf, at(x, y));
+        let d = |a: Pt, b: Pt| (a.0 - b.0).hypot(a.1 - b.1);
+        let shapes: Vec<&Shape> = page
+            .overprint
+            .lower
+            .iter()
+            .chain(&page.overprint.upper)
+            .collect();
+        // Strokes of at least `points` points, every one within `r` of `centre`: (largest distance from it,
+        // width, points). Radii and point counts keep the legs out.
+        let near = |centre: Pt, r: f64, points: usize| -> Vec<(f64, f64, Vec<Pt>)> {
+            shapes
+                .iter()
+                .filter_map(|s| match s {
+                    Shape::Stroke { path, width, .. }
+                        if path.len() >= points && path.iter().all(|q| d(*q, centre) < r) =>
+                    {
+                        let far = path.iter().map(|q| d(*q, centre)).fold(0.0, f64::max);
+                        Some((far, *width, path.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let circle = near(p(100.0, 50.0), 4.5, 9);
+        let start = near(p(80.0, 40.0), 6.5, 3);
+        let triangle = start.iter().find(|s| s.2.len() == 3).expect("start");
+        let mut finish: Vec<f64> = near(p(110.0, 70.0), 5.0, 9)
+            .iter()
+            .map(|s| 2.0 * s.0)
+            .collect();
+        finish.sort_by(f64::total_cmp);
+        let number_height = shapes
+            .iter()
+            .find_map(|s| match s {
+                Shape::Text { size, .. } => Some(*size),
+                _ => None,
+            })
+            .expect("a number");
+        let crossing = near(p(105.0, 60.0), 3.0, 3);
+        let first_aid = near(p(90.0, 60.0), 3.5, 2);
+        let forbidden = near(p(85.0, 70.0), 3.0, 2);
+        // Hatch lines are strokes clipped to the area.
+        let hatch = shapes
+            .iter()
+            .find_map(|s| match s {
+                Shape::Clipped { inner, .. } => match inner.as_ref() {
+                    Shape::Stroke { width, .. } => Some(*width),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("hatch");
+        Printed {
+            circle_diameter: 2.0 * circle[0].0,
+            line: circle[0].1,
+            start_side: d(triangle.2[0], triangle.2[1]),
+            finish: (finish[0], finish[finish.len() - 1]),
+            number_height,
+            crossing_reach: crossing.iter().map(|s| s.0).fold(0.0, f64::max),
+            first_aid: (2.0 * first_aid[0].0, first_aid[0].1),
+            hatch_line: hatch,
+            forbidden_arm: 2.0 * forbidden.iter().map(|s| s.0).fold(0.0, f64::max),
+        }
+    }
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn course_symbols_take_the_standard_size_at_the_print_scale() {
+        // ruling R35: a forest map drawn at 1:10000 (OOM's sample) prints course symbols at 150 % of the
+        // ISOM 2017-2 base values at 1:10000 and at 100 % at 1:15000, whatever scale the map is drawn at.
+        let forest = |scale| {
+            printed(project_on(
+                "forest-sample.omap",
+                |_| {},
+                "forest",
+                &probe_xml(Some(10000)),
+                scale,
+            ))
+        };
+        let (at10, at15) = (forest(10000), forest(15000));
+        for (p, f) in [(&at10, 1.5), (&at15, 1.0)] {
+            assert!(close(p.circle_diameter, 5.0 * f), "{p:?}");
+            assert!(close(p.line, 0.35 * f), "{p:?}");
+            assert!(close(p.start_side, 6.0 * f), "{p:?}");
+            assert!(
+                close(p.finish.0, 4.0 * f) && close(p.finish.1, 6.0 * f),
+                "{p:?}"
+            );
+            // Crossing point 710: the ends of its arcs lie (1500, 950)/3000 of its length from the centre.
+            assert!(
+                close(p.crossing_reach, 1500f64.hypot(950.0) / 3000.0 * 3.0 * f),
+                "{p:?}"
+            );
+            assert!(
+                close(p.first_aid.0, 4.0 * f) && close(p.first_aid.1, 1.33 * f),
+                "{p:?}"
+            );
+            assert!(close(p.hatch_line, 0.2 * f), "{p:?}");
+            // Out-of-bounds route 711: arms 3.0 mm long (ISOM 2017-2 section 3.7).
+            assert!(close(p.forbidden_arm, 3.0 * f), "{p:?}");
+        }
+        assert!(close(at10.circle_diameter, 7.5) && close(at15.circle_diameter, 5.0));
+        assert!(
+            close(at10.number_height / at15.number_height, 1.5),
+            "{at10:?} {at15:?}"
+        );
+        // A sprint map drawn at 1:3000 prints its course at 133 % of the ISSprOM 2019-2 base values, as one
+        // drawn at 1:4000 does.
+        let sprint = |map_scale: u32| {
+            printed(project_on(
+                "luebeck.omap",
+                |m| m.georef.scale_denominator = map_scale,
+                "sprint",
+                &probe_xml(None),
+                3000,
+            ))
+        };
+        for p in [sprint(3000), sprint(4000)] {
+            assert!(close(p.circle_diameter, 6.0 * 4.0 / 3.0), "{p:?}");
+            assert!(close(p.line, 0.35 * 4.0 / 3.0), "{p:?}");
+            assert!(close(p.start_side, 7.0 * 4.0 / 3.0), "{p:?}");
+        }
     }
 }

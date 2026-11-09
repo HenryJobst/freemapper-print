@@ -103,6 +103,7 @@ fn event(controls: Vec<Control<RawPoint>>) -> RawEvent {
             climb_m: None,
             length_m: None,
             print_scale_hint: None,
+            course_obj_ratio: None,
             secondary_title: None,
         }],
         controls,

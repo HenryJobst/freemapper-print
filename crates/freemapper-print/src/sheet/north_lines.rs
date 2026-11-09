@@ -15,7 +15,8 @@ use crate::render::symbols::{Part as SymbolPart, RenderSymbols, Symbol};
 /// numbers.
 pub(super) const MAX_LINES: usize = 10_000;
 
-/// Width of the plain fallback line (mm at the base scale), the width of ISSprOM symbol 601.
+/// Width of the plain fallback line (mm at the base scale), the width of ISSprOM symbol 601. It prints at the
+/// standard's size for the print scale.
 pub(super) const FALLBACK_WIDTH_MM: f64 = 0.14;
 
 /// Name of the part that holds generated lines. It is added after the layout hid its parts.

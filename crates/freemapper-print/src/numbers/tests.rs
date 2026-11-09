@@ -75,7 +75,7 @@ fn file_offset_round_trips_at_the_print_scale() {
         dy_mm: -6.0,
     };
     // At the map scale the box centre lies at the offset itself, on the ray to it.
-    let p = file_placement(offset, "12", &sizes, 4000, None);
+    let p = file_placement(offset, "12", &sizes, 1.0);
     assert!(
         (p.direction - (6f64).atan2(8.0).to_degrees()).abs() < 1e-9,
         "{p:?}"
@@ -83,9 +83,9 @@ fn file_offset_round_trips_at_the_print_scale() {
     let size = number_size("12", sizes.number_height_mm);
     let b = placement::number_box((0.0, 0.0), r_outer(&sizes, 1.0), size, p);
     assert!((b.centre().0 - 8.0).abs() < 1e-9 && (b.centre().1 + 6.0).abs() < 1e-9);
-    // Purple Pen prints the course at 1:5000: the 10 mm of map are 8 mm on its print, and the gap is measured
-    // there.
-    let at_5000 = file_placement(offset, "12", &sizes, 4000, Some(5000));
+    // Purple Pen prints the course at 1:5000 from a 1:4000 map without item scaling (ratio 5000/4000): the
+    // symbols take 1.25 mm of map per nominal mm, so the 10 mm of map are 8 mm at the nominal size.
+    let at_5000 = file_placement(offset, "12", &sizes, 1.25);
     let b = placement::number_box((0.0, 0.0), r_outer(&sizes, 1.0), size, at_5000);
     assert!((b.centre().0 - 6.4).abs() < 1e-9 && (b.centre().1 + 4.8).abs() < 1e-9);
     assert!(at_5000.gap_mm < p.gap_mm);
@@ -103,15 +103,8 @@ fn levels_resolve_most_specific_wins() {
         // 33: a correction for another layout does not apply.
         correction("33", "layout = \"a3\"", 0.0, Some(2.0)),
     );
-    let (_dir, project, map, courses) = course_project(&body);
-    let scale = map.georef.scale_denominator;
-    let kurz = resolve(
-        course(&courses, "Kurz"),
-        &courses.event,
-        &project,
-        "a4",
-        scale,
-    );
+    let (_dir, project, _, courses) = course_project(&body);
+    let kurz = resolve(course(&courses, "Kurz"), &courses.event, &project, "a4");
     let sizes = project.rules.course_symbol(project.project.map.kind);
     // The file puts 31's number 4 mm right and 3 mm up (IOF XML, y up).
     let base = file_placement(
@@ -121,8 +114,7 @@ fn levels_resolve_most_specific_wins() {
         },
         "1",
         &sizes,
-        scale,
-        None,
+        1.0,
     );
     assert_eq!(kurz.len(), 2);
     assert_eq!(
@@ -148,13 +140,7 @@ fn levels_resolve_most_specific_wins() {
         }
     );
     // D/H 12 on the same layout: 31 takes the layout's correction only, 33 is automatic.
-    let dh = resolve(
-        course(&courses, "D/H 12"),
-        &courses.event,
-        &project,
-        "a4",
-        scale,
-    );
+    let dh = resolve(course(&courses, "D/H 12"), &courses.event, &project, "a4");
     assert_eq!(dh[0].control, "33");
     assert_eq!(
         (dh[0].level, dh[0].placement),
@@ -170,22 +156,10 @@ fn levels_resolve_most_specific_wins() {
     );
     // On the A3 layout 33's correction applies. The file gives 31 a position in Kurz only (per course), so in
     // D/H 12 it is automatic there.
-    let dh = resolve(
-        course(&courses, "D/H 12"),
-        &courses.event,
-        &project,
-        "a3",
-        scale,
-    );
+    let dh = resolve(course(&courses, "D/H 12"), &courses.event, &project, "a3");
     assert_eq!(dh[0].level, Level::Layout);
     assert_eq!((dh[1].level, dh[1].base), (Level::Automatic, None));
-    let kurz = resolve(
-        course(&courses, "Kurz"),
-        &courses.event,
-        &project,
-        "a3",
-        scale,
-    );
+    let kurz = resolve(course(&courses, "Kurz"), &courses.event, &project, "a3");
     let expected = Placement {
         direction: 270.0,
         gap_mm: base.gap_mm,
@@ -193,13 +167,7 @@ fn levels_resolve_most_specific_wins() {
     assert_eq!((kurz[0].level, kurz[0].placement), (Level::Sheet, expected));
     // Without corrections: the file's position, else automatic.
     let (_dir, project, _, courses) = course_project(A4);
-    let kurz = resolve(
-        course(&courses, "Kurz"),
-        &courses.event,
-        &project,
-        "a4",
-        scale,
-    );
+    let kurz = resolve(course(&courses, "Kurz"), &courses.event, &project, "a4");
     assert_eq!(kurz[0].level, Level::CourseFile);
     assert_eq!(kurz[1].level, Level::Automatic);
 }
@@ -422,7 +390,7 @@ fn automatic_numbers_are_free_and_behind() {
 
 #[test]
 fn corrections_over_a_changed_base_are_stale() {
-    let (_dir, project, map, _) = course_project(A4);
+    let (_dir, project, _, _) = course_project(A4);
     let sizes = project.rules.course_symbol(project.project.map.kind);
     let base = file_placement(
         Offset {
@@ -431,8 +399,7 @@ fn corrections_over_a_changed_base_are_stale() {
         },
         "1",
         &sizes,
-        map.georef.scale_denominator,
-        None,
+        1.0,
     );
     let with_seen = |seen: Placement, scope: &str| {
         format!(
@@ -605,18 +572,12 @@ fn gaps_outside_the_rule_are_reported_and_kept() {
 
 #[test]
 fn automatic_gaps_stay_in_the_rule_range() {
-    let (_dir, project, map, courses) = course_project(A4);
+    let (_dir, project, _, courses) = course_project(A4);
     let gaps = gap_range(&project.rules);
     assert_eq!((gaps.min, gaps.max), (0.5, 5.0));
     for name in ["Kurz", "D/H 12"] {
         let c = course(&courses, name);
-        let resolved = resolve(
-            c,
-            &courses.event,
-            &project,
-            "a4",
-            map.georef.scale_denominator,
-        );
+        let resolved = resolve(c, &courses.event, &project, "a4");
         for r in resolved.iter().filter(|r| r.level == Level::Automatic) {
             assert_eq!(r.placement, automatic_start(gaps));
         }
@@ -634,7 +595,7 @@ fn on_blank_page(
     primitives: Vec<Primitive>,
 ) -> SheetNumbers {
     let c = course(courses, name);
-    let resolved = resolve(c, &courses.event, project, "a4", 4000);
+    let resolved = resolve(c, &courses.event, project, "a4");
     let page = RenderedPage {
         primitives,
         clip: PaperBox {

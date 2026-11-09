@@ -833,17 +833,11 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
     let direction = (direction * 10.0).round() / 10.0;
     let gap = (gap * 100.0).round() / 100.0;
     // The course file's own position (level 2), so that `check` notices when the file moves the number.
-    let base_seen = freemapper_print::numbers::resolve(
-        course,
-        &courses.event,
-        &loaded,
-        &layout.id,
-        map.georef.scale_denominator,
-    )
-    .into_iter()
-    .find(|n| n.control == args.control)
-    .and_then(|n| n.base)
-    .map(freemapper_print::course::NumberPlacement::from);
+    let base_seen = freemapper_print::numbers::resolve(course, &courses.event, &loaded, &layout.id)
+        .into_iter()
+        .find(|n| n.control == args.control)
+        .and_then(|n| n.base)
+        .map(freemapper_print::course::NumberPlacement::from);
     let correction = project::NumberCorrection {
         control: args.control.clone(),
         layout: scope_layout,

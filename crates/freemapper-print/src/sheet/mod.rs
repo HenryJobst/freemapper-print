@@ -543,8 +543,8 @@ fn without_hidden_parts<'a>(
 /// With a symbol 601 (or 601.1, or the lowest 601.x) the lines become objects of that symbol in
 /// a part of their own, so they sort by its colour priority like drawn ones; the map is then
 /// drawn again with the orientation and the centre of the first drawing fixed, so that the lines
-/// change neither the page nor the overflow report. Without any such symbol, plain 0.14 mm black
-/// lines go on the sheet layer of `page`, within the frame.
+/// change neither the page nor the overflow report. Without any such symbol, plain black lines
+/// 0.14 mm wide at the base scale go on the sheet layer of `page`, within the frame.
 fn add_north_lines(
     map: &MapDocument,
     spacing_m: f64,
@@ -558,9 +558,13 @@ fn add_north_lines(
     let symbol = north_lines::symbol_id(map.symbol_set.codes(), |id| {
         north_lines::draws_a_line(&map.symbol_set, id)
     });
+    // The fallback width is a base-scale value: it takes the standard's size at the print scale (ADR 0018,
+    // ruling R35), while a map symbol is drawn for the map's scale and takes the symbol factor.
+    let fallback_width = north_lines::FALLBACK_WIDTH_MM
+        * crate::scale::standard_enlargement(options.kind, print.print_scale).unwrap_or(1.0);
     let half_width = match symbol {
         Some(id) => north_lines::half_width_mm(&map.symbol_set, id, print.symbol_factor),
-        None => north_lines::FALLBACK_WIDTH_MM * print.symbol_factor / 2.0,
+        None => fallback_width / 2.0,
     };
     let inset = north_lines::inset_mm(half_width);
     let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf, inset);
@@ -573,8 +577,7 @@ fn add_north_lines(
         // Page x of map x: the page centre shows `centre_mm`.
         let page_x = |x: f64| page.page_mm.0 / 2.0 + x * gf - page.centre_mm.0;
         let (top, bottom) = (page.clip.min.1 + inset, page.clip.max.1 - inset);
-        // Symbols scale by the symbol factor (ADR 0018), and so does the plain line.
-        let width = north_lines::FALLBACK_WIDTH_MM * print.symbol_factor;
+        let width = fallback_width;
         let lines = xs.iter().map(|x| SheetItem::Shape {
             colour: DirectColour::BLACK,
             shape: Shape::Stroke {
@@ -2138,5 +2141,34 @@ mod tests {
             .collect();
         assert!(!widths.is_empty());
         assert!(widths.iter().all(|w| (w - 0.14 * 4.0 / 3.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn fallback_width_is_the_standard_size_at_the_print_scale() {
+        // The 0.14 mm are a base-scale value: a map drawn at 1:3000 prints them at 133 % at 1:3000 too (ruling
+        // R35), not at its symbol factor of 1.
+        let mut map = no_lines_map();
+        map.symbol_set = map.symbol_set.without_codes(|c| c.starts_with("601"));
+        map.georef.scale_denominator = 3000;
+        let mut layout = auto();
+        layout.print_scale = Some(3000);
+        let (page, report) = sheet(&map, &layout);
+        assert_eq!(report.print.symbol_factor, 1.0);
+        let widths: Vec<f64> = page
+            .sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Stroke { path, width, .. },
+                    ..
+                } if path.len() == 2 && path[0].0 == path[1].0 => Some(*width),
+                _ => None,
+            })
+            .collect();
+        assert!(!widths.is_empty());
+        assert!(
+            widths.iter().all(|w| (w - 0.14 * 4.0 / 3.0).abs() < 1e-9),
+            "{widths:?}"
+        );
     }
 }

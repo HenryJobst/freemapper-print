@@ -56,6 +56,7 @@ fn course(kind: CourseKind, stops: Vec<Stop>) -> Course<MapCoord> {
         climb_m: None,
         length_m: None,
         print_scale_hint: None,
+        course_obj_ratio: None,
         secondary_title: None,
     }
 }
@@ -163,7 +164,7 @@ fn file_numbers(
         .filter_map(|(i, control, text)| {
             let at = to_page(control.position?);
             let p = match course.stops[i].number_text_at {
-                Some(o) => crate::numbers::file_placement(o, &text, sizes, 1, None),
+                Some(o) => crate::numbers::file_placement(o, &text, sizes, 1.0),
                 None => Placement {
                     direction: 0.0,
                     gap_mm: 1.0,

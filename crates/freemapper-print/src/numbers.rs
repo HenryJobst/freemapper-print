@@ -88,21 +88,24 @@ impl From<Placement> for NumberPlacement {
 }
 
 /// The placement of a number whose text centre the course file puts at `offset` from the circle centre (map mm,
-/// map frame), ruling R12. The offset is scaled to print mm at `print_scale` (the course's print scale in
-/// Purple Pen, else the map scale): Purple Pen adds the offset to the control in map coordinates and, with its
-/// default item scaling, draws course symbols at their nominal print size at that scale
-/// (`CourseFormatter.CreateControlNumber`, `CourseView.CourseObjRatio`, commit 201417f). So the box of `text`
-/// and the circle take the nominal sizes of `sizes`, and the gap is the shortest distance from the box to the
-/// outer edge of the circle line, in print mm at the base scale (ruling R4).
+/// map frame), ruling R12. Purple Pen adds the offset to the control in map coordinates and draws course symbols
+/// at their nominal size times `ratio` map mm (`CourseFormatter.CreateControlNumber`, `CourseView.CourseObjRatio`,
+/// commit 201417f; [`Course::course_obj_ratio`]). So the offset divided by `ratio` lies among the nominal sizes of
+/// `sizes`: the box of `text` and the circle take them, and the gap is the shortest distance from the box to the
+/// outer edge of the circle line, in mm at the base scale (ruling R4). A sheet multiplies it by the course factor
+/// of its print scale, as it does the symbols.
 pub fn file_placement(
     offset: Offset,
     text: &str,
     sizes: &CourseSymbolSizes,
-    map_scale: u32,
-    print_scale: Option<u32>,
+    ratio: f64,
 ) -> Placement {
-    let to_print = f64::from(map_scale) / f64::from(print_scale.unwrap_or(map_scale).max(1));
-    let centre = (offset.dx_mm * to_print, offset.dy_mm * to_print);
+    let ratio = if ratio > 0.0 && ratio.is_finite() {
+        ratio
+    } else {
+        1.0
+    };
+    let centre = (offset.dx_mm / ratio, offset.dy_mm / ratio);
     placement::placement_of(
         (0.0, 0.0),
         r_outer(sizes, 1.0),
@@ -113,15 +116,14 @@ pub fn file_placement(
 
 /// The course file's placement of the number `text` at `stop` (level 2), if the file gives one.
 pub fn base_placement(
+    course: &Course<MapCoord>,
     stop: &Stop,
     text: &str,
     sizes: &CourseSymbolSizes,
-    map_scale: u32,
-    print_scale: Option<u32>,
 ) -> Option<Placement> {
     stop.number.map(Placement::from).or_else(|| {
         stop.number_text_at
-            .map(|o| file_placement(o, text, sizes, map_scale, print_scale))
+            .map(|o| file_placement(o, text, sizes, course.course_obj_ratio.unwrap_or(1.0)))
     })
 }
 
@@ -131,14 +133,12 @@ fn r_outer(sizes: &CourseSymbolSizes, factor: f64) -> f64 {
 }
 
 /// The numbers of `course` printed with the layout `layout_id`, with their positions resolved on levels 2 to 4
-/// (spec §5.7); level 1 numbers keep [`automatic_start`] until [`place_on_sheet`]. `map_scale` is the map's
-/// scale denominator.
+/// (spec §5.7); level 1 numbers keep [`automatic_start`] until [`place_on_sheet`].
 pub fn resolve(
     course: &Course<MapCoord>,
     event: &FittedEvent,
     project: &LoadedProject,
     layout_id: &str,
-    map_scale: u32,
 ) -> Vec<ResolvedNumber> {
     let sizes = project.rules.course_symbol(project.project.map.kind);
     let corrections = &project.project.numbers;
@@ -146,13 +146,7 @@ pub fn resolve(
         .into_iter()
         .map(|(stop, control, text)| {
             let code = &control.code;
-            let base = base_placement(
-                &course.stops[stop],
-                &text,
-                &sizes,
-                map_scale,
-                course.print_scale_hint,
-            );
+            let base = base_placement(course, &course.stops[stop], &text, &sizes);
             let (mut placement, mut level) = match base {
                 Some(b) => (b, Level::CourseFile),
                 None => (automatic_start(gap_range(&project.rules)), Level::Automatic),
@@ -189,7 +183,7 @@ pub fn resolve(
 /// course, or every course printed with its layout ([`layout_for`]). A layout correction stands over several
 /// courses whose file positions may differ, and `base_seen` holds only the one it was made against; so one
 /// course still matching counts as unchanged. One entry per correction.
-pub fn changed_bases(project: &LoadedProject, event: &FittedEvent, map_scale: u32) -> Vec<Stale> {
+pub fn changed_bases(project: &LoadedProject, event: &FittedEvent) -> Vec<Stale> {
     let sizes = project.rules.course_symbol(project.project.map.kind);
     let mut out = Vec::new();
     for n in &project.project.numbers {
@@ -204,13 +198,7 @@ pub fn changed_bases(project: &LoadedProject, event: &FittedEvent, map_scale: u3
                 .into_iter()
                 .filter(|(_, control, _)| control.code == n.control)
                 .any(|(stop, _, text)| {
-                    let now = base_placement(
-                        &c.stops[stop],
-                        &text,
-                        &sizes,
-                        map_scale,
-                        c.print_scale_hint,
-                    );
+                    let now = base_placement(c, &c.stops[stop], &text, &sizes);
                     now.is_some_and(|now| !base_changed(seen, &now.into()))
                 })
         });
@@ -303,12 +291,12 @@ impl CourseShapes {
         event: &FittedEvent,
         to_page: impl Fn(MapCoord) -> Pt + Copy,
         sizes: &CourseSymbolSizes,
-        symbol_factor: f64,
+        course_factor: f64,
     ) -> Self {
         CourseShapes {
-            symbols: stop_symbols(course, event, to_page, sizes, symbol_factor),
-            legs: leg_lines(course, event, to_page, sizes, symbol_factor),
-            half_line: sizes.line_width_mm * symbol_factor / 2.0,
+            symbols: stop_symbols(course, event, to_page, sizes, course_factor),
+            legs: leg_lines(course, event, to_page, sizes, course_factor),
+            half_line: sizes.line_width_mm * course_factor / 2.0,
         }
     }
 }
@@ -518,7 +506,8 @@ fn target(
 /// for the stops after it (ruling R32). `gap_rule` is the gap range
 /// of the rule set, `None` without a `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone,
 /// and with a rule every number the file or a correction places outside the range gives a [`GapOutOfRange`].
-/// `to_page` maps map coordinates to the page; `sf` is the symbol factor. Numbered stops without a map position
+/// `to_page` maps map coordinates to the page; `sf` is the course factor of the print scale
+/// ([`RuleSet::course_factor`]). Numbered stops without a map position
 /// are left out.
 #[allow(clippy::too_many_arguments)]
 pub fn place_on_sheet(
