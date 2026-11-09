@@ -1017,6 +1017,8 @@ fn init_with_iof_xml_makes_one_layout_without_description_box() {
     assert_eq!(p.sources.courses.as_deref(), Some(Path::new("c.xml")));
     assert_eq!(p.layouts.len(), 1);
     assert_eq!(p.layouts[0].print_scale, Some(4000));
+    // With a course file the id names the scale, also when there is only one.
+    assert!(p.layouts[0].id.ends_with("-4000"), "{}", p.layouts[0].id);
     assert!(p.layouts[0].elements.is_empty());
     // Without a description box, only the title block names the course on the sheet.
     assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");

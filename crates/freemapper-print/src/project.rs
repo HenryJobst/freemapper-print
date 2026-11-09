@@ -1162,22 +1162,32 @@ pub fn save_new_with_comments(
 }
 
 /// Writes `bytes` to `path` through a temporary file next to it and a rename, so that a failed write leaves the
-/// old file whole. The temporary file is removed again on failure.
+/// old file whole. The temporary file is removed again on failure. A link is followed: the file it points to is
+/// replaced and the link stays. The new file keeps the old one's permissions.
 fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     let file = path.display().to_string();
-    let mut tmp = path.as_os_str().to_owned();
+    let error = |source| ProjectError::Write {
+        file: file.clone(),
+        source,
+    };
+    let target = std::fs::canonicalize(path).map_err(error)?;
+    let permissions = std::fs::metadata(&target).map_err(error)?.permissions();
+    let mut tmp = target.as_os_str().to_owned();
     tmp.push(".part");
     let tmp = PathBuf::from(tmp);
-    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    let written = std::fs::write(&tmp, bytes)
+        .and_then(|()| std::fs::set_permissions(&tmp, permissions))
+        .and_then(|()| std::fs::rename(&tmp, &target));
     written.map_err(|source| {
         let _ = std::fs::remove_file(&tmp);
-        ProjectError::Write { file, source }
+        error(source)
     })
 }
 
 /// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
-/// addendum). Everything before the new table stays byte for byte as it was, comments included. The file is
-/// replaced through a temporary file. When the result does not load (for example because `numbers` is written
+/// addendum). Everything before the new table stays byte for byte as it was, comments included; the new lines
+/// end as the file's do (CRLF or LF), and directions are written in [0, 360). The file is replaced through a
+/// temporary file ([`replace_file`]). When the result does not load (for example because `numbers` is written
 /// as an inline array), the old content is put back and the load error is returned.
 pub fn append_correction(
     path: &Path,
@@ -1192,16 +1202,37 @@ pub fn append_correction(
         file: file.clone(),
         source,
     })?;
+    // Directions as the file reads them back: in [0, 360).
+    let turn = crate::placement::normalize_direction;
+    let correction = NumberCorrection {
+        direction: turn(correction.direction),
+        base_seen: correction.base_seen.map(|b| NumberPlacement {
+            direction: turn(b.direction),
+            ..b
+        }),
+        ..correction.clone()
+    };
     let table = toml::to_string(&Wrapper {
-        numbers: [correction],
+        numbers: [&correction],
     })
     .map_err(|e| ProjectError::Serialize(e.to_string()))?;
+    // The new lines end as the file's do.
+    let crlf = old.windows(2).any(|w| w == b"\r\n");
+    let newline: &[u8] = if crlf { b"\r\n" } else { b"\n" };
     let mut new = old.clone();
     if !new.ends_with(b"\n") {
-        new.push(b'\n');
+        new.extend_from_slice(newline);
     }
-    new.push(b'\n');
-    new.extend_from_slice(table.as_bytes());
+    new.extend_from_slice(newline);
+    for line in table.split_inclusive('\n') {
+        match line.strip_suffix('\n') {
+            Some(text) => {
+                new.extend_from_slice(text.as_bytes());
+                new.extend_from_slice(newline);
+            }
+            None => new.extend_from_slice(line.as_bytes()),
+        }
+    }
     replace_file(path, &new)?;
     load(path).inspect_err(|_| {
         // Best effort: the load error is the one to report.
@@ -2339,5 +2370,82 @@ mod tests {
         let err = save_new(&path, &full_project()).unwrap_err();
         assert!(matches!(err, ProjectError::Exists { .. }));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep");
+    }
+
+    fn layout_correction(direction: f64) -> NumberCorrection {
+        NumberCorrection {
+            control: "31".into(),
+            layout: Some("a4".into()),
+            course: None,
+            direction,
+            gap_mm: Some(0.5),
+            base_seen: Some(NumberPlacement {
+                direction: -90.0,
+                gap_mm: 0.5,
+            }),
+        }
+    }
+
+    const WITH_LAYOUT: &str = "[[layouts]]\nid = \"a4\"\n";
+
+    #[test]
+    fn appended_correction_follows_crlf_and_normalises_directions() {
+        let text = format!("{HEAD}{WITH_LAYOUT}").replace('\n', "\r\n");
+        let (_dir, path) = temp_project(&text);
+        let lp = append_correction(&path, &layout_correction(-30.0)).unwrap();
+        let n = &lp.project.numbers[0];
+        assert_eq!(n.direction, 330.0);
+        assert_eq!(n.base_seen.unwrap().direction, 270.0);
+        let new = std::fs::read(&path).unwrap();
+        assert!(new.starts_with(text.as_bytes()));
+        // Every line break of the file is CRLF, the new ones too.
+        let lone = new.windows(2).any(|w| w[1] == b'\n' && w[0] != b'\r');
+        assert!(
+            !lone && new[0] != b'\n',
+            "{:?}",
+            String::from_utf8_lossy(&new)
+        );
+        assert!(String::from_utf8_lossy(&new).contains("direction = 330.0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn appended_correction_keeps_permissions_and_the_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, real) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
+        // The project file is reached through a link from another folder.
+        let other = tempfile::tempdir().unwrap();
+        let link = other.path().join(FILE_NAME);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        // The map is found next to the path the project is opened by.
+        std::fs::write(other.path().join("m.omap"), "x").unwrap();
+        append_correction(&link, &layout_correction(10.0)).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let mode = std::fs::metadata(&real).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o640);
+        assert!(
+            std::fs::read_to_string(&real)
+                .unwrap()
+                .contains("[[numbers]]")
+        );
+        // No temporary file is left next to either.
+        for d in [dir.path(), other.path()] {
+            let names: Vec<_> = std::fs::read_dir(d)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            assert!(
+                names
+                    .iter()
+                    .all(|n| !n.to_string_lossy().ends_with(".part")),
+                "{names:?}"
+            );
+        }
     }
 }

@@ -433,7 +433,8 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         );
         let (new, fits) = project::fit_starter(starter, &dir, &map);
         let mut layout = new.layouts[0].clone();
-        if scales.len() > 1 {
+        // With a course file the id names the print scale too, whether the courses need one layout or several.
+        if plan.is_some() {
             layout.id = format!("{}-{scale}", layout.id);
         }
         fitted.push((layout, fits, scale));
