@@ -365,8 +365,78 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
         dir,
         project,
     };
-    validate(&file, &loaded)?;
+    validate(&file, &loaded).map_err(|e| with_line(e, &text))?;
     Ok(loaded)
+}
+
+/// `err` with the line and column of its field when the TOML text has the field, or of the
+/// nearest table above it that is written (a missing `file` points at its element). Errors
+/// without a field (`NoLayout`) and files that do not parse again stay as they are.
+fn with_line(err: ProjectError, text: &str) -> ProjectError {
+    let located = |file: String, field: &str| match field_offset(text, field) {
+        Some(offset) => {
+            let (line, column) = line_col(text, offset);
+            format!("{file}:{line}:{column}")
+        }
+        None => file,
+    };
+    match err {
+        ProjectError::Invalid {
+            file,
+            field,
+            message,
+        } => ProjectError::Invalid {
+            file: located(file, &field),
+            field,
+            message,
+        },
+        ProjectError::DuplicateId { file, field, id } => ProjectError::DuplicateId {
+            file: located(file, &field),
+            field,
+            id,
+        },
+        ProjectError::MissingMap { file, map } => ProjectError::MissingMap {
+            file: located(file, "sources.map"),
+            map,
+        },
+        other => other,
+    }
+}
+
+/// The byte offset in `text` of the value at `field` (`layouts[0].map_frame.margin_mm`), or of
+/// the deepest table or array on the way that the text has.
+fn field_offset(text: &str, field: &str) -> Option<usize> {
+    use toml::de::{DeTable, DeValue};
+    let doc = DeTable::parse(text).ok()?;
+    let mut table = doc.get_ref();
+    let mut best = None;
+    for part in field.split('.') {
+        let (key, indices) = match part.split_once('[') {
+            Some((key, rest)) => (key, Some(rest)),
+            None => (part, None),
+        };
+        let Some((_, value)) = table.iter().find(|(k, _)| k.get_ref().as_ref() == key) else {
+            return best;
+        };
+        let mut value = value;
+        best = Some(value.span().start);
+        for index in indices.into_iter().flat_map(|r| r.split('[')) {
+            let i: usize = index.trim_end_matches(']').parse().ok()?;
+            let DeValue::Array(items) = value.get_ref() else {
+                return best;
+            };
+            let Some(item) = items.get(i) else {
+                return best;
+            };
+            value = item;
+            best = Some(value.span().start);
+        }
+        match value.get_ref() {
+            DeValue::Table(t) => table = t,
+            _ => return best,
+        }
+    }
+    best
 }
 
 fn invalid(file: &str, field: String, message: &str) -> ProjectError {
@@ -519,7 +589,7 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
             ));
         }
     }
-    let kind = serde_json_name(e.kind);
+    let kind = kind_name(e.kind);
     let text = matches!(e.kind, ElementKind::TitleBlock | ElementKind::Text);
     let sized = text || matches!(e.kind, ElementKind::CreditLine | ElementKind::CopyrightLine);
     let logo = e.kind == ElementKind::Logo;
@@ -571,7 +641,8 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
     Ok(())
 }
 
-fn serde_json_name(k: ElementKind) -> &'static str {
+/// The name of an element kind as the project file writes it.
+fn kind_name(k: ElementKind) -> &'static str {
     match k {
         ElementKind::TitleBlock => "title_block",
         ElementKind::Text => "text",
@@ -1174,7 +1245,9 @@ mod tests {
         ] {
             let msg = err_for("", &shared(kind, line), "");
             assert!(
-                msg.contains(&format!("shared[0].{field}")) && msg.contains(kind),
+                msg.contains(&format!("shared[0].{field}"))
+                    && msg.contains(kind)
+                    && msg.contains(FILE_NAME),
                 "{kind} {field}: {msg}"
             );
         }
@@ -1222,8 +1295,47 @@ mod tests {
             } else {
                 err_for(head, sh, layout)
             };
-            assert!(msg.contains(field), "{field}: {msg}");
+            assert!(
+                msg.contains(field) && msg.contains(FILE_NAME),
+                "{field}: {msg}"
+            );
         }
+    }
+
+    #[test]
+    fn checked_values_name_their_line() {
+        // HEAD has 7 lines, then a blank one and the layout.
+        let msg = err_for(
+            "",
+            &shared("text", "size_pt = 0.0"),
+            "[layouts.map_frame]\nborder_mm = -1.0",
+        );
+        // The layout comes first: its border is the first error, on line 12, column 13.
+        assert!(
+            msg.contains(&format!(
+                "{FILE_NAME}:12:13: field `layouts[0].map_frame.border_mm`"
+            )),
+            "{msg}"
+        );
+        let msg = err_for("", &shared("text", "size_pt = 0.0"), "");
+        assert!(
+            msg.contains(&format!("{FILE_NAME}:15:11: field `shared[0].size_pt`")),
+            "{msg}"
+        );
+        // An inline value in an array: the item itself.
+        let msg = err_for(
+            "",
+            &shared("text", "")
+                .replace("corner=\"top\"", "corner=\"top\"\noffset_mm=[1.0, 3000.0]"),
+            "",
+        );
+        assert!(
+            msg.contains(":19:17: field `shared[0].anchor.offset_mm[1]`"),
+            "{msg}"
+        );
+        // A missing field points at the table that lacks it.
+        let msg = err_for("", &shared("logo", "width_mm = 5.0"), "");
+        assert!(msg.contains(":12:1: field `shared[0].file`"), "{msg}");
     }
 
     #[test]
