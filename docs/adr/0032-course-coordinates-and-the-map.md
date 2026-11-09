@@ -15,7 +15,7 @@ wrong map puts runners at the wrong place, so a doubtful fit has to stop the pri
 - A map scale stated in the course file (IOF XML `Map/Scale`, the `.ppen` map scale) must equal the map's scale
   denominator, or the fit stops with `ScaleMismatch`. Positions are never rescaled. A file without a scale
   gets the note `ScaleUnchecked`.
-- The project file can set the file's y axis (`y_axis`, up or down). The set axis must still fit, otherwise
+- The project file can set the file's y axis (`[sources] course_y_axis`, `"up"` or `"down"`; `FitOptions.y_axis`). The set axis must still fit, otherwise
   the error is `OutsideMap`. Without it, course fitting tries both readings of a file point, `(x, −y)` and `(x, y)`, times 1000 to get OOM's µm.
   A reading fits when every control lies inside the box around all object coordinates of the map, grown by
   10 mm on every side. The box uses the object coordinates, not the rendered extent, so it costs one pass over
@@ -45,11 +45,13 @@ wrong map puts runners at the wrong place, so a doubtful fit has to stop the pri
   ETRS89 and WGS84 differ by under a metre. A wrong map, zone or datum shifts every control by hundreds of
   metres. 20 m sits between the two. Shifting the course to make it fit would hide such an error, so the fit
   refuses.
-- The project file can switch latitude and longitude off (`check_georef = false`). They then neither check
+- The project file can switch latitude and longitude off (`[sources] course_georef_check = false`; `FitOptions.check_georef`). They then neither check
   nor decide anything, the note is `GeorefCheckOff`, and controls with only latitude and longitude are the
   error `NoPositionNoGeoref`.
 - A control with latitude and longitude and no map position is placed through the map's georeferencing. If the
   map cannot do that, the error `NoPositionNoGeoref` names the controls and the reason.
+- The fit turns circle gap angles with the axis too: when it flips y, `(a, b)` becomes `(−b, −a)`. After the
+  fit the event is entirely in the map frame (`Stop::circle_gaps`).
 - Number text offsets take only the linear part of the reading, the y flip. Positions from latitude and
   longitude never act on offsets: an offset stays in the file's mm, which share the map's orientation.
 - `fit` returns the fitted event together with its notes (`Fit { event, notes }`), because `CourseEvent` has no
@@ -61,7 +63,7 @@ wrong map puts runners at the wrong place, so a doubtful fit has to stop the pri
   longitude in the file, the axis is never guessed.
 - Without latitude and longitude, a course near the map's middle fits both readings and y up is taken. A file
   written y down with such a course prints upside down unless the user heeds `OrientationAssumed` and sets
-  `y_axis`.
+  `course_y_axis`.
 - After `GeorefMismatch` there are two ways on. If the map's georeferencing is wrong, fix it in OOM. If the
   course file's latitude and longitude are wrong or not wanted, set `course_georef_check = false` in the project
   file; the map positions alone then place the course.

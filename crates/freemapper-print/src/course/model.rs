@@ -196,10 +196,11 @@ pub struct Stop {
     /// Where the file puts the number text, relative to the circle centre (IOF XML `MapTextPosition`).
     /// Converted to `number` once circle and box sizes are known.
     pub number_text_at: Option<Offset>,
-    /// Angle ranges `(start, stop)` in degrees where the circle is not drawn, in the file's frame: measured
-    /// from +x towards +y (Purple Pen: y up, so counter-clockwise). Like Purple Pen, `stop` lies in 0..360
-    /// and `start` below it, so a range across +x starts negative. When the fit flips y, `(a, b)` becomes
-    /// `(-b, -a)`; `map_points` does not do this.
+    /// Angle ranges `(start, stop)` in degrees where the circle is not drawn, measured from +x towards +y
+    /// of the frame the event is in (Purple Pen file: y up, so counter-clockwise). Like Purple Pen, `stop`
+    /// lies in 0..360 and `start` below it, so a range across +x starts negative. `map_points` does not
+    /// touch them; `fit` turns `(a, b)` into `(-b, -a)` when it flips y, so a fitted event is entirely in
+    /// the map frame.
     pub circle_gaps: Vec<(f64, f64)>,
 }
 

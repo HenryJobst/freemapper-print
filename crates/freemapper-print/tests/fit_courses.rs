@@ -497,3 +497,36 @@ fn no_lat_lng_in_file_skips_the_check() {
             .contains(&FitNote::GeorefSkipped(SkipReason::NoLatLng))
     );
 }
+
+#[test]
+fn circle_gaps_flip_with_y() {
+    let map = plain_map((0, 0), (200_000, 100_000));
+    let with_gaps = || {
+        let mut ev = event(vec![
+            control("31", Some((50.0, -30.0)), None),
+            control("32", Some((150.0, -80.0)), None),
+        ]);
+        ev.courses[0].stops[0].circle_gaps = vec![(-30.0, 60.0), (100.0, 150.0)];
+        ev
+    };
+    // y up: the file's counter-clockwise angles become map-frame (y down) angles, (a, b) -> (-b, -a).
+    let fitted = fit(with_gaps(), &map, &FitOptions::default()).unwrap();
+    assert!(fitted.notes.contains(&FitNote::YUpDetected));
+    assert_eq!(
+        fitted.event.courses[0].stops[0].circle_gaps,
+        [(-60.0, 30.0), (-150.0, -100.0)]
+    );
+    // y down: nothing flips.
+    let mut ev = with_gaps();
+    for c in &mut ev.controls {
+        c.position = c.position.map(|p| RawPoint {
+            x_mm: p.x_mm,
+            y_mm: -p.y_mm,
+        });
+    }
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
+    assert_eq!(
+        fitted.event.courses[0].stops[0].circle_gaps,
+        [(-30.0, 60.0), (100.0, 150.0)]
+    );
+}

@@ -393,6 +393,14 @@ pub fn fit(event: RawEvent, map: &MapDocument, options: &FitOptions) -> Result<F
     for (i, p) in placed {
         fitted.controls[i].position = Some(coord(p));
     }
+    // The gap angles run from +x towards the file's +y; with y up, towards the map's -y after the flip.
+    if axis == YAxis::Up {
+        for stop in fitted.courses.iter_mut().flat_map(|c| &mut c.stops) {
+            for gap in &mut stop.circle_gaps {
+                *gap = (-gap.1, -gap.0);
+            }
+        }
+    }
     Ok(Fit {
         event: fitted,
         notes,
