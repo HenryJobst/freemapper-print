@@ -14,7 +14,7 @@ What it does already:
   symbols at 133 %);
 - always print the map's north lines.
 
-New since 0.1.0, not yet released (M2, on `main`):
+New in 0.2.0:
 
 - one project file per event with any number of layouts, created with `init`, checked with `check` and written
   as PDFs with `export`;
@@ -56,11 +56,10 @@ Each milestone adds examples: courses from Purple Pen (M3), window and corridor 
 
 ## Status
 
-The current version is [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) of
-8 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
-(`freemapper-print render`). M2, with the project file, layouts, sheet elements and the commands `init`,
-`check` and `export`, is finished and on `main`; it ships with the next version. To use it now, build the
-program yourself (see below). Courses from Purple Pen (M3) and masks for window and corridor orienteering (M4)
+The current version is [v0.2.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.2.0) of
+9 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+(`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
+scale check bar (`init`, `check`, `export`). Courses from Purple Pen (M3) and masks for window and corridor orienteering (M4)
 follow. The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
@@ -96,7 +95,7 @@ cargo build --release
 
 ## Usage
 
-### An event (from M2, not yet released)
+### An event
 
 ```sh
 freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck"
@@ -129,7 +128,7 @@ This writes the sprint map as a PDF on an A3 page at 1:3000, without title or sc
   nor from the map file.
 - `--show-sheet-objects` also prints freemapper's information block: title, scale, scale bar and credits.
   North lines belong to the map and are always in the PDF.
-- `--lang de|en` picks the language of the messages (from M2); without it `FREEMAPPER_LANG` and the system's
+- `--lang de|en` picks the language of the messages; without it `FREEMAPPER_LANG` and the system's
   language settings decide.
 
 If the map does not fit on the page, the program writes the PDF anyway and says how many millimetres are

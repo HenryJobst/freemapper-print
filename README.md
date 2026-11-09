@@ -14,7 +14,7 @@ Das kann es schon:
   jüngsten Klassen mit Symbolen auf 133 %);
 - die Nordlinien der Karte immer mitdrucken.
 
-Neu seit 0.1.0, noch nicht veröffentlicht (M2, auf `main`):
+Neu in 0.2.0:
 
 - eine Projektdatei je Veranstaltung mit beliebig vielen Layouts, angelegt mit `init`, geprüft mit `check`, als
   PDFs geschrieben mit `export`;
@@ -58,11 +58,10 @@ Korridor-OL (M4).
 
 ## Status
 
-Aktuelle Version ist [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) vom
-8. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
-OOM-Karte maßstabsgetreu (`freemapper-print render`). M2 mit Projektdatei, Layouts, Blattelementen und den
-Befehlen `init`, `check` und `export` ist fertig und liegt auf `main`; es erscheint mit der nächsten Version.
-Wer es schon nutzen will, baut das Programm selbst (siehe unten). Danach folgen Bahnen aus Purple Pen (M3) und
+Aktuelle Version ist [v0.2.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.2.0) vom
+9. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
+Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Danach folgen Bahnen aus Purple Pen (M3) und
 Abdeckungen für Fenster- und Korridor-OL (M4). Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
@@ -100,7 +99,7 @@ prüft [lefthook](https://github.com/evilmartians/lefthook) Formatierung und cli
 
 ## Benutzung
 
-### Eine Veranstaltung (ab M2, noch nicht veröffentlicht)
+### Eine Veranstaltung
 
 ```sh
 freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck"
@@ -135,7 +134,7 @@ wichtigsten Optionen:
   noch aus der Kartendatei erkennt.
 - `--show-sheet-objects` druckt auch den Informationsblock von freemapper: Titel, Maßstab, Maßstabsleiste und
   Namensnennung. Die Nordlinien gehören zur Karte und stehen immer im PDF.
-- `--lang de|en` wählt die Sprache der Meldungen (ab M2); ohne die Option entscheiden `FREEMAPPER_LANG` und
+- `--lang de|en` wählt die Sprache der Meldungen; ohne die Option entscheiden `FREEMAPPER_LANG` und
   die Spracheinstellung des Systems.
 
 Passt die Karte nicht auf die Seite, schreibt das Programm das PDF trotzdem und meldet, wie viele Millimeter

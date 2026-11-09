@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.2.0] - 2026-11-09
+
 ### Hinzugefügt
 
 - Eine Projektdatei je Veranstaltung, `freemapper-print.toml`, mit drei Befehlen. `init` legt sie für eine
