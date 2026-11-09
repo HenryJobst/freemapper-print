@@ -6,6 +6,7 @@
 
 pub mod layout;
 mod logo;
+mod north_lines;
 pub mod placeholders;
 mod scale_bar;
 mod text;
@@ -13,9 +14,13 @@ mod text;
 use std::borrow::Cow;
 
 use crate::omap::{MapCoord, MapDocument, OmapError};
+use crate::print::Orientation;
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
-use crate::project::{AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject};
-use crate::render::page::{PaperBox, RenderedPage, SheetItem};
+use crate::project::{
+    AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject, NorthLines,
+};
+use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem};
+use crate::render::symbols::{Cap, Join};
 
 pub use layout::anchor_point;
 
@@ -44,8 +49,14 @@ pub enum SheetNote {
         layout: String,
         missing: Vec<String>,
     },
-    /// The map had no north lines; this many were added (ADR 0023).
+    /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
+    /// unbroken across the frame: breaking them at small features such as boulders and path ends
+    /// is the mapper's job in OOM, and the program cannot know where.
     NorthLinesAdded { count: usize },
+    /// The map had no north lines and its symbol set has no symbol 601 or 601.x either, so this
+    /// many plain black lines of 0.14 mm were drawn over the map, clipped to the map frame. Lines
+    /// on the sheet layer lie over the map objects instead of under them (ADR 0027).
+    NorthLinesWithoutSymbol { count: usize },
     /// The map notes (or `print.copyright`) have more lines than the footer shows: `shown`
     /// sources of `total` are printed, the rest counted in a last line.
     CopyrightTruncated {
@@ -111,10 +122,10 @@ pub fn render_sheet(
     if layout::larger_than_a3(layout.paper) {
         notes.push(SheetNote::LargerThanA3);
     }
+    let original = map;
     let map = without_hidden_parts(map, layout, &mut notes);
-    let map = with_north_lines(map, project, layout, &mut notes)?;
 
-    let options = PrintOptions {
+    let mut options = PrintOptions {
         print_scale: layout.print_scale,
         kind: project.project.map.kind,
         paper: layout.paper,
@@ -123,7 +134,11 @@ pub fn render_sheet(
         show_sheet_objects: false,
         frame_margin_mm: Some(layout.map_frame.margin_mm),
     };
-    let (mut page, print) = render_page(&map, &options)?;
+    let (mut page, mut print) = render_page(&map, &options)?;
+    if layout.north_lines == NorthLines::Auto && !north_lines::has_north_lines(original) {
+        let kind = project.project.map.kind;
+        add_north_lines(&map, kind, &mut options, &mut page, &mut print, &mut notes)?;
+    }
     let page_box = PaperBox {
         min: (0.0, 0.0),
         max: page.page_mm,
@@ -229,20 +244,66 @@ fn without_hidden_parts<'a>(
     Cow::Owned(kept)
 }
 
-/// Task 9 adds generated north lines here when the map has none and the layout allows them
-/// (`north_lines = "auto"`, ADR 0023): map objects of the map's 601 symbol, so that they sort by
-/// its colour priority like drawn ones, and [`SheetNote::NorthLinesAdded`]. They are added
-/// before drawing, after the hidden parts are gone. Without `centre_map_mm` the frame's place on
-/// the map follows from what is drawn, so the lines have to span at least the drawn map plus
-/// the frame size.
-fn with_north_lines<'a>(
-    map: Cow<'a, MapDocument>,
-    project: &LoadedProject,
-    layout: &LayoutSpec,
+/// North lines for a map that has none (ADR 0023, ADR 0027), over the frame of `page`, the
+/// first drawing of `map`. `page` and `print` are replaced by the redrawn ones or extended.
+///
+/// With a symbol 601 (or 601.1, or the lowest 601.x) the lines become objects of that symbol in
+/// a part of their own, so they sort by its colour priority like drawn ones; the map is then
+/// drawn again with the orientation and the centre of the first drawing fixed, so that the lines
+/// change neither the page nor the overflow report. Without any such symbol, plain 0.14 mm black
+/// lines go on the sheet layer of `page`, within the frame.
+fn add_north_lines(
+    map: &MapDocument,
+    kind: crate::scale::MapKind,
+    options: &mut PrintOptions,
+    page: &mut RenderedPage,
+    print: &mut PrintReport,
     notes: &mut Vec<SheetNote>,
-) -> Result<Cow<'a, MapDocument>, SheetError> {
-    let _ = (project, layout, notes);
-    Ok(map)
+) -> Result<(), SheetError> {
+    let gf = print.geometry_factor;
+    let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf);
+    let spacing = north_lines::spacing_mm(kind, map.georef.scale_denominator);
+    let xs = north_lines::line_xs_mm(spacing, frame.min.0, frame.max.0);
+    if xs.is_empty() {
+        return Ok(());
+    }
+    let Some(symbol) = north_lines::symbol_id(map.symbol_set.codes()) else {
+        // Page x of map x: the page centre shows `centre_mm`.
+        let page_x = |x: f64| page.page_mm.0 / 2.0 + x * gf - page.centre_mm.0;
+        let (top, bottom) = (
+            page.clip.min.1 + north_lines::INSET_MM,
+            page.clip.max.1 - north_lines::INSET_MM,
+        );
+        // Symbols scale by the symbol factor (ADR 0018), and so does the plain line.
+        let width = north_lines::FALLBACK_WIDTH_MM * print.symbol_factor;
+        let lines = xs.iter().map(|x| SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Stroke {
+                path: vec![(page_x(*x), top), (page_x(*x), bottom)],
+                closed: false,
+                width,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        });
+        let lines: Vec<SheetItem> = lines.collect();
+        page.sheet.extend(lines);
+        notes.push(SheetNote::NorthLinesWithoutSymbol { count: xs.len() });
+        return Ok(());
+    };
+    let mut with = map.clone();
+    with.parts
+        .push(north_lines::part(symbol, &xs, frame.min.1, frame.max.1));
+    options.orientation = if page.page_mm.0 > page.page_mm.1 {
+        Orientation::Landscape
+    } else {
+        Orientation::Portrait
+    };
+    let centre = map_coord([page.centre_mm.0 / gf, page.centre_mm.1 / gf]);
+    options.centre = Some(centre);
+    notes.push(SheetNote::NorthLinesAdded { count: xs.len() });
+    (*page, *print) = render_page(&with, options)?;
+    Ok(())
 }
 
 /// A point in mm on the map sheet as map coordinates (µm). Far outside the `i32` range it
@@ -306,7 +367,8 @@ mod tests {
             orientation: Orientation::Portrait,
             print_scale: None,
             map_frame: MapFrameSpec::default(),
-            north_lines: NorthLines::Auto,
+            // Off here, so that tests of other things see only the objects they set up.
+            north_lines: NorthLines::Never,
             hide_parts: Vec::new(),
             elements: Vec::new(),
             hide_shared: Vec::new(),
@@ -996,5 +1058,252 @@ mod tests {
             missing(&report).unwrap(),
             ["{print_scale}", "{contour_interval}"]
         );
+    }
+
+    // --- North lines (Task 9, ADR 0027) ---
+
+    fn auto() -> LayoutSpec {
+        LayoutSpec {
+            north_lines: NorthLines::Auto,
+            ..a4()
+        }
+    }
+
+    /// An object of the symbol with `code` from (0, 0) to `to` (µm).
+    fn object_of(code: &str, to: (i32, i32)) -> MapObject {
+        MapObject {
+            symbol_id: SymbolSet::issprom_2019().id_for_code(code).unwrap(),
+            ..line(to)
+        }
+    }
+
+    /// x of every vertical two-point stroke, ascending.
+    fn vertical_xs(shapes: impl Iterator<Item = Shape>) -> Vec<f64> {
+        let mut xs: Vec<f64> = shapes
+            .filter_map(|s| match s {
+                Shape::Stroke { path, .. }
+                    if path.len() == 2
+                        && (path[0].0 - path[1].0).abs() < 1e-9
+                        && path[0].1 != path[1].1 =>
+                {
+                    Some(path[0].0)
+                }
+                _ => None,
+            })
+            .collect();
+        xs.sort_by(f64::total_cmp);
+        xs
+    }
+
+    fn map_xs(page: &RenderedPage) -> Vec<f64> {
+        vertical_xs(page.primitives.iter().map(|p| p.shape.clone()))
+    }
+
+    fn sheet_xs(page: &RenderedPage) -> Vec<f64> {
+        vertical_xs(page.sheet.iter().filter_map(|i| match i {
+            SheetItem::Shape { shape, .. } => Some(shape.clone()),
+            _ => None,
+        }))
+    }
+
+    fn gaps(xs: &[f64]) -> Vec<f64> {
+        xs.windows(2).map(|w| w[1] - w[0]).collect()
+    }
+
+    fn added(report: &SheetReport) -> Option<usize> {
+        report.notes.iter().find_map(|n| match n {
+            SheetNote::NorthLinesAdded { count } => Some(*count),
+            _ => None,
+        })
+    }
+
+    fn no_lines_map() -> MapDocument {
+        doc(4000, vec![("default part", vec![line((50_000, 0))])])
+    }
+
+    #[test]
+    fn adds_lines_when_missing() {
+        let (page, report) = sheet(&no_lines_map(), &auto());
+        let xs = map_xs(&page);
+        assert!(xs.len() >= 5, "{xs:?}");
+        assert_eq!(added(&report), Some(xs.len()));
+        // 120 m at 1:4000 is 30 mm on paper, and the lines sit on the map grid from x = 0.
+        assert!(gaps(&xs).iter().all(|g| (g - 30.0).abs() < 1e-6), "{xs:?}");
+        // Map x = 0 is at page x = 105 - 25 (the map is centred on its drawn extent, 0 to 50 mm,
+        // lines included), so the lines are 30 mm apart from x = 0 at page x 80.
+        assert!(xs.iter().any(|x| (x - 80.0).abs() < 1e-6), "{xs:?}");
+        // Every line lies in the frame.
+        assert!(xs.iter().all(|x| (8.0..=202.0).contains(x)), "{xs:?}");
+        // The lines span the frame in height and add no overflow or other page change.
+        let (_, never) = sheet(&no_lines_map(), &a4());
+        assert_eq!(report.print.overflow_mm, never.print.overflow_mm);
+        assert_eq!(report.print.page_mm, never.print.page_mm);
+    }
+
+    #[test]
+    fn lines_keep_the_ground_spacing_at_another_print_scale() {
+        let mut layout = auto();
+        layout.print_scale = Some(3000);
+        let (page, _) = sheet(&no_lines_map(), &layout);
+        let xs = map_xs(&page);
+        assert!(xs.len() >= 4, "{xs:?}");
+        assert!(gaps(&xs).iter().all(|g| (g - 40.0).abs() < 1e-6), "{xs:?}");
+    }
+
+    #[test]
+    fn lines_span_the_frame_around_centre_map_mm() {
+        let mut layout = auto();
+        layout.map_frame.centre_map_mm = Some([400.0, 0.0]);
+        let (page, report) = sheet(&no_lines_map(), &layout);
+        let xs = map_xs(&page);
+        // Map x = 400 mm is at page x = 105; 390 / 30 = 13: a line at map x = 390 mm.
+        assert!(xs.iter().any(|x| (x - 95.0).abs() < 1e-6), "{xs:?}");
+        assert!(xs.len() >= 5 && xs.iter().all(|x| (8.0..=202.0).contains(x)));
+        assert_eq!(added(&report), Some(xs.len()));
+    }
+
+    #[test]
+    fn hostile_centre_keeps_the_count_small() {
+        let mut layout = auto();
+        layout.map_frame.centre_map_mm = Some([1e15, -1e15]);
+        let (page, report) = sheet(&no_lines_map(), &layout);
+        assert!(added(&report).unwrap_or(0) < 100);
+        assert!(map_xs(&page).len() < 100);
+    }
+
+    #[test]
+    fn keeps_existing_lines() {
+        let map = doc(
+            4000,
+            vec![("default part", vec![object_of("601", (0, 50_000))])],
+        );
+        let (page, report) = sheet(&map, &auto());
+        assert_eq!(added(&report), None);
+        assert_eq!(map_xs(&page).len(), 1);
+    }
+
+    #[test]
+    fn variant_of_601_counts_as_north_line() {
+        let map = doc(
+            4000,
+            vec![("default part", vec![object_of("601.5", (0, 50_000))])],
+        );
+        let (_, report) = sheet(&map, &auto());
+        assert_eq!(added(&report), None);
+    }
+
+    #[test]
+    fn hidden_north_line_part_not_replaced() {
+        let map = doc(
+            4000,
+            vec![
+                ("default part", vec![line((50_000, 0))]),
+                (
+                    "peripheral information",
+                    vec![object_of("601", (0, 50_000))],
+                ),
+            ],
+        );
+        let mut layout = auto();
+        layout.hide_parts = vec!["peripheral information".into()];
+        let (page, report) = sheet(&map, &layout);
+        assert_eq!(added(&report), None);
+        assert!(map_xs(&page).is_empty());
+        assert!(sheet_xs(&page).is_empty());
+    }
+
+    #[test]
+    fn never_setting_adds_none() {
+        let (page, report) = sheet(&no_lines_map(), &a4());
+        assert_eq!(added(&report), None);
+        assert!(map_xs(&page).is_empty() && sheet_xs(&page).is_empty());
+    }
+
+    #[test]
+    fn uses_map_symbol_priority() {
+        // A drawn 601 gives the priority the generated lines must have.
+        let reference = doc(
+            4000,
+            vec![("default part", vec![object_of("601", (0, 50_000))])],
+        );
+        let (ref_page, _) = sheet(&reference, &a4());
+        let want: Vec<i32> = ref_page.primitives.iter().map(|p| p.priority).collect();
+        let (page, _) = sheet(&no_lines_map(), &auto());
+        let vertical: Vec<i32> = page
+            .primitives
+            .iter()
+            .filter(|p| !vertical_xs(std::iter::once(p.shape.clone())).is_empty())
+            .map(|p| p.priority)
+            .collect();
+        assert!(!vertical.is_empty());
+        assert!(
+            vertical.iter().all(|p| *p == want[0]),
+            "{vertical:?} {want:?}"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_601_1_then_the_lowest_variant() {
+        let pick = |codes: &[&str]| {
+            north_lines::symbol_id(codes.iter().enumerate().map(|(i, c)| (*c, i as u32)))
+        };
+        assert_eq!(pick(&["601.4", "601", "601.1"]), Some(1));
+        assert_eq!(pick(&["601.4", "601.1"]), Some(1));
+        assert_eq!(pick(&["601.10", "601.4", "601.9"]), Some(1));
+        assert_eq!(pick(&["501", "602"]), None);
+    }
+
+    #[test]
+    fn fallback_without_symbol_noted() {
+        let mut map = no_lines_map();
+        map.symbol_set = map.symbol_set.without_codes_starting("601");
+        let (page, report) = sheet(&map, &auto());
+        assert!(map_xs(&page).is_empty());
+        let xs = sheet_xs(&page);
+        assert!(xs.len() >= 5, "{xs:?}");
+        assert!(gaps(&xs).iter().all(|g| (g - 30.0).abs() < 1e-6), "{xs:?}");
+        assert!(
+            report
+                .notes
+                .contains(&SheetNote::NorthLinesWithoutSymbol { count: xs.len() })
+        );
+        assert_eq!(added(&report), None);
+        // Black, 0.14 mm, inside the frame.
+        for item in &page.sheet {
+            if let SheetItem::Shape {
+                colour,
+                shape: Shape::Stroke { path, width, .. },
+            } = item
+                && path.len() == 2
+                && path[0].0 == path[1].0
+            {
+                assert_eq!(*colour, DirectColour::BLACK);
+                assert!((width - 0.14).abs() < 1e-12);
+                assert!(path[0].1 >= 8.0 && path[1].1 <= 289.0);
+                assert!((8.0..=202.0).contains(&path[0].0));
+            }
+        }
+    }
+
+    #[test]
+    fn fallback_width_follows_the_symbol_factor() {
+        let mut map = no_lines_map();
+        map.symbol_set = map.symbol_set.without_codes_starting("601");
+        let mut layout = auto();
+        layout.print_scale = Some(3000);
+        let (page, _) = sheet(&map, &layout);
+        let widths: Vec<f64> = page
+            .sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Stroke { path, width, .. },
+                    ..
+                } if path.len() == 2 && path[0].0 == path[1].0 => Some(*width),
+                _ => None,
+            })
+            .collect();
+        assert!(!widths.is_empty());
+        assert!(widths.iter().all(|w| (w - 0.14 * 4.0 / 3.0).abs() < 1e-9));
     }
 }

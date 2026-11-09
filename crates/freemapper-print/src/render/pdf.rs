@@ -425,6 +425,7 @@ mod tests {
             primitives: primitives.to_vec(),
             clip: clip(),
             page_mm: (210.0, 297.0),
+            centre_mm: (0.0, 0.0),
             colours: colours(),
             sheet: Vec::new(),
         }

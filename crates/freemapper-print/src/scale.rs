@@ -101,6 +101,20 @@ fn join_scales(scales: &[u32]) -> String {
         .join(", ")
 }
 
+/// Ground distance (m) between north lines for a map of `kind` (ADR 0027): the standards set
+/// 30 mm at the base scale of sprint maps (ISSprOM 2019-2, 120 m at 1:4000) and 20 mm at 1:15000 for
+/// forest maps (ISOM 2017-2, 300 m).
+///
+/// UNVERIFIED: schoolyard 37.5 m (37.5 mm at 1:1000) is a working value the project owner gave; it
+/// is not checked against the IOF school set.
+pub fn north_line_spacing_m(kind: MapKind) -> f64 {
+    match kind {
+        MapKind::Sprint => 120.0,
+        MapKind::Forest => 300.0,
+        MapKind::Schoolyard => 37.5,
+    }
+}
+
 /// Errors for scales outside the table of a map kind.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ScaleError {
@@ -229,6 +243,14 @@ pub fn infer_kind(map: &MapDocument, map_path: &Path) -> Option<MapKind> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn north_line_spacing_per_kind() {
+        use super::{MapKind, north_line_spacing_m};
+        assert_eq!(north_line_spacing_m(MapKind::Sprint), 120.0);
+        assert_eq!(north_line_spacing_m(MapKind::Forest), 300.0);
+        assert_eq!(north_line_spacing_m(MapKind::Schoolyard), 37.5);
+    }
+
     use super::*;
     use crate::omap::read::read_map_file;
 

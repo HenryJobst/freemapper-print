@@ -173,6 +173,7 @@ mod tests {
                 max: (210.0, 297.0),
             },
             page_mm: (210.0, 297.0),
+            centre_mm: (0.0, 0.0),
             colours: Vec::new(),
             sheet: items,
         };

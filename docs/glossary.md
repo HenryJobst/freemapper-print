@@ -76,6 +76,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Objekte unbekannter Art | unknown-type objects | Objekte, deren Objektart (`type`) der Leser nicht kennt (nicht Punkt, Linie/Fläche oder Text). Sie werden samt Inhalt übersprungen und gezählt. | `MapDocument::unknown_objects` |
 | Malreihenfolge | paint order | Reihenfolge der Zeichenbefehle einer gerenderten Seite: nach Farbpriorität, die höchste Nummer zuerst, innerhalb einer Farbe in der Reihenfolge der Kartendatei. | `RenderedPage::primitives` |
 | Randobjekte | sheet objects | Objekte der Karte mit dem freemapper-Tag `freemapper:source=sheet`: der Informationsblock (Titel, Maßstab, Maßstabsleiste, Namensnennung, Symbole 991–994) und die Nordlinien. Den Informationsblock druckt das Programm nur auf Wunsch. Nordlinien (601) gehören zur Karte und werden immer gedruckt (ADR 0023). | `show_sheet_objects` |
+| Nordlinien ergänzen | generated north lines | Nordlinien, die das Programm ergänzt, wenn die Karte keine hat und das Layout `north_lines = "auto"` hat: senkrecht in Kartenkoordinaten, im Bodenabstand der Kartenart, mit dem Symbol 601 der Karte, über den Rahmen (ADR 0027). | `NorthLinesAdded` |
 | Kartenkoordinaten | map coordinates | Koordinaten in Millimetern auf der Karte im Kartenmaßstab, y nach unten, wie in der `.omap`. | `MapCoord` |
 | Renderer | renderer | Teil des Programms, der Kartenobjekte mit ihren Symbolen ins PDF zeichnet. | `render` |
 | Farbpriorität | colour priority | Reihenfolge, in der Farben übereinander gedruckt werden, wie in OOM. | `ColorPriority` |

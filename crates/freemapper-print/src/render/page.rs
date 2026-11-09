@@ -29,6 +29,9 @@ pub struct RenderedPage {
     pub clip: PaperBox,
     /// Width and height of the page: the paper size.
     pub page_mm: (f64, f64),
+    /// The point of the map that lies at the centre of the page, in mm at the print scale (the
+    /// map's own coordinates times the geometry factor; y down as the page).
+    pub centre_mm: Pt,
     pub colours: Vec<RenderColour>,
     /// The sheet elements (title, texts, logos, scale bar, footer), painted after all map
     /// primitives in this order, over the whole page: they are not clipped to `clip`.

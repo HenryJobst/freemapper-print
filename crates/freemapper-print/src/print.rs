@@ -235,6 +235,7 @@ fn render_page_within(
         primitives,
         clip: frame,
         page_mm,
+        centre_mm: centre,
         colours: symbols.colours,
         sheet: Vec::new(),
     };
@@ -288,7 +289,7 @@ fn is_sheet_object(object: &MapObject) -> bool {
 
 /// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
 /// as a sheet object (ADR 0023).
-fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
+pub(crate) fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
     set.code_of(object.symbol_id)
         .is_some_and(|code| code == "601" || code.starts_with("601."))
 }
