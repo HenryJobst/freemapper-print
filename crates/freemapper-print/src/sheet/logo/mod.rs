@@ -152,10 +152,13 @@ impl LogoCache {
         self.entries.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// The logo at `path` if `budget` has room for it, decoding it on first use. The error is the
+    /// The logo at `path` if `budget` has room for it, decoding it on first use. Spellings of one
+    /// path share an entry ([`lexically_normal`]). The error is the
     /// reason the logo is left out.
     fn get(&self, path: &Path, budget: &LogoBudget) -> Result<Logo, LogoSkipReason> {
-        let known = match self.entries().by_path.get(path) {
+        // One key for every spelling of the path, so that each file is decoded once.
+        let key = lexically_normal(path);
+        let known = match self.entries().by_path.get(&key) {
             Some(Entry::Failed(reason)) => return Err(reason.clone()),
             Some(Entry::Known { cost, logo }) => Some((*cost, logo.clone())),
             None => None,
@@ -173,7 +176,7 @@ impl LogoCache {
             Err(reason) => {
                 self.entries()
                     .by_path
-                    .insert(path.to_path_buf(), Entry::Failed(reason.clone()));
+                    .insert(key.clone(), Entry::Failed(reason.clone()));
                 return Err(reason);
             }
         };
@@ -184,7 +187,7 @@ impl LogoCache {
         if let Err(reason) = budget.fits(cost, &self.limits) {
             self.entries()
                 .by_path
-                .insert(path.to_path_buf(), Entry::Known { cost, logo: None });
+                .insert(key.clone(), Entry::Known { cost, logo: None });
             return Err(reason);
         }
         if matches!(probe, Probe::Raster { .. }) {
@@ -195,18 +198,18 @@ impl LogoCache {
             Err(reason) => {
                 self.entries()
                     .by_path
-                    .insert(path.to_path_buf(), Entry::Failed(reason.clone()));
+                    .insert(key.clone(), Entry::Failed(reason.clone()));
                 return Err(reason);
             }
         };
-        self.keep(path, cost, logo.clone());
+        self.keep(key, cost, logo.clone());
         budget.take(cost, &self.limits)?;
         Ok(logo)
     }
 
     /// Stores a decoded logo, first dropping the decoded ones held when it would not fit beside
     /// them.
-    fn keep(&self, path: &Path, cost: Cost, logo: Logo) {
+    fn keep(&self, key: PathBuf, cost: Cost, logo: Logo) {
         let mut entries = self.entries();
         let (pixels, svg) = match cost {
             Cost::Pixels(n) => (n, 0),
@@ -226,13 +229,37 @@ impl LogoCache {
         entries.held_pixels += pixels;
         entries.held_svg += svg;
         entries.by_path.insert(
-            path.to_path_buf(),
+            key,
             Entry::Known {
                 cost,
                 logo: Some(logo),
             },
         );
     }
+}
+
+/// `path` with `.` dropped and each `..` taking away the name before it, without asking the file
+/// system: `logos/../logos/a.png` and `./logos/a.png` both become `logos/a.png`. A link is not
+/// followed, so a path through a symbolic link and `..` may name another file than the result;
+/// the cache key only needs equal spellings of one path to agree.
+fn lexically_normal(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component<'_>> = Vec::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => match out.last() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                // `..` at the root stays at the root.
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => out.push(c),
+            },
+            other => out.push(other),
+        }
+    }
+    out.iter().collect()
 }
 
 /// What the logos of one sheet have used of its budgets so far.
@@ -1061,6 +1088,45 @@ mod tests {
             crate::sheet::render_sheet(&missing, &map, &missing.project.layouts[0], &cache)
                 .unwrap();
         assert_eq!(logo_notes(&report).len(), 3);
+    }
+
+    #[test]
+    fn spellings_of_one_path_share_one_decode() {
+        // `./logos/club.png` and `logos/../logos/club.png` name one file.
+        let plain = fixture("club.png");
+        let dir = plain.parent().unwrap();
+        let dotted = dir.join(".").join("club.png");
+        let detour = dir.join("..").join("logos").join("club.png");
+        let mut lp = many_logos(&plain, 3);
+        let layout = &mut lp.project.layouts[0];
+        layout.elements[1].file = Some(dotted);
+        layout.elements[2].file = Some(detour.clone());
+        let cache = LogoCache::new();
+        let (page, report) =
+            crate::sheet::render_sheet(&lp, &empty_map(), &lp.project.layouts[0], &cache).unwrap();
+        assert_eq!(logo_notes(&report), []);
+        let drawn = images(&page);
+        assert_eq!(drawn.len(), 3);
+        assert!(drawn.iter().all(|i| Arc::ptr_eq(i, &drawn[0])));
+        assert_eq!(cache.decodes(), 1);
+        // Notes keep the user's spelling.
+        let mut missing = many_logos(&dir.join("..").join("logos").join("nope.png"), 1);
+        missing.project.layouts[0].elements[0].file =
+            Some(dir.join("..").join("logos").join("nope.png"));
+        let (_, report) =
+            crate::sheet::render_sheet(&missing, &empty_map(), &missing.project.layouts[0], &cache)
+                .unwrap();
+        assert!(matches!(&logo_notes(&report)[..],
+            [SheetNote::LogoSkipped { file: Some(f), .. }] if f.to_string_lossy().contains("..")));
+    }
+
+    #[test]
+    fn lexical_normalisation() {
+        let n = |p: &str| lexically_normal(Path::new(p));
+        assert_eq!(n("/a/./b/../c.png"), PathBuf::from("/a/c.png"));
+        assert_eq!(n("a/../../b"), PathBuf::from("../b"));
+        assert_eq!(n("/.."), PathBuf::from("/"));
+        assert_eq!(n("./x"), PathBuf::from("x"));
     }
 
     #[test]
