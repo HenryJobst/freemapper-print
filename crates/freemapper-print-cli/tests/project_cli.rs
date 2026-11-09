@@ -39,6 +39,10 @@ fn run(lang: &str, args: &[&str]) -> Output {
     command(lang).args(args).output().expect("run binary")
 }
 
+fn run_owned(lang: &str, args: &[String]) -> Output {
+    command(lang).args(args).output().expect("run binary")
+}
+
 fn stderr(o: &Output) -> String {
     String::from_utf8_lossy(&o.stderr).into_owned()
 }
@@ -765,4 +769,637 @@ fn init_without_fit_warns_and_says_check_will_complain() {
         assert!(o.status.success(), "{err}");
         assert!(err.contains(warning) && err.contains(next), "{lang}: {err}");
     }
+}
+
+// ---- courses ----
+
+const LUEBECK_COURSES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../freemapper-print/tests/fixtures/courses/luebeck-sheets.xml"
+);
+
+/// A project on the Lübeck map with the two courses of `luebeck-sheets.xml`: `Kurz` on the first layout (no
+/// assignment), `D/H 12` assigned to an A3 layout.
+fn course_workspace() -> (Workspace, PathBuf) {
+    let ws = Workspace::new(LUEBECK);
+    std::fs::copy(LUEBECK_COURSES, ws.event().join("c.xml")).unwrap();
+    let text = format!(
+        "format = 1\n[event]\ntitle = \"Lübeck: Training\"\n[sources]\nmap = \"../maps/luebeck.omap\"\n\
+         courses = \"c.xml\"\ncourse_y_axis = \"up\"\n[map]\nkind = \"sprint\"\ncontour_interval_m = 2.0\n{}\
+         {}[[assignments]]\ncourse = \"D/H 12\"\nlayout = \"a3\"\n",
+        BAR,
+        layouts(&[("a4", "A4", "portrait"), ("a3", "A3", "landscape")])
+    );
+    std::fs::write(ws.project_file(), text).unwrap();
+    let path = ws.project_file();
+    (ws, path)
+}
+
+#[test]
+fn export_course_filter_and_single_file() {
+    let (ws, path) = course_workspace();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["export", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let out = ws.event().join("out");
+    assert_eq!(files_in(&out), ["D-H 12.pdf", "Kurz.pdf"]);
+    assert_page_mm(&out.join("Kurz.pdf"), 210.0, 297.0);
+    assert_page_mm(&out.join("D-H 12.pdf"), 420.0, 297.0);
+    assert!(err.contains("for course \"Kurz\" on layout a4"), "{err}");
+    assert!(err.contains("course \"Kurz\" has no assignment"), "{err}");
+    // The notes of the course file come once, before the courses.
+    assert_eq!(err.matches("not checked").count(), 1, "{err}");
+    // --course picks courses; the rest stays as written.
+    std::fs::remove_dir_all(&out).unwrap();
+    let o = run("de", &["export", p, "--course", "D/H 12"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(files_in(&out), ["D-H 12.pdf"]);
+    assert!(
+        stderr(&o).contains("für Bahn „D/H 12“ auf Layout a3"),
+        "{}",
+        stderr(&o)
+    );
+    // One PDF with a page per course, named after the event title.
+    let o = run("en", &["export", p, "--single-file"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let single = "Lübeck- Training - alle Bahnen.pdf";
+    assert_eq!(files_in(&out), ["D-H 12.pdf", single]);
+    let pdf = std::fs::read(out.join(single)).unwrap();
+    assert_eq!(pdf.windows(9).filter(|w| w == b"/MediaBox").count(), 2);
+    assert!(pdf.windows(8).any(|w| w == b"/Count 2"));
+    assert!(
+        err.contains("Page 2, course \"D/H 12\"") && err.contains("with 2 pages"),
+        "{err}"
+    );
+    // An unknown course is a usage error that lists the known ones.
+    let o = run("en", &["export", p, "--course", "Lang"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains("\"Lang\"") && err.contains("\"Kurz\", \"D/H 12\""),
+        "{err}"
+    );
+    // --layout exports the layout sheets without courses and cannot be combined with --course.
+    std::fs::remove_dir_all(&out).unwrap();
+    let o = run("en", &["export", p, "--layout", "a3"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(files_in(&out), ["a3.pdf"]);
+    let o = run("en", &["export", p, "--layout", "a3", "--course", "Kurz"]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+}
+
+#[test]
+fn check_runs_per_course() {
+    let (ws, path) = course_workspace();
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    // No description box yet: every course has a note.
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("Course \"Kurz\" on layout a4"), "{err}");
+    assert!(err.contains("Course \"D/H 12\" on layout a3"), "{err}");
+    assert!(err.contains("With notes: 2 of 2 courses, "), "{err}");
+    assert!(err.contains("of 2 layout sheets."), "{err}");
+    // Then the layout sheets without a course, as `export --layout` writes them (ruling R40).
+    let course = err.find("Course \"D/H 12\" on layout a3").unwrap();
+    let a4 = err.find("Layout a4:").expect("the layout sheet a4");
+    let a3 = err.find("Layout a3:").expect("the layout sheet a3");
+    assert!(course < a4 && a4 < a3, "{err}");
+    let o = run("de", &["check", path.to_str().unwrap()]);
+    assert!(
+        stderr(&o).contains("Mit Hinweisen: 2 von 2 Bahnen, "),
+        "{}",
+        stderr(&o)
+    );
+    assert_eq!(files_in(&ws.event()), ["c.xml", FILE_NAME]);
+}
+
+#[test]
+fn course_flags_need_a_course_file() {
+    let ws = Workspace::new(LUEBECK);
+    let path = ws.write_project("sprint", "", &layouts(&[("a4", "A4", "portrait")]));
+    let o = run("en", &["export", path.to_str().unwrap(), "--single-file"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(err.contains("[sources] courses"), "{err}");
+}
+
+#[test]
+fn nothing_to_export_writes_no_pdf() {
+    // The only course offers alternative controls, so the reader leaves it out.
+    let (ws, path) = course_workspace();
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CourseData xmlns="http://www.orienteering.org/datastandard/3.0" iofVersion="3.0">
+  <RaceCourseData>
+    <Map><Scale>4000</Scale></Map>
+    <Control type="Start"><Id>S1</Id><MapPosition x="-50" y="60" unit="mm"/></Control>
+    <Control type="Control"><Id>31</Id><MapPosition x="20" y="-30" unit="mm"/></Control>
+    <Control type="Control"><Id>32</Id><MapPosition x="100" y="-120" unit="mm"/></Control>
+    <Control type="Finish"><Id>F1</Id><MapPosition x="60" y="20" unit="mm"/></Control>
+    <Course>
+      <Name>Wahl</Name>
+      <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Control"><Control>31</Control><Control>32</Control></CourseControl>
+      <CourseControl type="Finish"><Control>F1</Control></CourseControl>
+    </Course>
+  </RaceCourseData>
+</CourseData>
+"#;
+    std::fs::write(ws.event().join("c.xml"), xml).unwrap();
+    for single in [false, true] {
+        let mut args = vec!["export", path.to_str().unwrap()];
+        if single {
+            args.push("--single-file");
+        }
+        let o = run("en", &args);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(0), "{err}");
+        assert!(
+            err.contains("\"Wahl\"") && err.contains("no PDF was written"),
+            "{err}"
+        );
+        assert_eq!(files_in(&ws.event().join("out")), Vec::<String>::new());
+    }
+}
+
+// ---- courses in init, numbers accept ----
+
+const LUEBECK_PPEN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../freemapper-print/tests/fixtures/courses/luebeck-sheets.ppen"
+);
+const LUEBECK_NUMBERS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../freemapper-print/tests/fixtures/courses/luebeck-numbers.xml"
+);
+
+fn init_args(ws: &Workspace, courses: &str) -> Vec<String> {
+    [
+        "init",
+        ws.event().to_str().unwrap(),
+        "--map",
+        ws.map.to_str().unwrap(),
+        "--kind",
+        "sprint",
+        "--courses",
+        courses,
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+#[test]
+fn init_with_ppen_proposes_layouts_and_assignments() {
+    use freemapper_print::project::ElementKind;
+    for (lang, scale_line, layout_word) in [
+        ("en", "Print scales come from the course file", "Layout"),
+        (
+            "de",
+            "Die Druckmaßstäbe stammen aus der Bahndatei",
+            "Layout",
+        ),
+    ] {
+        let ws = Workspace::new(LUEBECK);
+        let ppen = ws.dir.path().join("luebeck.ppen");
+        std::fs::copy(LUEBECK_PPEN, &ppen).unwrap();
+        let o = run_owned(lang, &init_args(&ws, ppen.to_str().unwrap()));
+        let err = stderr(&o);
+        assert!(o.status.success(), "{err}");
+        let loaded = project::load(&ws.project_file()).expect("the new file loads");
+        let p = &loaded.project;
+        assert_eq!(
+            p.sources.courses.as_deref(),
+            Some(Path::new("../luebeck.ppen"))
+        );
+        // Print scales 4000 (Kurz, and the course without an option) and 5000 (Lang).
+        assert_eq!(p.layouts.len(), 2, "{err}");
+        let at = |s: u32| p.layouts.iter().find(|l| l.print_scale == Some(s)).unwrap();
+        let assigned = |c: &str| {
+            p.assignments
+                .iter()
+                .find(|a| a.course == c)
+                .map(|a| a.layout.as_str())
+        };
+        assert_eq!(assigned("Kurz"), Some(at(4000).id.as_str()));
+        assert_eq!(assigned("Ohne Maßstab"), Some(at(4000).id.as_str()));
+        assert_eq!(assigned("Lang"), Some(at(5000).id.as_str()));
+        assert_ne!(at(4000).id, at(5000).id);
+        assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");
+        for l in &p.layouts {
+            assert!(l.map_frame.crop, "{}", l.id);
+            let boxes: Vec<_> = l
+                .elements
+                .iter()
+                .filter(|e| e.kind == ElementKind::ControlDescriptions)
+                .collect();
+            assert_eq!(boxes.len(), 1, "{}", l.id);
+            assert_eq!(boxes[0].cell_mm, None);
+        }
+        assert!(err.contains(scale_line), "{lang}: {err}");
+        assert!(
+            err.contains(layout_word) && err.contains(&at(5000).id),
+            "{err}"
+        );
+        assert!(err.contains("\"Lang\"") || err.contains("„Lang“"), "{err}");
+    }
+}
+
+#[test]
+fn init_with_iof_xml_makes_one_layout_without_description_box() {
+    let ws = Workspace::new(LUEBECK);
+    let xml = ws.event().join("c.xml");
+    std::fs::copy(LUEBECK_COURSES, &xml).unwrap();
+    let o = run_owned("en", &init_args(&ws, xml.to_str().unwrap()));
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    let p = project::load(&ws.project_file()).unwrap().project;
+    assert_eq!(p.sources.courses.as_deref(), Some(Path::new("c.xml")));
+    assert_eq!(p.layouts.len(), 1);
+    assert_eq!(p.layouts[0].print_scale, Some(4000));
+    // With a course file the id names the scale, also when there is only one.
+    assert!(p.layouts[0].id.ends_with("-4000"), "{}", p.layouts[0].id);
+    assert!(p.layouts[0].elements.is_empty());
+    // Without a description box, only the title block names the course on the sheet.
+    assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");
+    assert!(err.contains("IOF XML"), "{err}");
+    // The course file as the project names it, not its absolute path.
+    assert!(err.contains("Read the course file c.xml:"), "{err}");
+}
+
+#[test]
+fn init_with_a_course_file_that_does_not_fit_writes_nothing() {
+    let ws = Workspace::new(LUEBECK);
+    let xml = ws.event().join("c.xml");
+    let text = std::fs::read_to_string(LUEBECK_COURSES)
+        .unwrap()
+        .replace("<Scale>4000</Scale>", "<Scale>5000</Scale>");
+    std::fs::write(&xml, text).unwrap();
+    let folder = ws.dir.path().join("new-event");
+    let o = run(
+        "en",
+        &[
+            "init",
+            folder.to_str().unwrap(),
+            "--map",
+            ws.map.to_str().unwrap(),
+            "--kind",
+            "sprint",
+            "--courses",
+            xml.to_str().unwrap(),
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("1:5000") && err.contains("course file"),
+        "{err}"
+    );
+    assert!(!folder.exists(), "{err}");
+}
+
+/// A project with the conflicting course of `luebeck-numbers.xml`, comments around the tables, and a
+/// layout of the same name nowhere else.
+fn numbers_workspace() -> (Workspace, PathBuf, String) {
+    let ws = Workspace::new(LUEBECK);
+    std::fs::copy(LUEBECK_NUMBERS, ws.event().join("c.xml")).unwrap();
+    let text = "# My event, kept by hand\nformat = 1\n[event]\ntitle = \"Eng\" # the title\n\
+                [sources]\nmap = \"../maps/luebeck.omap\"\ncourses = \"c.xml\"\ncourse_y_axis = \"up\"\n\
+                [map]\nkind = \"sprint\"\ncontour_interval_m = 2.0\n\n# The only layout\n\
+                [[layouts]]\nid = \"a3\"\npaper = \"A3\"\n# end of file comment\n"
+        .to_string();
+    std::fs::write(ws.project_file(), &text).unwrap();
+    let path = ws.project_file();
+    (ws, path, text)
+}
+
+#[test]
+fn check_lists_number_conflicts_with_proposals() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("the number of control 31 covers the symbol of control 32"),
+        "{err}"
+    );
+    assert!(
+        err.contains("A free position is direction 307.9° with a gap of 0.5 mm"),
+        "{err}"
+    );
+    assert!(err.contains("numbers accept"), "{err}");
+    let o = run("de", &["check", p]);
+    let err = stderr(&o);
+    assert!(
+        err.contains("Die Nummer von Posten 31 überdeckt das Symbol von Posten 32")
+            || err.contains("überdeckt die Nummer von Posten 31 das Symbol von Posten 32"),
+        "{err}"
+    );
+    assert!(
+        err.contains("Richtung 307,9° mit 0,5 mm Abstand") && err.contains("numbers accept"),
+        "{err}"
+    );
+}
+
+#[test]
+fn numbers_accept_appends_and_keeps_comments() {
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    // The proposal of `check`, for the sheet.
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "31",
+            "--sheet",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        new.starts_with(&old),
+        "everything before is unchanged:\n{new}"
+    );
+    let loaded = project::load(&path).unwrap();
+    let n = &loaded.project.numbers;
+    assert_eq!(n.len(), 1, "{new}");
+    assert_eq!(n[0].control, "31");
+    assert_eq!(n[0].course.as_deref(), Some("Eng"));
+    assert_eq!(n[0].layout, None);
+    assert_eq!(n[0].direction, 307.9);
+    assert_eq!(n[0].gap_mm, Some(0.5));
+    // Control 31 has a position in the course file, so the correction remembers it.
+    assert!(n[0].base_seen.is_some(), "{new}");
+    assert!(err.contains("\"Eng\"") && err.contains("31"), "{err}");
+    // The conflict is gone.
+    let o = run("en", &["check", p]);
+    assert!(!stderr(&o).contains("covers the symbol"), "{}", stderr(&o));
+    // A layout-wide correction with values of its own is rounded: 0.1° and 0.01 mm. Control 32 has no
+    // position in the file, so there is no base to remember.
+    let before = std::fs::read_to_string(&path).unwrap();
+    let o = run(
+        "de",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "32",
+            "--layout-wide",
+            "--direction",
+            "90.04",
+            "--gap",
+            "1.236",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(new.starts_with(&before));
+    let loaded = project::load(&path).unwrap();
+    let n = &loaded.project.numbers[1];
+    assert_eq!(n.control, "32");
+    assert_eq!(n.layout.as_deref(), Some("a3"));
+    assert_eq!(n.course, None);
+    assert_eq!(n.direction, 90.0);
+    assert_eq!(n.gap_mm, Some(1.24));
+    assert_eq!(n.base_seen, None);
+    assert!(stderr(&o).contains("Layout a3"), "{}", stderr(&o));
+}
+
+#[test]
+fn numbers_accept_refuses_duplicate() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let args = [
+        "numbers",
+        "accept",
+        p,
+        "--course",
+        "Eng",
+        "--control",
+        "31",
+        "--sheet",
+    ];
+    assert_eq!(run("en", &args).status.code(), Some(0));
+    let done = std::fs::read_to_string(&path).unwrap();
+    for (lang, hint) in [
+        ("en", "Edit the file"),
+        ("de", "Ändern Sie sie in der Datei"),
+    ] {
+        let o = run(lang, &args);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint) && err.contains("31"), "{lang}: {err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    }
+    // No conflict at control 32, so no proposal to take.
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "32",
+            "--sheet",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(err.contains("no proposal"), "{err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    // An unknown course and a gap outside the limit are usage errors too.
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Nope",
+            "--control",
+            "31",
+            "--sheet",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "32",
+            "--sheet",
+            "--direction",
+            "10",
+            "--gap",
+            "11",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+}
+
+#[test]
+fn numbers_accept_restores_the_file_when_it_no_longer_loads() {
+    let (_ws, path, old) = numbers_workspace();
+    // An inline `numbers` array makes the appended table a duplicate key.
+    let broken = format!("numbers = []\n{old}");
+    // `numbers = []` must sit in the top-level table, which the head already is.
+    std::fs::write(&path, &broken).unwrap();
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            path.to_str().unwrap(),
+            "--course",
+            "Eng",
+            "--control",
+            "31",
+            "--sheet",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+}
+
+#[test]
+fn check_reports_y_up_and_stale() {
+    let ws = Workspace::new(LUEBECK);
+    std::fs::copy(LUEBECK_COURSES, ws.event().join("c.xml")).unwrap();
+    let text = format!(
+        "format = 1\n[event]\ntitle = \"T\"\n[sources]\nmap = \"../maps/luebeck.omap\"\ncourses = \"c.xml\"\n\
+         [map]\nkind = \"sprint\"\ncontour_interval_m = 2.0\n{BAR}{}\
+         [[assignments]]\ncourse = \"Weg\"\nlayout = \"a4\"\n\
+         [[numbers]]\ncontrol = \"99\"\ncourse = \"Kurz\"\ndirection = 10.0\n",
+        layouts(&[("a4", "A4", "portrait")])
+    );
+    std::fs::write(ws.project_file(), text).unwrap();
+    let p = ws.project_file();
+    let p = p.to_str().unwrap();
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("y axis points up"), "{err}");
+    assert!(err.contains("assigns course \"Weg\""), "{err}");
+    assert!(
+        err.contains("number of control 99 for course \"Kurz\""),
+        "{err}"
+    );
+    let o = run("de", &["check", p]);
+    let err = stderr(&o);
+    assert!(
+        err.contains("y-Achse der Bahndatei zeigt nach oben"),
+        "{err}"
+    );
+    assert!(err.contains("Bahn „Weg“"), "{err}");
+    assert!(err.contains("Posten 99 für Bahn „Kurz“"), "{err}");
+}
+
+#[test]
+fn numbers_accept_layout_wide_needs_a_proposal_free_for_every_course() {
+    // Ruling R39. Eng2 visits 31 too, with control 33 where Eng's proposal for 31 (direction 307.9°) puts the
+    // number: layout-wide, the proposal would move a conflict onto Eng2's sheet.
+    let (ws, path, old) = numbers_workspace();
+    let xml = std::fs::read_to_string(LUEBECK_NUMBERS).unwrap().replace(
+        "    </Course>\n",
+        "    </Course>\n    <Course>\n      <Name>Eng2</Name>\n      \
+         <CourseControl type=\"Start\"><Control>S1</Control></CourseControl>\n      \
+         <CourseControl type=\"Control\"><Control>31</Control></CourseControl>\n      \
+         <CourseControl type=\"Control\"><Control>33</Control></CourseControl>\n      \
+         <CourseControl type=\"Finish\"><Control>F1</Control></CourseControl>\n    </Course>\n",
+    );
+    let xml = xml.replace(
+        "    <Control type=\"Finish\">",
+        "    <Control type=\"Control\"><Id>33</Id><MapPosition x=\"23.5\" y=\"-35\" unit=\"mm\"/></Control>\n    \
+         <Control type=\"Finish\">",
+    );
+    std::fs::write(ws.event().join("c.xml"), xml).unwrap();
+    let p = path.to_str().unwrap();
+    let accept = |lang: &str, scope: &str| {
+        run(
+            lang,
+            &[
+                "numbers",
+                "accept",
+                p,
+                "--course",
+                "Eng",
+                "--control",
+                "31",
+                scope,
+            ],
+        )
+    };
+    for lang in ["en", "de"] {
+        let o = accept(lang, "--layout-wide");
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains("Eng2") && err.contains("--sheet"), "{err}");
+        assert!(err.contains("--direction"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    }
+    // For the sheet alone it is taken.
+    let o = accept("en", "--sheet");
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    // With values of its own, layout-wide is the user's call.
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng2",
+            "--control",
+            "31",
+            "--layout-wide",
+            "--direction",
+            "120",
+            "--gap",
+            "0.5",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}
+
+#[test]
+fn numbers_accept_layout_wide_takes_a_proposal_free_everywhere() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "31",
+            "--layout-wide",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.numbers[0].layout.as_deref(), Some("a3"));
+    let o = run("en", &["check", p]);
+    assert!(!stderr(&o).contains("covers the symbol"), "{}", stderr(&o));
 }

@@ -328,10 +328,35 @@ mod tests {
             "content",
             "width",
             "height",
+            "course",
+            "controls",
+            "variants",
+            "family",
+            "code",
+            "metres",
+            "reason",
+            "crs",
+            "control",
+            "scope",
+            "page",
+            "text",
+            "conflicts",
+            "direction",
+            "gap",
+            "from",
+            "to",
+            "min",
+            "max",
+            "proposal",
+            "courses",
+            "set",
         ] {
             args.set(name, FluentValue::from("sample"));
         }
         args.set("count", FluentValue::from(3_i64));
+        args.set("layouts", FluentValue::from(2_i64));
+        args.set("layouts_with_notes", FluentValue::from(1_i64));
+        args.set("assignments", FluentValue::from(3_i64));
         args
     }
 

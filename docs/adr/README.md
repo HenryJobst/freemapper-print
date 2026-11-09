@@ -71,3 +71,13 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0028](0028-layout-geometry.md) | Layout geometry: map frame, passe-partout and anchors | Accepted | 2026-11-09 |
 | [0029](0029-footer-placement.md) | Footer placement: below the frame when the whole block fits | Accepted | 2026-11-09 |
 | [0030](0030-safe-pdf-writing.md) | Safe PDF writing: free-space check, `.part` file, 50 MB reserve | Accepted | 2026-11-09 |
+| [0031](0031-print-rules-as-data-profiles.md) | Print rules as data profiles | Accepted | 2026-11-09 |
+| [0032](0032-course-coordinates-and-the-map.md) | Course coordinates and the map | Accepted | 2026-11-09 |
+| [0033](0033-reading-purple-pen-files.md) | Reading Purple Pen files | Accepted | 2026-11-09 |
+| [0034](0034-overprint-layers-and-blending.md) | Overprint layers and blending | Accepted | 2026-11-09 |
+| [0035](0035-course-sheets-and-export-per-course.md) | Course sheets and export per course | Accepted | 2026-11-09 |
+| [0036](0036-control-description-symbols-from-purple-pen.md) | Control description symbols from Purple Pen | Accepted | 2026-11-09 |
+| [0037](0037-control-description-box.md) | Control description box | Accepted | 2026-11-09 |
+| [0038](0038-number-positions-and-the-placement-module.md) | Number positions and the placement module | Accepted | 2026-11-09 |
+| [0039](0039-module-boundaries-for-freemapper-core.md) | Module boundaries for freemapper-core | Accepted | 2026-11-09 |
+| [0040](0040-m3-closing-rulings.md) | M3 closing rulings: German state names and the slow probe | Accepted | 2026-11-09 |

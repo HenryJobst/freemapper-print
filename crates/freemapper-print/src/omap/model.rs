@@ -80,6 +80,26 @@ pub struct MapGeoref {
     pub grivation_deg: f64,
     pub ref_projected: Option<(f64, f64)>,
     pub crs_spec: Option<String>,
+    /// Grid distance over ground distance (`grid_scale_factor` in the file, OOM's combined scale
+    /// factor); 1 when the file has none.
+    pub combined_scale_factor: f64,
+    /// The map point (mm, y down) that `ref_projected` belongs to: `<ref_point>` directly under
+    /// `<georeferencing>`, (0, 0) when the file has none.
+    pub map_ref_mm: (f64, f64),
+}
+
+impl Default for MapGeoref {
+    fn default() -> Self {
+        Self {
+            scale_denominator: 0,
+            declination_deg: 0.0,
+            grivation_deg: 0.0,
+            ref_projected: None,
+            crs_spec: None,
+            combined_scale_factor: 1.0,
+            map_ref_mm: (0.0, 0.0),
+        }
+    }
 }
 
 /// A complete OOM map document.

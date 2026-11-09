@@ -6,10 +6,10 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
+use pdf_writer::types::{BlendMode, LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
-use super::draw::{FillRule, Shape};
+use super::draw::{FillRule, Primitive, Shape};
 use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
 use super::image::RasterImage;
@@ -194,9 +194,9 @@ fn image_name(index: usize) -> String {
 }
 
 /// `image` as a Flate-compressed DeviceRGB XObject, with a DeviceGray soft mask for its alpha.
-fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
+fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>, level: u8) {
     // The whole image is held in memory; pixel limits are enforced where images are decoded (Task 8).
-    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), 6);
+    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), level);
     let mut x = pdf.image_xobject(id, &data);
     x.filter(Filter::FlateDecode);
     x.width(image.width() as i32);
@@ -208,7 +208,7 @@ fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
     }
     x.finish();
     if let (Some(mask), Some(alpha)) = (mask, image.alpha()) {
-        let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, 6);
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, level);
         let mut x = pdf.image_xobject(mask, &data);
         x.filter(Filter::FlateDecode);
         x.width(image.width() as i32);
@@ -242,6 +242,9 @@ pub struct PdfInfo {
 pub struct PdfMeta {
     pub title: String,
     pub creator: String,
+    /// Deflate level (0 to 10) of the page content and image streams: 6 for files; `check` builds the PDF only
+    /// to learn what the page cannot show and uses [`PdfMeta::FAST`].
+    pub compression: u8,
 }
 
 impl PdfMeta {
@@ -250,39 +253,51 @@ impl PdfMeta {
         PdfMeta {
             title: title.to_string(),
             creator: crate::CREDIT.to_string(),
+            compression: 6,
+        }
+    }
+
+    /// The fastest compression, for a PDF that is thrown away.
+    pub const FAST: u8 = 0;
+
+    /// `self` with the page streams compressed at `level`.
+    pub fn compressed(self, level: u8) -> Self {
+        PdfMeta {
+            compression: level,
+            ..self
         }
     }
 }
 
-/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
-/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
-/// not show.
-pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
-    let (page_w, page_h) = page.page_mm;
-    let t = Transform::new(page_h);
-    let colours = &page.colours;
+/// `primitives` with the CMYK of their map colours.
+fn map_run<'a>(
+    colours: &'a [RenderColour],
+    primitives: &'a [Primitive],
+) -> impl Iterator<Item = ([f64; 4], &'a Shape)> + 'a {
+    primitives
+        .iter()
+        .map(|p| (map_cmyk(colours, p.priority), &p.shape))
+}
 
-    // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
-    let items = &page.primitives;
+/// The resource name of the graphics state that paints the course overprint with the blend mode
+/// Multiply.
+const MULTIPLY: &[u8] = b"Mul";
 
-    let mut content = Content::new();
-    let mut fonts = PageFonts::new();
-    // One clip block for the page, and nested in it one for each run of shapes clipped to the
-    // same rings (the lines of one area pattern).
-    if !items.is_empty() {
-        let (cx0, cy0) = t.pt((page.clip.min.0, page.clip.max.1));
-        let (cx1, cy1) = t.pt((page.clip.max.0, page.clip.min.1));
-        content.save_state();
-        content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
-        content.clip_nonzero();
-        content.end_path();
-    }
+/// Paints `shapes` in order, each in its CMYK. Shapes clipped to the same rings share one clip
+/// block, nested in it one for each run of shapes clipped to the same rings (the lines of one area
+/// pattern); every block is closed at the end.
+fn paint_run<'a>(
+    content: &mut Content,
+    t: &Transform,
+    shapes: impl IntoIterator<Item = ([f64; 4], &'a Shape)>,
+    fonts: &mut PageFonts,
+) {
     // The clip blocks open, outermost first. A pattern inside a pattern clips its shapes twice;
     // each level stays open while the next shapes share it.
-    let mut open: Vec<&Arc<[Vec<Pt>]>> = Vec::new();
-    for primitive in items {
+    let mut open: Vec<&'a Arc<[Vec<Pt>]>> = Vec::new();
+    for (cmyk, shape) in shapes {
         let mut chain = Vec::new();
-        let mut shape = &primitive.shape;
+        let mut shape = shape;
         while let Shape::Clipped { rings, inner } = shape {
             chain.push(rings);
             shape = inner;
@@ -300,21 +315,93 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         }
         open.truncate(kept);
         for rings in &chain[kept..] {
-            begin_clip(&mut content, &t, rings);
+            begin_clip(content, t, rings);
             open.push(rings);
         }
-        paint(
-            &mut content,
-            &t,
-            map_cmyk(colours, primitive.priority),
-            shape,
-            &mut fonts,
-        );
+        paint(content, t, cmyk, shape, fonts);
     }
     for _ in &open {
         content.restore_state();
     }
-    if !items.is_empty() {
+}
+
+/// One page drawn into a content stream, before any PDF object is written: the content, the images it uses, and
+/// its MediaBox in points. The fonts it uses come beside it ([`page_body`]).
+struct PageBody<'a> {
+    content: pdf_writer::Buf,
+    /// Each image once, in the order the content names them ([`image_name`]).
+    images: Vec<&'a Arc<RasterImage>>,
+    media_box: Rect,
+    /// The page has a course overprint and needs the Multiply graphics state.
+    overprint: bool,
+}
+
+/// The objects of one page: the references [`write_page`] writes them under.
+struct PageRefs {
+    page: Ref,
+    contents: Ref,
+    fonts: super::fonts::FontObjects,
+    images: Vec<(Ref, Option<Ref>)>,
+    multiply: Option<Ref>,
+}
+
+/// Draws `page` into a content stream: every primitive clipped to `page.clip`, the course overprint among them,
+/// the sheet layer on top. Refuses a page with a number that is not finite before anything is written.
+fn page_body(page: &RenderedPage) -> Result<(PageBody<'_>, PageFonts), PdfError> {
+    let (page_w, page_h) = page.page_mm;
+    let t = Transform::new(page_h);
+    let colours = &page.colours;
+
+    // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
+    let items = &page.primitives;
+
+    let mut content = Content::new();
+    let mut fonts = PageFonts::new();
+    let overprint = &page.overprint;
+    // One clip block for the page: the map and the course overprint lie inside the frame.
+    let clipped = !items.is_empty() || !overprint.is_empty();
+    if clipped {
+        let (cx0, cy0) = t.pt((page.clip.min.0, page.clip.max.1));
+        let (cx1, cy1) = t.pt((page.clip.max.0, page.clip.min.1));
+        content.save_state();
+        content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+        content.clip_nonzero();
+        content.end_path();
+    }
+    // The lower purple goes before the first primitive of the full-strength colour painted first
+    // (ADR 0034), or after all of them.
+    let split = match overprint.below_priority {
+        Some(below) if !overprint.lower.is_empty() => items
+            .iter()
+            .position(|p| p.priority <= below)
+            .unwrap_or(items.len()),
+        _ => items.len(),
+    };
+    paint_run(
+        &mut content,
+        &t,
+        map_run(colours, &items[..split]),
+        &mut fonts,
+    );
+    let purple = overprint.colour.cmyk;
+    let layer = |content: &mut Content, fonts: &mut PageFonts, shapes: &[Shape]| {
+        if shapes.is_empty() {
+            return;
+        }
+        content.save_state();
+        content.set_parameters(Name(MULTIPLY));
+        paint_run(content, &t, shapes.iter().map(|s| (purple, s)), fonts);
+        content.restore_state();
+    };
+    layer(&mut content, &mut fonts, &overprint.lower);
+    paint_run(
+        &mut content,
+        &t,
+        map_run(colours, &items[split..]),
+        &mut fonts,
+    );
+    layer(&mut content, &mut fonts, &overprint.upper);
+    if clipped {
         content.restore_state();
     }
 
@@ -344,55 +431,181 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         }
         content.restore_state();
     }
+    let media_box = Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h));
+    if t.not_finite.get() {
+        return Err(PdfError::NotFinite);
+    }
+    let body = PageBody {
+        content: content.finish(),
+        images,
+        media_box,
+        overprint: !overprint.is_empty(),
+    };
+    Ok((body, fonts))
+}
 
-    // References come from a counter, so a page holds only the fonts it uses.
-    let mut next = Ref::new(1);
-    let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
-    let fonts = fonts.finish(&mut next);
-    let info = next.bump();
-    // Each image takes an object, and a second for its soft mask.
-    let image_refs: Vec<(Ref, Option<Ref>)> = images
+/// The references of `body`'s images: an object each, and a second for a soft mask.
+fn image_refs(body: &PageBody<'_>, next: &mut Ref) -> Vec<(Ref, Option<Ref>)> {
+    body.images
         .iter()
         .map(|i| (next.bump(), i.alpha().is_some().then(|| next.bump())))
-        .collect();
-    let mut pdf = Pdf::new();
-    pdf.catalog(catalog).pages(pages);
-    pdf.pages(pages).kids([page]).count(1);
-    let mut p = pdf.page(page);
-    p.media_box(Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h)));
-    p.parent(pages);
-    p.contents(contents);
+        .collect()
+}
+
+/// Writes the page object of `body` under `parent`, then its content stream, fonts, images and graphics state.
+fn write_page(
+    pdf: &mut Pdf,
+    parent: Ref,
+    body: &PageBody<'_>,
+    refs: &PageRefs,
+    level: u8,
+) -> Result<(), PdfError> {
+    let mut p = pdf.page(refs.page);
+    p.media_box(body.media_box);
+    p.parent(parent);
+    p.contents(refs.contents);
     let mut resources = p.resources();
-    resources.fonts().pairs(fonts.resources());
-    if !image_refs.is_empty() {
-        let names: Vec<String> = (0..image_refs.len()).map(image_name).collect();
+    resources.fonts().pairs(refs.fonts.resources());
+    // Only a page with a course overprint has the graphics state, so other pages stay as they were.
+    if let Some(id) = refs.multiply {
+        resources.ext_g_states().pair(Name(MULTIPLY), id);
+    }
+    if !refs.images.is_empty() {
+        let names: Vec<String> = (0..refs.images.len()).map(image_name).collect();
         resources.x_objects().pairs(
             names
                 .iter()
-                .zip(&image_refs)
+                .zip(&refs.images)
                 .map(|(name, (id, _))| (Name(name.as_bytes()), *id)),
         );
     }
     resources.finish();
     p.finish();
-    if t.not_finite.get() {
-        return Err(PdfError::NotFinite);
-    }
     // The content stream comes first, the font programs after it.
-    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
-    pdf.stream(contents, &compressed)
+    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&body.content, level);
+    pdf.stream(refs.contents, &compressed)
         .filter(Filter::FlateDecode);
-    fonts.write(&mut pdf)?;
-    for (image, (id, mask)) in images.iter().zip(&image_refs) {
-        write_image(&mut pdf, image, *id, *mask);
+    refs.fonts.write(pdf)?;
+    for (image, (id, mask)) in body.images.iter().zip(&refs.images) {
+        write_image(pdf, image, *id, *mask, level);
     }
-    pdf.document_info(info)
+    if let Some(id) = refs.multiply {
+        pdf.ext_graphics(id).blend_mode(BlendMode::Multiply);
+    }
+    Ok(())
+}
+
+fn write_info(pdf: &mut Pdf, id: Ref, meta: &PdfMeta) {
+    pdf.document_info(id)
         .title(TextStr(&meta.title))
         .creator(TextStr(&meta.creator));
+}
+
+/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
+/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
+/// not show.
+pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
+    let (body, fonts) = page_body(page)?;
+    // References come from a counter, so a page holds only the fonts it uses.
+    let mut next = Ref::new(1);
+    let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
+    let fonts = fonts.finish(&mut next);
+    let info = next.bump();
+    let images = image_refs(&body, &mut next);
+    let multiply = body.overprint.then(|| next.bump());
+    let refs = PageRefs {
+        page,
+        contents,
+        fonts,
+        images,
+        multiply,
+    };
+    let mut pdf = Pdf::new();
+    pdf.catalog(catalog).pages(pages);
+    pdf.pages(pages).kids([page]).count(1);
+    write_page(&mut pdf, pages, &body, &refs, meta.compression)?;
+    write_info(&mut pdf, info, meta);
     let info = PdfInfo {
-        missing_glyphs: fonts.missing,
+        missing_glyphs: refs.fonts.missing,
     };
     Ok((pdf.finish(), info))
+}
+
+/// A PDF of several pages, written one page at a time: [`MultiPagePdf::add_page`] turns a page into PDF objects
+/// at once, so the caller can drop it before drawing the next. Only the PDF bytes grow. Each page embeds its own
+/// font subsets and images, as a one-page PDF of it would.
+pub struct MultiPagePdf {
+    pdf: Pdf,
+    next: Ref,
+    catalog: Ref,
+    pages: Ref,
+    kids: Vec<Ref>,
+}
+
+impl Default for MultiPagePdf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MultiPagePdf {
+    pub fn new() -> Self {
+        let mut next = Ref::new(1);
+        let (catalog, pages) = (next.bump(), next.bump());
+        MultiPagePdf {
+            pdf: Pdf::new(),
+            next,
+            catalog,
+            pages,
+            kids: Vec::new(),
+        }
+    }
+
+    /// Appends `page` with its own MediaBox. A page refused for a number that is not finite leaves the document as
+    /// it was; after a font that cannot be embedded the document is incomplete and must be dropped.
+    pub fn add_page(&mut self, page: &RenderedPage) -> Result<PdfInfo, PdfError> {
+        let (body, fonts) = page_body(page)?;
+        let mut next = self.next;
+        let (page_ref, contents) = (next.bump(), next.bump());
+        let fonts = fonts.finish(&mut next);
+        let images = image_refs(&body, &mut next);
+        let multiply = body.overprint.then(|| next.bump());
+        let refs = PageRefs {
+            page: page_ref,
+            contents,
+            fonts,
+            images,
+            multiply,
+        };
+        write_page(&mut self.pdf, self.pages, &body, &refs, 6)?;
+        self.next = next;
+        self.kids.push(page_ref);
+        Ok(PdfInfo {
+            missing_glyphs: refs.fonts.missing,
+        })
+    }
+
+    /// The number of pages added.
+    pub fn len(&self) -> usize {
+        self.kids.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.kids.is_empty()
+    }
+
+    /// The finished PDF, its pages in the order they were added.
+    pub fn finish(mut self, meta: &PdfMeta) -> Vec<u8> {
+        self.pdf.catalog(self.catalog).pages(self.pages);
+        let count = i32::try_from(self.kids.len()).unwrap_or(i32::MAX);
+        self.pdf
+            .pages(self.pages)
+            .kids(self.kids.iter().copied())
+            .count(count);
+        let info = self.next.bump();
+        write_info(&mut self.pdf, info, meta);
+        self.pdf.finish()
+    }
 }
 
 /// The decompressed page content of a PDF written by [`write_pdf`] (for tests).
@@ -414,12 +627,14 @@ mod tests {
         vec![
             RenderColour {
                 priority: 2,
+                name: "Black".into(),
                 cmyk: [0.0, 0.0, 0.0, 1.0],
                 rgb: [0.0, 0.0, 0.0],
                 opacity: 1.0,
             },
             RenderColour {
                 priority: 9,
+                name: "Black 60%".into(),
                 cmyk: [0.0, 0.0, 0.0, 0.6],
                 rgb: [0.4, 0.4, 0.4],
                 opacity: 1.0,
@@ -428,13 +643,13 @@ mod tests {
     }
 
     fn square(priority: i32) -> Primitive {
-        Primitive {
+        Primitive::new(
             priority,
-            shape: Shape::Fill {
+            Shape::Fill {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
                 rule: FillRule::EvenOdd,
             },
-        }
+        )
     }
 
     fn clip() -> PaperBox {
@@ -453,6 +668,7 @@ mod tests {
             centre_mm: (0.0, 0.0),
             colours: colours(),
             sheet: Vec::new(),
+            overprint: Default::default(),
         }
     }
 
@@ -469,17 +685,37 @@ mod tests {
     }
 
     #[test]
+    fn fast_compression_changes_only_the_bytes() {
+        let square = Primitive::new(
+            2,
+            Shape::Stroke {
+                path: vec![(10.0, 10.0), (50.0, 10.0), (50.0, 50.0)],
+                closed: true,
+                width: 0.3,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        );
+        let p = page(&[square]);
+        let (normal, a) = write_pdf(&p, &PdfMeta::new("t")).unwrap();
+        let (fast, b) = write_pdf(&p, &PdfMeta::new("t").compressed(PdfMeta::FAST)).unwrap();
+        assert_eq!(content_of(&normal), content_of(&fast));
+        assert_eq!(a, b);
+        assert_eq!(PdfMeta::new("t").compression, 6);
+    }
+
+    #[test]
     fn numbers_beyond_f32_refuse_the_page() {
-        let far = Primitive {
-            priority: 2,
-            shape: Shape::Stroke {
+        let far = Primitive::new(
+            2,
+            Shape::Stroke {
                 path: vec![(1e300, 0.0), (0.0, 0.0)],
                 closed: false,
                 width: 0.1,
                 cap: Cap::Flat,
                 join: Join::Miter,
             },
-        };
+        );
         let err = write_pdf(&page(&[far]), &PdfMeta::new("t")).unwrap_err();
         assert!(matches!(err, PdfError::NotFinite), "{err}");
         // A sheet item too: a text of infinite size.
@@ -529,16 +765,16 @@ mod tests {
 
     #[test]
     fn strokes_carry_width_caps_and_miter_limit() {
-        let line = Primitive {
-            priority: 2,
-            shape: Shape::Stroke {
+        let line = Primitive::new(
+            2,
+            Shape::Stroke {
                 path: vec![(0.0, 0.0), (10.0, 0.0)],
                 closed: false,
                 width: 0.35,
                 cap: Cap::Round,
                 join: Join::Miter,
             },
-        };
+        );
         let pdf = content_of(&write(&[line]));
         assert!(find(&pdf, b"0 0 0 1 K").is_some(), "stroke colour");
         assert!(find(&pdf, b"1 J").is_some(), "round cap");
@@ -547,9 +783,9 @@ mod tests {
     }
 
     fn clipped_line(y: f64) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Clipped {
+        Primitive::new(
+            2,
+            Shape::Clipped {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]].into(),
                 inner: Box::new(Shape::Stroke {
                     path: vec![(5.0, y), (25.0, y)],
@@ -559,7 +795,7 @@ mod tests {
                     join: Join::Miter,
                 }),
             },
-        }
+        )
     }
 
     #[test]
@@ -592,13 +828,13 @@ mod tests {
                 let Shape::Clipped { inner, .. } = clipped_line(11.0 + f64::from(i)).shape else {
                     panic!()
                 };
-                Primitive {
-                    priority: 2,
-                    shape: Shape::Clipped {
+                Primitive::new(
+                    2,
+                    Shape::Clipped {
                         rings: Arc::clone(&shared),
                         inner,
                     },
-                }
+                )
             })
             .collect();
         lines.insert(0, first);
@@ -624,16 +860,16 @@ mod tests {
                 else {
                     panic!()
                 };
-                Primitive {
-                    priority: 2,
-                    shape: Shape::Clipped {
+                Primitive::new(
+                    2,
+                    Shape::Clipped {
                         rings: Arc::clone(&outer),
                         inner: Box::new(Shape::Clipped {
                             rings: Arc::clone(&inner),
                             inner: line,
                         }),
                     },
-                }
+                )
             })
             .collect();
         let pdf = content_of(&write(&lines));
@@ -646,9 +882,9 @@ mod tests {
     }
 
     fn text(rotation: f64, stroke: Option<f64>) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Text {
+        Primitive::new(
+            2,
+            Shape::Text {
                 origin: (10.0, 10.0),
                 size: 2.5,
                 bold: false,
@@ -657,7 +893,7 @@ mod tests {
                 rotation,
                 stroke,
             },
-        }
+        )
     }
 
     #[test]
@@ -715,9 +951,9 @@ mod tests {
     }
 
     fn plain_text(text: &str, bold: bool, italic: bool) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Text {
+        Primitive::new(
+            2,
+            Shape::Text {
                 origin: (10.0, 10.0),
                 size: 2.5,
                 bold,
@@ -726,7 +962,7 @@ mod tests {
                 rotation: 0.0,
                 stroke: None,
             },
-        }
+        )
     }
 
     /// Every stream of `pdf`, decompressed (all streams written here are FlateDecode).
@@ -930,6 +1166,41 @@ mod tests {
             find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some(),
             "A4"
         );
+    }
+
+    #[test]
+    fn multi_page_pdf_has_a_media_box_per_page() {
+        let mut doc = MultiPagePdf::new();
+        let a4 = page(&[square(2)]);
+        let mut a3 = page(&[plain_text("Bahn", false, false)]);
+        a3.page_mm = (297.0, 420.0);
+        assert!(doc.is_empty());
+        doc.add_page(&a4).unwrap();
+        let info = doc.add_page(&a3).unwrap();
+        assert!(info.missing_glyphs.is_empty());
+        assert_eq!(doc.len(), 2);
+        let pdf = doc.finish(&PdfMeta::new("Alle Bahnen"));
+        assert!(find(&pdf, b"/Count 2").is_some());
+        assert!(find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some());
+        assert!(find(&pdf, b"/MediaBox [0 0 841.8898 1190.5511]").is_some());
+        assert!(find(&pdf, b"(Alle Bahnen)").is_some());
+        assert!(pdf.ends_with(b"%%EOF") || pdf.ends_with(b"%%EOF\n"));
+        // A page that cannot be written is refused and leaves the document as it was.
+        let mut doc = MultiPagePdf::new();
+        let mut bad = page(&[]);
+        bad.page_mm = (f64::INFINITY, 1.0);
+        assert!(matches!(doc.add_page(&bad), Err(PdfError::NotFinite)));
+        assert!(doc.is_empty());
+    }
+
+    #[test]
+    fn one_page_of_a_multi_page_pdf_matches_the_single_page_pdf_content() {
+        let p = page(&[square(2), plain_text("Posten", true, false)]);
+        let single = write(&[square(2), plain_text("Posten", true, false)]);
+        let mut doc = MultiPagePdf::new();
+        doc.add_page(&p).unwrap();
+        let multi = doc.finish(&PdfMeta::new("Test"));
+        assert_eq!(content_of(&single), content_of(&multi));
     }
 
     fn sheet_page(sheet: Vec<SheetItem>, primitives: &[Primitive]) -> Vec<u8> {

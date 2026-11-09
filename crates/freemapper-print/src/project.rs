@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::course::{NumberPlacement, fit::YAxis};
 use crate::print::{Orientation, Paper};
+use crate::rules::RuleSet;
 use crate::scale::MapKind;
 
 /// The only format version this program reads and writes.
@@ -19,6 +21,10 @@ pub const MAX_SIZE_PT: f64 = 200.0;
 pub const MAX_LENGTH_MM: f64 = 2000.0;
 /// Widest frame line (mm).
 pub const MAX_BORDER_MM: f64 = 20.0;
+/// Smallest and largest printed cell of a control description box (mm). Below 4 mm the symbols are hard to
+/// read; IOF events print 5 to 7 mm, and 10 mm leaves room for training sheets in large print.
+pub const MIN_CELL_MM: f64 = 4.0;
+pub const MAX_CELL_MM: f64 = 10.0;
 /// Largest contour interval (m).
 pub const MAX_CONTOUR_INTERVAL_M: f64 = 100.0;
 /// Farthest map point a frame may centre on, in either direction (mm on the map sheet). OOM maps
@@ -46,7 +52,44 @@ pub struct Project {
     pub shared: Vec<ElementSpec>,
     #[serde(default)]
     pub layouts: Vec<LayoutSpec>,
+    /// Which layout prints which course (ADR 0025). A course without an entry takes the first layout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignments: Vec<Assignment>,
+    /// Number placements that differ from the course file, per layout or per course.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub numbers: Vec<NumberCorrection>,
 }
+
+/// One course printed on one layout. The course name is the course file's; the entry stays in the
+/// file when the course file no longer has the course (stale data, ADR 0025).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Assignment {
+    pub course: String,
+    pub layout: String,
+}
+
+/// A control number placement that overrides the course file's. Exactly one of `layout` and `course`
+/// is set. Without `gap_mm`, the gap from the level below is kept.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NumberCorrection {
+    pub control: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub course: Option<String>,
+    /// Degrees, 0 is east, counter-clockwise; normalised to [0, 360) when the file is read.
+    pub direction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_mm: Option<f64>,
+    /// The course file's placement when the correction was made; `numbers accept` writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_seen: Option<NumberPlacement>,
+}
+
+/// The largest `gap_mm` of a number correction (print mm).
+pub const MAX_NUMBER_GAP_MM: f64 = 10.0;
 
 /// Language of the printed sheet: number formats and fixed sheet words. Independent of the program language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -74,6 +117,35 @@ pub struct Event {
 pub struct Sources {
     /// Path of the map, relative to the project file.
     pub map: PathBuf,
+    /// Path of the course file (`.ppen` or `.xml`), relative to the project file. It is read again at every
+    /// `check` and `export` (ADR 0025).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub courses: Option<PathBuf>,
+    /// The course file's y axis when it is set; unset, the fit detects it (ADR 0032).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub course_y_axis: Option<YAxis>,
+    /// Whether latitude and longitude in the course file check and place controls (ADR 0032).
+    #[serde(
+        default = "default_true",
+        skip_serializing_if = "std::clone::Clone::clone"
+    )]
+    pub course_georef_check: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Sources {
+    /// Sources with only a map.
+    pub fn new(map: PathBuf) -> Self {
+        Sources {
+            map,
+            courses: None,
+            course_y_axis: None,
+            course_georef_check: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,11 +156,39 @@ pub struct MapSettings {
     pub contour_interval_m: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrintSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
+    /// The embedded base rule profile the print rules come from (ADR 0031). Left out of a written
+    /// file while it is the default `iof-print`.
+    #[serde(
+        default = "default_rule_profile",
+        skip_serializing_if = "is_default_rule_profile"
+    )]
+    pub rule_profile: String,
+    /// Embedded overlays on the base profile, applied in order. Left out while empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rule_overlays: Vec<String>,
+}
+
+fn default_rule_profile() -> String {
+    crate::rules::BASE_PROFILE.to_string()
+}
+
+fn is_default_rule_profile(id: &str) -> bool {
+    id == crate::rules::BASE_PROFILE
+}
+
+impl Default for PrintSettings {
+    fn default() -> Self {
+        PrintSettings {
+            copyright: None,
+            rule_profile: default_rule_profile(),
+            rule_overlays: Vec::new(),
+        }
+    }
 }
 
 impl PrintSettings {
@@ -168,6 +268,8 @@ pub enum ElementKind {
     ScaleCheckBar,
     CreditLine,
     CopyrightLine,
+    /// The control description box of the course; drawn on course sheets only.
+    ControlDescriptions,
 }
 
 /// A sheet element. One flat struct: which optional fields apply depends on `kind` (see `validate`).
@@ -192,6 +294,9 @@ pub struct ElementSpec {
     /// logo: printed width in mm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width_mm: Option<f64>,
+    /// control_descriptions: printed side of one cell in mm; the rule profile's size when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell_mm: Option<f64>,
 }
 
 impl ElementSpec {
@@ -254,6 +359,10 @@ pub struct LoadedProject {
     /// Absolute directory of the project file; relative paths inside it resolve against this.
     pub dir: PathBuf,
     pub project: Project,
+    /// The rule set `[print] rule_profile` and `rule_overlays` name (ADR 0031), loaded once by
+    /// [`load`]. Course symbol sizes, the description cell, placement weights and the north-line
+    /// spacing on sheets come from here; the scale table behind `scale.rs` stays the base profile's.
+    pub rules: RuleSet,
 }
 
 impl LoadedProject {
@@ -358,20 +467,38 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
             found: probe.format,
         });
     }
-    let project: Project = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    let mut project: Project = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    for n in &mut project.numbers {
+        n.direction = normalised_degrees(n.direction);
+        if let Some(b) = &mut n.base_seen {
+            b.direction = normalised_degrees(b.direction);
+        }
+    }
 
     let abs = std::path::absolute(path).map_err(|source| ProjectError::Io {
         file: file.clone(),
         source,
     })?;
     let dir = abs.parent().map(Path::to_path_buf).unwrap_or_default();
+    let rules = rule_set_of(&file, &project.print).map_err(|e| with_line(e, &text))?;
     let loaded = LoadedProject {
         path: path.to_path_buf(),
         dir,
         project,
+        rules,
     };
     validate(&file, &loaded).map_err(|e| with_line(e, &text))?;
     Ok(loaded)
+}
+
+/// `degrees` in [0, 360); a value that is not finite stays as it is for the validation to refuse.
+fn normalised_degrees(degrees: f64) -> f64 {
+    if !degrees.is_finite() {
+        return degrees;
+    }
+    let d = degrees.rem_euclid(360.0);
+    // `rem_euclid` of a tiny negative value rounds up to 360.
+    if d >= 360.0 { 0.0 } else { d }
 }
 
 /// `err` with the line and column of its field when the TOML text has the field, or of the
@@ -540,7 +667,145 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             ));
         }
     }
+    check_courses(file, p, &layout_ids)
+}
+
+/// Course assignments and number corrections: known layouts, no two entries for one course, values in
+/// range. Course names and controls are checked against the course file at load time, not here.
+fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<(), ProjectError> {
+    if let Some(c) = &p.sources.courses
+        && c.as_os_str().is_empty()
+    {
+        return Err(invalid(file, "sources.courses".into(), "must not be empty"));
+    }
+    let known = |id: &str| {
+        let mut ids: Vec<&str> = p.layouts.iter().map(|l| l.id.as_str()).collect();
+        ids.sort_unstable();
+        format!(
+            "there is no layout with the id `{id}`; available: {}",
+            ids.join(", ")
+        )
+    };
+    let mut courses = HashSet::new();
+    for (i, a) in p.assignments.iter().enumerate() {
+        non_empty(file, format!("assignments[{i}].course"), &a.course)?;
+        if !layout_ids.contains(a.layout.as_str()) {
+            return Err(invalid(
+                file,
+                format!("assignments[{i}].layout"),
+                &known(&a.layout),
+            ));
+        }
+        if !courses.insert(a.course.as_str()) {
+            return Err(ProjectError::DuplicateId {
+                file: file.to_string(),
+                field: format!("assignments[{i}].course"),
+                id: a.course.clone(),
+            });
+        }
+    }
+    let mut corrections = HashSet::new();
+    for (i, n) in p.numbers.iter().enumerate() {
+        let at = |k: &str| format!("numbers[{i}].{k}");
+        non_empty(file, at("control"), &n.control)?;
+        match (&n.layout, &n.course) {
+            (Some(_), Some(_)) => {
+                return Err(invalid(
+                    file,
+                    format!("numbers[{i}]"),
+                    "set either `layout` or `course`, not both",
+                ));
+            }
+            (None, None) => {
+                return Err(invalid(
+                    file,
+                    format!("numbers[{i}]"),
+                    "needs `layout` (all courses on that layout) or `course` (one course)",
+                ));
+            }
+            (Some(l), None) if !layout_ids.contains(l.as_str()) => {
+                return Err(invalid(file, at("layout"), &known(l)));
+            }
+            (None, Some(c)) => non_empty(file, at("course"), c)?,
+            _ => {}
+        }
+        let scope = (n.control.as_str(), n.layout.as_deref(), n.course.as_deref());
+        if !corrections.insert(scope) {
+            return Err(ProjectError::DuplicateId {
+                file: file.to_string(),
+                field: format!("numbers[{i}].control"),
+                id: n.control.clone(),
+            });
+        }
+        if !n.direction.is_finite() {
+            return Err(invalid(file, at("direction"), "must be a finite number"));
+        }
+        if let Some(g) = n.gap_mm {
+            gap_in_range(file, at("gap_mm"), g)?;
+        }
+        // `base_seen` records the course file's placement as it was, so any finite gap goes: a Purple Pen
+        // number that touches its circle has a negative one, a far one more than the corrections allow.
+        if let Some(b) = &n.base_seen {
+            for (value, field) in [(b.direction, "direction"), (b.gap_mm, "gap_mm")] {
+                if !value.is_finite() {
+                    return Err(invalid(
+                        file,
+                        at(&format!("base_seen.{field}")),
+                        "must be a finite number",
+                    ));
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+fn gap_in_range(file: &str, field: String, gap_mm: f64) -> Result<(), ProjectError> {
+    if gap_mm.is_finite() && gap_mm > 0.0 && gap_mm <= MAX_NUMBER_GAP_MM {
+        Ok(())
+    } else {
+        Err(invalid(
+            file,
+            field,
+            &format!("must be more than 0 and at most {MAX_NUMBER_GAP_MM} mm"),
+        ))
+    }
+}
+
+/// The rule set of `[print] rule_profile` and `rule_overlays`, which must name embedded profiles
+/// that load together. The error names the field of the profile that is wrong.
+fn rule_set_of(file: &str, print: &PrintSettings) -> Result<RuleSet, ProjectError> {
+    use crate::rules::{RuleError, load_rule_set};
+    let err = match load_rule_set(&print.rule_profile, &print.rule_overlays) {
+        Ok(set) => return Ok(set),
+        Err(err) => err,
+    };
+    let overlay_field = |id: &str| {
+        print
+            .rule_overlays
+            .iter()
+            .position(|o| o == id)
+            .map(|i| format!("print.rule_overlays[{i}]"))
+    };
+    let named = match &err {
+        // The base profile loads first, so an unknown id that is the base's is the base.
+        RuleError::UnknownProfile { id, .. } if id == &print.rule_profile => None,
+        RuleError::UnknownProfile { id, .. } | RuleError::NotAnOverlay(id) => overlay_field(id),
+        RuleError::OverlayForAnotherBase { overlay, .. }
+        | RuleError::UnknownRule { overlay, .. } => overlay_field(overlay),
+        RuleError::Malformed { profile, .. } | RuleError::UnknownKey { profile, .. } => {
+            overlay_field(profile)
+        }
+        RuleError::NotABase(_) | RuleError::Incomplete { .. } => None,
+    };
+    let field = named.unwrap_or_else(|| {
+        if print.rule_overlays.is_empty() || matches!(err, RuleError::NotABase(_)) {
+            "print.rule_profile".to_string()
+        } else {
+            "print.rule_overlays".to_string()
+        }
+    });
+    Err(invalid(file, field, &err.to_string()))
 }
 
 fn positive(file: &str, field: String, v: f64) -> Result<(), ProjectError> {
@@ -604,6 +869,11 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
         ("box_white", e.box_white.is_some(), text),
         ("file", e.file.is_some(), logo),
         ("width_mm", e.width_mm.is_some(), logo),
+        (
+            "cell_mm",
+            e.cell_mm.is_some(),
+            e.kind == ElementKind::ControlDescriptions,
+        ),
     ];
     for (name, present, allowed) in stray {
         if present && !allowed {
@@ -624,6 +894,15 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
                 "must be at least 5 for the credit line, so that it stays readable",
             ));
         }
+    }
+    if let Some(v) = e.cell_mm
+        && !(v.is_finite() && (MIN_CELL_MM..=MAX_CELL_MM).contains(&v))
+    {
+        return Err(invalid(
+            file,
+            format!("{at}.cell_mm"),
+            &format!("must lie between {MIN_CELL_MM} and {MAX_CELL_MM} mm"),
+        ));
     }
     if logo {
         if e.file.is_none() {
@@ -655,6 +934,7 @@ fn kind_name(k: ElementKind) -> &'static str {
         ElementKind::ScaleCheckBar => "scale_check_bar",
         ElementKind::CreditLine => "credit_line",
         ElementKind::CopyrightLine => "copyright_line",
+        ElementKind::ControlDescriptions => "control_descriptions",
     }
 }
 
@@ -881,6 +1161,85 @@ pub fn save_new_with_comments(
         .map_err(|source| ProjectError::Write { file, source })
 }
 
+/// Writes `bytes` to `path` through a temporary file next to it and a rename, so that a failed write leaves the
+/// old file whole. The temporary file is removed again on failure. A link is followed: the file it points to is
+/// replaced and the link stays. The new file keeps the old one's permissions.
+fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
+    let file = path.display().to_string();
+    let error = |source| ProjectError::Write {
+        file: file.clone(),
+        source,
+    };
+    let target = std::fs::canonicalize(path).map_err(error)?;
+    let permissions = std::fs::metadata(&target).map_err(error)?.permissions();
+    let mut tmp = target.as_os_str().to_owned();
+    tmp.push(".part");
+    let tmp = PathBuf::from(tmp);
+    let written = std::fs::write(&tmp, bytes)
+        .and_then(|()| std::fs::set_permissions(&tmp, permissions))
+        .and_then(|()| std::fs::rename(&tmp, &target));
+    written.map_err(|source| {
+        let _ = std::fs::remove_file(&tmp);
+        error(source)
+    })
+}
+
+/// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
+/// addendum). Everything before the new table stays byte for byte as it was, comments included; the new lines
+/// end as the file's do (CRLF or LF), and directions are written in [0, 360). The file is replaced through a
+/// temporary file ([`replace_file`]). When the result does not load (for example because `numbers` is written
+/// as an inline array), the old content is put back and the load error is returned.
+pub fn append_correction(
+    path: &Path,
+    correction: &NumberCorrection,
+) -> Result<LoadedProject, ProjectError> {
+    #[derive(Serialize)]
+    struct Wrapper<'a> {
+        numbers: [&'a NumberCorrection; 1],
+    }
+    let file = path.display().to_string();
+    let old = std::fs::read(path).map_err(|source| ProjectError::Io {
+        file: file.clone(),
+        source,
+    })?;
+    // Directions as the file reads them back: in [0, 360).
+    let turn = crate::placement::normalize_direction;
+    let correction = NumberCorrection {
+        direction: turn(correction.direction),
+        base_seen: correction.base_seen.map(|b| NumberPlacement {
+            direction: turn(b.direction),
+            ..b
+        }),
+        ..correction.clone()
+    };
+    let table = toml::to_string(&Wrapper {
+        numbers: [&correction],
+    })
+    .map_err(|e| ProjectError::Serialize(e.to_string()))?;
+    // The new lines end as the file's do.
+    let crlf = old.windows(2).any(|w| w == b"\r\n");
+    let newline: &[u8] = if crlf { b"\r\n" } else { b"\n" };
+    let mut new = old.clone();
+    if !new.ends_with(b"\n") {
+        new.extend_from_slice(newline);
+    }
+    new.extend_from_slice(newline);
+    for line in table.split_inclusive('\n') {
+        match line.strip_suffix('\n') {
+            Some(text) => {
+                new.extend_from_slice(text.as_bytes());
+                new.extend_from_slice(newline);
+            }
+            None => new.extend_from_slice(line.as_bytes()),
+        }
+    }
+    replace_file(path, &new)?;
+    load(path).inspect_err(|_| {
+        // Best effort: the load error is the one to report.
+        let _ = replace_file(path, &old);
+    })
+}
+
 /// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
 /// parts on every system, so that the project file moves between Windows, macOS and Linux. `to`
 /// itself when the two share no root (another drive on Windows).
@@ -941,6 +1300,7 @@ pub fn starter(
         box_white: None,
         file: None,
         width_mm: None,
+        cell_mm: None,
     };
     let mut title_block = element("title", ElementKind::TitleBlock, Corner::TopLeft);
     title_block.lines = vec![
@@ -955,7 +1315,7 @@ pub fn starter(
             organiser: None,
             lang,
         },
-        sources: Sources { map },
+        sources: Sources::new(map),
         map: MapSettings {
             kind,
             contour_interval_m: kind.proposed_contour_interval_m(),
@@ -980,6 +1340,8 @@ pub fn starter(
             elements: vec![],
             hide_shared: vec![],
         }],
+        assignments: Vec::new(),
+        numbers: Vec::new(),
     }
 }
 
@@ -1056,6 +1418,8 @@ fn fit_with(
         path: dir.join(FILE_NAME),
         dir: dir.to_path_buf(),
         project: starter,
+        // A starter names the default profile.
+        rules: crate::rules::base().clone(),
     };
     // Clean, only the footer in the way, or something else.
     enum Outcome {
@@ -1228,6 +1592,69 @@ mod tests {
     }
 
     #[test]
+    fn rule_profile_defaults_to_iof_print() {
+        let lp = load(&minimal_path()).unwrap();
+        assert_eq!(lp.project.print.rule_profile, "iof-print");
+        assert!(lp.project.print.rule_overlays.is_empty());
+        assert!(lp.project.print.is_empty());
+        // `load` loads the named set once; the default is the base profile alone.
+        assert_eq!(&lp.rules, crate::rules::base());
+        // Written out as the default, both are named; the file loads the same.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_profile = \"iof-print\"\nrule_overlays = []\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let print = load(&path).unwrap().project.print;
+        assert_eq!(print, PrintSettings::default());
+        // Only values other than the default are written, so the committed example writes as before.
+        assert_eq!(toml::to_string(&PrintSettings::default()).unwrap(), "");
+        let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/luebeck-competition-layouts")
+            .join(FILE_NAME);
+        let written = toml::to_string(&load(&example).unwrap().project).unwrap();
+        assert!(!written.contains("rule_"), "{written}");
+        let other = PrintSettings {
+            rule_profile: "x-print".into(),
+            rule_overlays: vec!["y".into()],
+            ..PrintSettings::default()
+        };
+        assert_eq!(
+            toml::to_string(&other).unwrap(),
+            "rule_profile = \"x-print\"\nrule_overlays = [\"y\"]\n"
+        );
+    }
+
+    #[test]
+    fn unknown_rule_profile_names_its_line() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_profile = \"iof-2099\"\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains(&format!("{FILE_NAME}:9:16: field `print.rule_profile`"))
+                && msg.contains("iof-2099")
+                && msg.contains("available: iof-print"),
+            "{msg}"
+        );
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_overlays = [\"iof-print\", \"nor-bb\"]\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        // The first overlay is the base profile itself, not an overlay.
+        assert!(
+            msg.contains(":9:18: field `print.rule_overlays[0]`") && msg.contains("not an overlay"),
+            "{msg}"
+        );
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}[print]\nrule_overlays = [\n  \"nor-bb\",\n]\n[[layouts]]\nid = \"a\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains(":10:3: field `print.rule_overlays[0]`") && msg.contains("nor-bb"),
+            "{msg}"
+        );
+    }
+
+    #[test]
     fn credit_line_switch_is_gone() {
         let (_d, path) = temp_project(&format!(
             "{HEAD}[print]\ncredit_line = false\n[[layouts]]\nid = \"a\"\n"
@@ -1288,6 +1715,9 @@ mod tests {
             ("credit_line", "lines", "lines = [\"a\"]"),
             ("copyright_line", "box_white", "box_white = true"),
             ("title_block", "width_mm", "width_mm = 5.0"),
+            ("text", "cell_mm", "cell_mm = 6.0"),
+            ("control_descriptions", "size_pt", "size_pt = 9.0"),
+            ("control_descriptions", "lines", "lines = [\"a\"]"),
         ] {
             let msg = err_for("", &shared(kind, line), "");
             assert!(
@@ -1297,6 +1727,38 @@ mod tests {
                 "{kind} {field}: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn description_cell_size_is_checked() {
+        for bad in ["3.9", "10.5", "nan", "-6.0"] {
+            let msg = err_for(
+                "",
+                &shared("control_descriptions", &format!("cell_mm = {bad}")),
+                "",
+            );
+            assert!(
+                msg.contains("shared[0].cell_mm")
+                    && msg.contains("between 4 and 10 mm")
+                    && msg.contains(&format!("{FILE_NAME}:")),
+                "{bad}: {msg}"
+            );
+        }
+        for good in ["4.0", "6.0", "10.0"] {
+            let (_d, path) = temp_project(&format!(
+                "{HEAD}\n[[layouts]]\nid = \"a\"\n{}",
+                shared("control_descriptions", &format!("cell_mm = {good}"))
+            ));
+            let p = load(&path).unwrap();
+            assert_eq!(p.project.shared[0].kind, ElementKind::ControlDescriptions);
+            assert_eq!(p.project.shared[0].cell_mm, Some(good.parse().unwrap()));
+        }
+        // Without cell_mm the rule profile decides.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n{}",
+            shared("control_descriptions", "")
+        ));
+        assert_eq!(load(&path).unwrap().project.shared[0].cell_mm, None);
     }
 
     #[test]
@@ -1522,6 +1984,7 @@ mod tests {
             box_white: None,
             file: None,
             width_mm: None,
+            cell_mm: None,
         };
         let mut title = el("title", ElementKind::TitleBlock);
         title.lines = vec!["Line 1".into(), "Line 2".into()];
@@ -1541,15 +2004,14 @@ mod tests {
                 organiser: Some("OC".into()),
                 lang: SheetLang::En,
             },
-            sources: Sources {
-                map: "m.omap".into(),
-            },
+            sources: Sources::new("m.omap".into()),
             map: MapSettings {
                 kind: MapKind::Forest,
                 contour_interval_m: Some(5.0),
             },
             print: PrintSettings {
                 copyright: Some("(c) OC".into()),
+                ..PrintSettings::default()
             },
             shared: vec![title, el("bar", ElementKind::ScaleCheckBar)],
             layouts: vec![
@@ -1581,6 +2043,21 @@ mod tests {
                     hide_shared: vec![],
                 },
             ],
+            assignments: vec![Assignment {
+                course: "Men".into(),
+                layout: "a4".into(),
+            }],
+            numbers: vec![NumberCorrection {
+                control: "31".into(),
+                layout: None,
+                course: Some("Men".into()),
+                direction: 45.0,
+                gap_mm: Some(1.5),
+                base_seen: Some(NumberPlacement {
+                    direction: 90.0,
+                    gap_mm: 1.0,
+                }),
+            }],
         }
     }
 
@@ -1893,5 +2370,82 @@ mod tests {
         let err = save_new(&path, &full_project()).unwrap_err();
         assert!(matches!(err, ProjectError::Exists { .. }));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep");
+    }
+
+    fn layout_correction(direction: f64) -> NumberCorrection {
+        NumberCorrection {
+            control: "31".into(),
+            layout: Some("a4".into()),
+            course: None,
+            direction,
+            gap_mm: Some(0.5),
+            base_seen: Some(NumberPlacement {
+                direction: -90.0,
+                gap_mm: 0.5,
+            }),
+        }
+    }
+
+    const WITH_LAYOUT: &str = "[[layouts]]\nid = \"a4\"\n";
+
+    #[test]
+    fn appended_correction_follows_crlf_and_normalises_directions() {
+        let text = format!("{HEAD}{WITH_LAYOUT}").replace('\n', "\r\n");
+        let (_dir, path) = temp_project(&text);
+        let lp = append_correction(&path, &layout_correction(-30.0)).unwrap();
+        let n = &lp.project.numbers[0];
+        assert_eq!(n.direction, 330.0);
+        assert_eq!(n.base_seen.unwrap().direction, 270.0);
+        let new = std::fs::read(&path).unwrap();
+        assert!(new.starts_with(text.as_bytes()));
+        // Every line break of the file is CRLF, the new ones too.
+        let lone = new.windows(2).any(|w| w[1] == b'\n' && w[0] != b'\r');
+        assert!(
+            !lone && new[0] != b'\n',
+            "{:?}",
+            String::from_utf8_lossy(&new)
+        );
+        assert!(String::from_utf8_lossy(&new).contains("direction = 330.0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn appended_correction_keeps_permissions_and_the_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, real) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
+        // The project file is reached through a link from another folder.
+        let other = tempfile::tempdir().unwrap();
+        let link = other.path().join(FILE_NAME);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        // The map is found next to the path the project is opened by.
+        std::fs::write(other.path().join("m.omap"), "x").unwrap();
+        append_correction(&link, &layout_correction(10.0)).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let mode = std::fs::metadata(&real).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o640);
+        assert!(
+            std::fs::read_to_string(&real)
+                .unwrap()
+                .contains("[[numbers]]")
+        );
+        // No temporary file is left next to either.
+        for d in [dir.path(), other.path()] {
+            let names: Vec<_> = std::fs::read_dir(d)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            assert!(
+                names
+                    .iter()
+                    .all(|n| !n.to_string_lossy().ends_with(".part")),
+                "{names:?}"
+            );
+        }
     }
 }

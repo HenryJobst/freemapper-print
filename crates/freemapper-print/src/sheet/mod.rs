@@ -4,6 +4,7 @@
 //! the page minus the passe-partout. The sheet layer on top holds the frame line and the sheet
 //! elements, each hung on an [`Anchor`](crate::project::Anchor) of the page or of the map frame.
 
+pub(crate) mod course_sheet;
 pub mod layout;
 mod logo;
 mod north_lines;
@@ -15,6 +16,8 @@ mod text;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use crate::course::{CourseNote, FitNote};
+use crate::courses::Stale;
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
@@ -24,6 +27,9 @@ use crate::project::{
 use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem};
 use crate::render::symbols::{Cap, Join};
 
+pub use course_sheet::{
+    course_centre, course_event_notes, course_file_stem, course_length_m, render_course_sheet,
+};
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
 pub use reasons::{LogoSimplification, LogoSkipReason, MissingItem};
@@ -39,8 +45,7 @@ pub struct SheetReport {
 
 impl SheetReport {
     /// Whether the user should look at the sheet: any note of the print report, or any sheet
-    /// note but [`SheetNote::NorthLinesAdded`] and [`SheetNote::MapCropped`], which only inform.
-    /// `check` fails on this.
+    /// note that is not [`SheetNote::is_info`]. `check` fails on this.
     pub fn needs_attention(&self) -> bool {
         self.print.has_notes() || self.notes.iter().any(|n| !n.is_info())
     }
@@ -83,6 +88,10 @@ pub enum SheetNote {
     /// The layout crops the map on purpose (`map_frame.crop`): the map reaches this far (mm, in x
     /// and in y) past the map frame. Informs only; the print report then has no overflow.
     MapCropped { overflow_mm: (f64, f64) },
+    /// A course sheet shows the part of the map around the course: the map reaches this far (mm, in x and in
+    /// y) past the map frame, as expected. Informs only, like [`SheetNote::MapCropped`]; the print report then
+    /// has no overflow.
+    MapCroppedToCourse { overflow_mm: (f64, f64) },
     /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
     /// is the mapper's job in OOM, and the program cannot know where.
@@ -121,17 +130,103 @@ pub enum SheetNote {
     /// The `credit_line` element would not lie wholly on the page, so the credit line stays in
     /// the default footer (ADR 0029).
     CreditLineMoved { id: String },
+    /// These controls of the course (codes, each once, in course order) lie outside the map frame, wholly or in
+    /// part: their circles are cut off or missing.
+    CourseOutsideFrame {
+        course: String,
+        controls: Vec<String>,
+    },
+    /// The course has no assignment in the project file and prints on the first layout. Informs only.
+    DefaultLayout { course: String, layout: String },
+    /// The element `element` (an id, or `footer`) covers the circle, start triangle or finish circles of these
+    /// controls (codes, each once, in course order) on a course sheet (ruling R27).
+    ElementCoversCourse {
+        element: String,
+        controls: Vec<String>,
+    },
+    /// The course sheet has no control description box, and why.
+    NoDescriptionBox { course: String, reason: NoBoxReason },
+    /// The course's descriptions use the symbol `id`, which the description standard of the course file does not
+    /// know. Its cell in the description box stays empty.
+    UnknownDescriptionSymbol { course: String, id: String },
+    /// A limit ([`crate::overprint::MAX_REPEATS`]) left out hatch lines, dashes or crosses of the course
+    /// overprint.
+    OverprintCut { course: String },
+    /// The text `id` uses the placeholder `name` (`climb_m` or `length_km`), but the course file gives no value
+    /// for the course, so it prints empty. Informs only.
+    CourseValueUnknown {
+        course: String,
+        id: String,
+        name: String,
+    },
+    /// The text `element` uses the course placeholder `name` on a sheet without a course, where it is filled
+    /// with nothing. Informs only.
+    CoursePlaceholderNotFilled { element: String, name: String },
+    /// A control number on a course sheet covers part of the course, a sheet element or map symbols, or reaches
+    /// past the map frame. It is drawn there all the same; the note proposes a free position (spec §5.7).
+    NumberConflict(crate::numbers::NumberConflict),
+    /// The gap of a control number, from the course file or a correction, lies outside the range the rule
+    /// profile's `number_gap` rule allows (ruling R29). The number is drawn with its gap all the same.
+    NumberGapOutOfRange {
+        course: String,
+        control: String,
+        gap_mm: f64,
+        min: f64,
+        max: f64,
+    },
+    /// The number searches of the course sheet reached their budget (ruling R38,
+    /// [`crate::numbers::sheet_budget`]): the numbers left unsearched print where their level puts them, an
+    /// automatic one at [`crate::numbers::automatic_start`], and their conflicts have no proposal.
+    NumberSearchLimited { course: String },
+    /// What the course reader found but does not support.
+    Course(CourseNote),
+    /// What fitting the course file to the map found out.
+    Fit(FitNote),
+    /// An entry of the project file that no longer matches the course file.
+    Stale(Stale),
 }
 
 impl SheetNote {
     /// Whether the note only informs: it does not count toward `check`'s exit code, and the CLI
     /// marks it "Info:" instead of "Note:".
     pub fn is_info(&self) -> bool {
-        matches!(
-            self,
-            SheetNote::NorthLinesAdded { .. } | SheetNote::MapCropped { .. }
-        )
+        match self {
+            SheetNote::NorthLinesAdded { .. }
+            | SheetNote::MapCropped { .. }
+            | SheetNote::MapCroppedToCourse { .. }
+            | SheetNote::DefaultLayout { .. }
+            | SheetNote::CourseValueUnknown { .. }
+            | SheetNote::CoursePlaceholderNotFilled { .. } => true,
+            // Only a box that a `.ppen` could fill but that cannot be drawn counts (ruling R25).
+            SheetNote::NoDescriptionBox { reason, .. } => {
+                matches!(reason, NoBoxReason::IofXml | NoBoxReason::NoElement)
+            }
+            // A course note informs unless something of the course file is left out of the print.
+            SheetNote::Course(note) => !matches!(
+                note,
+                CourseNote::WhiteOutLaterInM4
+                    | CourseNote::AlternativeControls(_)
+                    | CourseNote::Variations(_)
+                    | CourseNote::UnknownElement(_)
+            ),
+            SheetNote::Fit(note) => !note.is_warning(),
+            SheetNote::Stale(stale) => !stale.is_warning(),
+            _ => false,
+        }
     }
+}
+
+/// Why a course sheet has no control description box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoBoxReason {
+    /// The course comes from IOF XML, which carries no control descriptions (spec §5.3). Informs only.
+    IofXml,
+    /// The layout has no `control_descriptions` element. Informs only.
+    NoElement,
+    /// The box would reach past the page edge, so it is left out rather than cut.
+    OutsidePage,
+    /// No control of the course has descriptions in the course file.
+    NoDescriptions,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -159,6 +254,11 @@ pub struct SheetContext<'a> {
     pub logos: &'a LogoCache,
     /// What the logos of this sheet have used of its budget.
     pub logo_budget: &'a LogoBudget,
+    /// The course placeholders of a course sheet; `None` on a layout sheet.
+    pub course: Option<&'a placeholders::CourseValues>,
+    /// The course whose description box a `control_descriptions` element draws; `None` on a layout sheet,
+    /// which leaves the element out.
+    pub descriptions: Option<&'a course_sheet::DescriptionSource<'a>>,
 }
 
 /// An element as drawn: its sheet items in paint order and the box they cover on the page.
@@ -182,6 +282,26 @@ pub fn render_sheet(
     layout: &LayoutSpec,
     logos: &LogoCache,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
+    render_body(project, map, layout, logos, None, None, None)
+        .map(|(page, report, _)| (page, report))
+}
+
+/// Where the drawn elements of a sheet lie on the page, by id.
+type ElementBoxes = Vec<(String, PaperBox)>;
+
+/// The sheet of [`render_sheet`], also for a course sheet: `course` fills the course placeholders, `descriptions`
+/// feeds the description box, and `centre` (map coordinates) goes to the centre of the map frame when the layout
+/// sets no `centre_map_mm`. Also returns where each drawn element lies on the page, by id, the default footer
+/// as [`FOOTER_ID`].
+fn render_body(
+    project: &LoadedProject,
+    map: &MapDocument,
+    layout: &LayoutSpec,
+    logos: &LogoCache,
+    course: Option<&placeholders::CourseValues>,
+    descriptions: Option<&course_sheet::DescriptionSource<'_>>,
+    centre: Option<MapCoord>,
+) -> Result<(RenderedPage, SheetReport, ElementBoxes), SheetError> {
     let mut notes = Vec::new();
     if layout::larger_than_a3(layout.paper) {
         notes.push(SheetNote::LargerThanA3);
@@ -194,19 +314,35 @@ pub fn render_sheet(
         kind: project.project.map.kind,
         paper: layout.paper,
         orientation: layout.orientation,
-        centre: layout.map_frame.centre_map_mm.map(oom_display_to_map),
+        centre: layout
+            .map_frame
+            .centre_map_mm
+            .map(oom_display_to_map)
+            .or(centre),
         show_sheet_objects: false,
         frame_margin_mm: Some(layout.map_frame.margin_mm),
     };
     let (mut page, mut print) = render_page(&map, &options)?;
     if layout.north_lines == NorthLines::Auto && !north_lines::has_north_lines(original) {
-        let kind = project.project.map.kind;
-        add_north_lines(&map, kind, &mut options, &mut page, &mut print, &mut notes)?;
+        let spacing_m = project.rules.north_line_spacing_m(project.project.map.kind);
+        add_north_lines(
+            &map,
+            spacing_m,
+            &mut options,
+            &mut page,
+            &mut print,
+            &mut notes,
+        )?;
     }
-    if layout.map_frame.crop
+    // A course sheet crops the map around the course as a matter of course.
+    if (layout.map_frame.crop || course.is_some())
         && let Some(overflow_mm) = print.overflow_mm.take()
     {
-        notes.push(SheetNote::MapCropped { overflow_mm });
+        notes.push(if layout.map_frame.crop {
+            SheetNote::MapCropped { overflow_mm }
+        } else {
+            SheetNote::MapCroppedToCourse { overflow_mm }
+        });
     }
     let page_box = PaperBox {
         min: (0.0, 0.0),
@@ -226,6 +362,8 @@ pub fn render_sheet(
         frame,
         logos,
         logo_budget: &logo_budget,
+        course,
+        descriptions,
     };
     // The credit line goes on top of everything else, so no element can hide it.
     let mut credit_lines = Vec::new();
@@ -279,6 +417,7 @@ pub fn render_sheet(
                 });
             }
         }
+        placed_rects.push((text::FOOTER_ID, footer.rect));
         page.sheet.extend(footer.items);
     }
     for (spec, credit) in credit_lines {
@@ -305,7 +444,11 @@ pub fn render_sheet(
         });
     }
 
-    Ok((page, SheetReport { print, notes }))
+    let rects = placed_rects
+        .into_iter()
+        .map(|(id, rect)| (id.to_string(), rect))
+        .collect();
+    Ok((page, SheetReport { print, notes }, rects))
 }
 
 /// Adds the default footer to `page`, a page drawn without a project (the `render` command): the
@@ -370,6 +513,7 @@ fn place_element(
         | ElementKind::CopyrightLine => text::place_text_element(ctx, spec, notes),
         ElementKind::ScaleCheckBar => Some(scale_bar::place_scale_bar(ctx, spec)),
         ElementKind::Logo => logo::place_logo(ctx, spec, notes),
+        ElementKind::ControlDescriptions => course_sheet::place_descriptions(ctx, spec, notes),
     }
 }
 
@@ -403,11 +547,11 @@ fn without_hidden_parts<'a>(
 /// With a symbol 601 (or 601.1, or the lowest 601.x) the lines become objects of that symbol in
 /// a part of their own, so they sort by its colour priority like drawn ones; the map is then
 /// drawn again with the orientation and the centre of the first drawing fixed, so that the lines
-/// change neither the page nor the overflow report. Without any such symbol, plain 0.14 mm black
-/// lines go on the sheet layer of `page`, within the frame.
+/// change neither the page nor the overflow report. Without any such symbol, plain black lines
+/// 0.14 mm wide at the base scale go on the sheet layer of `page`, within the frame.
 fn add_north_lines(
     map: &MapDocument,
-    kind: crate::scale::MapKind,
+    spacing_m: f64,
     options: &mut PrintOptions,
     page: &mut RenderedPage,
     print: &mut PrintReport,
@@ -418,13 +562,17 @@ fn add_north_lines(
     let symbol = north_lines::symbol_id(map.symbol_set.codes(), |id| {
         north_lines::draws_a_line(&map.symbol_set, id)
     });
+    // The fallback width is a base-scale value: it takes the standard's size at the print scale (ADR 0018,
+    // ruling R35), while a map symbol is drawn for the map's scale and takes the symbol factor.
+    let fallback_width = north_lines::FALLBACK_WIDTH_MM
+        * crate::scale::standard_enlargement(options.kind, print.print_scale).unwrap_or(1.0);
     let half_width = match symbol {
         Some(id) => north_lines::half_width_mm(&map.symbol_set, id, print.symbol_factor),
-        None => north_lines::FALLBACK_WIDTH_MM * print.symbol_factor / 2.0,
+        None => fallback_width / 2.0,
     };
     let inset = north_lines::inset_mm(half_width);
     let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf, inset);
-    let spacing = north_lines::spacing_mm(kind, map.georef.scale_denominator);
+    let spacing = north_lines::spacing_mm(spacing_m, map.georef.scale_denominator);
     let xs = north_lines::line_xs_mm(spacing, frame.min.0, frame.max.0);
     if xs.is_empty() {
         return Ok(());
@@ -433,8 +581,7 @@ fn add_north_lines(
         // Page x of map x: the page centre shows `centre_mm`.
         let page_x = |x: f64| page.page_mm.0 / 2.0 + x * gf - page.centre_mm.0;
         let (top, bottom) = (page.clip.min.1 + inset, page.clip.max.1 - inset);
-        // Symbols scale by the symbol factor (ADR 0018), and so does the plain line.
-        let width = north_lines::FALLBACK_WIDTH_MM * print.symbol_factor;
+        let width = fallback_width;
         let lines = xs.iter().map(|x| SheetItem::Shape {
             colour: DirectColour::BLACK,
             shape: Shape::Stroke {
@@ -501,6 +648,8 @@ mod tests {
                 grivation_deg: 0.0,
                 ref_projected: None,
                 crs_spec: None,
+                combined_scale_factor: 1.0,
+                map_ref_mm: (0.0, 0.0),
             },
             symbol_set: SymbolSet::issprom_2019(),
             parts: parts
@@ -549,6 +698,7 @@ mod tests {
         LoadedProject {
             path: PathBuf::from("freemapper-print.toml"),
             dir: PathBuf::from("/nowhere"),
+            rules: crate::rules::base().clone(),
             project: Project {
                 format: 1,
                 event: Event {
@@ -557,9 +707,7 @@ mod tests {
                     organiser: None,
                     lang: SheetLang::De,
                 },
-                sources: Sources {
-                    map: PathBuf::from("m.omap"),
-                },
+                sources: Sources::new(PathBuf::from("m.omap")),
                 map: MapSettings {
                     kind,
                     contour_interval_m: None,
@@ -567,6 +715,8 @@ mod tests {
                 print: PrintSettings::default(),
                 shared,
                 layouts: vec![layout.clone()],
+                assignments: Vec::new(),
+                numbers: Vec::new(),
             },
         }
     }
@@ -825,6 +975,7 @@ mod tests {
             box_white: None,
             file: None,
             width_mm: None,
+            cell_mm: None,
         }
     }
 
@@ -1000,18 +1151,18 @@ mod tests {
         layout.elements = vec![text_element(
             "c",
             ElementKind::Text,
-            &["Bahn {course}", "{layout}"],
+            &["Bahn {kurs}", "{layout}"],
             Corner::TopLeft,
         )];
         let lp = project(MapKind::Sprint, Vec::new(), &layout);
         let (page, report) = sheet_of(&lp, &empty_map());
         let t = texts(&page.sheet);
-        assert_eq!(t[0].0, "Bahn {course}");
+        assert_eq!(t[0].0, "Bahn {kurs}");
         assert_eq!(t[1].0, "a4");
         // (The element also covers part of the map: noted as well.)
         assert!(report.notes.contains(&SheetNote::UnknownPlaceholder {
             id: "c".into(),
-            name: "course".into()
+            name: "kurs".into()
         }));
     }
 
@@ -1695,6 +1846,28 @@ mod tests {
     }
 
     #[test]
+    fn lines_follow_the_projects_rule_set() {
+        // A test-only overlay sets the sprint spacing to 60 m: 15 mm at 1:4000.
+        let overlay = "format = 1\n[profile]\nid = \"test-north\"\nkind = \"overlay\"\n\
+                       base = \"iof-print\"\nname = { en = \"Test\" }\n[sources.T]\ntitle = \"T\"\n\
+                       [[rules]]\nid = \"iofprint.north_lines.sprint\"\nkey = \"north_lines\"\n\
+                       severity = \"hint\"\nmap_kinds = [\"sprint\"]\n\
+                       values = { spacing_metres = 60.0 }\nsource = { doc = \"T\", section = \"1\" }\n";
+        let files = [
+            ("iof-print", crate::rules::embedded_text("iof-print")),
+            ("test-north", overlay),
+        ];
+        let layout = auto();
+        let mut lp = project(MapKind::Sprint, Vec::new(), &layout);
+        lp.rules =
+            crate::rules::load_for_tests(&files, "iof-print", &["test-north".to_string()]).unwrap();
+        let (page, _) = render_sheet(&lp, &no_lines_map(), &layout, &LogoCache::new()).unwrap();
+        let xs = map_xs(&page);
+        assert!(xs.len() >= 5, "{xs:?}");
+        assert!(gaps(&xs).iter().all(|g| (g - 15.0).abs() < 1e-6), "{xs:?}");
+    }
+
+    #[test]
     fn lines_span_the_frame_around_centre_map_mm() {
         let mut layout = auto();
         layout.map_frame.centre_map_mm = Some([400.0, 0.0]);
@@ -1972,5 +2145,34 @@ mod tests {
             .collect();
         assert!(!widths.is_empty());
         assert!(widths.iter().all(|w| (w - 0.14 * 4.0 / 3.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn fallback_width_is_the_standard_size_at_the_print_scale() {
+        // The 0.14 mm are a base-scale value: a map drawn at 1:3000 prints them at 133 % at 1:3000 too (ruling
+        // R35), not at its symbol factor of 1.
+        let mut map = no_lines_map();
+        map.symbol_set = map.symbol_set.without_codes(|c| c.starts_with("601"));
+        map.georef.scale_denominator = 3000;
+        let mut layout = auto();
+        layout.print_scale = Some(3000);
+        let (page, report) = sheet(&map, &layout);
+        assert_eq!(report.print.symbol_factor, 1.0);
+        let widths: Vec<f64> = page
+            .sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Stroke { path, width, .. },
+                    ..
+                } if path.len() == 2 && path[0].0 == path[1].0 => Some(*width),
+                _ => None,
+            })
+            .collect();
+        assert!(!widths.is_empty());
+        assert!(
+            widths.iter().all(|w| (w - 0.14 * 4.0 / 3.0).abs() < 1e-9),
+            "{widths:?}"
+        );
     }
 }

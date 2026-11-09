@@ -42,3 +42,8 @@ when a map counts as having north lines.
 - Two drawings of the map for a layout that adds lines; maps with lines or `never` draw once.
 - Cost if wrong: schoolyard maps get lines 37.5 mm apart until the value is checked. A map that uses 601 for
   something else gets no generated lines (ADR 0023). A hidden-symbol 601 object also suppresses generation.
+
+## Amendment 2026-11-09
+
+The spacing moved from `scale.rs` into the embedded rule profile `iof-print` (rules `iofprint.north_lines.*`,
+ADR 0031). The values are unchanged.

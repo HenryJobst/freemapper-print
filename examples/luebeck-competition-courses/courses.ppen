@@ -1,0 +1,295 @@
+﻿<course-scribe-event>
+  <event id="1">
+    <title>Stadtsprint Lübeck</title>
+    <notes>Written by hand for the freemapper-print example luebeck-competition-courses. CC0.</notes>
+    <map kind="OCAD" scale="4000">luebeck.omap</map>
+    <standards map="Spr2019" description="2018" />
+    <all-controls print-scale="4000" description-kind="symbols" />
+    <numbering start="31" disallow-invertible="true" />
+    <course-appearance />
+    <descriptions lang="de" />
+  </event>
+  <control id="1" kind="start">
+    <location x="-91" y="0.5" />
+  </control>
+  <control id="2" kind="finish">
+    <location x="78" y="-38" />
+    <description box="all" iof-2004-ref="14.1" />
+  </control>
+  <control id="3" kind="normal">
+    <code>51</code>
+    <location x="-91.189" y="36.718" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="4" kind="normal">
+    <code>32</code>
+    <location x="-99.207" y="55.172" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SE" />
+  </control>
+  <control id="5" kind="normal">
+    <code>42</code>
+    <location x="-52.24" y="61.352" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NE" />
+  </control>
+  <control id="6" kind="normal">
+    <code>48</code>
+    <location x="-17.333" y="56.63" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NE" />
+  </control>
+  <control id="7" kind="normal">
+    <code>38</code>
+    <location x="23.71" y="70.832" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="8" kind="normal">
+    <code>40</code>
+    <location x="15.916" y="54.608" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="9" kind="normal">
+    <code>39</code>
+    <location x="87.328" y="43.535" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SW" />
+  </control>
+  <control id="10" kind="normal">
+    <code>35</code>
+    <location x="79.173" y="12.487" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SE" />
+  </control>
+  <control id="11" kind="normal">
+    <code>50</code>
+    <location x="101.517" y="-28.358" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SE" />
+  </control>
+  <control id="12" kind="normal">
+    <code>36</code>
+    <location x="116.97" y="-63.06" />
+    <description box="D" iof-2004-ref="5.2" />
+    <description box="F" iof-2004-ref="10.2" />
+  </control>
+  <control id="13" kind="normal">
+    <code>44</code>
+    <location x="95.12" y="-79.44" />
+    <description box="D" iof-2004-ref="5.2" />
+    <description box="F" iof-2004-ref="10.2" />
+  </control>
+  <control id="14" kind="normal">
+    <code>37</code>
+    <location x="49.861" y="-65.367" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5N" />
+  </control>
+  <control id="15" kind="normal">
+    <code>49</code>
+    <location x="-3.629" y="-46.998" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="16" kind="normal">
+    <code>46</code>
+    <location x="65.981" y="-40.121" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="17" kind="normal">
+    <code>47</code>
+    <location x="72.616" y="-17.11" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="18" kind="normal">
+    <code>43</code>
+    <location x="-90.041" y="-37.405" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="19" kind="normal">
+    <code>41</code>
+    <location x="-50.107" y="0.586" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="20" kind="normal">
+    <code>31</code>
+    <location x="-53.102" y="26.314" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SE" />
+  </control>
+  <control id="21" kind="normal">
+    <code>33</code>
+    <location x="-82.624" y="20.682" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="22" kind="normal">
+    <code>45</code>
+    <location x="-47.549" y="43.145" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SW" />
+  </control>
+  <control id="23" kind="normal">
+    <code>34</code>
+    <location x="-27.855" y="-49.981" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <course id="1" kind="normal" order="1">
+    <name>A</name>
+    <labels label-kind="sequence" />
+    <first course-control="1" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course id="2" kind="normal" order="2">
+    <name>B</name>
+    <labels label-kind="sequence" />
+    <first course-control="18" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course id="3" kind="normal" order="3">
+    <name>C</name>
+    <labels label-kind="sequence" />
+    <first course-control="30" />
+    <options print-scale="3000" description-kind="symbols" />
+  </course>
+  <course-control id="1" control="1">
+    <next course-control="2" />
+  </course-control>
+  <course-control id="2" control="3">
+    <next course-control="3" />
+  </course-control>
+  <course-control id="3" control="4">
+    <next course-control="4" />
+    <number-location x="-5.5" y="3.5" />
+  </course-control>
+  <course-control id="4" control="5">
+    <next course-control="5" />
+  </course-control>
+  <course-control id="5" control="6">
+    <next course-control="6" />
+  </course-control>
+  <course-control id="6" control="7">
+    <next course-control="7" />
+  </course-control>
+  <course-control id="7" control="8">
+    <next course-control="8" />
+  </course-control>
+  <course-control id="8" control="9">
+    <next course-control="9" />
+  </course-control>
+  <course-control id="9" control="10">
+    <next course-control="10" />
+  </course-control>
+  <course-control id="10" control="11">
+    <next course-control="11" />
+  </course-control>
+  <course-control id="11" control="12">
+    <next course-control="12" />
+  </course-control>
+  <course-control id="12" control="13">
+    <next course-control="13" />
+  </course-control>
+  <course-control id="13" control="14">
+    <next course-control="14" />
+  </course-control>
+  <course-control id="14" control="15">
+    <next course-control="15" />
+    <number-location x="7" y="0.5" />
+  </course-control>
+  <course-control id="15" control="16">
+    <next course-control="16" />
+  </course-control>
+  <course-control id="16" control="17">
+    <next course-control="17" />
+  </course-control>
+  <course-control id="17" control="2" />
+  <course-control id="18" control="1">
+    <next course-control="19" />
+  </course-control>
+  <course-control id="19" control="18">
+    <next course-control="20" />
+  </course-control>
+  <course-control id="20" control="19">
+    <next course-control="21" />
+  </course-control>
+  <course-control id="21" control="20">
+    <next course-control="22" />
+  </course-control>
+  <course-control id="22" control="5">
+    <next course-control="23" />
+  </course-control>
+  <course-control id="23" control="6">
+    <next course-control="24" />
+  </course-control>
+  <course-control id="24" control="7">
+    <next course-control="25" />
+    <number-location x="4.8" y="4" />
+  </course-control>
+  <course-control id="25" control="9">
+    <next course-control="26" />
+  </course-control>
+  <course-control id="26" control="11">
+    <next course-control="27" />
+  </course-control>
+  <course-control id="27" control="10">
+    <next course-control="28" />
+  </course-control>
+  <course-control id="28" control="17">
+    <next course-control="29" />
+  </course-control>
+  <course-control id="29" control="2" />
+  <course-control id="30" control="1">
+    <next course-control="31" />
+  </course-control>
+  <course-control id="31" control="21">
+    <next course-control="32" />
+  </course-control>
+  <course-control id="32" control="22">
+    <next course-control="33" />
+    <number-location x="-4.3" y="2.8" />
+  </course-control>
+  <course-control id="33" control="19">
+    <next course-control="34" />
+  </course-control>
+  <course-control id="34" control="23">
+    <next course-control="35" />
+  </course-control>
+  <course-control id="35" control="15">
+    <next course-control="36" />
+  </course-control>
+  <course-control id="36" control="16">
+    <next course-control="37" />
+  </course-control>
+  <course-control id="37" control="17">
+    <next course-control="38" />
+  </course-control>
+  <course-control id="38" control="2" />
+  <leg id="1" start-control="17" end-control="2">
+    <flagging kind="all" />
+    <bends>
+      <location x="69.5" y="-31.5" />
+    </bends>
+  </leg>
+  <special-object id="1" kind="out-of-bounds">
+    <location x="-76.04" y="-8.17" />
+    <location x="-68.33" y="-8.17" />
+    <location x="-68" y="-14.21" />
+    <location x="-67.5" y="-16.5" />
+    <location x="-69.79" y="-17.96" />
+    <location x="-73.75" y="-16.5" />
+    <location x="-76.04" y="-11.71" />
+    <courses all="true" />
+  </special-object>
+  <special-object id="2" kind="forbidden-route">
+    <location x="62.3" y="-51.1" />
+    <courses all="true" />
+  </special-object>
+</course-scribe-event>

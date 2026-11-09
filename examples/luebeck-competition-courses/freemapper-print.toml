@@ -1,0 +1,100 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Stadtsprint Lübeck"
+date = 2027-05-15
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "luebeck.omap"
+courses = "courses.ppen"
+
+[map]
+kind = "sprint"
+# Vorschlag für Sprintkarten. An der Karte prüfen und bestätigen.
+# Der Informationsblock der Karte nennt ebenfalls 2 m.
+contour_interval_m = 2.0
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Zwei Zeilen statt der vier aus den Kartennotizen, wie im Beispiel luebeck-competition-layouts.
+[print]
+copyright = """
+© OpenStreetMap contributors, ODbL · © GeoBasis-DE/LVermGeo SH/CC BY 4.0 (Quelle verändert), Lizenz: https://creativecommons.org/licenses/by/4.0/
+Karte erstellt mit freemapper – https://github.com/HenryJobst/freemapper
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event} · Bahn {course}",
+    "{length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# Bahnen A und B: A4 im Maßstab der Karte. Ein Bahnblatt schneidet die Karte mit Absicht auf die
+# Bahn zu (crop). Zellen von 5 mm, damit der Beschreibungskasten der Bahn A keinen Posten verdeckt.
+
+[[layouts]]
+id = "a4-4000"
+paper = "A4"
+orientation = "landscape"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+cell_mm = 5.0
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+# Bahn C für die jüngsten Klassen: A3 in 1:3000, Symbole auf 133 % (ISSprOM 2019-2, 3.1).
+# Der Beschreibungskasten behält die 6 mm des Regelprofils.
+
+[[layouts]]
+id = "a3-3000"
+paper = "A3"
+orientation = "landscape"
+print_scale = 3000
+map_frame = { margin_mm = 10.0, crop = true }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+[[assignments]]
+course = "A"
+layout = "a4-4000"
+
+[[assignments]]
+course = "B"
+layout = "a4-4000"
+
+[[assignments]]
+course = "C"
+layout = "a3-3000"
+
+[[numbers]]
+control = "49"
+course = "A"
+direction = 161.0
+gap_mm = 0.5
+
+[numbers.base_seen]
+direction = 4.085616779974877
+gap_mm = 0.5915010645848118

@@ -1,0 +1,70 @@
+<course-scribe-event>
+  <event id="1">
+    <title>Luebeck Training</title>
+    <map kind="OCAD" scale="4000" dpi="300">luebeck.omap</map>
+    <all-controls print-scale="4000" description-kind="symbols" />
+    <numbering start="31" disallow-invertible="false" />
+    <course-appearance />
+    <descriptions lang="en" />
+  </event>
+  <control id="1" kind="start">
+    <location x="-50" y="60" />
+  </control>
+  <control id="2" kind="normal">
+    <code>31</code>
+    <location x="20" y="-30" />
+    <description box="D" iof-2004-ref="1.10" />
+  </control>
+  <control id="3" kind="normal">
+    <code>32</code>
+    <location x="100" y="-120" />
+  </control>
+  <control id="4" kind="normal">
+    <code>33</code>
+    <location x="-80" y="-90" />
+  </control>
+  <control id="5" kind="finish">
+    <location x="60" y="20" />
+  </control>
+  <course id="1" kind="normal" order="1">
+    <name>Kurz</name>
+    <first course-control="1" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course id="2" kind="normal" order="2">
+    <name>Lang</name>
+    <first course-control="11" />
+    <options print-scale="5000" description-kind="symbols" />
+  </course>
+  <course id="3" kind="normal" order="3">
+    <name>Ohne Maßstab</name>
+    <first course-control="21" />
+  </course>
+  <course-control id="1" control="1">
+    <next course-control="2" />
+  </course-control>
+  <course-control id="2" control="2">
+    <next course-control="3" />
+  </course-control>
+  <course-control id="3" control="3">
+    <next course-control="4" />
+  </course-control>
+  <course-control id="4" control="5" />
+  <course-control id="11" control="1">
+    <next course-control="12" />
+  </course-control>
+  <course-control id="12" control="4">
+    <next course-control="13" />
+  </course-control>
+  <course-control id="13" control="2">
+    <next course-control="14" />
+  </course-control>
+  <course-control id="14" control="5" />
+  <course-control id="21" control="1">
+    <next course-control="22" />
+  </course-control>
+  <course-control id="22" control="2">
+    <next course-control="23" />
+  </course-control>
+  <course-control id="23" control="5" />
+</course-scribe-event>

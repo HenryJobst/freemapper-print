@@ -10,13 +10,13 @@ use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, MapPart, Symb
 use crate::print::is_north_line;
 use crate::render::page::PaperBox;
 use crate::render::symbols::{Part as SymbolPart, RenderSymbols, Symbol};
-use crate::scale::{MapKind, north_line_spacing_m};
 
 /// The most lines generated for one sheet. A frame holds a few dozen; the cap is for hostile
 /// numbers.
 pub(super) const MAX_LINES: usize = 10_000;
 
-/// Width of the plain fallback line (mm at the base scale), the width of ISSprOM symbol 601.
+/// Width of the plain fallback line (mm at the base scale), the width of ISSprOM symbol 601. It prints at the
+/// standard's size for the print scale.
 pub(super) const FALLBACK_WIDTH_MM: f64 = 0.14;
 
 /// Name of the part that holds generated lines. It is added after the layout hid its parts.
@@ -151,10 +151,10 @@ pub(super) fn inset_mm(half_width_mm: f64) -> f64 {
     half_width_mm + INSET_MARGIN_MM
 }
 
-/// Distance between two lines on the map (mm at the map scale): the ground spacing of the kind
-/// at the map scale.
-pub(super) fn spacing_mm(kind: MapKind, map_scale: u32) -> f64 {
-    north_line_spacing_m(kind) * 1000.0 / f64::from(map_scale)
+/// Distance between two lines on the map (mm at the map scale): the ground spacing `spacing_m`
+/// (from the project's rule set) at the map scale.
+pub(super) fn spacing_mm(spacing_m: f64, map_scale: u32) -> f64 {
+    spacing_m * 1000.0 / f64::from(map_scale)
 }
 
 /// The map frame in map mm (at the map scale): the `clip` of a page whose page centre shows
@@ -221,6 +221,7 @@ pub(super) fn part(symbol: u32, xs_mm: &[f64], y_lo: f64, y_hi: f64) -> MapPart 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scale::{MapKind, north_line_spacing_m};
 
     #[test]
     fn lines_lie_on_multiples_of_the_spacing_from_zero() {
@@ -305,8 +306,9 @@ mod tests {
 
     #[test]
     fn spacing_is_ground_distance_on_the_map() {
-        assert_eq!(spacing_mm(MapKind::Sprint, 4000), 30.0);
-        assert_eq!(spacing_mm(MapKind::Forest, 15000), 20.0);
-        assert_eq!(spacing_mm(MapKind::Schoolyard, 1000), 37.5);
+        let m = north_line_spacing_m;
+        assert_eq!(spacing_mm(m(MapKind::Sprint), 4000), 30.0);
+        assert_eq!(spacing_mm(m(MapKind::Forest), 15000), 20.0);
+        assert_eq!(spacing_mm(m(MapKind::Schoolyard), 1000), 37.5);
     }
 }

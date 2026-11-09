@@ -40,3 +40,15 @@ as non-standard, and the CLI says the print is for training only. Other scales a
 - Cost if wrong: a wrong row prints wrong symbol sizes. Each row quotes the standard's section.
 
 Source: ISSprOM 2019-2, ISOM 2017-2 Rev 6, user decision 2026-11-08 (final review of M1). Supersedes 0012.
+
+## Amendment 2026-11-09
+
+The table moved from `scale.rs` into the embedded rule profile `iof-print` (rules `iofprint.scale.*`, ADR 0031).
+The values are unchanged.
+
+## Amendment 2026-11-09 (final fix wave of M3)
+
+Course symbols come from the rule profile at the base scale, so they take the size of the print scale's row
+itself (the course factor), not the symbol factor. A course on a forest map drawn at 1:10000 prints at 150 %
+at 1:10000 and at 100 % at 1:15000, whatever scale the map file is drawn at (ruling R35, ADR 0034). The plain
+north-line fallback, also a base-scale value, does the same.

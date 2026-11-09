@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-pub use super::draw::{FillRule, Primitive, Shape};
+pub use super::draw::{FillRule, Primitive, Shape, SymbolClass};
 pub use super::geometry::Pt;
 pub use super::image::{ImageError, RasterImage};
 pub use super::symbols::{Cap, Join, RenderColour};
@@ -36,6 +36,46 @@ pub struct RenderedPage {
     /// The sheet elements (title, texts, logos, scale bar, footer), painted after all map
     /// primitives in this order, over the whole page: they are not clipped to `clip`.
     pub sheet: Vec<SheetItem>,
+    /// The course overprint, clipped to `clip` like the map: its lower layer among the map primitives
+    /// ([`Overprint::below_priority`]), its upper layer after them, both before the sheet layer. Empty
+    /// on a page without a course.
+    pub overprint: Overprint,
+}
+
+/// Shapes painted over the map in one colour with the blend mode Multiply, in two layers: the course
+/// overprint (ADR 0034). The renderer knows only the shapes; what they show is decided elsewhere.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Overprint {
+    /// Painted among the map primitives, before the first one of [`Overprint::below_priority`].
+    pub lower: Vec<Shape>,
+    /// Painted over all map primitives.
+    pub upper: Vec<Shape>,
+    /// The priority before whose first primitive the lower layer is painted. `None` paints it after all map
+    /// primitives, just before the upper layer.
+    pub below_priority: Option<i32>,
+    pub colour: DirectColour,
+    /// A limit left out some of the shapes (hatch lines, dashes or crosses).
+    pub cut: bool,
+}
+
+impl Default for Overprint {
+    /// Nothing to paint, in black.
+    fn default() -> Self {
+        Overprint {
+            lower: Vec::new(),
+            upper: Vec::new(),
+            below_priority: None,
+            colour: DirectColour::BLACK,
+            cut: false,
+        }
+    }
+}
+
+impl Overprint {
+    /// Nothing to paint.
+    pub fn is_empty(&self) -> bool {
+        self.lower.is_empty() && self.upper.is_empty()
+    }
 }
 
 /// A colour of a sheet element, given directly instead of by map colour priority. CMYK, so that

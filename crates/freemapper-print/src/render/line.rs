@@ -238,13 +238,13 @@ fn pointed_cap(def: &LineDef, part: &Part, range: (f64, f64), is_end: bool, sink
         return;
     };
     sink.charge(checks / POINTS_PER_UNIT);
-    sink.push(Primitive {
-        priority: def.color,
-        shape: Shape::Fill {
+    sink.push(Primitive::new(
+        def.color,
+        Shape::Fill {
             rings: vec![ring],
             rule: FillRule::EvenOdd,
         },
-    });
+    ));
 }
 
 /// Borders on both sides of the processed line (`processed`: the main line's stretches on

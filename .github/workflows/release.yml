@@ -76,6 +76,8 @@ jobs:
           cp README.md README.en.md LICENSE "$dir/"
           # Arimo (SIL OFL 1.1) is embedded in the program; its licence travels with it.
           cp assets/fonts/LICENSE "$dir/FONT-LICENSE.txt"
+          # Purple Pen's description symbols (BSD) are embedded too; THIRD_PARTY.md carries their notice.
+          cp THIRD_PARTY.md "$dir/"
           # The user manual with its images, at the path the READMEs link to.
           mkdir -p "$dir/docs"
           cp -R docs/manual "$dir/docs/"
