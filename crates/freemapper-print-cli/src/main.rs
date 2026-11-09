@@ -187,7 +187,7 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let (pdf, report, footer_notes) = print_map(&map, &options, &title, sheet_lang(texts))
         .with_context(|| texts.plain("error-print"))?;
     freemapper_print::output::write_pdf_file(&args.out, &pdf)
-        .with_context(|| texts.plain("error-write"))?;
+        .map_err(|e| output_error(texts, e))?;
     let mut lines = report_lines(
         texts,
         &report,
@@ -538,37 +538,46 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
+/// The message for a full disk, translated whole. `available` is `None` when the volume did not
+/// say how much is free.
+fn disk_full_message(texts: &Texts, needed: u64, available: Option<u64>, path: &Path) -> String {
+    const MB: u64 = 1024 * 1024;
+    let mut a = args!(
+        "path" => path.display().to_string(),
+        "needed" => needed.div_ceil(MB).to_string(),
+    );
+    match available {
+        Some(free) => {
+            a.set("available", (free / MB).to_string());
+            texts.get("error-disk-full", Some(&a))
+        }
+        None => texts.get("error-disk-full-unknown", Some(&a)),
+    }
+}
+
+/// A write error with a translated lead-in; a full disk is translated whole.
+fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
+    match err {
+        OutputError::DiskFull {
+            needed,
+            available,
+            path,
+        } => anyhow!(disk_full_message(texts, needed, available, &path)),
+        OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
+            "error-write-file",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+    }
+}
+
 /// An export error with a translated lead-in; a full disk is translated whole.
 fn export_error(texts: &Texts, err: ExportError) -> anyhow::Error {
-    const MB: u64 = 1024 * 1024;
     let sheet =
         |layout: &str| texts.get("error-sheet", Some(&args!("layout" => printable(layout))));
     match err {
         ExportError::Sheet { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
         ExportError::Pdf { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
-        ExportError::Write {
-            error:
-                OutputError::DiskFull {
-                    needed,
-                    available,
-                    path,
-                },
-            ..
-        } => anyhow!(texts.get(
-            "error-disk-full",
-            Some(&args!(
-                "path" => path.display().to_string(),
-                "needed" => needed.div_ceil(MB).to_string(),
-                "available" => (available / MB).to_string(),
-            ))
-        )),
-        ExportError::Write {
-            error: OutputError::Io { path, source },
-            ..
-        } => anyhow::Error::new(source).context(texts.get(
-            "error-write-file",
-            Some(&args!("path" => path.display().to_string())),
-        )),
+        ExportError::Write { error, .. } => output_error(texts, error),
     }
 }
 

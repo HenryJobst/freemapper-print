@@ -1,6 +1,10 @@
 //! Safe writing of finished PDFs: free space is checked first, the bytes go to a `.part` file next
-//! to the target, and the target appears only by renaming a fully written, synced file. A full
-//! disk leaves no half-written PDF and no leftover `.part` file.
+//! to the target (`a4.pdf` is written as `a4.pdf.part`), and the target appears only by renaming a
+//! fully written, synced file. A full disk, any other error, an early return or a panic leaves no
+//! half-written PDF and no leftover `.part` file (ADR 0030).
+//!
+//! One writer per target is assumed: two exports into the same folder at the same time would
+//! share the `.part` name of a layout they both write.
 
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -16,16 +20,17 @@ const MB: u64 = 1024 * 1024;
 pub enum OutputError {
     /// The volume of `path` has too little room (or filled up while writing).
     #[error(
-        "not enough disk space to write {}: {} MB needed, {} MB available",
+        "not enough disk space to write {}: {} MB needed, {} available",
         path.display(),
         needed.div_ceil(MB),
-        available / MB
+        available.map_or_else(|| "an unknown amount".to_string(), |a| format!("{} MB", a / MB))
     )]
     DiskFull {
         /// Bytes needed: the PDF plus [`DISK_RESERVE_BYTES`].
         needed: u64,
-        /// Bytes free on the volume.
-        available: u64,
+        /// Bytes free on the volume; `None` when the volume did not say (after it filled up while
+        /// writing).
+        available: Option<u64>,
         /// The file that was to be written.
         path: PathBuf,
     },
@@ -84,7 +89,7 @@ fn write_checked(
         _ => Path::new("."),
     };
     let query = || available_space(folder).ok();
-    let disk_full = |available: u64| OutputError::DiskFull {
+    let disk_full = |available: Option<u64>| OutputError::DiskFull {
         needed,
         available,
         path: path.to_path_buf(),
@@ -92,23 +97,29 @@ fn write_checked(
     if let Some(available) = query()
         && available < needed
     {
-        return Err(disk_full(available));
+        return Err(disk_full(Some(available)));
     }
-    let part = part_path(path);
+    let mut part = PartFile {
+        path: part_path(path),
+        done: false,
+    };
     let result = (|| {
-        let mut file = File::create(&part)?;
+        let mut file = File::create(&part.path)?;
         write(&mut file, bytes)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&part, path)
+        fs::rename(&part.path, path)
     })();
     match result {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            part.done = true;
+            Ok(())
+        }
         Err(source) => {
-            // Best effort: the original error is the one to report.
-            let _ = fs::remove_file(&part);
+            // The `.part` file goes first, so that the free space counts without it.
+            drop(part);
             if source.kind() == io::ErrorKind::StorageFull {
-                Err(disk_full(query().unwrap_or(0)))
+                Err(disk_full(query()))
             } else {
                 Err(OutputError::Io {
                     path: path.to_path_buf(),
@@ -119,7 +130,23 @@ fn write_checked(
     }
 }
 
-/// `<name>.part` next to `path`.
+/// The `.part` file of one write. Dropping it removes the file unless the write is `done` (renamed
+/// onto the target): on an error, an early return and a panic alike.
+struct PartFile {
+    path: PathBuf,
+    done: bool,
+}
+
+impl Drop for PartFile {
+    fn drop(&mut self) {
+        if !self.done {
+            // Best effort: the original error is the one to report.
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// `<name>.part` next to `path`: `a4.pdf.part` for `a4.pdf`.
 fn part_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".part");
@@ -166,7 +193,7 @@ mod tests {
                 needed, available, ..
             } => {
                 assert_eq!(*needed, 1000 + DISK_RESERVE_BYTES);
-                assert_eq!(*available, 1000 + DISK_RESERVE_BYTES - 1);
+                assert_eq!(*available, Some(1000 + DISK_RESERVE_BYTES - 1));
             }
             other => panic!("{other}"),
         }
@@ -225,6 +252,76 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, OutputError::DiskFull { .. }), "{err}");
         assert!(leftovers(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn failing_rename_leaves_no_part_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // A folder with something in it where the PDF should go: the rename fails.
+        let target = dir.path().join("map.pdf");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("keep"), b"x").unwrap();
+        let err =
+            write_checked(&target, b"%PDF", |_| Ok(u64::MAX), |f, b| f.write_all(b)).unwrap_err();
+        assert!(matches!(err, OutputError::Io { .. }), "{err}");
+        assert_eq!(leftovers(dir.path()), ["map.pdf"]);
+        assert!(target.join("keep").is_file());
+    }
+
+    #[test]
+    fn unknown_free_space_after_a_full_disk_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("map.pdf");
+        // Room before writing, then the query fails once the disk is full.
+        let calls = std::cell::Cell::new(0);
+        let err = write_checked(
+            &target,
+            b"new",
+            |_| {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    Ok(u64::MAX)
+                } else {
+                    Err(io::Error::other("no answer"))
+                }
+            },
+            |_, _| Err(io::ErrorKind::StorageFull.into()),
+        )
+        .unwrap_err();
+        match &err {
+            OutputError::DiskFull { available, .. } => assert_eq!(*available, None),
+            other => panic!("{other}"),
+        }
+        let text = err.to_string();
+        assert!(text.contains("unknown") && !text.contains("0 MB"), "{text}");
+        assert!(leftovers(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn panic_while_writing_leaves_no_part_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("map.pdf");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            write_checked(
+                &target,
+                b"new",
+                |_| Ok(u64::MAX),
+                |f, b| {
+                    f.write_all(b).unwrap();
+                    panic!("simulated");
+                },
+            )
+        }));
+        assert!(result.is_err());
+        assert!(leftovers(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn part_file_is_named_after_the_target() {
+        assert_eq!(
+            part_path(Path::new("/x/a4.pdf")),
+            PathBuf::from("/x/a4.pdf.part")
+        );
     }
 
     #[test]
