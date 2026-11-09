@@ -7,6 +7,7 @@
 
 use std::io;
 use std::path::{Component, Path, PathBuf};
+
 /// Free space that must remain after the PDF is written, in bytes.
 pub const DISK_RESERVE_BYTES: u64 = 50 * 1024 * 1024;
 
@@ -52,7 +53,8 @@ pub const FAKE_FREE_SPACE_ENV: &str = "FREEMAPPER_PRINT_TEST_FREE_SPACE";
 
 /// Writes `bytes` to `path` outside a project folder (`render --out`, an `--out-dir` outside the
 /// project), replacing an existing file only when the whole PDF is on disk. A link at `path` is
-/// replaced by the PDF; the file it pointed to stays as it was.
+/// replaced by the PDF; the file it pointed to stays as it was. The folder of `path` must exist:
+/// a missing one is the operating system's `NotFound` error, and no folder is created.
 ///
 /// Fails with [`OutputError::DiskFull`] when the volume has less than `bytes.len()` plus
 /// [`DISK_RESERVE_BYTES`] free. If the free space cannot be determined, the check is skipped and a
@@ -64,8 +66,8 @@ pub fn write_pdf_file(path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
 /// Writes the PDF `path` of the project in `project_dir`. A `path` whose name lies in the project
 /// folder (`out/` below it, or an `--out-dir` there) goes through [`freemapper_fs::write_inside`]:
 /// it is refused with [`freemapper_fs::OUTSIDE_PROJECT`] when a link leads its folder out of the
-/// project. Any other `path` is written like [`write_pdf_file`]. "In the project folder" goes by
-/// the names, `..` included, not by where links lead.
+/// project. Any other `path` is written like [`write_pdf_file`]. The folder of `path` must exist,
+/// as for [`write_pdf_file`]. Which paths count as in the project folder: see [`names_inside`].
 pub fn write_project_pdf(project_dir: &Path, path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
     if names_inside(project_dir, path) {
         write_checked(path, bytes, free_space, |path, bytes| {
@@ -77,8 +79,8 @@ pub fn write_project_pdf(project_dir: &Path, path: &Path, bytes: &[u8]) -> Resul
 }
 
 /// Refuses the output folder `folder` of the project in `project_dir` when a link leads it out of
-/// the project folder. A folder outside the project by name, or one that does not exist yet,
-/// passes. The commands call it once before they write anything.
+/// the project folder. A folder outside the project ([`names_inside`]), or one that does not exist
+/// yet, passes. The commands call it once before they write anything.
 pub fn check_out_folder(project_dir: &Path, folder: &Path) -> Result<(), OutputError> {
     if !names_inside(project_dir, &folder.join("file")) {
         return Ok(());
@@ -88,7 +90,7 @@ pub fn check_out_folder(project_dir: &Path, folder: &Path) -> Result<(), OutputE
 }
 
 /// Removes partial files older than an hour that interrupted runs left in the output folder
-/// `folder` of the project in `project_dir`. Only a folder inside the project by name is cleaned,
+/// `folder` of the project in `project_dir`. Only a folder inside the project ([`names_inside`]) is cleaned,
 /// and only when no link leads it out; partial files that are links stay. Best effort.
 pub fn remove_stale_parts(project_dir: &Path, folder: &Path) {
     const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60 * 60);
@@ -103,13 +105,30 @@ pub fn is_outside_project(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::Other && error.to_string() == freemapper_fs::OUTSIDE_PROJECT
 }
 
-/// Whether `path` lies in the folder `root` by its name: both made absolute, `.` dropped and `..`
-/// taken back by name. Links are not resolved; [`freemapper_fs::write_inside`] checks those.
+/// Whether `path` is a file of the project in `root`, so that [`freemapper_fs::write_inside`] must
+/// write it. That is so when `path` lies in `root` by its name (both made absolute, `.` dropped and
+/// `..` taken back by name), or when it does once the nearest existing folder above the folder of
+/// `path` is resolved: an `--out-dir` that names the project folder by another link to it. The
+/// folder of `path` itself is not resolved, so a link there that leads out of the project still
+/// counts as inside and `write_inside` refuses it.
 fn names_inside(root: &Path, path: &Path) -> bool {
-    match (std::path::absolute(root), std::path::absolute(path)) {
-        (Ok(root), Ok(path)) => by_name(&path).starts_with(by_name(&root)),
-        _ => false,
+    let (Ok(root), Ok(path)) = (std::path::absolute(root), std::path::absolute(path)) else {
+        return false;
+    };
+    if by_name(&path).starts_with(by_name(&root)) {
+        return true;
     }
+    let (Ok(root), Some(above)) = (
+        std::fs::canonicalize(&root),
+        path.parent().and_then(Path::parent),
+    ) else {
+        return false;
+    };
+    above
+        .ancestors()
+        .find_map(|folder| Some((std::fs::canonicalize(folder).ok()?, folder)))
+        .and_then(|(resolved, folder)| Some(resolved.join(path.strip_prefix(folder).ok()?)))
+        .is_some_and(|resolved| by_name(&resolved).starts_with(&root))
 }
 
 /// `path` with `.` dropped and each `..` taking back the name before it.
@@ -163,6 +182,13 @@ fn write_checked(
         && available < needed
     {
         return Err(disk_full(Some(available)));
+    }
+    // `freemapper-fs` would create a missing folder; the callers create theirs themselves.
+    if let Err(source) = std::fs::metadata(folder) {
+        return Err(OutputError::Io {
+            path: path.to_path_buf(),
+            source,
+        });
     }
     // A failed write has removed its partial file, so the free space counts without it.
     write(path, bytes).map_err(|(path, source)| {
@@ -260,8 +286,11 @@ mod tests {
     }
 
     /// The disk is too full before writing, or fills up while writing: either way the error is
-    /// [`OutputError::DiskFull`] and no partial file (`<file>.<pid>.<counter>.part`) is left.
-    /// `freemapper-fs` removes its partial file on a failed write; its own test fills the disk.
+    /// [`OutputError::DiskFull`]. The first half runs the real write of `freemapper-fs` and shows
+    /// that the check stops it before a partial file exists. The second half fakes the full disk
+    /// in place of that write, so it checks only the mapping to `DiskFull`; that `freemapper-fs`
+    /// removes its partial file when the disk fills up is its own test
+    /// (`storage_full_while_writing_removes_the_part_file`).
     #[test]
     fn disk_full_leaves_no_part_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -278,6 +307,53 @@ mod tests {
         }
         assert_eq!(leftovers(dir.path()), ["map.pdf"]);
         assert_eq!(fs::read(&target).unwrap(), b"old");
+    }
+
+    #[test]
+    fn a_missing_folder_is_not_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope");
+        for err in [
+            write_pdf_file(&missing.join("a4.pdf"), b"%PDF").unwrap_err(),
+            write_project_pdf(dir.path(), &missing.join("a4.pdf"), b"%PDF").unwrap_err(),
+        ] {
+            match &err {
+                OutputError::Io { path, source } => {
+                    assert_eq!(path, &missing.join("a4.pdf"));
+                    assert_eq!(source.kind(), io::ErrorKind::NotFound, "{source}");
+                }
+                other => panic!("{other}"),
+            }
+        }
+        assert!(!missing.exists());
+    }
+
+    /// A folder named through another link to the project folder is inside it too; the link at
+    /// `out` itself is not resolved, so `write_inside` sees and refuses it.
+    #[cfg(unix)]
+    #[test]
+    fn another_name_of_the_project_folder_is_inside() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let real = dir.path().join("event");
+        fs::create_dir(&real).unwrap();
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), real.join("out")).unwrap();
+        for (root, path) in [
+            (&alias, real.join("out/a4.pdf")),
+            (&real, alias.join("out/a4.pdf")),
+            (&real, alias.join("new/deeper/a4.pdf")),
+        ] {
+            assert!(names_inside(root, &path), "{root:?} {path:?}");
+        }
+        for (root, folder) in [(&alias, real.join("out")), (&real, alias.join("out"))] {
+            assert!(check_out_folder(root, &folder).is_err(), "{folder:?}");
+            assert!(write_project_pdf(root, &folder.join("a4.pdf"), b"%PDF").is_err());
+        }
+        assert!(leftovers(elsewhere.path()).is_empty());
+        // The folder the link leads to is outside.
+        assert!(!names_inside(&real, &elsewhere.path().join("a4.pdf")));
     }
 
     #[test]
@@ -341,6 +417,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let project = dir.path().join("event");
         fs::create_dir(&project).unwrap();
+        fs::create_dir(project.join("out")).unwrap();
         let inside = project.join("out/a4.pdf");
         write_project_pdf(&project, &inside, b"%PDF in").unwrap();
         assert_eq!(fs::read(&inside).unwrap(), b"%PDF in");

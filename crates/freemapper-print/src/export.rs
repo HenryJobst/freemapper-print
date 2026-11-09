@@ -181,8 +181,9 @@ fn sheet_pdf_at(
     Ok((pdf, report))
 }
 
-/// Draws and writes `layouts` one after the other into `out_dir` (which must exist), each through
-/// [`write_project_pdf`], and hands each written layout to `on_layout` before the next is drawn.
+/// Draws and writes `layouts` one after the other into `out_dir` (which must exist; a missing
+/// folder is a write error, never created), each through [`write_project_pdf`], and hands each
+/// written layout to `on_layout` before the next is drawn.
 /// Stops at the first layout that fails; the ones before it stay written. Each logo file is
 /// decoded once for all layouts ([`LogoCache`]).
 pub fn export_layouts<'a>(
@@ -340,9 +341,10 @@ fn course_sheet_pdf_at<'a>(
     Ok((pdf, layout, report))
 }
 
-/// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist),
-/// each to its file of [`course_pdf_paths`], and hands each written course to `on_course` before the next is
-/// drawn. Stops at the first course that fails; the ones before it stay written.
+/// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist; a
+/// missing folder is a write error, never created), each to its file of [`course_pdf_paths`] through
+/// [`write_project_pdf`], and hands each written course to `on_course` before the next is drawn. Stops at the
+/// first course that fails; the ones before it stay written.
 pub fn export_courses<'a>(
     project: &'a LoadedProject,
     map: &MapDocument,
@@ -379,10 +381,11 @@ pub fn export_courses<'a>(
 }
 
 /// Draws `selected` one after the other as the pages of one PDF, [`single_file_path`] in `out_dir` (which must
-/// exist), each page on its course's layout and paper. Each page is dropped once it is in the PDF, so only one
-/// is held at a time; the PDF bytes grow until the file is written at the end. `on_course` gets each course
-/// once its page is in the PDF, before the file is written. Returns the file written, or `None` without a
-/// course: a PDF has at least one page. Nothing is written when a course fails.
+/// exist; it is not created), written through [`write_project_pdf`], each page on its course's layout and
+/// paper. Each page is dropped once it is in the PDF, so only one is held at a time; the PDF bytes grow until
+/// the file is written at the end. `on_course` gets each course once its page is in the PDF, before the file is
+/// written. Returns the file written, or `None` without a course: a PDF has at least one page. Nothing is
+/// written when a course fails.
 pub fn export_courses_single_file<'a>(
     project: &'a LoadedProject,
     map: &MapDocument,
@@ -773,14 +776,13 @@ mod tests {
         let p = minimal();
         let map = crate::omap::read::read_map_file(&p.map_path()).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        // A file where the output folder should be: `freemapper-fs` cannot create the folder.
-        let blocked = dir.path().join("nope");
-        std::fs::write(&blocked, "").unwrap();
+        let missing = dir.path().join("nope");
         let layouts = select_layouts(&p, &[]).unwrap();
-        let err = export_layouts(&p, &map, &layouts, &blocked, |_| {}).unwrap_err();
+        let err = export_layouts(&p, &map, &layouts, &missing, |_| {}).unwrap_err();
         assert!(
             matches!(&err, ExportError::Write { layout, .. } if layout == "a4"),
             "{err}"
         );
+        assert!(!missing.exists(), "the output folder is not created");
     }
 }

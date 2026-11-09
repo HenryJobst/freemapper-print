@@ -774,6 +774,46 @@ fn init_refuses_a_linked_out_folder() {
     }
 }
 
+/// The project folder reached under a second name (a link to it): an `--out-dir` given under the
+/// other name is still the project's `out`, and a link there that leads out of the project stops
+/// `export` like the default `out` does.
+#[cfg(unix)]
+#[test]
+fn an_out_dir_under_another_name_of_the_project_is_checked() {
+    let ws = Workspace::new(FOREST);
+    ws.write_project(
+        "forest",
+        "contour_interval_m = 5.0",
+        &layouts(&[("a4", "A4", "auto")]),
+    );
+    let outside = tempfile::tempdir().unwrap();
+    let real = ws.event();
+    let alias = ws.dir.path().join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    std::os::unix::fs::symlink(outside.path(), real.join("out")).unwrap();
+    for (project, out_dir) in [
+        (alias.join(FILE_NAME), real.join("out")),
+        (real.join(FILE_NAME), alias.join("out")),
+    ] {
+        let o = run(
+            "en",
+            &[
+                "export",
+                project.to_str().unwrap(),
+                "--out-dir",
+                out_dir.to_str().unwrap(),
+            ],
+        );
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{project:?}: {err}");
+        assert!(
+            err.contains("a link leads out of the project folder"),
+            "{project:?}: {err}"
+        );
+        assert!(files_in(outside.path()).is_empty(), "{project:?}");
+    }
+}
+
 #[test]
 fn export_needs_an_existing_out_dir() {
     let ws = Workspace::new(FOREST);

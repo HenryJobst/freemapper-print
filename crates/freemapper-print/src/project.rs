@@ -1176,7 +1176,10 @@ fn write_project_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Replaces the project file `path` with `bytes` ([`write_project_file`]). The new file gets the
-/// permissions of the old one, or of the file a link at `path` pointed to.
+/// permissions of the old one, or of the file a link at `path` pointed to, through
+/// [`restore_permissions`]. That step comes after the content is replaced and is best effort: when
+/// it fails, the file keeps the default permissions of a new file and no error is reported
+/// (ADR 0041).
 fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     let file = path.display().to_string();
     let error = |source| ProjectError::Write {
@@ -1185,14 +1188,85 @@ fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     };
     let permissions = std::fs::metadata(path).map_err(error)?.permissions();
     write_project_file(path, bytes).map_err(error)?;
-    std::fs::set_permissions(path, permissions).map_err(error)
+    let _ = restore_permissions(path, permissions, &|| {});
+    Ok(())
+}
+
+/// Gives the regular file at `path` the permissions `permissions`, through an open handle and never
+/// by name, so a link put at `path` in the meantime is not followed. Nothing happens when the file
+/// has them already. The handle must be the file at `path`: the entry at `path` is no link, and it
+/// is the opened file (device and inode on Unix, the `same-file` handle on Windows). Otherwise the
+/// permissions stay as they are and an error says why. `between` runs after the first look at
+/// `path` and before the open; tests swap the file there.
+fn restore_permissions(
+    path: &Path,
+    permissions: std::fs::Permissions,
+    between: &dyn Fn(),
+) -> std::io::Result<()> {
+    let changed = || std::io::Error::other("the project file changed while it was written");
+    let before = std::fs::symlink_metadata(path)?;
+    if !before.file_type().is_file() {
+        return Err(changed());
+    }
+    if before.permissions() == permissions {
+        return Ok(());
+    }
+    between();
+    let file = open_for_attributes(path)?;
+    if !is_file_at(&file, &before, path)? {
+        return Err(changed());
+    }
+    file.set_permissions(permissions)
+}
+
+/// Opens `path` so that its permissions can be set through the handle.
+fn open_for_attributes(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        // FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES: enough to read the file id and set the
+        // read-only flag, without opening the content for writing.
+        options.access_mode(0x0080 | 0x0100);
+    }
+    #[cfg(not(windows))]
+    options.read(true);
+    options.open(path)
+}
+
+/// Whether the open `file` is the regular file at `path` that `before` describes.
+#[cfg(unix)]
+fn is_file_at(
+    file: &std::fs::File,
+    before: &std::fs::Metadata,
+    path: &Path,
+) -> std::io::Result<bool> {
+    use std::os::unix::fs::MetadataExt as _;
+    let opened = file.metadata()?;
+    let now = std::fs::symlink_metadata(path)?;
+    let same = |m: &std::fs::Metadata| m.dev() == opened.dev() && m.ino() == opened.ino();
+    Ok(now.file_type().is_file() && same(before) && same(&now))
+}
+
+/// Whether the open `file` is the regular file at `path`: no link there, and the same file by
+/// volume serial number and file index.
+#[cfg(not(unix))]
+fn is_file_at(
+    file: &std::fs::File,
+    _before: &std::fs::Metadata,
+    path: &Path,
+) -> std::io::Result<bool> {
+    let now = std::fs::symlink_metadata(path)?;
+    let opened = same_file::Handle::from_file(file.try_clone()?)?;
+    Ok(now.file_type().is_file() && same_file::Handle::from_path(path)? == opened)
 }
 
 /// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
 /// addendum). Everything before the new table stays byte for byte as it was, comments included; the new lines
 /// end as the file's do (CRLF or LF), and directions are written in [0, 360). The file is replaced through a
-/// partial file ([`replace_file`]); a link at `path` is replaced too, not written through. When the result does not load (for example because `numbers` is written
-/// as an inline array), the old content is put back and the load error is returned.
+/// partial file ([`replace_file`]); a link at `path` is replaced too, not written through. When the result does
+/// not load (for example because `numbers` is written as an inline array), the old content is put back and the
+/// load error is returned; a link at `path` stays a regular file then.
 pub fn append_correction(
     path: &Path,
     correction: &NumberCorrection,
@@ -2461,6 +2535,34 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         append_correction(&path, &layout_correction(10.0)).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    /// The project file is swapped for a link to another file after the write: the other file's
+    /// permissions stay as they were.
+    #[cfg(unix)]
+    #[test]
+    fn restored_permissions_never_follow_a_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let other = elsewhere.path().join("other.txt");
+        std::fs::write(&other, "other").unwrap();
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let wanted = std::fs::Permissions::from_mode(0o640);
+        let swap = || {
+            std::fs::remove_file(&path).unwrap();
+            std::os::unix::fs::symlink(&other, &path).unwrap();
+        };
+        // Swapped before the first look, and between the first look and the open.
+        std::fs::write(&path, "new").unwrap();
+        swap();
+        assert!(restore_permissions(&path, wanted.clone(), &|| {}).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, "new").unwrap();
+        assert!(restore_permissions(&path, wanted, &swap).is_err());
+        let mode = std::fs::metadata(&other).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
     }
 

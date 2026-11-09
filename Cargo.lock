@@ -289,6 +289,7 @@ dependencies = [
  "miniz_oxide 0.9.1",
  "pdf-writer",
  "quick-xml",
+ "same-file",
  "serde",
  "simplecss",
  "subsetter",

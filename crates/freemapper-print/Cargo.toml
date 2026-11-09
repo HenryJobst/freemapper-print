@@ -30,6 +30,9 @@ svgtypes.workspace = true
 ttf-parser.workspace = true
 usvg.workspace = true
 
+[target.'cfg(not(unix))'.dependencies]
+same-file.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 

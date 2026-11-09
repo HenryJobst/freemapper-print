@@ -499,9 +499,6 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             "error-project-exists",
             Some(&args!("path" => shown.display().to_string()))
         )),
-        Err(project::ProjectError::Write { source, .. }) if output::is_outside_project(&source) => {
-            return Err(outside_project(texts, &shown));
-        }
         Err(err) => {
             return Err(anyhow::Error::new(err).context(texts.get(
                 "error-write-file",
@@ -877,11 +874,6 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         }
     }
     project::append_correction(&loaded.path, &correction).map_err(|err| {
-        if let project::ProjectError::Write { source, .. } = &err
-            && output::is_outside_project(source)
-        {
-            return outside_project(texts, &loaded.path);
-        }
         // A file that no longer loads has been put back as it was.
         let lead_in = match err {
             project::ProjectError::Write { .. } => "error-write-file",
@@ -1248,6 +1240,7 @@ fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::
         None => {
             let dir = loaded.dir.join("out");
             output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, e))?;
+            // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
             std::fs::create_dir_all(&dir).with_context(|| {
                 texts.get(
                     "error-create-folder",
@@ -1278,7 +1271,8 @@ fn disk_full_message(texts: &Texts, needed: u64, available: Option<u64>, path: &
     }
 }
 
-/// A write error with a translated lead-in; a full disk is translated whole.
+/// A write error with a translated lead-in; a full disk and a write refused because a link leads
+/// out of the project folder are translated whole.
 fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
     match err {
         OutputError::DiskFull {
@@ -1287,21 +1281,16 @@ fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
             path,
         } => anyhow!(disk_full_message(texts, needed, available, &path)),
         OutputError::Io { path, source } if output::is_outside_project(&source) => {
-            outside_project(texts, &path)
+            anyhow!(texts.get(
+                "error-outside-project",
+                Some(&args!("path" => path.display().to_string()))
+            ))
         }
         OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
         )),
     }
-}
-
-/// A write refused because a link leads its folder out of the project folder, translated whole.
-fn outside_project(texts: &Texts, path: &Path) -> anyhow::Error {
-    anyhow!(texts.get(
-        "error-outside-project",
-        Some(&args!("path" => path.display().to_string()))
-    ))
 }
 
 /// An export error with a translated lead-in; a full disk is translated whole.
