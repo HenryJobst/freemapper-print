@@ -9,7 +9,7 @@
     </Map>
     <Control type="Start">
       <Id>STA1</Id>
-      <MapPosition x="-91" y="3" unit="mm"/>
+      <MapPosition x="-91" y="0.5" unit="mm"/>
     </Control>
     <Control type="Control">
       <Id>51</Id>

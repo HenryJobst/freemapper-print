@@ -10,7 +10,7 @@
     <descriptions lang="de" />
   </event>
   <control id="1" kind="start">
-    <location x="-91" y="3" />
+    <location x="-91" y="0.5" />
   </control>
   <control id="2" kind="finish">
     <location x="78" y="-38" />
