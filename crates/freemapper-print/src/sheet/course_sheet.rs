@@ -5,14 +5,15 @@
 use std::collections::HashSet;
 
 use crate::course::{Course, CourseKind, FittedEvent, SourceFormat, Special};
-use crate::courses::{LoadedCourses, layout_for};
+use crate::courses::{LoadedCourses, layout_for, mask_for};
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
+use crate::mask::{Mask, to_internal};
 use crate::numbers::{place_on_sheet, resolve};
 use crate::omap::{MapCoord, MapDocument};
 use crate::overprint::{applies, control_count, on_map, overprint};
 use crate::print::Orientation;
 use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
-use crate::render::page::{Pt, RenderedPage};
+use crate::render::page::{MapClip, PaperBox, Pt, RenderedPage};
 use crate::scale::geometry_factor;
 
 use super::layout::{anchor_point, inside};
@@ -129,6 +130,18 @@ pub fn render_course_sheet(
         &page.colours,
         &page.primitives,
     );
+    // Each mask of the course clips the map on its own (ADR 0045, ruling R8): page x of a map point in mm, as
+    // `to_page` places a course coordinate.
+    let map_to_page = move |(x, y): Pt| -> Pt {
+        (
+            page_mm.0 / 2.0 + x * gf - centre_mm.0,
+            page_mm.1 / 2.0 + y * gf - centre_mm.1,
+        )
+    };
+    page.map_clips = mask_for(&project.project, courses, &course.name)
+        .iter()
+        .map(|m| map_clip(m.mask(), page.clip, map_to_page))
+        .collect();
 
     let notes = &mut report.notes;
     notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
@@ -204,6 +217,21 @@ pub fn render_course_sheet(
         });
     }
     Ok((page, report))
+}
+
+/// The clip of `mask` in `frame`: its outlines and holes, written in map mm with y up, on the page by `to_page`
+/// (internal map mm, y down, to page mm). [`MapClip::new`] sets the orientation of the rings on the page.
+pub(crate) fn map_clip(mask: &Mask, frame: PaperBox, to_page: impl Fn(Pt) -> Pt) -> MapClip {
+    let on_page = |ring: &Vec<[f64; 2]>| -> Vec<Pt> {
+        ring.iter().map(|&p| to_page(to_internal(p))).collect()
+    };
+    MapClip::new(
+        frame,
+        mask.polygons.iter().map(|p| on_page(&p.outline)),
+        mask.polygons
+            .iter()
+            .flat_map(|p| p.holes.iter().map(on_page)),
+    )
 }
 
 /// The description box a `control_descriptions` element draws on a course sheet, hung on its anchor; `None`
@@ -346,8 +374,8 @@ fn stops_and_bends<'a>(
     stops.chain(bends)
 }
 
-/// The points of `special` when it applies to the course named `course` (white-out is not drawn yet and does
-/// not count).
+/// The points of `special` when it applies to the course named `course`. A white-out does not count: it is no
+/// overprint shape but a mask, which hides the map and never widens the frame (ADR 0045).
 fn special_points(special: &Special<MapCoord>, course: &str) -> Vec<MapCoord> {
     match special {
         Special::OutOfBounds { rings, courses } | Special::Dangerous { rings, courses }
@@ -1525,5 +1553,204 @@ mod tests {
             assert!(close(p.line, 0.35 * 4.0 / 3.0), "{p:?}");
             assert!(close(p.start_side, 7.0 * 4.0 / 3.0), "{p:?}");
         }
+    }
+
+    // --- Masks (ADR 0045) ---
+
+    /// Whether the nonzero rule fills `p` with the rings of `clip`: the map shows there. The winding number of each
+    /// ring is counted here from its edges, so this checks the orientation [`MapClip::new`] gives the rings, not
+    /// the text of the PDF.
+    fn visible(clip: &MapClip, (px, py): Pt) -> bool {
+        let mut winding = 0i32;
+        for ring in clip.rings() {
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                let left = (b.0 - a.0) * (py - a.1) - (px - a.0) * (b.1 - a.1);
+                if a.1 <= py && b.1 > py && left > 0.0 {
+                    winding += 1;
+                } else if a.1 > py && b.1 <= py && left < 0.0 {
+                    winding -= 1;
+                }
+            }
+        }
+        winding != 0
+    }
+
+    /// A mask of one polygon, points as written (map mm, y up).
+    fn mask(id: &str, outline: Vec<[f64; 2]>, holes: Vec<Vec<[f64; 2]>>) -> Mask {
+        Mask {
+            id: id.into(),
+            polygons: vec![crate::mask::MaskPolygon { outline, holes }],
+        }
+    }
+
+    /// A square from (`x0`, `y0`) to (`x1`, `y1`), counter-clockwise with y up.
+    fn sq(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<[f64; 2]> {
+        vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+    }
+
+    #[test]
+    fn overlapping_holes_unite() {
+        // Two windows that overlap, one written counter-clockwise and one clockwise: the clip shows the map in
+        // both and in their overlap, and hides it in the outline outside them, exactly where `contains` says the
+        // mask is not.
+        let mut second = sq(-10.0, -30.0, 50.0, 30.0);
+        second.reverse();
+        let m = mask(
+            "w",
+            sq(-100.0, -100.0, 100.0, 100.0),
+            vec![sq(-50.0, -30.0, 10.0, 30.0), second],
+        );
+        // A page transform as a sheet has one: scale 1.5, shifted; the frame wider than the outline.
+        let to_page = |(x, y): Pt| (x * 1.5 + 200.0, y * 1.5 + 150.0);
+        let frame = PaperBox {
+            min: (200.0 - 180.0, 150.0 - 180.0),
+            max: (200.0 + 180.0, 150.0 + 180.0),
+        };
+        let clip = map_clip(&m, frame, to_page);
+        assert_eq!(clip.rings().len(), 4);
+        let mut checked = 0;
+        for i in 0..42 {
+            for j in 0..42 {
+                // Never on a ring: no sample coordinate is a multiple of 10.
+                let at = (-117.3 + f64::from(i) * 5.7, -117.7 + f64::from(j) * 5.7);
+                let p = to_page(at);
+                assert!(
+                    frame.min.0 < p.0
+                        && p.0 < frame.max.0
+                        && frame.min.1 < p.1
+                        && p.1 < frame.max.1
+                );
+                assert_eq!(
+                    visible(&clip, to_page(at)),
+                    !crate::mask::contains(&m, at),
+                    "{at:?}"
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 42 * 42);
+        // The overlap, each window alone, the outline, and the frame outside the outline.
+        assert!(visible(&clip, to_page((0.3, 0.3))));
+        assert!(visible(&clip, to_page((-40.3, 0.3))));
+        assert!(visible(&clip, to_page((40.3, 0.3))));
+        assert!(!visible(&clip, to_page((0.3, 60.3))));
+        assert!(visible(&clip, to_page((110.3, 110.3))));
+    }
+
+    #[test]
+    fn mask_hides_the_base_area_outside_windows() {
+        // A sprint map with its base area and a mask with one window around control 31 (20, -30 in the file, y
+        // up): the base area is a map primitive like the others, painted first, inside the mask's block.
+        use crate::print::base_fixture::{base_part, with_walkable_area};
+        let body = format!(
+            "{A4}[[masks]]\nid = \"w\"\npolygons = [[[[-2000, -2000], [2000, -2000], [2000, 2000], [-2000, 2000]], \
+             [[5, -45], [35, -45], [35, -15], [5, -15]]]]\n[[assignments]]\ncourse = \"Kurz\"\nlayout = \"a4\"\n\
+             mask = \"w\"\n"
+        );
+        let (_dir, project, map, courses) = course_project(&body);
+        let mut based = map.clone();
+        based.symbol_set = with_walkable_area(&map.symbol_set);
+        let part = base_part(
+            &based.symbol_set,
+            (-1_000_000, -1_000_000),
+            (1_200_000, 900_000),
+        );
+        based.parts.insert(0, part);
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &based,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        assert!(page.primitives[0].base, "the base area is painted first");
+        let [clip] = page.map_clips.as_slice() else {
+            panic!("one mask: {:?}", page.map_clips.len())
+        };
+        let gf = report.print.geometry_factor;
+        let at = |x: i32, y: i32| on_page(&page, gf, MapCoord::new(x, y));
+        // Control 31 in the window; the start (-50, 60 in the file) and the finish (60, 20) under the mask, both in
+        // the frame. The internal frame has y down.
+        let frame = page.clip;
+        for p in [
+            at(20_000, 30_000),
+            at(-50_000, -60_000),
+            at(60_000, -20_000),
+        ] {
+            assert!(
+                frame.min.0 < p.0 && p.0 < frame.max.0 && frame.min.1 < p.1 && p.1 < frame.max.1
+            );
+        }
+        assert!(visible(clip, at(20_000, 30_000)));
+        assert!(!visible(clip, at(-50_000, -60_000)));
+        assert!(!visible(clip, at(60_000, -20_000)));
+        // In the PDF the first fill, the base area's, comes after the mask's clip.
+        let pdf = crate::render::pdf::content_of(
+            &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                .unwrap()
+                .0,
+        );
+        let text = String::from_utf8(pdf).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let clips: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == "W").collect();
+        assert_eq!(clips.len(), 2, "page clip and mask");
+        let first_fill = lines.iter().position(|l| l.ends_with(" k")).unwrap();
+        assert!(clips[1] < first_fill);
+        // The overprint is the same as without the mask.
+        let (plain, _, _) = sheet(A4, "Kurz");
+        assert_eq!(plain.overprint.upper, page.overprint.upper);
+        assert!(plain.map_clips.is_empty());
+    }
+
+    #[test]
+    fn white_outs_of_a_course_each_clip_the_map() {
+        // Ruling R8: two overlapping white-outs of one course are two masks; the map is hidden in either.
+        let (_dir, project, map, mut courses) = course_project(A4);
+        for (i, ring) in [sq(-60.0, 30.0, 0.0, 90.0), sq(-20.0, 50.0, 40.0, 100.0)]
+            .into_iter()
+            .enumerate()
+        {
+            courses.white_outs.push(crate::courses::WhiteOut {
+                mask: mask(&crate::project::white_out_id(i + 1), ring, Vec::new()),
+                courses: crate::course::CourseFilter::All,
+            });
+        }
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &map,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        assert_eq!(page.map_clips.len(), 2);
+        let gf = report.print.geometry_factor;
+        let at = |x: f64, y: f64| {
+            on_page(
+                &page,
+                gf,
+                MapCoord::new((x * 1000.0) as i32, (-y * 1000.0) as i32),
+            )
+        };
+        let frame = page.clip;
+        let shown = |p: Pt| {
+            assert!(
+                frame.min.0 < p.0 && p.0 < frame.max.0 && frame.min.1 < p.1 && p.1 < frame.max.1
+            );
+            page.map_clips.iter().all(|c| visible(c, p))
+        };
+        assert!(!shown(at(-50.3, 40.3)), "in the first only");
+        assert!(!shown(at(30.3, 95.3)), "in the second only");
+        assert!(!shown(at(-10.3, 60.3)), "in both");
+        assert!(shown(at(60.3, 10.3)), "in neither");
+        // Each alone hides its own square only.
+        assert!(visible(&page.map_clips[0], at(30.3, 95.3)));
+        assert!(visible(&page.map_clips[1], at(-50.3, 40.3)));
     }
 }

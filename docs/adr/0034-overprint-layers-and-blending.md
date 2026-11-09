@@ -21,7 +21,7 @@ highest number first; it does not say which colour is black, brown or blue.
   - Upper: control numbers, map exchanges, out-of-bounds and dangerous-area hatches, forbidden routes (711,
     upper purple in ISOM 2017-2 section 3.7, one point or several), marked routes (legs and specials) and
     texts.
-  - White-out is left for masks (M4).
+  - White-out is no overprint shape. It becomes a mask (ADR 0045).
 - Sizes are the rule profile's course symbol sizes times the course factor (ruling R35): the size factor of the
   print scale's row in the symbol size table (ADR 0018, ADR 0031), `RuleSet::course_factor`. The profile gives
   course symbols at the base scale, and ISOM 2017-2 section 3.7 and ISSprOM 2019-2 section 4.7 enlarge them with
@@ -64,9 +64,16 @@ highest number first; it does not say which colour is black, brown or blue.
   the map under every number and route.
 - `RenderedPage::overprint` is empty by default. An empty overprint writes no ExtGState and no extra block, so
   pages without a course stay byte for byte as before (`existing_outputs_unchanged`).
-- Masks (M4) will clip the map to their holes. They will not paint white over the map. White painted after
-  the map would also cover the lower purple, which lies among the map primitives; a clip leaves both layers
-  intact and keeps the overprint where the course setter put it.
+- Masks (ADR 0045) clip the map to their windows and paint no white. White painted after the map would also
+  cover the lower purple, which lies among the map primitives. Each mask of a sheet is a clip block of its own
+  inside the frame's clip, and every map primitive lies inside these blocks, the base area included. The
+  overprint and the sheet layer lie outside them.
+- With a mask the lower layer goes after the whole map, after the mask blocks are closed. At its usual place it
+  would sit inside them and lose its circles and legs outside the windows. Under black it looks the same with
+  Multiply: black over the purple and the purple multiplied with black are both black. A full-strength colour
+  other than black that is painted after the usual place (blue or brown 100 %) is darkened by the purple instead
+  of covering it. The Lübeck map paints no such colour (see Consequences). Without a mask the writer keeps the
+  usual place, byte for byte.
 
 ## Consequences
 
@@ -80,3 +87,4 @@ highest number first; it does not say which colour is black, brown or blue.
 - Cost if wrong: one function chooses the place of the lower layer, and the writer only reads `below_priority`.
 
 Amended in the final fix wave of M3: the course factor (ruling R35) and the crosses of a forbidden route.
+Amended in M4 Task 2: masks clip the map, and with a mask the lower layer goes after the map (rulings R3, R5).

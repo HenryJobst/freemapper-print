@@ -245,6 +245,7 @@ mod boundaries {
             "render",
             &[
                 "rules",
+                "mask",
                 "output",
                 "scale",
                 "overprint",

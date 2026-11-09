@@ -275,6 +275,7 @@ fn render_page_within(
         colours: symbols.colours,
         sheet: Vec::new(),
         overprint: Default::default(),
+        map_clips: Vec::new(),
     };
     let report = PrintReport {
         page_mm,

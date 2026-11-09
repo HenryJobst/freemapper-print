@@ -510,6 +510,7 @@ fn obstacles_of_map_symbols_by_class() {
         ],
         sheet: Vec::new(),
         overprint: Default::default(),
+        map_clips: Vec::new(),
     };
     let course = CourseShapes {
         symbols: vec![(1, (50.0, 50.0), 3.175)],
@@ -643,6 +644,7 @@ fn on_blank_page_within(
         colours: Vec::new(),
         sheet: Vec::new(),
         overprint: Default::default(),
+        map_clips: Vec::new(),
     };
     let to_page = |m: MapCoord| {
         (

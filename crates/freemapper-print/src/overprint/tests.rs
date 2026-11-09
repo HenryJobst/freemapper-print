@@ -621,7 +621,7 @@ fn specials_go_to_their_layer() {
         courses: all.clone(),
     });
     assert!(matches!(&text[..], [Shape::Text { text, .. }] if text == "Zuschauer"));
-    // Not drawn: white-out (masks come in M4) and specials of other courses.
+    // Not drawn: white-out (a mask, which clips the map instead; ADR 0045) and specials of other courses.
     let (l, u) = layers_of(Special::WhiteOut {
         rings: ring(),
         courses: all,
@@ -990,6 +990,7 @@ fn course_page(colours: Vec<RenderColour>) -> RenderedPage {
         colours,
         sheet: Vec::new(),
         overprint: o,
+        map_clips: Vec::new(),
     }
 }
 

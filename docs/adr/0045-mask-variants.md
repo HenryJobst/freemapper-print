@@ -22,9 +22,21 @@ Window and corridor orienteering hide most of the map (spec §4). Purple Pen whi
   specials (R6). `mask_for` gives a course the assignment's `mask` alone, else each of its white-outs as a mask of
   its own, unchecked and unmerged; each clips the map, so the masked areas add up (R8). A `[[masks]]` entry with a
   white-out's id stands in for it. A missing `whiteout-<n>` is `Stale::Mask`, an unused mask the Info `MaskUnused`.
+- A mask clips the map (ruling R5). The sheet carries one clip per mask in page mm (`MapClip`), written as a clip
+  block of its own inside the frame's clip, with the nonzero rule: the frame ring counter-clockwise on paper, the
+  outlines clockwise, the holes counter-clockwise. The map shows in the frame outside the outlines (winding 1), not
+  inside an outline (0), and again in a hole (1) or where holes overlap (2). The writer sets the orientation from
+  the signed area of each ring on the page, so a ring written either way clips the same. Nested blocks intersect,
+  so the map is hidden in the union of the masked areas of all masks of a sheet, and overlapping white-outs need
+  no polygon union (R8). The course overprint, the sheet elements, the frame line and the footer are not clipped;
+  the lower purple goes after the map (ADR 0034).
+- The reader's note on white-outs is information now, because white-outs print.
 
 ## Consequences
 
-Projects without masks print as before. Cost if wrong: masks copied from the `.omap` XML (y down) mirror.
+Projects without masks print as before, byte for byte. A white-out ring that crosses itself clips by the nonzero
+rule, so a loop wound against the rest shows the map, where Purple Pen fills it. Cost if wrong: masks copied from
+the `.omap` XML (y down) mirror.
 
-Source: M4 plan Task 1 and its change of 2026-11-10 (holes may overlap, replacing ruling R2); rulings R1, R6, R8.
+Source: M4 plan Tasks 1 and 2 and its change of 2026-11-10 (holes may overlap, replacing ruling R2); rulings R1, R5,
+R6, R8.
