@@ -310,10 +310,29 @@ fn paint_run<'a>(
     }
 }
 
-/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
-/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
-/// not show.
-pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
+/// One page drawn into a content stream, before any PDF object is written: the content, the images it uses, and
+/// its MediaBox in points. The fonts it uses come beside it ([`page_body`]).
+struct PageBody<'a> {
+    content: pdf_writer::Buf,
+    /// Each image once, in the order the content names them ([`image_name`]).
+    images: Vec<&'a Arc<RasterImage>>,
+    media_box: Rect,
+    /// The page has a course overprint and needs the Multiply graphics state.
+    overprint: bool,
+}
+
+/// The objects of one page: the references [`write_page`] writes them under.
+struct PageRefs {
+    page: Ref,
+    contents: Ref,
+    fonts: super::fonts::FontObjects,
+    images: Vec<(Ref, Option<Ref>)>,
+    multiply: Option<Ref>,
+}
+
+/// Draws `page` into a content stream: every primitive clipped to `page.clip`, the course overprint among them,
+/// the sheet layer on top. Refuses a page with a number that is not finite before anything is written.
+fn page_body(page: &RenderedPage) -> Result<(PageBody<'_>, PageFonts), PdfError> {
     let (page_w, page_h) = page.page_mm;
     let t = Transform::new(page_h);
     let colours = &page.colours;
@@ -397,63 +416,180 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         }
         content.restore_state();
     }
+    let media_box = Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h));
+    if t.not_finite.get() {
+        return Err(PdfError::NotFinite);
+    }
+    let body = PageBody {
+        content: content.finish(),
+        images,
+        media_box,
+        overprint: !overprint.is_empty(),
+    };
+    Ok((body, fonts))
+}
 
-    // References come from a counter, so a page holds only the fonts it uses.
-    let mut next = Ref::new(1);
-    let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
-    let fonts = fonts.finish(&mut next);
-    let info = next.bump();
-    // Each image takes an object, and a second for its soft mask.
-    let image_refs: Vec<(Ref, Option<Ref>)> = images
+/// The references of `body`'s images: an object each, and a second for a soft mask.
+fn image_refs(body: &PageBody<'_>, next: &mut Ref) -> Vec<(Ref, Option<Ref>)> {
+    body.images
         .iter()
         .map(|i| (next.bump(), i.alpha().is_some().then(|| next.bump())))
-        .collect();
-    let mut pdf = Pdf::new();
-    pdf.catalog(catalog).pages(pages);
-    pdf.pages(pages).kids([page]).count(1);
-    let mut p = pdf.page(page);
-    p.media_box(Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h)));
-    p.parent(pages);
-    p.contents(contents);
+        .collect()
+}
+
+/// Writes the page object of `body` under `parent`, then its content stream, fonts, images and graphics state.
+fn write_page(
+    pdf: &mut Pdf,
+    parent: Ref,
+    body: &PageBody<'_>,
+    refs: &PageRefs,
+) -> Result<(), PdfError> {
+    let mut p = pdf.page(refs.page);
+    p.media_box(body.media_box);
+    p.parent(parent);
+    p.contents(refs.contents);
     let mut resources = p.resources();
-    resources.fonts().pairs(fonts.resources());
+    resources.fonts().pairs(refs.fonts.resources());
     // Only a page with a course overprint has the graphics state, so other pages stay as they were.
-    let multiply = (!overprint.is_empty()).then(|| next.bump());
-    if let Some(id) = multiply {
+    if let Some(id) = refs.multiply {
         resources.ext_g_states().pair(Name(MULTIPLY), id);
     }
-    if !image_refs.is_empty() {
-        let names: Vec<String> = (0..image_refs.len()).map(image_name).collect();
+    if !refs.images.is_empty() {
+        let names: Vec<String> = (0..refs.images.len()).map(image_name).collect();
         resources.x_objects().pairs(
             names
                 .iter()
-                .zip(&image_refs)
+                .zip(&refs.images)
                 .map(|(name, (id, _))| (Name(name.as_bytes()), *id)),
         );
     }
     resources.finish();
     p.finish();
-    if t.not_finite.get() {
-        return Err(PdfError::NotFinite);
-    }
     // The content stream comes first, the font programs after it.
-    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
-    pdf.stream(contents, &compressed)
+    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&body.content, 6);
+    pdf.stream(refs.contents, &compressed)
         .filter(Filter::FlateDecode);
-    fonts.write(&mut pdf)?;
-    for (image, (id, mask)) in images.iter().zip(&image_refs) {
-        write_image(&mut pdf, image, *id, *mask);
+    refs.fonts.write(pdf)?;
+    for (image, (id, mask)) in body.images.iter().zip(&refs.images) {
+        write_image(pdf, image, *id, *mask);
     }
-    if let Some(id) = multiply {
+    if let Some(id) = refs.multiply {
         pdf.ext_graphics(id).blend_mode(BlendMode::Multiply);
     }
-    pdf.document_info(info)
+    Ok(())
+}
+
+fn write_info(pdf: &mut Pdf, id: Ref, meta: &PdfMeta) {
+    pdf.document_info(id)
         .title(TextStr(&meta.title))
         .creator(TextStr(&meta.creator));
+}
+
+/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
+/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
+/// not show.
+pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
+    let (body, fonts) = page_body(page)?;
+    // References come from a counter, so a page holds only the fonts it uses.
+    let mut next = Ref::new(1);
+    let (catalog, pages, page, contents) = (next.bump(), next.bump(), next.bump(), next.bump());
+    let fonts = fonts.finish(&mut next);
+    let info = next.bump();
+    let images = image_refs(&body, &mut next);
+    let multiply = body.overprint.then(|| next.bump());
+    let refs = PageRefs {
+        page,
+        contents,
+        fonts,
+        images,
+        multiply,
+    };
+    let mut pdf = Pdf::new();
+    pdf.catalog(catalog).pages(pages);
+    pdf.pages(pages).kids([page]).count(1);
+    write_page(&mut pdf, pages, &body, &refs)?;
+    write_info(&mut pdf, info, meta);
     let info = PdfInfo {
-        missing_glyphs: fonts.missing,
+        missing_glyphs: refs.fonts.missing,
     };
     Ok((pdf.finish(), info))
+}
+
+/// A PDF of several pages, written one page at a time: [`MultiPagePdf::add_page`] turns a page into PDF objects
+/// at once, so the caller can drop it before drawing the next. Only the PDF bytes grow. Each page embeds its own
+/// font subsets and images, as a one-page PDF of it would.
+pub struct MultiPagePdf {
+    pdf: Pdf,
+    next: Ref,
+    catalog: Ref,
+    pages: Ref,
+    kids: Vec<Ref>,
+}
+
+impl Default for MultiPagePdf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MultiPagePdf {
+    pub fn new() -> Self {
+        let mut next = Ref::new(1);
+        let (catalog, pages) = (next.bump(), next.bump());
+        MultiPagePdf {
+            pdf: Pdf::new(),
+            next,
+            catalog,
+            pages,
+            kids: Vec::new(),
+        }
+    }
+
+    /// Appends `page` with its own MediaBox. A page refused for a number that is not finite leaves the document as
+    /// it was; after a font that cannot be embedded the document is incomplete and must be dropped.
+    pub fn add_page(&mut self, page: &RenderedPage) -> Result<PdfInfo, PdfError> {
+        let (body, fonts) = page_body(page)?;
+        let mut next = self.next;
+        let (page_ref, contents) = (next.bump(), next.bump());
+        let fonts = fonts.finish(&mut next);
+        let images = image_refs(&body, &mut next);
+        let multiply = body.overprint.then(|| next.bump());
+        let refs = PageRefs {
+            page: page_ref,
+            contents,
+            fonts,
+            images,
+            multiply,
+        };
+        write_page(&mut self.pdf, self.pages, &body, &refs)?;
+        self.next = next;
+        self.kids.push(page_ref);
+        Ok(PdfInfo {
+            missing_glyphs: refs.fonts.missing,
+        })
+    }
+
+    /// The number of pages added.
+    pub fn len(&self) -> usize {
+        self.kids.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.kids.is_empty()
+    }
+
+    /// The finished PDF, its pages in the order they were added.
+    pub fn finish(mut self, meta: &PdfMeta) -> Vec<u8> {
+        self.pdf.catalog(self.catalog).pages(self.pages);
+        let count = i32::try_from(self.kids.len()).unwrap_or(i32::MAX);
+        self.pdf
+            .pages(self.pages)
+            .kids(self.kids.iter().copied())
+            .count(count);
+        let info = self.next.bump();
+        write_info(&mut self.pdf, info, meta);
+        self.pdf.finish()
+    }
 }
 
 /// The decompressed page content of a PDF written by [`write_pdf`] (for tests).
@@ -994,6 +1130,41 @@ mod tests {
             find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some(),
             "A4"
         );
+    }
+
+    #[test]
+    fn multi_page_pdf_has_a_media_box_per_page() {
+        let mut doc = MultiPagePdf::new();
+        let a4 = page(&[square(2)]);
+        let mut a3 = page(&[plain_text("Bahn", false, false)]);
+        a3.page_mm = (297.0, 420.0);
+        assert!(doc.is_empty());
+        doc.add_page(&a4).unwrap();
+        let info = doc.add_page(&a3).unwrap();
+        assert!(info.missing_glyphs.is_empty());
+        assert_eq!(doc.len(), 2);
+        let pdf = doc.finish(&PdfMeta::new("Alle Bahnen"));
+        assert!(find(&pdf, b"/Count 2").is_some());
+        assert!(find(&pdf, b"/MediaBox [0 0 595.2756 841.8898]").is_some());
+        assert!(find(&pdf, b"/MediaBox [0 0 841.8898 1190.5511]").is_some());
+        assert!(find(&pdf, b"(Alle Bahnen)").is_some());
+        assert!(pdf.ends_with(b"%%EOF") || pdf.ends_with(b"%%EOF\n"));
+        // A page that cannot be written is refused and leaves the document as it was.
+        let mut doc = MultiPagePdf::new();
+        let mut bad = page(&[]);
+        bad.page_mm = (f64::INFINITY, 1.0);
+        assert!(matches!(doc.add_page(&bad), Err(PdfError::NotFinite)));
+        assert!(doc.is_empty());
+    }
+
+    #[test]
+    fn one_page_of_a_multi_page_pdf_matches_the_single_page_pdf_content() {
+        let p = page(&[square(2), plain_text("Posten", true, false)]);
+        let single = write(&[square(2), plain_text("Posten", true, false)]);
+        let mut doc = MultiPagePdf::new();
+        doc.add_page(&p).unwrap();
+        let multi = doc.finish(&PdfMeta::new("Test"));
+        assert_eq!(content_of(&single), content_of(&multi));
     }
 
     fn sheet_page(sheet: Vec<SheetItem>, primitives: &[Primitive]) -> Vec<u8> {
