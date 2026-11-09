@@ -20,4 +20,5 @@ Liste, die freemapper-print für SVG-Logos annimmt (ADR 0026), und wird ohne Hin
 „B“ und darin in Weiß „BEISPIEL-SPONSOR“ und „GMBH“. Ein kurzes Python-Skript hat es gezeichnet, nur mit der
 Standardbibliothek (`zlib`, `struct`, `math`), ohne Bildbibliothek. Es setzt die Buchstaben aus Strichen auf
 einem Raster von 6 × 10 Einheiten zusammen, glättet die Kanten über den Abstand jedes Pixels zur Strichmitte
-und schreibt die PNG-Blöcke `IHDR`, `IDAT` und `IEND` selbst. Das Skript liegt nicht im Repository.
+und schreibt die PNG-Blöcke `IHDR`, `IDAT` und `IEND` selbst. Das Skript liegt neben dem Logo, ebenfalls
+unter CC0 1.0: `python3 make_sponsor_png.py beispiel-sponsor.png` schreibt dieselbe Datei Byte für Byte.
