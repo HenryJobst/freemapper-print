@@ -627,13 +627,13 @@ mod tests {
     }
 
     fn square(priority: i32) -> Primitive {
-        Primitive {
+        Primitive::new(
             priority,
-            shape: Shape::Fill {
+            Shape::Fill {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
                 rule: FillRule::EvenOdd,
             },
-        }
+        )
     }
 
     fn clip() -> PaperBox {
@@ -670,16 +670,16 @@ mod tests {
 
     #[test]
     fn numbers_beyond_f32_refuse_the_page() {
-        let far = Primitive {
-            priority: 2,
-            shape: Shape::Stroke {
+        let far = Primitive::new(
+            2,
+            Shape::Stroke {
                 path: vec![(1e300, 0.0), (0.0, 0.0)],
                 closed: false,
                 width: 0.1,
                 cap: Cap::Flat,
                 join: Join::Miter,
             },
-        };
+        );
         let err = write_pdf(&page(&[far]), &PdfMeta::new("t")).unwrap_err();
         assert!(matches!(err, PdfError::NotFinite), "{err}");
         // A sheet item too: a text of infinite size.
@@ -729,16 +729,16 @@ mod tests {
 
     #[test]
     fn strokes_carry_width_caps_and_miter_limit() {
-        let line = Primitive {
-            priority: 2,
-            shape: Shape::Stroke {
+        let line = Primitive::new(
+            2,
+            Shape::Stroke {
                 path: vec![(0.0, 0.0), (10.0, 0.0)],
                 closed: false,
                 width: 0.35,
                 cap: Cap::Round,
                 join: Join::Miter,
             },
-        };
+        );
         let pdf = content_of(&write(&[line]));
         assert!(find(&pdf, b"0 0 0 1 K").is_some(), "stroke colour");
         assert!(find(&pdf, b"1 J").is_some(), "round cap");
@@ -747,9 +747,9 @@ mod tests {
     }
 
     fn clipped_line(y: f64) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Clipped {
+        Primitive::new(
+            2,
+            Shape::Clipped {
                 rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]].into(),
                 inner: Box::new(Shape::Stroke {
                     path: vec![(5.0, y), (25.0, y)],
@@ -759,7 +759,7 @@ mod tests {
                     join: Join::Miter,
                 }),
             },
-        }
+        )
     }
 
     #[test]
@@ -792,13 +792,13 @@ mod tests {
                 let Shape::Clipped { inner, .. } = clipped_line(11.0 + f64::from(i)).shape else {
                     panic!()
                 };
-                Primitive {
-                    priority: 2,
-                    shape: Shape::Clipped {
+                Primitive::new(
+                    2,
+                    Shape::Clipped {
                         rings: Arc::clone(&shared),
                         inner,
                     },
-                }
+                )
             })
             .collect();
         lines.insert(0, first);
@@ -824,16 +824,16 @@ mod tests {
                 else {
                     panic!()
                 };
-                Primitive {
-                    priority: 2,
-                    shape: Shape::Clipped {
+                Primitive::new(
+                    2,
+                    Shape::Clipped {
                         rings: Arc::clone(&outer),
                         inner: Box::new(Shape::Clipped {
                             rings: Arc::clone(&inner),
                             inner: line,
                         }),
                     },
-                }
+                )
             })
             .collect();
         let pdf = content_of(&write(&lines));
@@ -846,9 +846,9 @@ mod tests {
     }
 
     fn text(rotation: f64, stroke: Option<f64>) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Text {
+        Primitive::new(
+            2,
+            Shape::Text {
                 origin: (10.0, 10.0),
                 size: 2.5,
                 bold: false,
@@ -857,7 +857,7 @@ mod tests {
                 rotation,
                 stroke,
             },
-        }
+        )
     }
 
     #[test]
@@ -915,9 +915,9 @@ mod tests {
     }
 
     fn plain_text(text: &str, bold: bool, italic: bool) -> Primitive {
-        Primitive {
-            priority: 2,
-            shape: Shape::Text {
+        Primitive::new(
+            2,
+            Shape::Text {
                 origin: (10.0, 10.0),
                 size: 2.5,
                 bold,
@@ -926,7 +926,7 @@ mod tests {
                 rotation: 0.0,
                 stroke: None,
             },
-        }
+        )
     }
 
     /// Every stream of `pdf`, decompressed (all streams written here are FlateDecode).

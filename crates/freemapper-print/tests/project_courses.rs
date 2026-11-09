@@ -301,6 +301,23 @@ fn base_change_under_correction_reported() {
 }
 
 #[test]
+fn base_seen_takes_any_finite_gap() {
+    // A course file number that touches its circle has a negative gap; the record of it must load.
+    let (_d, path) = project_dir(
+        "c.xml",
+        &format!(
+            "{LAYOUTS}[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = 10\nbase_seen = {{ direction = 36.9, gap_mm = -0.4 }}\n"
+        ),
+    );
+    let n = project::load(&path).unwrap().project.numbers;
+    assert_eq!(n[0].base_seen.unwrap().gap_mm, -0.4);
+    let msg = error_of(
+        "[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = 10\nbase_seen = { direction = 36.9, gap_mm = nan }\n",
+    );
+    assert!(msg.contains("base_seen.gap_mm"), "{msg}");
+}
+
+#[test]
 fn course_file_must_be_a_regular_file() {
     let (_d, path) = project_dir("c.xml", LAYOUTS);
     let dir = path.parent().unwrap();

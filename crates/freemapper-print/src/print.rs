@@ -205,12 +205,17 @@ fn render_page_within(
     let mut objects_not_drawn_page_limit = 0;
     let mut dropped_pattern_objects = 0;
     let mut fonts = BTreeSet::new();
-    for object in &objects {
+    for (index, object) in objects.iter().enumerate() {
         if page_left == 0 {
             objects_not_drawn_page_limit += 1;
             continue;
         }
         let mut drawn = primitives_within(object, &symbols, page_left.min(MAX_UNITS_PER_OBJECT));
+        let north_line = is_north_line(&map.symbol_set, object);
+        for p in &mut drawn.primitives {
+            p.north_line = north_line;
+            p.object = u32::try_from(index).unwrap_or(u32::MAX);
+        }
         page_left = page_left.saturating_sub(drawn.units);
         truncated_objects += usize::from(drawn.cut);
         dropped_pattern_objects += usize::from(
@@ -530,6 +535,69 @@ mod tests {
 
     fn render(doc: &MapDocument, options: &PrintOptions) -> (RenderedPage, PrintReport) {
         render_page(doc, options).unwrap()
+    }
+
+    #[test]
+    fn primitives_carry_symbol_class_north_line_and_object() {
+        use crate::render::draw::SymbolClass;
+        let set = SymbolSet::issprom_2019();
+        let id = |code: &str| set.id_for_code(code).unwrap();
+        let square = |symbol_id: u32| {
+            let mut coords: Vec<MapCoord> =
+                [(0, 0), (20_000, 0), (20_000, 20_000), (0, 20_000), (0, 0)]
+                    .into_iter()
+                    .map(|(x, y)| MapCoord::new(x, y))
+                    .collect();
+            coords[4].flags = crate::omap::coord::FLAG_CLOSE;
+            MapObject {
+                symbol_id,
+                kind: MapObjectKind::Path,
+                coords,
+                tags: Vec::new(),
+                pattern: None,
+            }
+        };
+        let boulder = MapObject {
+            symbol_id: id("204"),
+            kind: MapObjectKind::Point { rotation_rad: 0.0 },
+            coords: vec![MapCoord::new(5_000, 5_000)],
+            tags: Vec::new(),
+            pattern: None,
+        };
+        let objects = vec![
+            boulder,
+            line(id("501.1"), (30_000, 0)),
+            square(id("401")),
+            // Uncrossable water: a combined symbol of a fill and a bank line, closed.
+            square(id("301")),
+            line(id("601"), (0, 40_000)),
+        ];
+        // The same combined symbol on an open path.
+        let objects = [objects, vec![line(id("301"), (0, -30_000))]].concat();
+        let doc = map(4000, set.clone(), objects);
+        let (page, _) = render(&doc, &options(Orientation::Portrait));
+        let classes = |object: u32| -> Vec<SymbolClass> {
+            let mut c: Vec<SymbolClass> = page
+                .primitives
+                .iter()
+                .filter(|p| p.object == object)
+                .map(|p| p.class)
+                .collect();
+            c.dedup();
+            c
+        };
+        assert_eq!(classes(0), [SymbolClass::Point]);
+        assert_eq!(classes(1), [SymbolClass::Line]);
+        assert_eq!(classes(2), [SymbolClass::Area]);
+        // A combined symbol counts by its path, as freemapper-courseplan reads maps: a closed one (the water
+        // with its bank line) is an area, an open one a line.
+        assert_eq!(classes(3), [SymbolClass::Area]);
+        assert_eq!(classes(5), [SymbolClass::Line]);
+        assert!(!page.primitives.iter().any(|p| p.object > 5));
+        for p in &page.primitives {
+            assert_eq!(p.north_line, p.object == 4, "{p:?}");
+        }
+        assert!(page.primitives.iter().any(|p| p.north_line));
     }
 
     #[test]
@@ -1201,15 +1269,17 @@ mod tests {
     #[test]
     fn pattern_rings_stay_shared_after_moving() {
         let rings: Rings = vec![vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]].into();
-        let clipped = |rings: &Rings| Primitive {
-            priority: 2,
-            shape: Shape::Clipped {
-                rings: Arc::clone(rings),
-                inner: Box::new(Shape::Fill {
-                    rings: vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
-                    rule: FillRule::EvenOdd,
-                }),
-            },
+        let clipped = |rings: &Rings| {
+            Primitive::new(
+                2,
+                Shape::Clipped {
+                    rings: Arc::clone(rings),
+                    inner: Box::new(Shape::Fill {
+                        rings: vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
+                        rule: FillRule::EvenOdd,
+                    }),
+                },
+            )
         };
         let mut primitives = vec![clipped(&rings), clipped(&rings)];
         translate(&mut primitives, (10.0, 20.0));

@@ -18,10 +18,6 @@ use crate::rules::CourseSymbolSizes;
 /// ([`Overprint::on_map`]).
 pub const IOF_PURPLE: [f64; 4] = [0.35, 0.85, 0.0, 0.0];
 
-/// The gap between a circle and a number placed due east of it, in print mm (spec: the shortest distance
-/// from the outer edge of the circle line to the number box).
-pub const EAST_NUMBER_GAP_MM: f64 = 1.0;
-
 /// The overprint of one course on one page. Empty on pages without a course, so they stay as before.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Overprint {
@@ -160,7 +156,7 @@ fn numbered(kind: ControlKind, control: &Control<MapCoord>) -> bool {
 
 /// The numbered stops of `course` with their control and text: a normal course counts its controls from 1,
 /// a score course shows the control codes.
-fn labels<'a>(
+pub(crate) fn labels<'a>(
     course: &'a Course<MapCoord>,
     event: &'a FittedEvent,
 ) -> Vec<(usize, &'a Control<MapCoord>, String)> {
@@ -192,43 +188,102 @@ pub fn control_count(course: &Course<MapCoord>, event: &FittedEvent) -> usize {
     labels(course, event).len()
 }
 
-/// The number positions the course file gives, as [`overprint`] takes them: per numbered stop the control
-/// code and the centre of its number text in page mm. A stop with a position in the file
-/// ([`crate::course::Stop::number_text_at`], an offset from the circle centre) keeps it; the others go due
-/// east of their circle, [`EAST_NUMBER_GAP_MM`] from the outer edge of the circle line. Task 10's placement
-/// replaces this.
-pub fn file_numbers(
+/// The width and height of the box of control number `text` with digits `height` tall (Arimo regular), as
+/// [`overprint`] draws it.
+pub(crate) fn number_size(text: &str, height: f64) -> (f64, f64) {
+    let (_, w, h) = symbols::number_metrics(text, height);
+    (w, h)
+}
+
+/// The course symbols of `course` on the page, as obstacles for control numbers: per stop on the map its index,
+/// centre and the radius out to the outer edge of its line (control circle, outer finish circle, the circle
+/// through the corners of a start or map exchange triangle, half a crossing point). Ends of marked routes draw
+/// nothing and are left out.
+pub(crate) fn stop_symbols(
     course: &Course<MapCoord>,
     event: &FittedEvent,
     to_page: impl Fn(MapCoord) -> Pt,
     sizes: &CourseSymbolSizes,
     symbol_factor: f64,
-) -> Vec<(String, Pt)> {
+) -> Vec<(usize, Pt, f64)> {
     let s = Scaled::new(sizes, symbol_factor);
-    labels(course, event)
-        .into_iter()
-        .filter_map(|(i, control, text)| {
-            let at = control.position?;
-            let centre = match course.stops[i].number_text_at {
-                Some(o) => to_page(MapCoord::new(
-                    at.x.saturating_add(um(o.dx_mm)),
-                    at.y.saturating_add(um(o.dy_mm)),
-                )),
-                None => {
-                    let c = to_page(at);
-                    let (_, w, _) = symbols::number_metrics(&text, s.number_height);
-                    let r_outer = s.circle_r + s.line / 2.0;
-                    (c.0 + r_outer + EAST_NUMBER_GAP_MM + w / 2.0, c.1)
-                }
+    placed_stops(course, event, &to_page)
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let p = p.as_ref()?;
+            let r = match p.kind {
+                ControlKind::EndOfMarkedRoute => return None,
+                ControlKind::CrossingPoint => s.crossing / 2.0,
+                _ => p.radius(&s),
             };
-            Some((control.code.clone(), centre))
+            Some((i, p.at, r + s.line / 2.0))
         })
         .collect()
 }
 
-/// `mm` as whole µm, saturating far outside any map.
-fn um(mm: f64) -> i32 {
-    (mm * 1000.0).round() as i32
+/// The legs of a normal course as drawn, gaps left in: per leg its index and the line from where it leaves its
+/// first stop's symbol to where it reaches the second's. Empty for a score course.
+pub(crate) fn leg_lines(
+    course: &Course<MapCoord>,
+    event: &FittedEvent,
+    to_page: impl Fn(MapCoord) -> Pt,
+    sizes: &CourseSymbolSizes,
+    symbol_factor: f64,
+) -> Vec<(usize, Vec<Pt>)> {
+    if course.kind != CourseKind::Normal {
+        return Vec::new();
+    }
+    let s = Scaled::new(sizes, symbol_factor);
+    let placed = placed_stops(course, event, &to_page);
+    let at = |i: usize| placed.get(i).and_then(Option::as_ref);
+    let mut out = Vec::new();
+    for (i, leg) in course.legs.iter().enumerate() {
+        let (Some(a), Some(b)) = (at(i), at(i + 1)) else {
+            continue;
+        };
+        let mut points = vec![a.at];
+        points.extend(leg.bends.iter().map(|c| to_page(*c)));
+        points.push(b.at);
+        let total = symbols::length(&points);
+        let from = symbols::exit_length(&points, a.radius(&s));
+        let reversed: Vec<Pt> = points.iter().rev().copied().collect();
+        let to = total - symbols::exit_length(&reversed, b.radius(&s));
+        if to > from {
+            out.extend(
+                symbols::pieces(&points, from, to, &[])
+                    .into_iter()
+                    .map(|piece| (i, piece)),
+            );
+        }
+    }
+    out
+}
+
+/// The stops of `course` on the page, `None` for a stop whose control is unknown or has no position.
+fn placed_stops<'a>(
+    course: &'a Course<MapCoord>,
+    event: &'a FittedEvent,
+    to_page: &impl Fn(MapCoord) -> Pt,
+) -> Vec<Option<Placed<'a>>> {
+    let controls: HashMap<&str, &Control<MapCoord>> = event
+        .controls
+        .iter()
+        .map(|c| (c.code.as_str(), c))
+        .collect();
+    course
+        .stops
+        .iter()
+        .map(|stop| {
+            let control = *controls.get(stop.control.as_str())?;
+            Some(Placed {
+                at: to_page(control.position?),
+                kind: stop.kind.unwrap_or(control.kind),
+                control,
+                stop,
+            })
+        })
+        .collect()
 }
 
 /// The course symbol sizes on the page: the profile's sizes times the symbol factor, radii from
@@ -322,7 +377,7 @@ pub(crate) fn applies(filter: &CourseFilter, course: &str) -> bool {
 
 /// The overprint of `course`: its stops, legs, the specials that apply to it and the control numbers at
 /// `numbers` (control code and text centre in page mm, matched to the numbered stops in order; a stop
-/// without an entry gets no number). `to_page` maps a map coordinate to page mm (the map frame and the page
+/// without an entry gets no number). [`crate::numbers::place_on_sheet`] gives the centres. `to_page` maps a map coordinate to page mm (the map frame and the page
 /// share the y direction); sizes are `sizes` × `symbol_factor`, leg gaps and offsets scale with the
 /// geometry factor `to_page` applies. Returns `below_priority` unset and the IOF purple:
 /// [`Overprint::on_map`] sets both for a page.
@@ -342,24 +397,7 @@ pub fn overprint(
     );
     let mut budget = symbols::Budget::new(MAX_REPEATS);
     let mut o = Overprint::default();
-    let controls: HashMap<&str, &Control<MapCoord>> = event
-        .controls
-        .iter()
-        .map(|c| (c.code.as_str(), c))
-        .collect();
-    let placed: Vec<Option<Placed>> = course
-        .stops
-        .iter()
-        .map(|stop| {
-            let control = *controls.get(stop.control.as_str())?;
-            Some(Placed {
-                at: to_page(control.position?),
-                kind: stop.kind.unwrap_or(control.kind),
-                control,
-                stop,
-            })
-        })
-        .collect();
+    let placed = placed_stops(course, event, &to_page);
     let at = |i: usize| placed.get(i).and_then(Option::as_ref);
     // The page points of leg `i`: from its first stop through its bends to its second.
     let leg_points = |i: usize| -> Option<Vec<Pt>> {

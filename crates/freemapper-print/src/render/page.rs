@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-pub use super::draw::{FillRule, Primitive, Shape};
+pub use super::draw::{FillRule, Primitive, Shape, SymbolClass};
 pub use super::geometry::Pt;
 pub use super::image::{ImageError, RasterImage};
 pub use super::symbols::{Cap, Join, RenderColour};

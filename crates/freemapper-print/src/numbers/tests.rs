@@ -1,0 +1,560 @@
+use super::*;
+use crate::course::{LoadedCourses, layout_for};
+use crate::omap::MapDocument;
+use crate::render::page::{FillRule, Primitive, RenderColour};
+use crate::sheet::course_sheet::course_project;
+use crate::sheet::{LogoCache, SheetNote, SheetReport, render_course_sheet};
+
+const A4: &str = "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\n";
+
+fn course<'a>(courses: &'a LoadedCourses, name: &str) -> &'a Course<MapCoord> {
+    courses
+        .event
+        .courses
+        .iter()
+        .find(|c| c.name == name)
+        .unwrap()
+}
+
+fn sheet_of(
+    project: &LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    name: &str,
+) -> (RenderedPage, SheetReport) {
+    let layout = layout_for(&project.project, name).0;
+    render_course_sheet(
+        project,
+        map,
+        courses,
+        course(courses, name),
+        layout,
+        &LogoCache::new(),
+    )
+    .unwrap()
+}
+
+fn number_conflicts(report: &SheetReport) -> Vec<&NumberConflict> {
+    report
+        .notes
+        .iter()
+        .filter_map(|n| match n {
+            SheetNote::NumberConflict(c) => Some(c),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A `[[numbers]]` entry.
+fn correction(control: &str, scope: &str, direction: f64, gap: Option<f64>) -> String {
+    let gap = gap.map(|g| format!("gap_mm = {g}\n")).unwrap_or_default();
+    format!("[[numbers]]\ncontrol = \"{control}\"\n{scope}\ndirection = {direction}\n{gap}")
+}
+
+/// The map position of control `code`.
+fn position(courses: &LoadedCourses, code: &str) -> MapCoord {
+    courses
+        .event
+        .controls
+        .iter()
+        .find(|c| c.code == code)
+        .and_then(|c| c.position)
+        .unwrap()
+}
+
+#[test]
+fn file_offset_round_trips_at_the_print_scale() {
+    let sizes = crate::rules::base().course_symbol(crate::scale::MapKind::Sprint);
+    let offset = Offset {
+        dx_mm: 8.0,
+        dy_mm: -6.0,
+    };
+    // At the map scale the box centre lies at the offset itself, on the ray to it.
+    let p = file_placement(offset, "12", &sizes, 4000, None);
+    assert!(
+        (p.direction - (6f64).atan2(8.0).to_degrees()).abs() < 1e-9,
+        "{p:?}"
+    );
+    let size = number_size("12", sizes.number_height_mm);
+    let b = placement::number_box((0.0, 0.0), r_outer(&sizes, 1.0), size, p);
+    assert!((b.centre().0 - 8.0).abs() < 1e-9 && (b.centre().1 + 6.0).abs() < 1e-9);
+    // Purple Pen prints the course at 1:5000: the 10 mm of map are 8 mm on its print, and the gap is measured
+    // there.
+    let at_5000 = file_placement(offset, "12", &sizes, 4000, Some(5000));
+    let b = placement::number_box((0.0, 0.0), r_outer(&sizes, 1.0), size, at_5000);
+    assert!((b.centre().0 - 6.4).abs() < 1e-9 && (b.centre().1 + 4.8).abs() < 1e-9);
+    assert!(at_5000.gap_mm < p.gap_mm);
+}
+
+#[test]
+fn levels_resolve_most_specific_wins() {
+    let body = format!(
+        "{A4}[[layouts]]\nid = \"a3\"\npaper = \"A3\"\norientation = \"portrait\"\n{}{}{}{}",
+        // 31: a layout correction with a gap, and one for the sheet of Kurz without a gap.
+        correction("31", "layout = \"a4\"", 180.0, Some(1.0)),
+        correction("31", "course = \"Kurz\"", 270.0, None),
+        // 32: a layout correction without a gap over an automatic number.
+        correction("32", "layout = \"a4\"", 90.0, None),
+        // 33: a correction for another layout does not apply.
+        correction("33", "layout = \"a3\"", 0.0, Some(2.0)),
+    );
+    let (_dir, project, map, courses) = course_project(&body);
+    let scale = map.georef.scale_denominator;
+    let kurz = resolve(
+        course(&courses, "Kurz"),
+        &courses.event,
+        &project,
+        "a4",
+        scale,
+    );
+    let sizes = project.rules.course_symbol(project.project.map.kind);
+    // The file puts 31's number 4 mm right and 3 mm up (IOF XML, y up).
+    let base = file_placement(
+        Offset {
+            dx_mm: 4.0,
+            dy_mm: -3.0,
+        },
+        "1",
+        &sizes,
+        scale,
+        None,
+    );
+    assert_eq!(kurz.len(), 2);
+    assert_eq!(
+        (kurz[0].control.as_str(), kurz[0].text.as_str()),
+        ("31", "1")
+    );
+    assert_eq!(kurz[0].level, Level::Sheet);
+    assert_eq!(kurz[0].base, Some(base));
+    assert_eq!(
+        kurz[0].placement,
+        Placement {
+            direction: 270.0,
+            gap_mm: 1.0
+        }
+    );
+    assert_eq!(kurz[1].level, Level::Layout);
+    assert_eq!(kurz[1].base, None);
+    assert_eq!(
+        kurz[1].placement,
+        Placement {
+            direction: 90.0,
+            gap_mm: AUTOMATIC_START.gap_mm
+        }
+    );
+    // D/H 12 on the same layout: 31 takes the layout's correction only, 33 is automatic.
+    let dh = resolve(
+        course(&courses, "D/H 12"),
+        &courses.event,
+        &project,
+        "a4",
+        scale,
+    );
+    assert_eq!(dh[0].control, "33");
+    assert_eq!(
+        (dh[0].level, dh[0].placement),
+        (Level::Automatic, AUTOMATIC_START)
+    );
+    assert_eq!(dh[1].level, Level::Layout);
+    assert_eq!(
+        dh[1].placement,
+        Placement {
+            direction: 180.0,
+            gap_mm: 1.0
+        }
+    );
+    // On the A3 layout 33's correction applies. The file gives 31 a position in Kurz only (per course), so in
+    // D/H 12 it is automatic there.
+    let dh = resolve(
+        course(&courses, "D/H 12"),
+        &courses.event,
+        &project,
+        "a3",
+        scale,
+    );
+    assert_eq!(dh[0].level, Level::Layout);
+    assert_eq!((dh[1].level, dh[1].base), (Level::Automatic, None));
+    let kurz = resolve(
+        course(&courses, "Kurz"),
+        &courses.event,
+        &project,
+        "a3",
+        scale,
+    );
+    let expected = Placement {
+        direction: 270.0,
+        gap_mm: base.gap_mm,
+    };
+    assert_eq!((kurz[0].level, kurz[0].placement), (Level::Sheet, expected));
+    // Without corrections: the file's position, else automatic.
+    let (_dir, project, _, courses) = course_project(A4);
+    let kurz = resolve(
+        course(&courses, "Kurz"),
+        &courses.event,
+        &project,
+        "a4",
+        scale,
+    );
+    assert_eq!(kurz[0].level, Level::CourseFile);
+    assert_eq!(kurz[1].level, Level::Automatic);
+}
+
+#[test]
+fn file_positions_draw_where_the_file_puts_them() {
+    // Without corrections the number of 31 sits at the file's offset: 4 mm right and 3 mm up of the circle
+    // centre, at 1:4000 on a 1:4000 map.
+    let (_dir, project, map, courses) = course_project(A4);
+    let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
+    let gf = report.print.geometry_factor;
+    let to_page = |c: MapCoord| {
+        (
+            page.page_mm.0 / 2.0 + f64::from(c.x) / 1000.0 * gf - page.centre_mm.0,
+            page.page_mm.1 / 2.0 + f64::from(c.y) / 1000.0 * gf - page.centre_mm.1,
+        )
+    };
+    let at = to_page(position(&courses, "31"));
+    let centre = text_centre(&page, "1");
+    assert!(
+        (centre.0 - (at.0 + 4.0)).abs() < 1e-6 && (centre.1 - (at.1 - 3.0)).abs() < 1e-6,
+        "{centre:?} {at:?}"
+    );
+}
+
+/// The centre of the box of the control number `text` drawn in the upper purple of `page`.
+fn text_centre(page: &RenderedPage, text: &str) -> Pt {
+    let sizes = crate::rules::base().course_symbol(crate::scale::MapKind::Sprint);
+    page.overprint
+        .upper
+        .iter()
+        .find_map(|s| match s {
+            Shape::Text {
+                origin, text: t, ..
+            } if t == text => {
+                let (w, h) = number_size(text, sizes.number_height_mm);
+                Some((origin.0 + w / 2.0, origin.1 - h / 2.0))
+            }
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn check_reports_number_outside_frame() {
+    // 32 lies near the right edge of the frame; its number 20 mm east of the circle reaches past it.
+    let body = format!(
+        "{A4}{}",
+        correction("32", "layout = \"a4\"", 0.0, Some(20.0))
+    );
+    let (_dir, project, map, courses) = course_project(&body);
+    let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
+    let conflicts = number_conflicts(&report);
+    assert_eq!(conflicts.len(), 1, "{:?}", report.notes);
+    let c = conflicts[0];
+    assert_eq!((c.course.as_str(), c.control.as_str()), ("Kurz", "32"));
+    assert_eq!(c.conflicts, [Conflict::OutsideFrame]);
+    // The proposal lies inside the frame.
+    assert!(c.proposal.gap_mm <= 1.5, "{:?}", c.proposal);
+    let note = SheetNote::NumberConflict(c.clone());
+    assert!(!note.is_info() && report.needs_attention());
+    assert!(text_centre(&page, "2").0 > page.clip.max.0 - 1.0);
+}
+
+#[test]
+fn check_reports_number_on_other_circle() {
+    // 32 moved 8 mm east of 31; a number due east of 31 lies on 32's circle and on the leg between them.
+    let body = format!(
+        "{A4}{}",
+        correction("31", "layout = \"a4\"", 0.0, Some(0.3))
+    );
+    let (_dir, project, map, mut courses) = course_project(&body);
+    let at = position(&courses, "31");
+    for c in &mut courses.event.controls {
+        if c.code == "32" {
+            c.position = Some(MapCoord::new(at.x + 8_000, at.y));
+        }
+    }
+    let (_, report) = sheet_of(&project, &map, &courses, "Kurz");
+    let conflicts = number_conflicts(&report);
+    let c = conflicts.iter().find(|c| c.control == "31").unwrap();
+    assert!(
+        c.conflicts.contains(&Conflict::Symbol("32".into())),
+        "{c:?}"
+    );
+    assert!(
+        c.conflicts
+            .contains(&Conflict::Leg("31".into(), "32".into())),
+        "{c:?}"
+    );
+}
+
+#[test]
+fn numbers_never_moved_silently() {
+    // A correction that conflicts is drawn where it says; the note carries a different proposal.
+    let body = format!(
+        "{A4}{}",
+        correction("32", "layout = \"a4\"", 0.0, Some(20.0))
+    );
+    let (_dir, project, map, courses) = course_project(&body);
+    let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
+    let gf = report.print.geometry_factor;
+    let sf = report.print.symbol_factor;
+    let c32 = position(&courses, "32");
+    let at = (
+        page.page_mm.0 / 2.0 + f64::from(c32.x) / 1000.0 * gf - page.centre_mm.0,
+        page.page_mm.1 / 2.0 + f64::from(c32.y) / 1000.0 * gf - page.centre_mm.1,
+    );
+    let sizes = project.rules.course_symbol(project.project.map.kind);
+    let size = number_size("2", sizes.number_height_mm * sf);
+    let drawn = placement::number_box(
+        at,
+        r_outer(&sizes, sf),
+        size,
+        Placement {
+            direction: 0.0,
+            gap_mm: 20.0 * sf,
+        },
+    );
+    let centre = text_centre(&page, "2");
+    assert!(
+        (centre.0 - drawn.centre().0).abs() < 1e-6 && (centre.1 - drawn.centre().1).abs() < 1e-6,
+        "{centre:?} {drawn:?}"
+    );
+    let proposal = number_conflicts(&report)[0].proposal;
+    assert_ne!(
+        Placement::from(proposal),
+        Placement {
+            direction: 0.0,
+            gap_mm: 20.0
+        }
+    );
+}
+
+#[test]
+fn proposal_is_conflict_free() {
+    // Every number of both Lübeck courses gets a sheet correction pointing along its outgoing leg, so each one
+    // lies on a leg. The proposals, accepted as sheet corrections, give sheets without number conflicts.
+    let (_dir, _, _, courses) = course_project(A4);
+    let mut body = A4.to_string();
+    for name in ["Kurz", "D/H 12"] {
+        let c = course(&courses, name);
+        for pair in c.stops.windows(2) {
+            let (from, to) = (
+                position(&courses, &pair[0].control),
+                position(&courses, &pair[1].control),
+            );
+            if !pair[0].control.starts_with('3') {
+                continue;
+            }
+            let (dx, dy) = (f64::from(to.x - from.x), f64::from(from.y - to.y));
+            let direction = placement::normalize_direction(dy.atan2(dx).to_degrees());
+            body.push_str(&correction(
+                &pair[0].control,
+                &format!("course = \"{name}\""),
+                (direction * 10.0).round() / 10.0,
+                Some(0.3),
+            ));
+        }
+    }
+    let (_dir, project, map, courses) = course_project(&body);
+    let mut accepted = A4.to_string();
+    let mut seen = 0;
+    for name in ["Kurz", "D/H 12"] {
+        let (_, report) = sheet_of(&project, &map, &courses, name);
+        let conflicts = number_conflicts(&report);
+        assert_eq!(conflicts.len(), 2, "{name}: {:?}", report.notes);
+        for c in conflicts {
+            assert!(
+                c.conflicts.iter().any(|k| matches!(k, Conflict::Leg(..))),
+                "{c:?}"
+            );
+            accepted.push_str(&correction(
+                &c.control,
+                &format!("course = \"{name}\""),
+                c.proposal.direction,
+                Some(c.proposal.gap_mm),
+            ));
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 4);
+    let (_dir, project, map, courses) = course_project(&accepted);
+    for name in ["Kurz", "D/H 12"] {
+        let (_, report) = sheet_of(&project, &map, &courses, name);
+        assert!(
+            number_conflicts(&report).is_empty(),
+            "{name}: {:?}",
+            report.notes
+        );
+    }
+}
+
+#[test]
+fn automatic_numbers_are_free_and_behind() {
+    // Kurz: 32 has no position in the file. It is placed free of conflicts, and behind the circle when that is
+    // free: the incoming leg from 31 runs south-east, so behind is south-east too.
+    let (_dir, project, map, courses) = course_project(A4);
+    let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
+    assert!(number_conflicts(&report).is_empty(), "{:?}", report.notes);
+    let gf = report.print.geometry_factor;
+    let to_page = |c: MapCoord| {
+        (
+            page.page_mm.0 / 2.0 + f64::from(c.x) / 1000.0 * gf - page.centre_mm.0,
+            page.page_mm.1 / 2.0 + f64::from(c.y) / 1000.0 * gf - page.centre_mm.1,
+        )
+    };
+    let (a, b) = (
+        to_page(position(&courses, "31")),
+        to_page(position(&courses, "32")),
+    );
+    let behind = placement::direction_to(a, b).unwrap();
+    let centre = text_centre(&page, "2");
+    let drawn = placement::direction_to(b, centre).unwrap();
+    assert!(
+        placement::angle_diff(drawn, behind) < 0.5,
+        "{drawn} {behind}"
+    );
+}
+
+#[test]
+fn corrections_over_a_changed_base_are_stale() {
+    let (_dir, project, map, _) = course_project(A4);
+    let sizes = project.rules.course_symbol(project.project.map.kind);
+    let base = file_placement(
+        Offset {
+            dx_mm: 4.0,
+            dy_mm: -3.0,
+        },
+        "1",
+        &sizes,
+        map.georef.scale_denominator,
+        None,
+    );
+    let with_seen = |seen: Placement, scope: &str| {
+        format!(
+            "{A4}{}base_seen = {{ direction = {}, gap_mm = {} }}\n",
+            correction("31", scope, 90.0, None),
+            seen.direction,
+            seen.gap_mm
+        )
+    };
+    let stale = |body: &str| {
+        let (_dir, _, _, courses) = course_project(body);
+        courses
+            .stale
+            .iter()
+            .filter(|s| matches!(s, Stale::CorrectionOverridesChangedBase { .. }))
+            .count()
+    };
+    // Seen as the file has it now: nothing to report, for a sheet or a layout correction.
+    assert_eq!(stale(&with_seen(base, "course = \"Kurz\"")), 0);
+    assert_eq!(stale(&with_seen(base, "layout = \"a4\"")), 0);
+    // The file moved the number by more than the tolerance since.
+    let moved = Placement {
+        direction: base.direction + 5.0,
+        ..base
+    };
+    assert_eq!(stale(&with_seen(moved, "course = \"Kurz\"")), 1);
+    assert_eq!(stale(&with_seen(moved, "layout = \"a4\"")), 1);
+}
+
+#[test]
+fn obstacles_of_map_symbols_by_class() {
+    let square = |x: f64| vec![(x, 0.0), (x + 1.0, 0.0), (x + 1.0, 1.0), (x, 1.0)];
+    let mut point = Primitive::new(
+        1,
+        Shape::Fill {
+            rings: vec![square(0.0)],
+            rule: FillRule::EvenOdd,
+        },
+    );
+    point.class = SymbolClass::Point;
+    point.object = 7;
+    let mut line = Primitive::new(
+        2,
+        Shape::Stroke {
+            path: vec![(0.0, 2.0), (5.0, 2.0)],
+            closed: false,
+            width: 0.2,
+            cap: crate::render::page::Cap::Flat,
+            join: crate::render::page::Join::Miter,
+        },
+    );
+    line.class = SymbolClass::Line;
+    line.object = 8;
+    let mut north = line.clone();
+    north.north_line = true;
+    let area = Primitive::new(
+        3,
+        Shape::Fill {
+            rings: vec![square(2.0)],
+            rule: FillRule::EvenOdd,
+        },
+    );
+    let far = Primitive::new(
+        3,
+        Shape::Fill {
+            rings: vec![square(500.0)],
+            rule: FillRule::EvenOdd,
+        },
+    );
+    let colour = |priority: i32, name: &str, cmyk: [f64; 4]| RenderColour {
+        priority,
+        name: name.into(),
+        cmyk,
+        rgb: [0.0; 3],
+        opacity: 1.0,
+    };
+    let page = RenderedPage {
+        primitives: vec![point, line, north, area, far],
+        clip: PaperBox {
+            min: (0.0, 0.0),
+            max: (210.0, 297.0),
+        },
+        page_mm: (210.0, 297.0),
+        centre_mm: (0.0, 0.0),
+        colours: vec![
+            colour(1, "Black 100%", [0.0, 0.0, 0.0, 1.0]),
+            colour(2, "Brown 100%", [0.25, 0.75, 1.0, 0.0]),
+            colour(3, "Black for buildings", [0.0, 0.0, 0.0, 1.0]),
+        ],
+        sheet: Vec::new(),
+        overprint: Default::default(),
+    };
+    let course = CourseShapes {
+        symbols: vec![(1, (50.0, 50.0), 3.175)],
+        legs: vec![(0, vec![(40.0, 50.0), (46.0, 50.0)])],
+        half_line: 0.175,
+    };
+    let elements = vec![(
+        "title".to_string(),
+        PaperBox {
+            min: (0.0, 280.0),
+            max: (210.0, 297.0),
+        },
+    )];
+    let weights = PlacementWeights {
+        black: 10.0,
+        brown: 4.0,
+        blue: 4.0,
+        other: 1.0,
+    };
+    let region = Rect {
+        min: (-10.0, -10.0),
+        max: (20.0, 20.0),
+    };
+    let o = obstacles(&page, &course, &elements, &weights, &[region]);
+    let tiers: Vec<(Tier, &str)> = o.iter().map(|o| (o.tier, o.label.as_str())).collect();
+    assert_eq!(
+        tiers,
+        [
+            (Tier::Overprint, "s1"),
+            (Tier::Overprint, "l0"),
+            (Tier::Overprint, "e0"),
+            (Tier::MapSymbol, "p7"),
+            (Tier::MapSymbol, "m8"),
+            (Tier::Soft, ""),
+        ]
+    );
+    // "Black for buildings" is not canonical, but its CMYK is full black.
+    assert_eq!(o[5].weight, 10.0);
+}

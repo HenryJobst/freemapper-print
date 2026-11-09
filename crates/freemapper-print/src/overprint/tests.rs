@@ -147,6 +147,44 @@ fn three_stops() -> (Course<MapCoord>, FittedEvent) {
     (c, ev)
 }
 
+/// The number centres as a course sheet draws them for the file's positions alone: a stop with a position in the
+/// file keeps it ([`crate::numbers::file_placement`] at the map scale), the others go due east of their circle,
+/// 1 mm from the outer edge of its line.
+fn file_numbers(
+    course: &Course<MapCoord>,
+    event: &FittedEvent,
+    to_page: impl Fn(MapCoord) -> Pt,
+    sizes: &CourseSymbolSizes,
+    sf: f64,
+) -> Vec<(String, Pt)> {
+    use crate::placement::{Placement, number_box};
+    labels(course, event)
+        .into_iter()
+        .filter_map(|(i, control, text)| {
+            let at = to_page(control.position?);
+            let p = match course.stops[i].number_text_at {
+                Some(o) => crate::numbers::file_placement(o, &text, sizes, 1, None),
+                None => Placement {
+                    direction: 0.0,
+                    gap_mm: 1.0,
+                },
+            };
+            let r = (sizes.circle_diameter_mm + sizes.line_width_mm) / 2.0 * sf;
+            let (w, h) = number_size(&text, sizes.number_height_mm * sf);
+            let b = number_box(
+                at,
+                r,
+                (w, h),
+                Placement {
+                    gap_mm: p.gap_mm * sf,
+                    ..p
+                },
+            );
+            Some((control.code.clone(), b.centre()))
+        })
+        .collect()
+}
+
 #[test]
 fn circle_and_line_sizes_scale_with_symbol_factor() {
     let sf = symbol_factor(MapKind::Sprint, 4000, 3000).unwrap();
@@ -410,13 +448,14 @@ fn numbers_at_file_position_or_due_east() {
     assert_eq!(numbers.len(), 2, "{numbers:?}");
     assert_eq!(numbers[0].0, "31");
     assert_eq!(numbers[1].0, "32");
-    // Due east: the box's left edge 1 mm beyond the outer edge of the circle line.
+    // Due east: the box's left edge a gap of 1 mm beyond the outer edge of the circle line; the gap grows with
+    // the symbol factor like the circle.
     let face = crate::render::fonts::FontFace::Regular;
     let size = 4.0 * sf / crate::render::fonts::cap_height(face);
     let w = crate::render::fonts::text_width("1", face) * size;
     let r_outer = (3.0 + 0.175) * sf;
     let east = numbers[0].1;
-    assert!((east.0 - w / 2.0 - (60.0 * gf + 100.0 + r_outer + 1.0)).abs() < 1e-9);
+    assert!((east.0 - w / 2.0 - (60.0 * gf + 100.0 + r_outer + sf)).abs() < 1e-9);
     assert!((east.1 - 100.0).abs() < 1e-9);
     // From the file: the offset is map mm from the circle centre, so it grows with the geometry.
     let at = numbers[1].1;
@@ -890,13 +929,13 @@ fn colour(priority: i32, cmyk: [f64; 4]) -> RenderColour {
 }
 
 fn square(priority: i32) -> Primitive {
-    Primitive {
+    Primitive::new(
         priority,
-        shape: Shape::Fill {
+        Shape::Fill {
             rings: vec![vec![(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)]],
             rule: FillRule::EvenOdd,
         },
-    }
+    )
 }
 
 /// A page with squares of priority 9, 2 and 1 and the overprint of

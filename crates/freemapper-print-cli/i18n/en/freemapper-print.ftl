@@ -237,6 +237,20 @@ note-element-covers-course = Note: the element { $id } covers { $count ->
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
+note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } overlaps { $conflicts }. It is printed there all the same. The best position found is direction { $direction }° with a gap of { $gap } mm. To use it, add a correction for the control under [[numbers]] in the project file.
+number-conflict-symbol = the symbol of control { $control }
+number-conflict-leg = the leg from { $from } to { $to }
+number-conflict-number = the number of control { $control }
+number-conflict-element = the element { $id }
+number-conflict-outside = the edge of the map frame
+number-conflict-points = { $count ->
+        [one] one point symbol
+       *[other] { $count } point symbols
+    } of the map
+number-conflict-lines = { $count ->
+        [one] one line symbol
+       *[other] { $count } line symbols
+    } of the map
 
 ## Notes on the course file
 

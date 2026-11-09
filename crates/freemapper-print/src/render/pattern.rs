@@ -267,10 +267,7 @@ pub(super) fn area_pattern(
                     cap: Cap::Flat,
                     join: Join::Miter,
                 };
-                sink.push(Primitive {
-                    priority: *color,
-                    shape: clip(clipping, rings, stroke),
-                });
+                sink.push(Primitive::new(*color, clip(clipping, rings, stroke)));
             }
         }
         Pattern::Points {

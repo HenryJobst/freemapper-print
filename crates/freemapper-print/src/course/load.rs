@@ -117,7 +117,8 @@ pub enum CourseLoadError {
 }
 
 /// Reads the course file `[sources] courses` names, chooses the reader by extension (`.ppen`, `.xml`,
-/// any case), fits it to `map` and lists the stale entries of the project file. `None` without a
+/// any case), fits it to `map` and lists the stale entries of the project file, corrections over a changed
+/// course file placement included ([`crate::numbers::changed_bases`]). `None` without a
 /// course source.
 pub fn load_courses(
     project: &LoadedProject,
@@ -147,7 +148,12 @@ pub fn load_courses(
         check_georef: s.course_georef_check,
     };
     let fitted = fit(raw, map, &options).map_err(|source| CourseLoadError::Fit { file, source })?;
-    let stale = stale_entries(&project.project, &fitted.event);
+    let mut stale = stale_entries(&project.project, &fitted.event);
+    stale.extend(crate::numbers::changed_bases(
+        project,
+        &fitted.event,
+        map.georef.scale_denominator,
+    ));
     Ok(Some(LoadedCourses {
         notes: fitted.event.notes.clone(),
         event: fitted.event,

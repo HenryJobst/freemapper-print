@@ -240,6 +240,20 @@ note-element-covers-course = Hinweis: Das Element { $id } deckt { $count ->
 note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
+note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. Die beste gefundene Lage ist Richtung { $direction }° mit { $gap } mm Abstand. Um sie zu nutzen, tragen Sie für den Posten eine Korrektur unter [[numbers]] in die Projektdatei ein.
+number-conflict-symbol = das Symbol von Posten { $control }
+number-conflict-leg = die Strecke von { $from } nach { $to }
+number-conflict-number = die Nummer von Posten { $control }
+number-conflict-element = das Element { $id }
+number-conflict-outside = den Rand des Kartenausschnitts
+number-conflict-points = { $count ->
+        [one] ein Punktsymbol
+       *[other] { $count } Punktsymbole
+    } der Karte
+number-conflict-lines = { $count ->
+        [one] ein Liniensymbol
+       *[other] { $count } Liniensymbole
+    } der Karte
 
 ## Hinweise zur Bahndatei
 

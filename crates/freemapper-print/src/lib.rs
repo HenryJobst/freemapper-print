@@ -7,9 +7,11 @@
 pub mod course;
 pub mod describe;
 pub mod export;
+pub mod numbers;
 pub mod omap;
 pub mod output;
 pub mod overprint;
+pub mod placement;
 pub mod print;
 pub mod project;
 pub mod render;

@@ -743,15 +743,18 @@ fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<
         if let Some(g) = n.gap_mm {
             gap_in_range(file, at("gap_mm"), g)?;
         }
+        // `base_seen` records the course file's placement as it was, so any finite gap goes: a Purple Pen
+        // number that touches its circle has a negative one, a far one more than the corrections allow.
         if let Some(b) = &n.base_seen {
-            if !b.direction.is_finite() {
-                return Err(invalid(
-                    file,
-                    at("base_seen.direction"),
-                    "must be a finite number",
-                ));
+            for (value, field) in [(b.direction, "direction"), (b.gap_mm, "gap_mm")] {
+                if !value.is_finite() {
+                    return Err(invalid(
+                        file,
+                        at(&format!("base_seen.{field}")),
+                        "must be a finite number",
+                    ));
+                }
             }
-            gap_in_range(file, at("base_seen.gap_mm"), b.gap_mm)?;
         }
     }
     Ok(())

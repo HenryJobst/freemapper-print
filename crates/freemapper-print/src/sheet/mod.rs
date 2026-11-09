@@ -161,6 +161,9 @@ pub enum SheetNote {
     /// The text `element` uses the course placeholder `name` on a sheet without a course, where it is filled
     /// with nothing. Informs only.
     CoursePlaceholderNotFilled { element: String, name: String },
+    /// A control number on a course sheet covers part of the course, a sheet element or map symbols, or reaches
+    /// past the map frame. It is drawn there all the same; the note proposes a free position (spec §5.7).
+    NumberConflict(crate::numbers::NumberConflict),
     /// What the course reader found but does not support.
     Course(CourseNote),
     /// What fitting the course file to the map found out.

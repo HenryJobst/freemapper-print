@@ -8,8 +8,9 @@ use crate::course::{
     Course, CourseKind, FittedEvent, LoadedCourses, SourceFormat, Special, layout_for,
 };
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
+use crate::numbers::{place_on_sheet, resolve};
 use crate::omap::{MapCoord, MapDocument};
-use crate::overprint::{applies, control_count, file_numbers, overprint};
+use crate::overprint::{applies, control_count, overprint};
 use crate::print::Orientation;
 use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
 use crate::render::page::{Pt, RenderedPage};
@@ -32,13 +33,13 @@ pub struct DescriptionSource<'a> {
 
 /// The sheet of `course` (one of `courses`) on `layout`: the map as [`super::render_sheet`] draws it, centred on
 /// [`course_centre`] when the layout has no `centre_map_mm`, with the course overprint and the course
-/// placeholders. Numbers sit where the course file puts them, else due east of their circle
-/// ([`file_numbers`]).
+/// placeholders. Numbers sit where their level puts them ([`resolve`]); those the course file gives no position
+/// for are placed automatically, and every number is checked ([`place_on_sheet`]).
 ///
 /// Notes beyond the layout sheet's: [`SheetNote::CourseOutsideFrame`], [`SheetNote::DefaultLayout`] when
 /// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`] (also
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
-/// [`SheetNote::OverprintCut`] and [`SheetNote::CourseValueUnknown`]. The notes of the course file as a whole
+/// [`SheetNote::OverprintCut`], [`SheetNote::CourseValueUnknown`] and [`SheetNote::NumberConflict`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
     project: &LoadedProject,
@@ -96,14 +97,31 @@ pub fn render_course_sheet(
     let kind = project.project.map.kind;
     let sizes = project.rules.course_symbol(kind);
     let sf = report.print.symbol_factor;
-    let numbers = file_numbers(course, event, to_page, &sizes, sf);
-    page.overprint = overprint(course, event, &numbers, to_page, &sizes, sf).on_map(
+    // Numbers sit where their level puts them (spec §5.7); a conflict is reported, never moved away.
+    let placed = place_on_sheet(
+        course,
+        event,
+        resolve(course, event, project, &layout.id, map_scale),
+        &page,
+        to_page,
+        &rects,
+        &sizes,
+        sf,
+        &project.rules.placement_weights(),
+    );
+    let centres: Vec<(String, Pt)> = placed
+        .numbers
+        .iter()
+        .map(|n| (n.resolved.control.clone(), n.centre))
+        .collect();
+    page.overprint = overprint(course, event, &centres, to_page, &sizes, sf).on_map(
         project.rules.purple_cmyk(),
         &page.colours,
         &page.primitives,
     );
 
     let notes = &mut report.notes;
+    notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
     let r = (sizes.circle_diameter_mm / 2.0 + sizes.line_width_mm / 2.0) * sf;
     let frame = page.clip;
     let mut outside: Vec<String> = Vec::new();

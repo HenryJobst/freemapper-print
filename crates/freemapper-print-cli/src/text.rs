@@ -340,6 +340,11 @@ mod tests {
             "scope",
             "page",
             "text",
+            "conflicts",
+            "direction",
+            "gap",
+            "from",
+            "to",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

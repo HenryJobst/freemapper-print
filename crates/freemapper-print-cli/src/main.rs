@@ -16,6 +16,7 @@ use freemapper_print::export::{
     ExportError, course_sheet_pdf, export_courses, export_courses_single_file, export_layouts,
     select_courses, select_layouts, sheet_pdf,
 };
+use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::output::OutputError;
@@ -1136,10 +1137,65 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-course-placeholder-not-filled",
             Some(&args!("id" => printable(element), "name" => format!("{{{name}}}"))),
         ),
+        SheetNote::NumberConflict(c) => number_conflict_line(texts, c),
         SheetNote::Course(note) => course_note_line(texts, note),
         SheetNote::Fit(note) => fit_note_line(texts, note),
         SheetNote::Stale(stale) => stale_line(texts, stale),
     }
+}
+
+/// `value` with at most `places` decimals, trailing zeros dropped, in the decimal style of the language.
+fn short_decimal(texts: &Texts, value: f64, places: usize) -> String {
+    let s = format!("{value:.places$}");
+    let s = if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &s
+    };
+    texts.decimal(s)
+}
+
+/// The message for a control number in conflict, with what it overlaps and the proposal. No wildcard arm.
+fn number_conflict_line(texts: &Texts, c: &NumberConflict) -> String {
+    let parts: Vec<String> = c
+        .conflicts
+        .iter()
+        .map(|conflict| match conflict {
+            Conflict::Symbol(control) => texts.get(
+                "number-conflict-symbol",
+                Some(&args!("control" => printable(control))),
+            ),
+            Conflict::Leg(from, to) => texts.get(
+                "number-conflict-leg",
+                Some(&args!("from" => printable(from), "to" => printable(to))),
+            ),
+            Conflict::Number(control) => texts.get(
+                "number-conflict-number",
+                Some(&args!("control" => printable(control))),
+            ),
+            Conflict::Element(id) => texts.get(
+                "number-conflict-element",
+                Some(&args!("id" => printable(id))),
+            ),
+            Conflict::OutsideFrame => texts.plain("number-conflict-outside"),
+            Conflict::PointSymbols(count) => {
+                texts.get("number-conflict-points", Some(&args!("count" => *count)))
+            }
+            Conflict::LineSymbols(count) => {
+                texts.get("number-conflict-lines", Some(&args!("count" => *count)))
+            }
+        })
+        .collect();
+    texts.get(
+        "note-number-conflict",
+        Some(&args!(
+            "course" => printable(&c.course),
+            "control" => printable(&c.control),
+            "conflicts" => parts.join(", "),
+            "direction" => short_decimal(texts, c.proposal.direction, 1),
+            "gap" => short_decimal(texts, c.proposal.gap_mm, 2),
+        )),
+    )
 }
 
 /// The message for a note of the course reader. No wildcard arm, as for sheet notes.
@@ -1926,6 +1982,28 @@ mod tests {
             (
                 SheetNote::Stale(Stale::CorrectionOverridesChangedBase { control: s("49") }),
                 vec!["49"],
+            ),
+            (
+                SheetNote::NumberConflict(NumberConflict {
+                    course: s("Kurz"),
+                    control: s("31"),
+                    conflicts: vec![
+                        Conflict::Symbol(s("32")),
+                        Conflict::Leg(s("S1"), s("31")),
+                        Conflict::Number(s("33")),
+                        Conflict::Element(s("title")),
+                        Conflict::OutsideFrame,
+                        Conflict::PointSymbols(2),
+                        Conflict::LineSymbols(1),
+                    ],
+                    proposal: freemapper_print::course::NumberPlacement {
+                        direction: 112.5,
+                        gap_mm: 0.8,
+                    },
+                }),
+                vec![
+                    "Kurz", "31", "32", "S1", "33", "title", "112", "5°", "0", "8 mm", "2 ",
+                ],
             ),
         ];
         for lang in text::available() {

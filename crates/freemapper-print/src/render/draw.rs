@@ -57,11 +57,57 @@ pub enum Shape {
     },
 }
 
+/// The kind of map symbol a primitive belongs to. Number placement reads it (ADR 0038): a control number may
+/// not cover point and line symbols, areas only cost a little. Backends ignore it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SymbolClass {
+    Point,
+    Line,
+    /// Area symbols, and anything that is not a map object.
+    #[default]
+    Area,
+    Text,
+}
+
+impl SymbolClass {
+    /// The class of a symbol; `None` for a combined symbol, whose class depends on its path.
+    fn of(symbol: &Symbol) -> Option<SymbolClass> {
+        match symbol {
+            Symbol::Point(_) => Some(SymbolClass::Point),
+            Symbol::Line(_) => Some(SymbolClass::Line),
+            Symbol::Area { .. } => Some(SymbolClass::Area),
+            Symbol::Text(_) => Some(SymbolClass::Text),
+            Symbol::Combined(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Primitive {
     /// Colour priority (= colour index); 0 is painted last, on top.
     pub priority: i32,
     pub shape: Shape,
+    /// The class of the symbol (or symbol part) that drew it.
+    pub class: SymbolClass,
+    /// Drawn by a magnetic north line (symbol 601 or 601.x), which never counts as covered map detail.
+    pub north_line: bool,
+    /// Index of the map object that drew it among the objects of its page, so that the primitives of one
+    /// object can count once.
+    pub object: u32,
+}
+
+impl Primitive {
+    /// A primitive of class [`SymbolClass::Area`], not a north line, object 0. The drawing code sets the
+    /// class, the page the rest.
+    pub fn new(priority: i32, shape: Shape) -> Self {
+        Primitive {
+            priority,
+            shape,
+            class: SymbolClass::Area,
+            north_line: false,
+            object: 0,
+        }
+    }
 }
 
 /// Segments of a circle drawn as a polygon.
@@ -121,6 +167,8 @@ pub(super) struct Sink {
     spent: usize,
     /// The budget ran out and output was dropped.
     pub(super) cut: bool,
+    /// The class every primitive pushed now gets.
+    class: SymbolClass,
 }
 
 // Units asked for by all sinks of this thread, so tests also see work done in a sink other than
@@ -151,6 +199,7 @@ impl Sink {
             left: budget,
             spent: 0,
             cut: false,
+            class: SymbolClass::Area,
         }
     }
 
@@ -169,7 +218,8 @@ impl Sink {
 
     /// Adds `primitive` for one unit plus its kept points ([`KEPT_POINTS_PER_UNIT`]); one that
     /// costs more than is left is dropped, and the budget counts as spent.
-    pub(super) fn push(&mut self, primitive: Primitive) {
+    pub(super) fn push(&mut self, mut primitive: Primitive) {
+        primitive.class = self.class;
         let units = 1 + kept_points(&primitive.shape) / KEPT_POINTS_PER_UNIT;
         self.request(units);
         if units > self.left {
@@ -295,6 +345,18 @@ pub(super) fn draw_object(object: &MapObject, symbols: &RenderSymbols, sink: &mu
     let Some(symbol) = symbols.symbols.get(&object.symbol_id) else {
         return;
     };
+    sink.class = match object.kind {
+        MapObjectKind::Point { .. } => SymbolClass::Point,
+        MapObjectKind::Text { .. } => SymbolClass::Text,
+        // A combined symbol counts by its path, as freemapper-courseplan reads maps: closed is an area (a
+        // building with its outline), open a line (a wall with its tags).
+        MapObjectKind::Path => SymbolClass::of(symbol).unwrap_or_else(|| {
+            match geometry::parts(&object.coords).first() {
+                Some(part) if !part.closed => SymbolClass::Line,
+                _ => SymbolClass::Area,
+            }
+        }),
+    };
     match &object.kind {
         MapObjectKind::Point { rotation_rad } => {
             if let (Symbol::Point(def), Some(c)) = (symbol, object.coords.first()) {
@@ -371,13 +433,13 @@ pub(super) fn path_symbol(
                     .filter(|r| r.len() > 2)
                     .collect();
                 if *color >= 0 {
-                    sink.push(Primitive {
-                        priority: *color,
-                        shape: Shape::Fill {
+                    sink.push(Primitive::new(
+                        *color,
+                        Shape::Fill {
                             rings: rings.to_vec(),
                             rule: FillRule::EvenOdd,
                         },
-                    });
+                    ));
                 }
                 for p in patterns {
                     area_pattern(p, &rings, pattern, symbols, sink, depth);
@@ -422,26 +484,28 @@ pub(super) fn stroke(
     cap: Cap,
     join: Join,
 ) -> Option<Primitive> {
-    (color >= 0 && width > 0.0 && path.len() >= 2).then_some(Primitive {
-        priority: color,
-        shape: Shape::Stroke {
+    (color >= 0 && width > 0.0 && path.len() >= 2).then_some(Primitive::new(
+        color,
+        Shape::Stroke {
             path,
             closed,
             width,
             cap,
             join,
         },
-    })
+    ))
 }
 
 /// The filled dot of a point symbol at `at`, if it has one.
 pub(super) fn dot(def: &PointDef, at: Pt) -> Option<Primitive> {
-    def.dot.map(|(color, radius)| Primitive {
-        priority: color,
-        shape: Shape::Fill {
-            rings: vec![circle(at, mm(radius))],
-            rule: FillRule::EvenOdd,
-        },
+    def.dot.map(|(color, radius)| {
+        Primitive::new(
+            color,
+            Shape::Fill {
+                rings: vec![circle(at, mm(radius))],
+                rule: FillRule::EvenOdd,
+            },
+        )
     })
 }
 
@@ -728,9 +792,9 @@ fn text_lines(
     let (sin, cos) = rotation.sin_cos();
     for TextLine { at: (x, y), text } in lines {
         if !text.is_empty() {
-            sink.push(Primitive {
-                priority: color,
-                shape: Shape::Text {
+            sink.push(Primitive::new(
+                color,
+                Shape::Text {
                     origin: (anchor.0 + x * cos + y * sin, anchor.1 - x * sin + y * cos),
                     size: mm(def.size),
                     bold: def.bold,
@@ -739,7 +803,7 @@ fn text_lines(
                     rotation,
                     stroke,
                 },
-            });
+            ));
         }
     }
 }
