@@ -23,6 +23,13 @@ const MAX_WORK: u64 = 1_000_000;
 const MAX_DEPTH: u64 = 256;
 /// Longest chain of gradients that take their stops from another.
 const MAX_GRADIENT_LINKS: usize = 16;
+/// Most stops of a gradient, its own or those it takes from another. `usvg` sorts stops with
+/// equal offsets in time that grows with the square of their number.
+const MAX_STOPS: u64 = 256;
+/// Most attributes of one element, and most of the squares of all elements' attribute counts:
+/// the XML parser compares each attribute of an element with the others.
+const MAX_ATTRIBUTES: u64 = 1000;
+const MAX_ATTRIBUTE_PAIRS: u64 = 50_000_000;
 
 /// The SVG elements a logo may use. `symbol` only takes effect through `use` and is counted with
 /// it.
@@ -116,16 +123,16 @@ fn use_id<'a>(node: Node<'a, '_>) -> Option<&'a str> {
 /// those of drawing programs; and `id` or `style` in a drawing program's namespace, which
 /// `usvg` reads as if they had none.
 fn check_attributes(node: Node<'_, '_>) -> Result<(), String> {
-    let all: Vec<_> = node.attributes().collect();
-    for (i, a) in all.iter().enumerate() {
-        if all[..i].iter().any(|b| b.name() == a.name()) {
+    let mut seen = HashSet::new();
+    for a in node.attributes() {
+        if !seen.insert(a.name()) && !(a.name() == "href" && same_hrefs(node)) {
             return Err(unsupported(&format!(
                 "an element with two \"{}\" attributes",
                 a.name()
             )));
         }
     }
-    for a in &all {
+    for a in node.attributes() {
         let Some(ns) = a.namespace() else {
             continue;
         };
@@ -154,6 +161,20 @@ fn href<'a>(node: Node<'a, '_>) -> Option<&'a str> {
         })?
         .value();
     svgtypes::IRI::from_str(value).ok().map(|iri| iri.0)
+}
+
+/// Whether the element has exactly an unprefixed `href` and an `xlink:href` that point to the same
+/// id. `usvg` follows the unprefixed one, so with equal links nothing depends on which.
+fn same_hrefs(node: Node<'_, '_>) -> bool {
+    let hrefs: Vec<_> = node.attributes().filter(|a| a.name() == "href").collect();
+    let link = |ns: Option<&str>| {
+        hrefs
+            .iter()
+            .find(|a| a.namespace() == ns)
+            .and_then(|a| svgtypes::IRI::from_str(a.value()).ok())
+            .map(|iri| iri.0)
+    };
+    hrefs.len() == 2 && link(None).is_some() && link(None) == link(Some(XLINK_NS))
 }
 
 /// Every property of an element as `usvg` sees it: the attributes of the namespaces it reads and
@@ -201,6 +222,123 @@ impl<'a, 'input> Links<'a, 'input> {
     }
 }
 
+/// A linear pass over the bytes of an SVG before the XML parser sees them. It refuses what would
+/// make parsing or checking slow: elements nested deeper than [`MAX_DEPTH`], an element with more
+/// than [`MAX_ATTRIBUTES`] attributes or too many attributes in all, and entity declarations whose
+/// text holds markup or references, which could bring in elements this pass did not see.
+///
+/// Comments, CDATA sections, processing instructions and the document type declaration are
+/// skipped; quoted attribute values may hold `>`. The counts err on the high side: every `=`
+/// outside quotes in a start tag counts as an attribute.
+pub(super) fn pre_scan(bytes: &[u8]) -> Result<(), String> {
+    let n = bytes.len();
+    // The index just after the first `pattern` at or after `from`, or the end.
+    let skip_past = |from: usize, pattern: &[u8]| {
+        bytes
+            .get(from..)
+            .and_then(|rest| rest.windows(pattern.len()).position(|w| w == pattern))
+            .map_or(n, |at| from + at + pattern.len())
+    };
+    let mut depth = 0u64;
+    let mut pairs = 0u64;
+    let mut i = 0;
+    while i < n {
+        let Some(at) = bytes[i..].iter().position(|&b| b == b'<') else {
+            break;
+        };
+        i += at;
+        let rest = &bytes[i..];
+        if rest.starts_with(b"<!--") {
+            i = skip_past(i + 4, b"-->");
+        } else if rest.starts_with(b"<![CDATA[") {
+            i = skip_past(i + 9, b"]]>");
+        } else if rest.starts_with(b"<?") {
+            i = skip_past(i + 2, b"?>");
+        } else if rest.starts_with(b"<!") {
+            i = skip_declaration(bytes, i + 2)?;
+        } else if rest.starts_with(b"</") {
+            depth = depth.saturating_sub(1);
+            i = skip_past(i + 2, b">");
+        } else {
+            let mut j = i + 1;
+            let mut quote = None;
+            let mut attributes = 0u64;
+            let mut last = 0u8;
+            while j < n {
+                let b = bytes[j];
+                match quote {
+                    Some(q) if b == q => quote = None,
+                    Some(_) => {}
+                    None => match b {
+                        b'"' | b'\'' => quote = Some(b),
+                        b'=' => attributes += 1,
+                        b'>' => break,
+                        _ => {}
+                    },
+                }
+                if !b.is_ascii_whitespace() {
+                    last = b;
+                }
+                j += 1;
+            }
+            if attributes > MAX_ATTRIBUTES {
+                return Err(unsupported("an element with more than 1000 attributes"));
+            }
+            pairs += attributes * attributes;
+            if pairs > MAX_ATTRIBUTE_PAIRS {
+                return Err(unsupported("this many attributes in all"));
+            }
+            // Depth counts the elements on a path, the empty element at its end included, as
+            // [`check_work`] does.
+            if depth + 1 > MAX_DEPTH {
+                return Err(unsupported("nesting more than 256 levels deep"));
+            }
+            if last != b'/' {
+                depth += 1;
+            }
+            i = j + 1;
+        }
+    }
+    Ok(())
+}
+
+/// Skips a declaration that starts at `from` (after `<!`), a document type declaration with its
+/// internal subset included, and returns the index after it. A quoted string inside the subset
+/// may hold neither `<` nor `&`: an entity with markup, a character reference to `<` or a
+/// reference to another entity could bring in elements the scan did not count.
+fn skip_declaration(bytes: &[u8], from: usize) -> Result<usize, String> {
+    let mut quote = None;
+    let mut subset = false;
+    let mut i = from;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match quote {
+            Some(q) if b == q => quote = None,
+            Some(_) if subset && (b == b'<' || b == b'&') => {
+                return Err(unsupported("an entity holding markup or references"));
+            }
+            Some(_) => {}
+            None => match b {
+                b'"' | b'\'' => quote = Some(b),
+                b'[' => subset = true,
+                b']' => subset = false,
+                b'>' if !subset => return Ok(i + 1),
+                b'<' if subset && bytes[i..].starts_with(b"<!--") => {
+                    let end = bytes[i + 4..]
+                        .windows(3)
+                        .position(|w| w == b"-->")
+                        .map_or(bytes.len(), |at| i + 4 + at + 3);
+                    i = end;
+                    continue;
+                }
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    Ok(bytes.len())
+}
+
 /// Checks an SVG logo before `usvg` resolves it. The error is the reason the logo is left out.
 pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
     let links = ids(doc)?;
@@ -221,7 +359,12 @@ pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
             check_property(node, property, value, &links)?;
         }
         match name(node) {
-            "linearGradient" | "radialGradient" => check_gradient_links(node, &links)?,
+            "linearGradient" | "radialGradient" => {
+                check_gradient_links(node, &links)?;
+                if gradient_stops(node, &links) > MAX_STOPS {
+                    return Err(unsupported("a gradient with more than 256 stops"));
+                }
+            }
             "clipPath" => check_clip_path(node, &links)?,
             _ => {}
         }
@@ -324,6 +467,35 @@ fn check_gradient_links(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(),
         current = next;
     }
     Err(unsupported("a chain of gradient links this long"))
+}
+
+fn own_stops(gradient: Node<'_, '_>) -> u64 {
+    gradient
+        .children()
+        .filter(|c| is_svg(*c) && name(*c) == "stop")
+        .count() as u64
+}
+
+fn is_gradient(node: Node<'_, '_>) -> bool {
+    is_svg(node) && matches!(name(node), "linearGradient" | "radialGradient")
+}
+
+/// The stops a gradient ends up with: its own, or, if it has none, those of the first gradient
+/// along its links that has some, as `usvg` takes them. [`check_gradient_links`] has made sure
+/// the links end.
+fn gradient_stops(gradient: Node<'_, '_>, links: &Links<'_, '_>) -> u64 {
+    let mut current = gradient;
+    for _ in 0..=MAX_GRADIENT_LINKS {
+        let own = own_stops(current);
+        if own > 0 {
+            return own;
+        }
+        match href(current).and_then(|id| links.get(id)) {
+            Some(next) if is_gradient(next) => current = next,
+            _ => return 0,
+        }
+    }
+    0
 }
 
 /// A clip path in user space, of shapes, or of `use` pointing to shapes, none of them clipped
@@ -450,14 +622,20 @@ fn check_work<'a, 'input>(
         .get(&doc.root_element().id())
         .copied()
         .unwrap_or_default();
-    // `usvg` may give every shape its own copy of a gradient in bounding-box units.
-    let stops = doc
+    // `usvg` copies the stops into every gradient that takes them from another, and may give
+    // every shape its own copy of a gradient in bounding-box units.
+    let gradients: Vec<(u64, u64)> = doc
         .descendants()
-        .filter(|n| is_svg(*n) && matches!(name(*n), "linearGradient" | "radialGradient"))
-        .map(|g| g.children().filter(|c| c.is_element()).count() as u64)
-        .max()
-        .unwrap_or(0);
-    if all.shapes.saturating_mul(stops) > MAX_WORK {
+        .filter(|n| is_gradient(*n))
+        .map(|g| (own_stops(g), gradient_stops(g, links)))
+        .collect();
+    let taken: u64 = gradients
+        .iter()
+        .filter(|(own, _)| *own == 0)
+        .map(|(_, stops)| stops)
+        .sum();
+    let most = gradients.iter().map(|(_, stops)| *stops).max().unwrap_or(0);
+    if all.work.saturating_add(taken) > MAX_WORK || all.shapes.saturating_mul(most) > MAX_WORK {
         return Err(too_complex());
     }
     Ok(())

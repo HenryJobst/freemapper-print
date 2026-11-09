@@ -236,6 +236,7 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
 /// never loaded, external files never read.
 fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "cannot read the SVG (not UTF-8)")?;
+    svg_check::pre_scan(bytes)?;
     check_entities(text)?;
     let options = roxmltree::ParsingOptions {
         allow_dtd: true,
@@ -994,7 +995,39 @@ mod tests {
         let path = write_temp(&dir, "laughs.svg", svg.as_bytes());
         let (_, report) = sheet_with(&path, 40.0);
         let reason = skipped_reason(&report);
-        assert!(reason.contains("entities"), "{reason}");
+        // Entities that refer to entities are refused by the byte scan, before the XML parser.
+        assert!(
+            reason.ends_with(&plain("an entity holding markup or references")),
+            "{reason}"
+        );
+        // A plain entity of 4000 bytes used 20 000 times would expand to 80 MB.
+        let entity = "a".repeat(4000);
+        let body = "&e;".repeat(20_000);
+        let svg = format!(
+            r#"<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY e "{entity}">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><title>{body}</title></svg>"#
+        );
+        let path = write_temp(&dir, "wide.svg", svg.as_bytes());
+        let (_, report) = sheet_with(&path, 40.0);
+        let reason = skipped_reason(&report);
+        assert!(reason.ends_with("its entities expand too far"), "{reason}");
+    }
+
+    #[test]
+    fn svg_entity_with_markup_skipped() {
+        // An entity that brings in a mask, and one that hides `<` as a character reference.
+        for value in ["<mask id='m'/>", "&#60;mask id='m'/>"] {
+            let svg = format!(
+                r#"<!DOCTYPE svg [<!ENTITY e "{value}">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">&e;<rect width="9" height="9"/></svg>"#
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let path = write_temp(&dir, "markup.svg", svg.as_bytes());
+            let (_, report) = sheet_with(&path, 40.0);
+            let reason = skipped_reason(&report);
+            assert!(
+                reason.ends_with(&plain("an entity holding markup or references")),
+                "{value}: {reason}"
+            );
+        }
     }
 
     #[test]
@@ -1093,7 +1126,21 @@ mod tests {
         let path = write_temp(&dir, "deep.svg", svg.as_bytes());
         let (_, report) = sheet_with(&path, 40.0);
         let reason = skipped_reason(&report);
-        assert!(reason.contains("nested deeper than 256"), "{reason}");
+        // Refused by the byte scan, before the XML parser.
+        assert!(
+            reason.ends_with(&plain("nesting more than 256 levels deep")),
+            "{reason}"
+        );
+        // 256 levels pass: the root, 254 groups and the rectangle.
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{}<rect width="1" height="1" fill="#000"/>{}</svg>"##,
+            "<g>".repeat(254),
+            "</g>".repeat(254)
+        );
+        let path = write_temp(&dir, "deep.svg", svg.as_bytes());
+        let (page, report) = sheet_with(&path, 40.0);
+        assert_eq!(logo_notes(&report), []);
+        assert_eq!(fills(&logo_items(&page)).len(), 1);
     }
 
     #[test]
@@ -1220,7 +1267,7 @@ mod tests {
         );
     }
 
-    /// `<svg>` with the foreign namespace `x` declared.
+    /// `body` inside a `<g>` that declares the foreign namespace `x` (`urn:x`).
     fn with_x(body: &str) -> String {
         format!(r#"<g xmlns:x="urn:x">{body}</g>"#)
     }
@@ -1346,6 +1393,113 @@ mod tests {
                 "{body}: {reason}"
             );
         }
+    }
+
+    #[test]
+    fn svg_deep_clip_paths_refused_before_parsing() {
+        // Q1: groups with a clip path nested 300 deep. The byte scan refuses them, so no check
+        // walks the ancestors of each.
+        let body = format!(
+            r#"{}<path d="M0 0L1 1"/>{}"#,
+            r#"<g clip-path="x">"#.repeat(300),
+            "</g>".repeat(300)
+        );
+        let reason = svg_skipped(&body);
+        assert!(
+            reason.ends_with(&plain("nesting more than 256 levels deep")),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn svg_many_attributes_refused_before_parsing() {
+        // Q2: one element with 1001 attributes; `>` inside a quoted value does not end the tag.
+        let attributes: String = (0..1001).map(|i| format!(r#" a{i}=">""#)).collect();
+        let reason = svg_skipped(&format!(r#"<path d="M0 0L1 1"{attributes}/>"#));
+        assert!(
+            reason.ends_with(&plain("an element with more than 1000 attributes")),
+            "{reason}"
+        );
+        // 1000 attributes each on 60 elements: 60 million pairs to compare.
+        let attributes: String = (0..999).map(|i| format!(r#" a{i}="""#)).collect();
+        let body = format!(r#"<path d="M0 0L1 1"{attributes}/>"#).repeat(60);
+        let reason = svg_skipped(&body);
+        assert!(
+            reason.ends_with(&plain("this many attributes in all")),
+            "{reason}"
+        );
+        // Attributes in comments and CDATA do not count.
+        let comment = format!("<!-- <g {attributes}> -->").repeat(60);
+        let (items, notes) = svg_drawn(&format!(
+            r##"{comment}<![CDATA[<g {attributes}>]]><rect width="5" height="5" fill="#000"/>"##
+        ));
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    fn gradient(id: &str, stops: usize, link: &str) -> String {
+        format!(
+            r#"<linearGradient id="{id}" {link}>{}</linearGradient>"#,
+            r##"<stop offset="0" stop-color="#ff0000"/>"##.repeat(stops)
+        )
+    }
+
+    #[test]
+    fn svg_gradient_stops_bounded() {
+        // Q9: a gradient with more than 256 stops, used directly or through links.
+        let reason = svg_skipped(&format!(
+            r#"<defs>{}{}</defs><rect width="9" height="9" fill="url(#b)"/>"#,
+            gradient("a", 257, ""),
+            gradient("b", 0, r##"href="#a""##)
+        ));
+        assert!(
+            reason.ends_with(&plain("a gradient with more than 256 stops")),
+            "{reason}"
+        );
+        // 256 stops pass, but every gradient that takes them is a copy: 4000 copies are too many.
+        let mut defs = gradient("a", 256, "");
+        for i in 0..4000 {
+            defs.push_str(&gradient(&format!("l{i}"), 0, r##"href="#a""##));
+        }
+        let reason = svg_skipped(&format!(
+            r#"<defs>{defs}</defs><rect width="9" height="9" fill="url(#l0)"/>"#
+        ));
+        assert!(reason.ends_with(TOO_COMPLEX), "{reason}");
+        let (items, notes) = svg_drawn(&format!(
+            r#"<defs>{}{}</defs><rect width="9" height="9" fill="url(#b)"/>"#,
+            gradient("a", 256, ""),
+            gradient("b", 0, r##"xlink:href="#a""##)
+        ));
+        assert_eq!(
+            notes,
+            [SheetNote::LogoSimplified {
+                id: "logo".into(),
+                reason: "gradient drawn in its first stop colour".into()
+            }]
+        );
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_equal_href_and_xlink_href_accepted() {
+        // Both point to the same path, written slightly differently.
+        for hrefs in [
+            r##"href="#p" xlink:href="#p""##,
+            r##"xlink:href=" #p" href="#p ""##,
+        ] {
+            let (items, notes) = svg_drawn(&format!(
+                r##"<defs><path id="p" d="M0 0H50V50Z" fill="#000"/></defs><use {hrefs}/>"##
+            ));
+            assert_eq!(notes, [], "{hrefs}");
+            assert_eq!(fills(&items).len(), 1, "{hrefs}");
+        }
+        let reason = svg_skipped(
+            r##"<defs><path id="p" d="M0 0H50V50Z"/><path id="q" d="M0 0H5V5Z"/></defs><use href="#p" xlink:href="#q"/>"##,
+        );
+        assert!(
+            reason.ends_with(&plain("an element with two \"href\" attributes")),
+            "{reason}"
+        );
     }
 
     #[test]

@@ -32,16 +32,18 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - A page has 500 000 units (`MAX_UNITS_PER_PAGE`). Each object takes the units it used from the page, and
   the objects after the page runs out are not drawn. Clipped shapes keep sharing their outlines when the
   page is moved into place, and the PDF writes each outline once per run, also inside another clip.
-- Logo files (ADR 0026) are read only if they are regular files of at most 10 MB. A PNG or JPEG may have at most
-  25 megapixels and at most 65 535 pixels a side, checked on the header before any pixel is decoded, and the
-  decoder may allocate at most 116 MB.
-  An SVG is checked on its XML before `usvg` resolves it: at most 200 000 nodes, entity references that
-  cannot expand beyond about 50 MB, only the elements and references of the allow-list in ADR 0026, nesting
-  at most 256 levels deep with `use` resolved, and at most 1 000 000 units of work: one per element plus one
-  per two bytes of path data, counted again for every `use` and for every element a clip path clips, and
-  shapes times the largest number of gradient stops. Then at most 20 000 path segments and 500 000 points
-  after flattening. A logo that breaks a limit is left out whole with `SheetNote::LogoSkipped`; none is drawn
-  in part. An earlier count of `use` and markers alone missed copies `usvg` makes of masks, patterns and clip
+- Logo files (ADR 0026) are read only if they are regular files of at most 10 MB. A PNG or JPEG may have at
+  most 25 megapixels and at most 65 535 pixels a side, checked on the header before any pixel is decoded, and
+  the decoder may allocate at most 116 MB. An SVG first passes a linear scan of its bytes: nesting at most 256
+  deep, at most 1000 attributes per element and 50 million attribute pairs in all, and no markup or references
+  in entity text. Then it is checked on its XML before `usvg` resolves it: at most 200 000 nodes, at most 256
+  stops per gradient, entity references that cannot expand beyond about 50 MB, only the elements and
+  references of the allow-list in ADR 0026, nesting at most 256 levels deep with `use` resolved, and at most
+  1 000 000 units of work: one per element plus one per two bytes of path data, counted again for every `use`
+  and for every element a clip path clips, the stops of every gradient that takes them from another, and
+  shapes times the largest number of stops. Then at most 20 000 path segments and 500 000 points after
+  flattening. A logo that breaks a limit is left out whole with `SheetNote::LogoSkipped`; none is drawn in
+  part. An earlier count of `use` and markers alone missed copies `usvg` makes of masks, patterns and clip
   paths and resolved some `href` forms differently; the allow-list replaced it. Attributes are read as `usvg`
   reads them, and any attribute two readers could take differently is refused (ADR 0026).
 - The report counts what the limits changed: objects cut short (`truncated_objects`), objects not drawn for
