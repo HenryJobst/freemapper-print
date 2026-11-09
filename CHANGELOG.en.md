@@ -9,15 +9,55 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- When the map has no north lines (symbol 601), the program adds them if the layout has `north_lines = "auto"`: vertical, at the ground spacing of the map kind (sprint 120 m, forest 300 m, schoolyard 37.5 m, still unchecked), drawn with the map's own 601 symbol so they lie under walls and fences like drawn ones. They run unbroken; gaps at small features are the mapper's job in OOM. A map without any north-line symbol gets plain black 0.14 mm lines and a note. A layout that hides the map part holding the north lines gets no replacements.
-- Sheets carry logos from PNG, JPEG or SVG files, `width_mm` wide, with the height from the aspect ratio. PNG and JPEG keep their transparency. SVG prints as fills and lines in CMYK, each fill with the fill rule from the SVG; gradients print in their first colour, transparency prints opaque, and the program reports each of these simplifications. An SVG with masks, patterns, filters, markers, embedded images, text or ambiguous attributes (such as `href` and `xlink:href` pointing to different targets) or a DTD with more than comments and short text entities is left out, and the note suggests exporting the logo as a plain SVG. A missing, broken or oversized file (over 10 MB, over 25 megapixels, over 20 000 path segments) is left out with a note, and the rest of the sheet still prints.
-- Sheets carry a scale check bar: a bar of round length (5 m to 1000 m, at most 50 mm when printed), labelled like "200 m = 50 mm". A ruler on the printout shows whether the printer scaled the page.
-- Sheets carry a title block and texts with placeholders (`{event}`, `{date}`, `{print_scale}`, `{contour_interval}`, …), the source lines of the map and the credit line "Created with freemapper-print" at the bottom left. The credit line cannot be switched off; an element only moves it. At most six source lines are shown (the rest is counted) and long ones are cut to the frame width. A sheet that shows neither scale nor contour interval gets a note.
-- The event project file `freemapper-print.toml` is read and checked: event, map source, shared sheet elements and any number of layouts. Unknown keys report file, line and name.
-- Program texts come in German and English: help, summary, notes, warnings and errors. The language comes from
-  `--lang de|en` (before or after the command), then `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The
-  texts live in Fluent files under `crates/freemapper-print-cli/i18n/`. Error messages from the library and
-  clap's headings stay English for now.
+- One project file per event, `freemapper-print.toml`, with three commands. `init` creates it for a map: one
+  layout at the map's scale on A4 or A3 (the first on which the map fits without notes), a title block, a scale
+  check bar and a proposed contour interval to confirm. `check` draws every layout without writing anything,
+  lists the notes and exits with code 1 if there are any. `export` writes one PDF per layout, named after the
+  layout id, into the folder `out` or into `--out-dir`; `--layout` picks single layouts. A typo in the project
+  file is an error with line and column and is never ignored silently.
+- Layouts: any number per event, each with paper (A4, A3), orientation, print scale, passe-partout, frame line
+  and, if wanted, a map point in the centre of the map frame. A layout can hide map parts and shared sheet
+  elements and have elements of its own.
+- Sheet elements, each anchored to one of nine positions of the page or the map frame: title block and texts
+  with placeholders (`{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`, `{contour_interval}`,
+  `{layout}`), logos and a scale check bar. A sheet that shows neither scale nor contour interval gets a note,
+  because the IOF requires both.
+- A footer on every sheet: the copyright lines of the map (or from `print.copyright`), one per line, and below
+  them the credit line "Created with freemapper-print" with the project address. The credit line cannot be
+  switched off; an element only moves it. The footer goes below the map frame when all of it fits there,
+  otherwise on a white box inside the map, and `check` reports that. At most six copyright lines appear, and
+  long ones are cut.
+- Logos as PNG, JPEG or SVG, `width_mm` wide. PNG and JPEG keep their transparency. An SVG prints in CMYK and
+  stays sharp at any size; gradients print in their first colour, transparency prints opaque, and the program
+  reports each simplification. To guard against files that compute for minutes or demand gigabytes of memory,
+  the program takes only plain SVGs: shapes, gradients, `use` and simple clip paths. A logo with text, masks,
+  filters, patterns, embedded images or style sheets, with ambiguous attributes or an elaborate DTD is left out,
+  and the note suggests exporting it as a plain SVG. So is a missing, broken or oversized file (over 10 MB,
+  25 megapixels or 20 000 path segments). The rest of the sheet still prints.
+- Scale check bar: a bar of round length (5 m to 1000 m, at most 50 mm when printed), labelled like
+  "200 m = 50 mm". A ruler on the printout shows whether the printer scaled the page.
+- North lines for maps without any: if the map has no symbol 601 objects and the layout has
+  `north_lines = "auto"`, the program adds vertical lines at the ground spacing of the map kind (sprint 120 m,
+  forest 300 m, schoolyard 37.5 m, still unchecked), drawn with the map's own 601 symbol so they lie under walls
+  and fences like drawn ones. Gaps at small features remain the mapper's job in OOM. A map without a north-line
+  symbol gets plain black 0.14 mm lines and a note.
+- Messages and help in German and English. The language comes from `--lang de|en`, else from
+  `FREEMAPPER_LANG` and the system's language settings. Errors about the project file and clap's help headings
+  stay English for now. `event.lang` sets the language on the sheet (date, decimal separator, credit line).
+- Safe writing: before each PDF the program checks that the size of the PDF plus a 50 MB reserve is free. The
+  PDF is written as a `.part` file and gets its name only once it is complete. A full disk leaves no
+  half-written PDF, and the message names the space needed and the space free.
+- Example `examples/luebeck-competition-layouts`: a city sprint with an A4 sheet at 1:4000 for the older
+  classes and an A3 sheet at 1:3000 for the youngest, with title block, two made-up logos, scale check bar and
+  footer, built with `init`, `check` and `export` alone.
+
+### Changed
+
+- The Lübeck map in the tests and in the example `luebeck-scales` now comes from freemapper 0.5.0. It has the
+  IOF colours of Rev. 4 (for example brown 25/75/100/0 instead of 0/56/100/18) and buildings in black 50 %
+  instead of 60 %. Its north lines now lie in the map part "default part"; "peripheral information" holds only
+  the information block. The PDFs of `luebeck-scales` are regenerated; sizes and overflow (4.0 mm on A4) are
+  unchanged.
 
 ## [0.1.0] - 2026-11-08
 

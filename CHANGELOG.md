@@ -9,15 +9,58 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- Hat die Karte keine Nordlinien (Symbol 601), ergänzt das Programm sie, wenn das Layout `north_lines = "auto"` hat: senkrecht, im Bodenabstand der Kartenart (Sprint 120 m, Wald 300 m, Schulhof 37,5 m, noch ungeprüft), mit dem Symbol 601 der Karte, sodass sie wie gezeichnete unter Mauern und Zäunen liegen. Sie laufen ohne Unterbrechung durch; Lücken an kleinen Objekten zu setzen ist Sache der Kartierung in OOM. Hat die Karte kein Nordlinien-Symbol, gibt es schwarze Linien von 0,14 mm und einen Hinweis. Verbirgt ein Layout den Kartenteil mit den Nordlinien, bleiben sie weg.
-- Blätter tragen Logos aus PNG-, JPEG- oder SVG-Dateien, so breit wie `width_mm`, die Höhe nach dem Seitenverhältnis. PNG und JPEG behalten ihre Transparenz. SVG wird als Flächen und Linien in CMYK gedruckt, jede Fläche nach der Füllregel aus dem SVG; Verläufe erscheinen in ihrer ersten Farbe, Transparenz wird deckend, und das Programm meldet jede solche Vereinfachung. Ein SVG mit Masken, Mustern, Filtern, Markern, eingebetteten Bildern, Text oder mehrdeutigen Attributen (etwa `href` und `xlink:href` mit verschiedenen Zielen) oder einer DTD, die mehr als Kommentare und kurze Text-Entitäten enthält, wird ausgelassen; der Hinweis rät, das Logo als einfaches SVG zu exportieren. Eine fehlende, kaputte oder zu große Datei (über 10 MB, über 25 Megapixel, über 20 000 Pfadsegmente) wird ausgelassen und gemeldet; der Rest des Blatts erscheint trotzdem.
-- Blätter tragen eine Kontrollstrecke: einen Balken in runder Länge (5 m bis 1000 m, höchstens 50 mm im Druck), beschriftet etwa „200 m = 50 mm“. Am Ausdruck lässt sich nachmessen, ob der Drucker skaliert hat.
-- Blätter tragen einen Titelblock und Texte mit Platzhaltern (`{event}`, `{date}`, `{print_scale}`, `{contour_interval}`, …), die Quellenangaben der Karte und unten links die Namensnennung „Erstellt mit freemapper-print“. Die Namensnennung lässt sich nicht abschalten; ein Element verschiebt sie nur. Es erscheinen höchstens sechs Quellenzeilen (der Rest wird gezählt), lange Zeilen werden auf die Breite des Kartenausschnitts gekürzt. Zeigt ein Blatt weder Maßstab noch Äquidistanz, erscheint ein Hinweis.
-- Die Projektdatei `freemapper-print.toml` einer Veranstaltung wird gelesen und geprüft: Veranstaltung, Kartenquelle, gemeinsame Blattelemente und beliebig viele Layouts. Unbekannte Schlüssel melden Datei, Zeile und Namen.
-- Die Programmtexte gibt es auf Deutsch und Englisch: Hilfe, Zusammenfassung, Hinweise, Warnungen und Fehler.
-  Die Sprache kommt aus `--lang de|en` (vor oder nach dem Befehl), dann aus `FREEMAPPER_LANG`, `LC_ALL`,
-  `LC_MESSAGES` und `LANG`. Die Texte stehen in Fluent-Dateien unter `crates/freemapper-print-cli/i18n/`.
-  Fehlermeldungen der Bibliothek und die Überschriften von clap bleiben vorerst Englisch.
+- Eine Projektdatei je Veranstaltung, `freemapper-print.toml`, mit drei Befehlen. `init` legt sie für eine
+  Karte an: ein Layout im Maßstab der Karte auf A4 oder A3 (das erste, auf dem die Karte ohne Hinweise Platz
+  hat), einen Titelblock, eine Kontrollstrecke und einen Vorschlag für die Äquidistanz zum Bestätigen. `check`
+  zeichnet jedes Layout, ohne etwas zu schreiben, listet die Hinweise und endet mit Exit-Code 1, wenn es welche
+  gibt. `export` schreibt je Layout ein PDF, benannt nach der Layout-ID, in den Ordner `out` oder nach
+  `--out-dir`; `--layout` wählt einzelne Layouts. Ein Tippfehler in der Projektdatei ist ein Fehler mit Zeile
+  und Spalte und wird nicht still übergangen.
+- Layouts: beliebig viele je Veranstaltung, jedes mit Papier (A4, A3), Ausrichtung, Druckmaßstab, Passepartout,
+  Rahmenlinie und auf Wunsch einem Kartenpunkt in der Mitte des Kartenausschnitts. Ein Layout kann Kartenteile
+  und gemeinsame Blattelemente ausblenden und eigene Elemente haben.
+- Blattelemente, jedes an einer von neun Stellen des Blatts oder des Kartenausschnitts verankert: Titelblock und
+  Texte mit Platzhaltern (`{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`,
+  `{contour_interval}`, `{layout}`), Logos und eine Kontrollstrecke. Fehlen auf einem Blatt Maßstab oder
+  Äquidistanz, gibt es einen Hinweis, denn die IOF verlangt beide.
+- Fußzeile auf jedem Blatt: die Quellenangaben der Karte (oder aus `print.copyright`), eine je Zeile, und
+  darunter die Namensnennung „Erstellt mit freemapper-print“ mit der Adresse des Projekts. Die Namensnennung
+  lässt sich nicht abschalten, ein Element verschiebt sie nur. Die Fußzeile steht unter dem Kartenausschnitt,
+  wenn sie dort ganz Platz hat, sonst auf weißem Kasten in der Karte, und `check` meldet das. Höchstens sechs
+  Quellenzeilen erscheinen, zu lange werden gekürzt.
+- Logos als PNG, JPEG oder SVG, so breit wie `width_mm`. PNG und JPEG behalten ihre Transparenz. Ein SVG wird
+  in CMYK gedruckt und bleibt in jeder Größe scharf; Verläufe erscheinen in ihrer ersten Farbe, Transparenz
+  deckend, und das Programm meldet jede Vereinfachung. Zum Schutz vor Dateien, die Minuten rechnen oder
+  Gigabyte Speicher verlangen, nimmt das Programm nur einfache SVGs an: Formen, Verläufe, `use` und einfache
+  Beschneidungspfade. Ein Logo mit Text, Masken, Filtern, Mustern, eingebetteten Bildern oder Stilvorlagen, mit
+  mehrdeutigen Attributen oder einer aufwendigen DTD wird ausgelassen, und der Hinweis rät, es als einfaches SVG
+  zu exportieren. Ebenso eine fehlende, kaputte oder zu große Datei (über 10 MB, 25 Megapixel oder 20 000
+  Pfadsegmente). Der Rest des Blatts erscheint trotzdem.
+- Kontrollstrecke: ein Balken in runder Länge (5 m bis 1000 m, höchstens 50 mm im Druck), beschriftet etwa
+  „200 m = 50 mm“. Am Ausdruck lässt sich nachmessen, ob der Drucker skaliert hat.
+- Nordlinien für Karten ohne welche: Hat die Karte kein Symbol 601 und das Layout `north_lines = "auto"`,
+  ergänzt das Programm senkrechte Linien im Bodenabstand der Kartenart (Sprint 120 m, Wald 300 m, Schulhof
+  37,5 m, noch ungeprüft), mit dem Symbol 601 der Karte, sodass sie wie gezeichnete unter Mauern und Zäunen
+  liegen. Lücken an kleinen Objekten setzt weiter der Kartograf in OOM. Ohne Nordlinien-Symbol gibt es schwarze
+  Linien von 0,14 mm und einen Hinweis.
+- Meldungen und Hilfe auf Deutsch und Englisch. Die Sprache kommt aus `--lang de|en`, sonst aus
+  `FREEMAPPER_LANG` und der Spracheinstellung des Systems. Fehlermeldungen zur Projektdatei und die
+  Überschriften der Hilfe bleiben vorerst Englisch. Die Sprache auf dem Blatt (Datum, Dezimalzeichen,
+  Namensnennung) stellt `event.lang` ein.
+- Sicheres Schreiben: Vor jedem PDF prüft das Programm, ob die Größe des PDFs und 50 MB Reserve frei sind. Das
+  PDF entsteht als `.part`-Datei und bekommt seinen Namen erst, wenn es vollständig geschrieben ist. Ein voller
+  Datenträger hinterlässt kein halbes PDF, und die Meldung nennt den nötigen und den freien Platz.
+- Beispiel `examples/luebeck-competition-layouts`: ein Stadtsprint mit einem A4-Blatt in 1:4000 für die
+  älteren Klassen und einem A3-Blatt in 1:3000 für die jüngsten, mit Titelblock, zwei erfundenen Logos,
+  Kontrollstrecke und Fußzeile, gebaut nur mit `init`, `check` und `export`.
+
+### Geändert
+
+- Die Lübecker Karte in den Tests und im Beispiel `luebeck-scales` stammt jetzt aus freemapper 0.5.0. Sie hat
+  die IOF-Farben nach Rev. 4 (etwa Braun 25/75/100/0 statt 0/56/100/18) und Gebäude in Schwarz 50 % statt 60 %.
+  Ihre Nordlinien liegen nun im Kartenteil „default part“; „peripheral information“ enthält nur noch den
+  Informationsblock. Die PDFs von `luebeck-scales` sind neu erzeugt, Maße und Überstand (4,0 mm auf A4) sind
+  gleich geblieben.
 
 ## [0.1.0] - 2026-11-08
 
