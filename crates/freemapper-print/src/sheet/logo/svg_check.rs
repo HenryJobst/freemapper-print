@@ -30,6 +30,11 @@ const MAX_STOPS: u64 = 256;
 /// the XML parser compares each attribute of an element with the others.
 const MAX_ATTRIBUTES: u64 = 1000;
 const MAX_ATTRIBUTE_PAIRS: u64 = 50_000_000;
+/// Most namespace declarations (`xmlns`, `xmlns:*`) in one file: the XML parser gives every
+/// element that declares one a copy of all namespaces in scope.
+const MAX_NAMESPACES: u64 = 64;
+/// Longest text of an entity of the internal subset.
+const MAX_ENTITY_BYTES: usize = 1024;
 
 /// The SVG elements a logo may use. `symbol` only takes effect through `use` and is counted with
 /// it.
@@ -118,14 +123,170 @@ fn use_id<'a>(node: Node<'a, '_>) -> Option<&'a str> {
         .map(|a| a.value())
 }
 
+/// Local names of attributes that `usvg` or this check reads: geometry, links, styles and every
+/// presentation attribute. Two attributes of such a name on one element are refused, in any
+/// namespaces.
+fn read_name(name: &str) -> bool {
+    matches!(
+        name,
+        "id" | "d"
+            | "points"
+            | "x"
+            | "y"
+            | "width"
+            | "height"
+            | "r"
+            | "rx"
+            | "ry"
+            | "cx"
+            | "cy"
+            | "fx"
+            | "fy"
+            | "fr"
+            | "x1"
+            | "y1"
+            | "x2"
+            | "y2"
+            | "href"
+            | "style"
+            | "class"
+            | "space"
+            | "lang"
+            | "viewBox"
+            | "preserveAspectRatio"
+            | "clipPathUnits"
+            | "offset"
+            | "gradientUnits"
+            | "gradientTransform"
+            | "spreadMethod"
+            | "requiredFeatures"
+            | "requiredExtensions"
+            | "systemLanguage"
+            // Presentation attributes.
+            | "alignment-baseline"
+            | "baseline-shift"
+            | "clip"
+            | "clip-path"
+            | "clip-rule"
+            | "color"
+            | "color-interpolation"
+            | "color-interpolation-filters"
+            | "color-profile"
+            | "color-rendering"
+            | "cursor"
+            | "direction"
+            | "display"
+            | "dominant-baseline"
+            | "enable-background"
+            | "fill"
+            | "fill-opacity"
+            | "fill-rule"
+            | "filter"
+            | "flood-color"
+            | "flood-opacity"
+            | "font"
+            | "font-family"
+            | "font-feature-settings"
+            | "font-kerning"
+            | "font-size"
+            | "font-size-adjust"
+            | "font-stretch"
+            | "font-style"
+            | "font-synthesis"
+            | "font-variant"
+            | "font-variant-caps"
+            | "font-variant-east-asian"
+            | "font-variant-ligatures"
+            | "font-variant-numeric"
+            | "font-variant-position"
+            | "font-weight"
+            | "glyph-orientation-horizontal"
+            | "glyph-orientation-vertical"
+            | "image-rendering"
+            | "inline-size"
+            | "isolation"
+            | "kerning"
+            | "letter-spacing"
+            | "lighting-color"
+            | "marker"
+            | "marker-start"
+            | "marker-mid"
+            | "marker-end"
+            | "mask"
+            | "mask-border"
+            | "mask-border-mode"
+            | "mask-border-outset"
+            | "mask-border-repeat"
+            | "mask-border-slice"
+            | "mask-border-source"
+            | "mask-border-width"
+            | "mask-clip"
+            | "mask-composite"
+            | "mask-image"
+            | "mask-mode"
+            | "mask-origin"
+            | "mask-position"
+            | "mask-repeat"
+            | "mask-size"
+            | "mask-type"
+            | "mix-blend-mode"
+            | "opacity"
+            | "overflow"
+            | "paint-order"
+            | "pointer-events"
+            | "shape-image-threshold"
+            | "shape-inside"
+            | "shape-margin"
+            | "shape-padding"
+            | "shape-rendering"
+            | "shape-subtract"
+            | "stop-color"
+            | "stop-opacity"
+            | "stroke"
+            | "stroke-dasharray"
+            | "stroke-dashoffset"
+            | "stroke-linecap"
+            | "stroke-linejoin"
+            | "stroke-miterlimit"
+            | "stroke-opacity"
+            | "stroke-width"
+            | "text-anchor"
+            | "text-decoration"
+            | "text-decoration-color"
+            | "text-decoration-fill"
+            | "text-decoration-line"
+            | "text-decoration-stroke"
+            | "text-decoration-style"
+            | "text-orientation"
+            | "text-overflow"
+            | "text-rendering"
+            | "transform"
+            | "transform-box"
+            | "transform-origin"
+            | "unicode-bidi"
+            | "vector-effect"
+            | "visibility"
+            | "white-space"
+            | "word-spacing"
+            | "writing-mode"
+    )
+}
+
 /// Refuses attributes that `usvg` and this check could read differently: two attributes of one
-/// local name on an element, in any namespaces; attributes of foreign namespaces other than
-/// those of drawing programs; and `id` or `style` in a drawing program's namespace, which
-/// `usvg` reads as if they had none.
+/// local name on an element when [`read_name`] holds for it or both are in namespaces `usvg`
+/// reads; attributes of foreign namespaces other than those of drawing programs; and `id` or
+/// `style` in a drawing program's namespace, which `usvg` reads as if they had none. Names that
+/// nothing reads may repeat in a drawing program's namespace: Inkscape writes `version` and
+/// `inkscape:version` on the root.
 fn check_attributes(node: Node<'_, '_>) -> Result<(), String> {
     let mut seen = HashSet::new();
+    let mut seen_read = HashSet::new();
     for a in node.attributes() {
-        if !seen.insert(a.name()) && !(a.name() == "href" && same_hrefs(node)) {
+        let twice = !seen.insert(a.name());
+        let twice_read = read_namespace(a.namespace()) && !seen_read.insert(a.name());
+        if ((twice && read_name(a.name())) || twice_read)
+            && !(a.name() == "href" && same_hrefs(node))
+        {
             return Err(unsupported(&format!(
                 "an element with two \"{}\" attributes",
                 a.name()
@@ -222,68 +383,353 @@ impl<'a, 'input> Links<'a, 'input> {
     }
 }
 
-/// A linear pass over the bytes of an SVG before the XML parser sees them. It refuses what would
-/// make parsing or checking slow: elements nested deeper than [`MAX_DEPTH`], an element with more
-/// than [`MAX_ATTRIBUTES`] attributes or too many attributes in all, and entity declarations whose
-/// text holds markup or references, which could bring in elements this pass did not see.
+/// An entity of the internal subset: the length of its text and how often the document uses it.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Entity {
+    pub(super) len: u64,
+    pub(super) uses: u64,
+}
+
+/// What [`pre_scan`] found: the entities of the internal subset by name, with their uses.
+#[derive(Debug, Default)]
+pub(super) struct Scan<'a> {
+    pub(super) entities: HashMap<&'a [u8], Entity>,
+}
+
+impl Scan<'_> {
+    /// Bytes of text the XML parser makes from entity references. An entity holds neither markup
+    /// nor references, so each reference brings in exactly the entity's text.
+    pub(super) fn entity_text(&self) -> u64 {
+        self.entities.values().fold(0u64, |sum, e| {
+            sum.saturating_add(e.len.saturating_mul(e.uses))
+        })
+    }
+}
+
+/// White space as XML defines it.
+fn is_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\r' | b'\n')
+}
+
+/// The bytes of an SVG, read the way the XML parser (`roxmltree`) reads them.
+struct Scanner<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Scanner<'a> {
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.at).copied()
+    }
+
+    fn starts_with(&self, pattern: &[u8]) -> bool {
+        self.bytes[self.at..].starts_with(pattern)
+    }
+
+    fn malformed(&self) -> String {
+        format!("cannot read the SVG (malformed XML at byte {})", self.at)
+    }
+
+    /// Skips white space; whether there was any.
+    fn skip_space(&mut self) -> bool {
+        let from = self.at;
+        while self.peek().is_some_and(is_space) {
+            self.at += 1;
+        }
+        self.at > from
+    }
+
+    fn require_space(&mut self) -> Result<(), String> {
+        if self.skip_space() {
+            Ok(())
+        } else {
+            Err(self.malformed())
+        }
+    }
+
+    fn require(&mut self, b: u8) -> Result<(), String> {
+        if self.peek() == Some(b) {
+            self.at += 1;
+            Ok(())
+        } else {
+            Err(self.malformed())
+        }
+    }
+
+    /// Moves past the first `pattern` from here; `None` if there is none.
+    fn skip_past(&mut self, pattern: &[u8]) -> Option<()> {
+        let at = self.bytes[self.at..]
+            .windows(pattern.len())
+            .position(|w| w == pattern)?;
+        self.at += at + pattern.len();
+        Some(())
+    }
+
+    /// The bytes up to the first one for which `stop` holds, or to the end.
+    fn take_until(&mut self, stop: impl Fn(u8) -> bool) -> &'a [u8] {
+        let from = self.at;
+        while self.peek().is_some_and(|b| !stop(b)) {
+            self.at += 1;
+        }
+        &self.bytes[from..self.at]
+    }
+
+    /// A quoted literal; returns its text.
+    fn literal(&mut self) -> Result<&'a [u8], String> {
+        let quote = match self.peek() {
+            Some(q @ (b'"' | b'\'')) => q,
+            _ => return Err(self.malformed()),
+        };
+        self.at += 1;
+        let text = self.take_until(|b| b == quote);
+        self.require(quote)?;
+        Ok(text)
+    }
+
+    /// An entity reference at `&`: counts a use of the entity it names. Character references
+    /// (`&#…;`) and names the subset does not declare are passed over; the XML parser reads
+    /// the latter as one of the five predefined entities or refuses the file.
+    fn reference(&mut self, entities: &mut HashMap<&'a [u8], Entity>) {
+        self.at += 1;
+        if self.peek() == Some(b'#') {
+            return;
+        }
+        let name = self
+            .take_until(|b| is_space(b) || matches!(b, b';' | b'<' | b'&' | b'"' | b'\'' | b'>'));
+        if self.peek() == Some(b';')
+            && let Some(entity) = entities.get_mut(name)
+        {
+            entity.uses += 1;
+        }
+    }
+
+    /// The XML declaration after `<?xml `, up to its `?>`.
+    fn xml_declaration(&mut self) -> Result<(), String> {
+        loop {
+            match self.peek() {
+                None => return Err(self.malformed()),
+                Some(b'"' | b'\'') => {
+                    let value = self.literal()?;
+                    if value.contains(&b'<') {
+                        return Err(self.malformed());
+                    }
+                }
+                Some(b'?') if self.starts_with(b"?>") => {
+                    self.at += 2;
+                    return Ok(());
+                }
+                Some(_) => self.at += 1,
+            }
+        }
+    }
+
+    /// The document type declaration after `<!DOCTYPE`, by the strict grammar of ADR 0026: a
+    /// name, an optional external ID (never loaded), and an internal subset of comments and
+    /// entities with plain text only.
+    fn doctype(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), String> {
+        self.require_space()?;
+        let name = self.take_until(|b| is_space(b) || matches!(b, b'[' | b'>'));
+        if name.is_empty() {
+            return Err(self.malformed());
+        }
+        self.skip_space();
+        if self.starts_with(b"SYSTEM") || self.starts_with(b"PUBLIC") {
+            let public = self.starts_with(b"PUBLIC");
+            self.at += 6;
+            self.require_space()?;
+            self.literal()?;
+            if public {
+                self.require_space()?;
+                self.literal()?;
+            }
+            self.skip_space();
+        }
+        match self.peek() {
+            Some(b'>') => {
+                self.at += 1;
+                return Ok(());
+            }
+            Some(b'[') => self.at += 1,
+            _ => return Err(self.malformed()),
+        }
+        let other =
+            || unsupported("a document type declaration with more than entities and comments");
+        loop {
+            self.skip_space();
+            if self.peek().is_none() {
+                return Err(unsupported("an unterminated document type declaration"));
+            }
+            if self.starts_with(b"]") {
+                self.at += 1;
+                self.skip_space();
+                return if self.peek() == Some(b'>') {
+                    self.at += 1;
+                    Ok(())
+                } else {
+                    Err(other())
+                };
+            } else if self.starts_with(b"<!--") {
+                self.at += 4;
+                self.skip_past(b"-->")
+                    .ok_or_else(|| unsupported("an unterminated document type declaration"))?;
+            } else if self.starts_with(b"<!ENTITY") {
+                self.at += 8;
+                self.entity(entities)?;
+            } else {
+                // Processing instructions, ELEMENT, ATTLIST, NOTATION, parameter references,
+                // anything else, and the end of the file before the subset ends.
+                return Err(other());
+            }
+        }
+    }
+
+    /// An entity declaration after `<!ENTITY`: a name and a quoted text without markup,
+    /// references or `%`, at most [`MAX_ENTITY_BYTES`] long.
+    fn entity(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), String> {
+        self.require_space()?;
+        if self.peek() == Some(b'%') {
+            return Err(unsupported("a parameter entity"));
+        }
+        let name = self.take_until(|b| is_space(b) || matches!(b, b'"' | b'\'' | b'>'));
+        if name.is_empty() {
+            return Err(self.malformed());
+        }
+        self.require_space()?;
+        if !matches!(self.peek(), Some(b'"' | b'\'')) {
+            return Err(unsupported("an external entity"));
+        }
+        let text = self.literal()?;
+        if text.iter().any(|b| matches!(b, b'<' | b'&' | b'%')) {
+            return Err(unsupported("an entity holding markup or references"));
+        }
+        if text.len() > MAX_ENTITY_BYTES {
+            return Err(unsupported("an entity longer than 1024 bytes"));
+        }
+        self.skip_space();
+        self.require(b'>')?;
+        let entity = entities.entry(name).or_default();
+        // The XML parser takes the first of two declarations; the longer one is counted.
+        entity.len = entity.len.max(text.len() as u64);
+        Ok(())
+    }
+}
+
+/// A linear pass over the bytes of an SVG before the XML parser sees them, reading the markup
+/// the way `roxmltree` reads it. It refuses what would make parsing or checking slow: elements
+/// nested deeper than [`MAX_DEPTH`], an element with more than [`MAX_ATTRIBUTES`] attributes or
+/// too many attributes in all, more than [`MAX_NAMESPACES`] namespace declarations, and any
+/// document type declaration beyond the strict grammar of [`Scanner::doctype`]. It returns the
+/// entities and how often each is used.
 ///
-/// Comments, CDATA sections, processing instructions and the document type declaration are
-/// skipped; quoted attribute values may hold `>`. The counts err on the high side: every `=`
-/// outside quotes in a start tag counts as an attribute.
-pub(super) fn pre_scan(bytes: &[u8]) -> Result<(), String> {
-    let n = bytes.len();
-    // The index just after the first `pattern` at or after `from`, or the end.
-    let skip_past = |from: usize, pattern: &[u8]| {
-        bytes
-            .get(from..)
-            .and_then(|rest| rest.windows(pattern.len()).position(|w| w == pattern))
-            .map_or(n, |at| from + at + pattern.len())
-    };
+/// Comments, CDATA sections and processing instructions are skipped where the XML parser skips
+/// them; quoted attribute values may hold `>`. Markup the XML parser would refuse is refused here
+/// too, so the two never read the bytes differently.
+pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
+    let mut s = Scanner { bytes, at: 0 };
+    let mut entities = HashMap::new();
+    if s.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        s.at += 3;
+    }
+    if s.starts_with(b"<?xml ") {
+        s.at += 6;
+        s.xml_declaration()?;
+    }
     let mut depth = 0u64;
     let mut pairs = 0u64;
-    let mut i = 0;
-    while i < n {
-        let Some(at) = bytes[i..].iter().position(|&b| b == b'<') else {
-            break;
-        };
-        i += at;
-        let rest = &bytes[i..];
-        if rest.starts_with(b"<!--") {
-            i = skip_past(i + 4, b"-->");
-        } else if rest.starts_with(b"<![CDATA[") {
-            i = skip_past(i + 9, b"]]>");
-        } else if rest.starts_with(b"<?") {
-            i = skip_past(i + 2, b"?>");
-        } else if rest.starts_with(b"<!") {
-            i = skip_declaration(bytes, i + 2)?;
-        } else if rest.starts_with(b"</") {
+    let mut namespaces = 0u64;
+    let mut doctype = false;
+    let mut root = false;
+    while let Some(next) = s.bytes[s.at..].iter().position(|&b| b == b'<' || b == b'&') {
+        s.at += next;
+        if s.peek() == Some(b'&') {
+            s.reference(&mut entities);
+            continue;
+        }
+        if s.starts_with(b"<!--") {
+            s.at += 4;
+            s.skip_past(b"-->").ok_or_else(|| s.malformed())?;
+        } else if s.starts_with(b"<![CDATA[") {
+            s.at += 9;
+            s.skip_past(b"]]>").ok_or_else(|| s.malformed())?;
+        } else if s.starts_with(b"<?") {
+            s.at += 2;
+            s.skip_past(b"?>").ok_or_else(|| s.malformed())?;
+        } else if s.starts_with(b"<!DOCTYPE") {
+            if doctype {
+                return Err(unsupported("a second document type declaration"));
+            }
+            if root {
+                return Err(unsupported("a document type declaration inside the SVG"));
+            }
+            doctype = true;
+            s.at += 9;
+            s.doctype(&mut entities)?;
+        } else if s.starts_with(b"<!") {
+            return Err(s.malformed());
+        } else if s.starts_with(b"</") {
             depth = depth.saturating_sub(1);
-            i = skip_past(i + 2, b">");
+            s.at += 2;
+            s.skip_past(b">").ok_or_else(|| s.malformed())?;
         } else {
-            let mut j = i + 1;
-            let mut quote = None;
+            root = true;
+            s.at += 1;
+            let name = s.take_until(|b| is_space(b) || matches!(b, b'/' | b'>'));
+            if name.is_empty() {
+                return Err(s.malformed());
+            }
             let mut attributes = 0u64;
-            let mut last = 0u8;
-            while j < n {
-                let b = bytes[j];
-                match quote {
-                    Some(q) if b == q => quote = None,
+            let open = loop {
+                let spaced = s.skip_space();
+                match s.peek() {
+                    None => return Err(s.malformed()),
+                    Some(b'>') => {
+                        s.at += 1;
+                        break true;
+                    }
+                    Some(b'/') => {
+                        s.at += 1;
+                        s.require(b'>')?;
+                        break false;
+                    }
+                    Some(_) if !spaced => return Err(s.malformed()),
                     Some(_) => {}
-                    None => match b {
-                        b'"' | b'\'' => quote = Some(b),
-                        b'=' => attributes += 1,
-                        b'>' => break,
-                        _ => {}
-                    },
                 }
-                if !b.is_ascii_whitespace() {
-                    last = b;
+                let name = s.take_until(|b| {
+                    is_space(b) || matches!(b, b'=' | b'/' | b'>' | b'"' | b'\'' | b'<')
+                });
+                if name.is_empty() {
+                    return Err(s.malformed());
                 }
-                j += 1;
-            }
-            if attributes > MAX_ATTRIBUTES {
-                return Err(unsupported("an element with more than 1000 attributes"));
-            }
+                if name == b"xmlns" || name.starts_with(b"xmlns:") {
+                    namespaces += 1;
+                    if namespaces > MAX_NAMESPACES {
+                        return Err(unsupported("more than 64 namespace declarations"));
+                    }
+                }
+                attributes += 1;
+                if attributes > MAX_ATTRIBUTES {
+                    return Err(unsupported("an element with more than 1000 attributes"));
+                }
+                s.skip_space();
+                s.require(b'=')?;
+                s.skip_space();
+                let quote = match s.peek() {
+                    Some(q @ (b'"' | b'\'')) => q,
+                    _ => return Err(s.malformed()),
+                };
+                s.at += 1;
+                loop {
+                    s.take_until(|b| b == quote || b == b'<' || b == b'&');
+                    match s.peek() {
+                        Some(b'&') => s.reference(&mut entities),
+                        Some(q) if q == quote => {
+                            s.at += 1;
+                            break;
+                        }
+                        _ => return Err(s.malformed()),
+                    }
+                }
+            };
             pairs += attributes * attributes;
             if pairs > MAX_ATTRIBUTE_PAIRS {
                 return Err(unsupported("this many attributes in all"));
@@ -293,55 +739,27 @@ pub(super) fn pre_scan(bytes: &[u8]) -> Result<(), String> {
             if depth + 1 > MAX_DEPTH {
                 return Err(unsupported("nesting more than 256 levels deep"));
             }
-            if last != b'/' {
+            if open {
                 depth += 1;
             }
-            i = j + 1;
         }
     }
-    Ok(())
+    Ok(Scan { entities })
 }
-
-/// Skips a declaration that starts at `from` (after `<!`), a document type declaration with its
-/// internal subset included, and returns the index after it. A quoted string inside the subset
-/// may hold neither `<` nor `&`: an entity with markup, a character reference to `<` or a
-/// reference to another entity could bring in elements the scan did not count.
-fn skip_declaration(bytes: &[u8], from: usize) -> Result<usize, String> {
-    let mut quote = None;
-    let mut subset = false;
-    let mut i = from;
-    while i < bytes.len() {
-        let b = bytes[i];
-        match quote {
-            Some(q) if b == q => quote = None,
-            Some(_) if subset && (b == b'<' || b == b'&') => {
-                return Err(unsupported("an entity holding markup or references"));
-            }
-            Some(_) => {}
-            None => match b {
-                b'"' | b'\'' => quote = Some(b),
-                b'[' => subset = true,
-                b']' => subset = false,
-                b'>' if !subset => return Ok(i + 1),
-                b'<' if subset && bytes[i..].starts_with(b"<!--") => {
-                    let end = bytes[i + 4..]
-                        .windows(3)
-                        .position(|w| w == b"-->")
-                        .map_or(bytes.len(), |at| i + 4 + at + 3);
-                    i = end;
-                    continue;
-                }
-                _ => {}
-            },
-        }
-        i += 1;
-    }
-    Ok(bytes.len())
-}
-
 /// Checks an SVG logo before `usvg` resolves it. The error is the reason the logo is left out.
 pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
     let links = ids(doc)?;
+    // The elements inside a clip path, found in one pass in document order (parents first), so
+    // no element walks its ancestors.
+    let mut in_clip = HashSet::new();
+    for node in doc.descendants().filter(|n| n.is_element()) {
+        if node
+            .parent()
+            .is_some_and(|p| in_clip.contains(&p.id()) || (is_svg(p) && name(p) == "clipPath"))
+        {
+            in_clip.insert(node.id());
+        }
+    }
     for node in doc.descendants().filter(|n| n.is_element()) {
         // `usvg` reads every element named `style` as a style sheet, in any namespace.
         if name(node) == "style" {
@@ -355,8 +773,10 @@ pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
         if !ALLOWED.contains(&name(node)) {
             return Err(unsupported(&format!("the element <{}>", name(node))));
         }
+        // As `node.ancestors()`, which starts at the node itself.
+        let clipping = in_clip.contains(&node.id()) || name(node) == "clipPath";
         for (property, value) in properties(node) {
-            check_property(node, property, value, &links)?;
+            check_property(clipping, property, value, &links)?;
         }
         match name(node) {
             "linearGradient" | "radialGradient" => {
@@ -412,8 +832,10 @@ fn check_clip_property(node: Node<'_, '_>) -> Result<(), String> {
     Ok(())
 }
 
+/// One property of an element; `in_clip` tells whether the element is a clip path or lies inside
+/// one.
 fn check_property(
-    node: Node<'_, '_>,
+    in_clip: bool,
     property: &str,
     value: &str,
     links: &Links<'_, '_>,
@@ -427,7 +849,7 @@ fn check_property(
         if value.trim() == "none" {
             return Ok(());
         }
-        if node.ancestors().any(|a| is_svg(a) && name(a) == "clipPath") {
+        if in_clip {
             return Err(unsupported("a clip path inside a clip path"));
         }
         if let Ok(iri) = svgtypes::FuncIRI::from_str(value)

@@ -22,17 +22,47 @@ attribute hid bounding-box clip paths (10 to 23 s, up to 700 MB). The third revi
 small in memory but take long: 199 000 nested groups with a clip path made the check walk every ancestor of
 every group (94 s), 100 000 attributes on one element made the XML parser and the check compare each pair
 (60 s), and a gradient of 199 000 stops that ten others take through `href` made `usvg` sort the stops ten
-times in quadratic time (47 s).
+times in quadratic time (47 s). The fourth review went through the document type declaration. The byte
+scan ended the internal subset at the first `]`, but the XML parser reads processing instructions in the
+subset to `?>` and skips `<!ELEMENT`, `<!ATTLIST` and `<!NOTATION` to the first `>`, so `<?x ]>?>` or
+`<!ELEMENT x ]>` made the scan read the entities after it as plain text. Their markup came back in through
+`&e;`: 199 000 nested clipped groups, 100 000 attributes or nested entity bombs, each over 10 to 20 s. The
+entity count found the subset by searching the text for `<!DOCTYPE` and `]>`, which a comment fooled
+(1.3 to 1.6 GB). A root with 990 namespace declarations and children that each add one made the XML
+parser copy the namespaces for every child (over 20 s for 20 000 children), and a normal Inkscape file was
+refused because `version` and `inkscape:version` share a local name.
 
 ## Decision
 
 - PNG and JPEG are decoded with `image` (features `png` and `jpeg` only) into a `RasterImage`. An image with
   an alpha channel keeps it.
-- Before the XML parser runs, one linear pass over the bytes (`svg_check::pre_scan`) refuses elements
-  nested more than 256 deep, an element with more than 1000 attributes, more than 50 million attribute
-  pairs in all (the sum of the squares of the attribute counts), and entity declarations whose text holds
-  `<` or `&`, which could bring in elements or references the pass did not see. Every later check is then
-  linear or bounded by these numbers: an ancestor walk is at most 256 steps.
+- Before the XML parser runs, one linear pass over the bytes (`svg_check::pre_scan`) reads the markup the
+  way `roxmltree` reads it. It skips comments, CDATA sections and processing instructions where the parser
+  skips them, so a declaration inside a comment counts for neither. Markup the parser would refuse, such as
+  `<g / >` or an attribute value with `<`, is refused here too. The pass refuses elements nested more than
+  256 deep, an element with more than 1000 attributes, more than 50 million attribute pairs in all (the sum
+  of the squares of the attribute counts) and more than 64 namespace declarations (`xmlns`, `xmlns:*`) in
+  the file. Every later check is then linear or bounded by these numbers, and the check of clip paths
+  inside clip paths marks them in one pass instead of walking ancestors.
+- The document type declaration must follow a strict grammar, and the pass reads its internal subset by that
+  grammar alone. A DTD that does more than declare text entities is refused with the advice to export a
+  plain SVG.
+  - A DTD may be `<!DOCTYPE name>`, optionally with `PUBLIC "id" "uri"` or `SYSTEM "uri"`, and an
+    internal subset of white space, comments and `<!ENTITY name "text">` (or single quotes). The entity
+    text holds no `<`, `&` or `%` and is at most 1024 bytes long. The subset ends only at `]`, optional
+    white space and `>`.
+  - Everything else is refused: processing instructions, `<!ELEMENT`, `<!ATTLIST`, `<!NOTATION`, parameter
+    entities and references, entities with `SYSTEM` or `PUBLIC`, anything else in the subset, a subset
+    that does not end, a second DOCTYPE and a DOCTYPE after the root element starts.
+  - The parser finds the end of the refused declarations differently from a simple scan, or they bring in
+    markup, defaults or text the scan cannot see. Illustrator's "Save As" writes the SVG 1.1 public
+    identifier and an entity per namespace (`ns_ai` and so on). Inkscape and most other editors write no
+    DTD or the identifier alone. Both kinds pass. The external identifier on the DOCTYPE stays allowed although
+    the controller's ruling listed it as refused: `roxmltree` reads its two quoted strings and never loads
+    the DTD, and refusing it would refuse every Illustrator file.
+  - The pass returns the entities with the number of references to each in text and attribute values. Each
+    reference brings in exactly its entity's text, so the expanded size is their sum, at most about 50 MB
+    (ADR 0019).
 - An SVG logo must pass an allow-list on its XML before `usvg` sees it (`sheet::logo::svg_check`). Anything
   else leaves the logo out with `SheetNote::LogoSkipped` and the advice to export it as a plain SVG.
   - Elements: `svg`, `g`, `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `defs`,
@@ -49,13 +79,16 @@ times in quadratic time (47 s).
   - Attributes are read as `usvg`'s `parse_svg_element` reads them: by local name, in no namespace or the
     SVG, XLink or XML namespace. The `use` map is built as `usvg` builds it, from the first attribute with
     the local name `id` in any namespace. Anything that two readers could take differently is refused: two
-    attributes of one local name on an element (`href` with `xlink:href` only if both point to the same
-    id, as exporters write them), an attribute of any other
+    attributes of one local name on an element if `usvg` or the check reads that name (geometry, links,
+    `style`, `class`, gradient and clip attributes, `viewBox`, `preserveAspectRatio` and every presentation
+    attribute) or if both are in namespaces `usvg` reads (`href` with `xlink:href` only if both point to
+    the same id, as exporters write them), an attribute of any other
     namespace except those of Inkscape, Sodipodi and Adobe Illustrator, which `usvg` passes over, and `id`
     or `style` even in those, because `usvg` looks both up in every namespace.
   - `clip-path` may be set once per element, as attribute or in `style`, and never to `inherit`, which
     copies the parent's clip path. A `use` that refers to itself, directly or through other elements, is
-    refused, also a `use` of its own ancestor; `usvg` drops some of these loops and expands the others until its own node limit stops it.
+    refused, also a `use` of its own ancestor; `usvg` drops some of these loops and expands the others
+    until its own node limit stops it.
   - Every reference resolves as in `usvg`: for `use` and gradient links the unprefixed `href` first, then
     `xlink:href`, parsed by `svgtypes::IRI` (spaces around `#id` allowed); `url()` by `svgtypes::FuncIRI` or
     `svgtypes::Paint`; `style` attributes split by `simplecss`. Both crates are the versions `usvg` uses. An
@@ -93,10 +126,14 @@ times in quadratic time (47 s).
   release needs a look at how it parses references and attributes, including every place it reads an
   attribute by local name alone.
 - Files that carry `href` and `xlink:href` with different targets on one element are refused.
+- A logo whose DTD declares elements, attribute defaults, notations, parameter entities, external entities
+  or entities with markup is refused, although the XML is valid. No drawing program we know writes such a
+  DTD for a plain logo. Names that only an editor reads may repeat, so `version` next to `inkscape:version`
+  passes.
 - Logos print in the colours a naive conversion gives. Bright RGB blues and greens come out duller than on
   screen; a club that needs exact colours supplies a logo in the colours it wants.
 - `Shape::Stroke` has no miter limit, so an SVG's `stroke-miterlimit` (default 4) is not carried over and the
   PDF default of 10 applies: sharp corners of mitred strokes can stick out further than in a browser.
 - Cost if wrong: a club with only a PDF logo has to export it as SVG or PNG first.
 
-Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 reviews and fix rounds 1 to 3 (2026-11-09).
+Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 reviews and fix rounds 1 to 4 (2026-11-09).

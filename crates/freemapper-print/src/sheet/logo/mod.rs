@@ -236,8 +236,8 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
 /// never loaded, external files never read.
 fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "cannot read the SVG (not UTF-8)")?;
-    svg_check::pre_scan(bytes)?;
-    check_entities(text)?;
+    let scan = svg_check::pre_scan(bytes)?;
+    check_entities(&scan)?;
     let options = roxmltree::ParsingOptions {
         allow_dtd: true,
         nodes_limit: MAX_SVG_NODES,
@@ -260,20 +260,11 @@ fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     Ok(Logo::Vector(Box::new(tree)))
 }
 
-/// Rejects entity declarations that could expand into more than [`MAX_ENTITY_TEXT`] bytes. The
-/// XML parser expands one reference into at most 255 nested ones, each no longer than the
-/// document type declaration, so every `&` stands for at most 256 times its length.
-fn check_entities(text: &str) -> Result<(), String> {
-    let Some(start) = text.find("<!DOCTYPE") else {
-        return Ok(());
-    };
-    let dtd = &text[start..];
-    let dtd_len = dtd.find("]>").map_or(dtd.len(), |end| end + 2);
-    if !dtd[..dtd_len].contains("<!ENTITY") {
-        return Ok(());
-    }
-    let refs = text.bytes().filter(|&b| b == b'&').count() as u64;
-    if refs.saturating_mul(256).saturating_mul(dtd_len as u64) > MAX_ENTITY_TEXT {
+/// Rejects entity references that expand into more than [`MAX_ENTITY_TEXT`] bytes in all. The
+/// pre-scan has read the entities and counted their uses; an entity holds no references, so its
+/// text is brought in once per use.
+fn check_entities(scan: &svg_check::Scan<'_>) -> Result<(), String> {
+    if scan.entity_text() > MAX_ENTITY_TEXT {
         return Err("its entities expand too far".into());
     }
     Ok(())
@@ -1000,9 +991,21 @@ mod tests {
             reason.ends_with(&plain("an entity holding markup or references")),
             "{reason}"
         );
-        // A plain entity of 4000 bytes used 20 000 times would expand to 80 MB.
-        let entity = "a".repeat(4000);
-        let body = "&e;".repeat(20_000);
+        // An entity longer than 1024 bytes is refused by the byte scan too.
+        let svg = format!(
+            r#"<!DOCTYPE svg [<!ENTITY e "{}">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>"#,
+            "a".repeat(1025)
+        );
+        let path = write_temp(&dir, "long.svg", svg.as_bytes());
+        let (_, report) = sheet_with(&path, 40.0);
+        let reason = skipped_reason(&report);
+        assert!(
+            reason.ends_with(&plain("an entity longer than 1024 bytes")),
+            "{reason}"
+        );
+        // A plain entity of 1024 bytes used 50 000 times would expand to 51 MB.
+        let entity = "a".repeat(1024);
+        let body = "&e;".repeat(50_000);
         let svg = format!(
             r#"<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY e "{entity}">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><title>{body}</title></svg>"#
         );
@@ -1799,5 +1802,268 @@ mod tests {
             reason.ends_with("too large to decode; save it as an 8-bit image or with fewer pixels"),
             "{reason}"
         );
+    }
+
+    /// An SVG with the document type declaration `doctype` before a black square, the square
+    /// preceded by `body`.
+    fn svg_with_doctype(doctype: &str, body: &str) -> String {
+        format!(
+            r##"<?xml version="1.0"?>{doctype}<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{body}<rect width="5" height="5" fill="#000"/></svg>"##
+        )
+    }
+
+    fn skipped_svg(svg: &str) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_temp(&dir, "logo.svg", svg.as_bytes());
+        let (page, report) = sheet_with(&path, 40.0);
+        assert_eq!(logo_items(&page), []);
+        skipped_reason(&report)
+    }
+
+    fn drawn_svg(svg: &str) -> (Vec<SheetItem>, Vec<SheetNote>) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_temp(&dir, "logo.svg", svg.as_bytes());
+        let (page, report) = sheet_with(&path, 40.0);
+        (logo_items(&page), logo_notes(&report))
+    }
+
+    #[test]
+    fn svg_doctype_beyond_entities_refused_before_parsing() {
+        // rr10: declarations the XML parser skips up to `>` or reads to `?>` may hold `]>`; a
+        // scan that ended the subset there would read the entity after it as text and miss the
+        // markup inside. Every reason below comes from the byte scan, before the XML parser runs.
+        let markup = r#"<!ENTITY e "<g><g></g></g>">"#;
+        let other = plain("a document type declaration with more than entities and comments");
+        for (subset, reason) in [
+            (format!("<?x ]>?>{markup}"), other.clone()),
+            (format!("<!ELEMENT x ]>{markup}"), other.clone()),
+            (
+                format!("<!ATTLIST rect fill CDATA \"#f00\">{markup}"),
+                other.clone(),
+            ),
+            (format!("<!NOTATION n SYSTEM \"x\">{markup}"), other.clone()),
+            ("%p;".to_string(), other.clone()),
+            ("<![CDATA[x]]>".to_string(), other.clone()),
+            (
+                r#"<!ENTITY % p "x">"#.to_string(),
+                plain("a parameter entity"),
+            ),
+            (
+                r#"<!ENTITY e "a%b">"#.to_string(),
+                plain("an entity holding markup or references"),
+            ),
+            (
+                r#"<!ENTITY e SYSTEM "file:///etc/passwd">"#.to_string(),
+                plain("an external entity"),
+            ),
+            (
+                r#"<!ENTITY e PUBLIC "-//x//EN" "x.ent">"#.to_string(),
+                plain("an external entity"),
+            ),
+            // E1: `]>` inside a comment does not end the subset.
+            (
+                format!("<!-- ]> -->{markup}"),
+                plain("an entity holding markup or references"),
+            ),
+            (
+                format!(r#"<!-- ]> --><!ENTITY w "{}">"#, "a".repeat(2000)),
+                plain("an entity longer than 1024 bytes"),
+            ),
+            // Q1 inside an entity: deep clipped groups that the scan of elements would not see.
+            (
+                format!(
+                    r#"<!ENTITY e "{}{}">"#,
+                    "<g clip-path='url(#c)'>".repeat(300),
+                    "</g>".repeat(300)
+                ),
+                plain("an entity holding markup or references"),
+            ),
+        ] {
+            let svg = svg_with_doctype(&format!("<!DOCTYPE svg [{subset}]>"), "&e;");
+            let got = skipped_svg(&svg);
+            assert!(got.ends_with(&format!(": {reason}")), "{subset}: {got}");
+        }
+        // A subset that never ends: the SVG after it is not a declaration, or the file ends.
+        let svg = svg_with_doctype(r#"<!DOCTYPE svg [<!ENTITY e "x">"#, "");
+        assert!(skipped_svg(&svg).ends_with(&other), "unterminated");
+        assert!(
+            skipped_svg(r#"<!DOCTYPE svg [<!ENTITY e "x">"#)
+                .ends_with(&plain("an unterminated document type declaration")),
+            "end of file"
+        );
+        let svg = svg_with_doctype("<!DOCTYPE svg [<!-- ]>", "");
+        assert!(
+            skipped_svg(&svg).ends_with(&plain("an unterminated document type declaration")),
+            "unterminated comment"
+        );
+    }
+
+    #[test]
+    fn svg_second_or_late_doctype_refused() {
+        let first = r#"<!DOCTYPE svg [<!ENTITY a "x">]>"#;
+        let svg = svg_with_doctype(&format!("{first}<!DOCTYPE svg []>"), "");
+        assert!(
+            skipped_svg(&svg).ends_with(&plain("a second document type declaration")),
+            "second"
+        );
+        let svg = svg_with_doctype("", "<!DOCTYPE svg []>");
+        assert!(
+            skipped_svg(&svg).ends_with(&plain("a document type declaration inside the SVG")),
+            "late"
+        );
+    }
+
+    #[test]
+    fn svg_doctype_in_comments_and_cdata_ignored() {
+        // E2: a document type declaration inside a comment is not the real one. The real one's
+        // entity of 1000 bytes is used 60 000 times, 60 MB once expanded; the counts come from
+        // the entities the scan read, not from the text of the comment.
+        let svg = svg_with_doctype(
+            &format!(
+                r#"<!-- <!DOCTYPE x []> --><!DOCTYPE svg [<!ENTITY e "{}">]>"#,
+                "a".repeat(1000)
+            ),
+            &format!("<title>{}</title>", "&e;".repeat(60_000)),
+        );
+        assert!(
+            skipped_svg(&svg).ends_with("its entities expand too far"),
+            "E2"
+        );
+        // Declarations in comments and CDATA of the body are ignored, as the XML parser ignores
+        // them; the square is drawn.
+        let (items, notes) = drawn_svg(&svg_with_doctype(
+            "",
+            r#"<!-- <!DOCTYPE x [<!ELEMENT y ANY>]> --><title><![CDATA[<!DOCTYPE z []>]]></title>"#,
+        ));
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_namespace_declarations_bounded() {
+        // N1: namespaces declared on the root and on each child; the XML parser copies all of
+        // them for every child that declares one more.
+        let root: String = (0..60).map(|i| format!(r#" xmlns:p{i}="u""#)).collect();
+        let children: String = (0..10).map(|i| format!(r#"<g xmlns:q{i}="u"/>"#)).collect();
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"{root} width="10" height="10">{children}<rect width="5" height="5" fill="#000"/></svg>"##
+        );
+        assert!(
+            skipped_svg(&svg).ends_with(&plain("more than 64 namespace declarations")),
+            "N1"
+        );
+        // 64 in all are fine.
+        let root: String = (0..53).map(|i| format!(r#" xmlns:p{i}="u""#)).collect();
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg"{root} width="10" height="10">{children}<rect width="5" height="5" fill="#000"/></svg>"##
+        );
+        let (items, notes) = drawn_svg(&svg);
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_inkscape_file_drawn() {
+        // L1: a plain Inkscape save, `version` and `inkscape:version` on the root.
+        let svg = r##"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="50mm"
+   height="50mm"
+   viewBox="0 0 50 50"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
+   sodipodi:docname="logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     inkscape:document-units="mm"
+     inkscape:zoom="2.1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:#008000;fill-opacity:1;stroke:#000000;stroke-width:0.5"
+       d="M 5,5 H 45 V 45 H 5 Z"
+       id="path1"
+       sodipodi:nodetypes="ccccc" />
+    <circle
+       style="fill:#ffffff"
+       id="circle1"
+       cx="25"
+       cy="25"
+       r="10" />
+  </g>
+  <metadata
+     id="metadata1">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Logo</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>
+"##;
+        let (items, notes) = drawn_svg(svg);
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 2);
+        // A name that `usvg` reads stays refused twice, in any namespace.
+        let reason = svg_skipped(
+            r#"<path xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" d="M0 0H5V5Z" inkscape:d="M0 0"/>"#,
+        );
+        assert!(
+            reason.ends_with(&plain("an element with two \"d\" attributes")),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn svg_illustrator_save_as_drawn() {
+        // L2: Illustrator's "Save As" writes the SVG 1.1 public identifier and entities for its
+        // namespaces, used in `xmlns` attributes.
+        let svg = r##"<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 24.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Ebene_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 100 100"
+	 style="enable-background:new 0 0 100 100;" xml:space="preserve">
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="100" width="100" x="0" y="0"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<g>
+	<polygon style="fill:#E30613;" points="50,20 60,45 85,45 65,60 72,85 50,70 28,85 35,60 15,45 40,45 	"/>
+	<path i:knockout="Off" style="fill:none;stroke:#1D1D1B;stroke-width:3;stroke-miterlimit:10;" d="M20,80c10-10,50-10,60,0"/>
+</g>
+</svg>
+"##;
+        let (items, notes) = drawn_svg(svg);
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
     }
 }

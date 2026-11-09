@@ -35,9 +35,11 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
 - Logo files (ADR 0026) are read only if they are regular files of at most 10 MB. A PNG or JPEG may have at
   most 25 megapixels and at most 65 535 pixels a side, checked on the header before any pixel is decoded, and
   the decoder may allocate at most 116 MB. An SVG first passes a linear scan of its bytes: nesting at most 256
-  deep, at most 1000 attributes per element and 50 million attribute pairs in all, and no markup or references
-  in entity text. Then it is checked on its XML before `usvg` resolves it: at most 200 000 nodes, at most 256
-  stops per gradient, entity references that cannot expand beyond about 50 MB, only the elements and
+  deep, at most 1000 attributes per element and 50 million attribute pairs in all, at most 64 namespace
+  declarations, a DTD of comments and text entities only (each at most 1024 bytes, no markup or references,
+  ADR 0026), and entity references that expand to at most about 50 MB in all, counted from the entities the
+  scan read. Then it is checked on its XML before `usvg` resolves it: at most 200 000 nodes, at most 256
+  stops per gradient, only the elements and
   references of the allow-list in ADR 0026, nesting at most 256 levels deep with `use` resolved, and at most
   1 000 000 units of work: one per element plus one per two bytes of path data, counted again for every `use`
   and for every element a clip path clips, the stops of every gradient that takes them from another, and
