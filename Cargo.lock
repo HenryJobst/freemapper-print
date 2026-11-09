@@ -297,9 +297,18 @@ dependencies = [
  "anyhow",
  "clap",
  "fluent-bundle",
- "fluent-syntax",
  "freemapper-print",
+ "freemapper-text",
  "tempfile",
+]
+
+[[package]]
+name = "freemapper-text"
+version = "0.2.0"
+source = "git+https://github.com/HenryJobst/freemapper-core?tag=v0.2.0#ae442f5967491d054d489f34f5d721b136d96172"
+dependencies = [
+ "fluent-bundle",
+ "fluent-syntax",
  "unic-langid",
 ]
 

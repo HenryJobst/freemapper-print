@@ -11,10 +11,11 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 freemapper-print = { path = "crates/freemapper-print" }
+# The suite's own crates are exempt from the two-week rule (ADR 0006).
+freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.2.0" }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 fluent-bundle = "=0.16.0"
-fluent-syntax = "=0.12.0"
 fs4 = "1.1.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 miniz_oxide = "0.9.1"
@@ -28,7 +29,6 @@ subsetter = { version = "0.2.6", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 toml = "1.2.1"
-unic-langid = "=0.9.6"
 # Paths only: no text, fonts, svgz or writer (logos on the sheet layer).
 usvg = { version = "0.49.0", default-features = false }
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
