@@ -15,6 +15,23 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   and the cell size of control descriptions. Every value names its source. The project file can name another
   profile (`rule_profile`) and overlays (`rule_overlays`) under `[print]`; an unknown name is an error with
   line and column. Printed sheets do not change.
+- Courses from Purple Pen and IOF XML 3.0 (ADR 0033). The program reads `.ppen` files (controls, courses, bends
+  and gaps of legs, circle gaps per scale, descriptions, out-of-bounds areas, forbidden routes, marked routes,
+  number positions, print scales) and IOF XML 3.0 `CourseData` (controls, courses, positions, number positions,
+  length and climb). IOF XML has no descriptions, special objects, bends or print scales, so its sheets show
+  controls, legs and numbers only. The reader is chosen by the file extension. What the program cannot print yet
+  is left out and reported: courses with variations (forks and loops) or alternative controls, and unknown
+  elements. Purple Pen's white-out is read and reported but not printed; it waits for the masks (M4).
+- A course must fit the map (ADR 0032). The program tries both readings of the y axis and takes the one that puts
+  all controls on the map. With latitude and longitude in the file and a georeferenced UTM map, those decide.
+  If both fit and nothing decides, it assumes "up" and warns until `course_y_axis` confirms it. A map scale in
+  the course file must equal the map's. A control more than 20 m from where its latitude and longitude put it
+  stops the fit. Each failure is an error that says what to check; nothing is printed from a course that does not
+  fit.
+- The course overprint (ADR 0034). The program draws start, controls, legs, finish, out-of-bounds areas, forbidden
+  routes, marked routes, crossing points, map exchanges, texts and numbers in the course purple, in two layers.
+  The lower purple lies below black, brown and blue 100 %, the upper over the whole map. Both are painted in
+  `Multiply` blend mode. Sizes come from the rule profile and grow with the symbol factor.
 - The project file can link courses. `[sources] courses` names the course file (`.ppen` or IOF XML, relative
   to the project file); it is read again at every check and export. `course_y_axis` ("up" or "down") sets the
   file's y axis, and `course_georef_check = false` switches off the check against latitude and longitude.
@@ -70,11 +87,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   prints the same courses from IOF XML 3.0, without descriptions.
 - Example `examples/berlin-viktoriapark-training`: a club training of 1.7 km on freemapper's Viktoriapark map
   (version 0.6.0), one course from Purple Pen on A4 at 1:4000 with control descriptions.
-
-### Fixed
-
-- Circle gaps of courses from files whose y axis grows upwards (Purple Pen) are now mirrored along with the
-  rest when the course is fitted to the map.
+- Manual chapter 8 "Courses" and the course notes and errors in chapter 10, in German and English. The READMEs
+  list what M3 adds.
 
 ## [0.2.0] - 2026-11-09
 

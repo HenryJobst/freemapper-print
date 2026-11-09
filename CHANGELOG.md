@@ -16,6 +16,24 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Quelle. Die Projektdatei kann in `[print]` ein anderes Profil (`rule_profile`) und Aufsätze
   (`rule_overlays`) nennen; ein unbekannter Name ist ein Fehler mit Zeile und Spalte. Die gedruckten Blätter
   ändern sich nicht.
+- Bahnen aus Purple Pen und IOF-XML 3.0 (ADR 0033). Das Programm liest `.ppen`-Dateien (Posten, Bahnen, Knickpunkte
+  und Lücken der Strecken, Kreislücken je Maßstab, Beschreibungen, Sperrgebiete, verbotene Strecken, Pflichtstrecken,
+  Lage der Nummern, Druckmaßstäbe) und IOF-XML 3.0 `CourseData` (Posten, Bahnen, Positionen, Lage der Nummern,
+  Länge und Anstieg). IOF-XML kennt keine Beschreibungen, Sonderobjekte, Knickpunkte und Druckmaßstäbe, seine Blätter
+  zeigen deshalb nur Posten, Strecken und Nummern. Der Leser wird nach der Dateiendung gewählt. Was das Programm
+  noch nicht drucken kann, lässt es weg und meldet es: Bahnen mit Varianten (Gabelungen und Schleifen) oder
+  alternativen Posten und unbekannte Elemente. Das White-out aus Purple Pen wird gelesen und gemeldet, aber nicht
+  gedruckt; es wartet auf die Abdeckungen (M4).
+- Eine Bahn muss zur Karte passen (ADR 0032). Das Programm probiert beide Lesarten der y-Achse und nimmt die, bei der
+  alle Posten auf der Karte liegen. Stehen in der Datei Breite und Länge und ist die Karte in UTM georeferenziert,
+  entscheiden sie. Passen beide und entscheidet nichts, nimmt es „oben“ an und warnt, bis `course_y_axis` die Achse
+  bestätigt. Ein Kartenmaßstab in der Bahndatei muss dem der Karte entsprechen. Ein Posten, der mehr als 20 m von
+  dem Ort entfernt liegt, den seine Breite und Länge angeben, hält die Einpassung an. Jeder Fehlschlag ist ein
+  Fehler, der sagt, was zu prüfen ist; aus einer Bahn, die nicht passt, wird nichts gedruckt.
+- Der Bahnaufdruck (ADR 0034). Das Programm zeichnet Start, Posten, Strecken, Ziel, Sperrgebiete, verbotene Strecken,
+  Pflichtstrecken, Querungsstellen, Kartenwechsel, Texte und Nummern im Violett der Bahn, in zwei Schichten. Das
+  untere Violett liegt unter Schwarz, Braun und Blau 100 %, das obere über der ganzen Karte. Beide werden im
+  Mischmodus `Multiply` gemalt. Die Größen kommen aus dem Regelprofil und wachsen mit dem Symbolfaktor.
 - Die Projektdatei kann Bahnen einbinden. `[sources] courses` nennt die Bahndatei (`.ppen` oder IOF-XML,
   relativ zur Projektdatei); sie wird bei jeder Prüfung und jedem Export neu gelesen. `course_y_axis`
   („up“ oder „down“) legt die y-Achse der Datei fest, `course_georef_check = false` schaltet die Prüfung mit
@@ -77,11 +95,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Der Ordner `iof/` druckt dieselben Bahnen aus IOF-XML 3.0, ohne Beschreibung.
 - Beispiel `examples/berlin-viktoriapark-training`: ein Vereinstraining von 1,7 km auf der Viktoriapark-Karte von
   freemapper (Version 0.6.0), eine Bahn aus Purple Pen auf A4 in 1:4000 mit Postenbeschreibung.
-
-### Behoben
-
-- Kreislücken von Bahnen aus Dateien mit nach oben wachsender y-Achse (Purple Pen) werden beim Einpassen
-  mitgespiegelt.
+- Handbuch-Kapitel 8 „Bahnen“ und die Hinweise und Fehler zu Bahnen in Kapitel 10, auf Deutsch und Englisch. Die
+  READMEs nennen, was M3 bringt.
 
 ## [0.2.0] - 2026-11-09
 
