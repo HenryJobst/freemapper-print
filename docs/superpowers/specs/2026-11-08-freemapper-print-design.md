@@ -116,7 +116,8 @@ Event (project file)
 - **Map coordinates** *(Claude's call)*. Map frames, masks and element anchors on the map use OOM's map
   coordinates (millimetres on the map at map scale, y down), the same units the `.omap` stores. Maps without
   georeferencing therefore work. Projected coordinates appear only where a georeferenced map and a
-  georeferenced course file are matched (§5.3).
+  georeferenced course file are matched (§5.3). The project file writes `centre_map_mm` and mask points with y as
+  OOM shows it (up), the values of its status bar; the loader turns y down (ADR 0028, ADR 0045).
 - **Mask variant.** One or more polygons in map coordinates, each with holes. The masked area is painted white
   above the map and below the course overprint. Window orienteering uses holes around legs; corridor
   orienteering uses a hole along the corridor.
@@ -271,13 +272,13 @@ id = "a4-4000"
 paper = "A4"
 orientation = "portrait"
 print_scale = 4000
-map_frame = { centre_map_mm = [12.5, -40.0], margin_mm = 8 }
+map_frame = { centre_map_mm = [12.5, 40.0], margin_mm = 8 }
 
 [[masks]]
 id = "window-3-5"
-# Polygons in map coordinates (mm, y down); the first ring is the outline, the others are holes.
-polygons = [[[[-60.0, -90.0], [80.0, -90.0], [80.0, 20.0], [-60.0, 20.0]],
-             [[0.0, -50.0], [30.0, -50.0], [30.0, -20.0], [0.0, -20.0]]]]
+# Polygons in map coordinates (mm, y as OOM shows it (up)); the first ring is the outline, the others are holes.
+polygons = [[[[-60.0, 90.0], [80.0, 90.0], [80.0, -20.0], [-60.0, -20.0]],
+             [[0.0, 50.0], [30.0, 50.0], [30.0, 20.0], [0.0, 20.0]]]]
 
 [[assignments]]
 course = "D"

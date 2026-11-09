@@ -18,13 +18,13 @@ Window and corridor orienteering hide most of the map (spec §4). Purple Pen whi
   or touches itself or lies on one line; values that are not finite. Limits (ADR 0019): 64 variants, 256 polygons
   each, 4096 points per ring, 100 000 per file, 3 different points per ring, coordinates within ±2 000 000 mm; the
   checks sweep the edges in x and stop after 100 million steps.
-- White-outs become `whiteout-1`, `whiteout-2` … in file order, for the courses of their filter (empty: all). An
-  assignment's `mask` wins. Several white-outs of one course make one variant (`whiteout-1+whiteout-3`); if they
-  overlap, the course gets none and the warning `WhiteOutUnusable`. A `[[masks]]` entry with a white-out's id
-  replaces it. A missing `whiteout-<n>` is `Stale::Mask`, an unused mask the Info note `MaskUnused`.
+- White-outs become `whiteout-1`, `whiteout-2` … in file order, for the courses their filter names, like other
+  specials (R6). An assignment's `mask` wins. Several of one course make one variant (`whiteout-1+whiteout-3`), or
+  none and the warning `WhiteOutUnusable` if they overlap. A `[[masks]]` entry with a white-out's id replaces it.
+  A missing `whiteout-<n>` is `Stale::Mask`, an unused mask the Info note `MaskUnused`.
 
 ## Consequences
 
 Projects without masks print as before. Cost if wrong: masks copied from the spec sketch (§5.5, y down) mirror.
 
-Source: M4 plan Task 1 and its change of 2026-11-10 (holes may overlap, replacing ruling R2); ruling R1.
+Source: M4 plan Task 1 and its change of 2026-11-10 (holes may overlap, replacing ruling R2); rulings R1 and R6.

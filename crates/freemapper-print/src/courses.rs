@@ -13,6 +13,7 @@ use crate::course::{CourseFilter, Special};
 use crate::mask::{Budget, MAX_CHECK_STEPS, Mask, MaskPolygon, Problem};
 use crate::omap::MapCoord;
 use crate::omap::MapDocument;
+use crate::overprint::applies;
 use crate::project::{LayoutSpec, LoadedProject, NumberCorrection, Project, white_out_id};
 
 /// Largest difference in direction (degrees) after which a course file's number placement counts as moved.
@@ -352,7 +353,8 @@ impl MaskRef<'_> {
 }
 
 /// The mask `course` prints with (ADR 0045): the one its assignment names, otherwise the course file's white-outs
-/// for the course, otherwise none. A white-out with a `[[masks]]` entry of its id (`whiteout-<n>`) takes that
+/// for the course (their filter read as for every special object: all courses, or the listed ones), otherwise
+/// none. A white-out with a `[[masks]]` entry of its id (`whiteout-<n>`) takes that
 /// entry's polygons. Several white-outs make one variant, their ids joined by `+`. `None` also when the named
 /// white-out is missing ([`Stale::Mask`]) or the white-outs make no valid mask ([`MaskNote::WhiteOutUnusable`]).
 pub fn mask_for<'a>(
@@ -409,7 +411,7 @@ fn resolve<'a>(
     }
     let mine: Vec<&Mask> = white_outs
         .iter()
-        .filter(|w| white_out_applies(&w.courses, course))
+        .filter(|w| applies(&w.courses, course))
         .map(|w| own(&w.mask.id).unwrap_or(&w.mask))
         .collect();
     match mine.as_slice() {
@@ -426,15 +428,6 @@ fn resolve<'a>(
                 .join("+"),
             polygons: many.iter().flat_map(|m| m.polygons.clone()).collect(),
         }),
-    }
-}
-
-/// Whether a white-out applies to `course`: all courses, or the courses of its filter; an empty filter means
-/// all courses.
-fn white_out_applies(filter: &CourseFilter, course: &str) -> bool {
-    match filter {
-        CourseFilter::All => true,
-        CourseFilter::Only(names) => names.is_empty() || names.iter().any(|n| n == course),
     }
 }
 

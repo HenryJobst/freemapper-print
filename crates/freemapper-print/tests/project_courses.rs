@@ -586,3 +586,44 @@ fn white_outs_become_mask_variants() {
     ));
     assert!(mask_for(&lp.project, &loaded, "B").is_none());
 }
+
+/// The mask ids of courses A, B and C for a project with `specials` in the course file and no assignments.
+fn white_out_masks(specials: &str) -> Vec<Option<String>> {
+    let (_d, path) = ppen_dir(specials, "");
+    let lp = project::load(&path).unwrap();
+    let map = read_map_file(&lp.map_path()).unwrap();
+    let loaded = load_courses(&lp, &map).unwrap().unwrap();
+    assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
+    ["A", "B", "C"]
+        .iter()
+        .map(|c| mask_for(&lp.project, &loaded, c).map(|m| m.mask().id.clone()))
+        .collect()
+}
+
+#[test]
+fn whiteout_only_applies_to_its_courses() {
+    // White-out 1 lists course B (id 2); white-out 2 lists no course, so it applies to none (ruling R6), as other
+    // specials and Purple Pen do.
+    let specials = format!(
+        "{}{}",
+        white_out(
+            1,
+            -80.0,
+            40.0,
+            10.0,
+            "<courses><course course=\"2\" /></courses>"
+        ),
+        white_out(2, 50.0, 40.0, 10.0, "<courses />"),
+    );
+    assert_eq!(
+        white_out_masks(&specials),
+        [None, Some("whiteout-1".to_string()), None]
+    );
+}
+
+#[test]
+fn whiteout_with_all_applies_everywhere() {
+    let specials = white_out(1, -80.0, 40.0, 10.0, "<courses all=\"true\" />");
+    let all = Some("whiteout-1".to_string());
+    assert_eq!(white_out_masks(&specials), [all.clone(), all.clone(), all]);
+}
