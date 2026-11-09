@@ -1,4 +1,5 @@
-Copied from freemapper 743ce4b (ADR 0014).
+Copied from freemapper 743ce4b (ADR 0014). The colour table in 1.2 and the building fill colour in 0.1 follow
+freemapper v0.5.0 (`e8b6db9`, its ADR 0044).
 
 # OOM rendering reference for freemapper PDF output
 
@@ -69,8 +70,8 @@ enlarge.rs, except school additions 321/541–545 and sheet symbols 991–994, w
 | 518 | line | colour 2, w 400. **Mid symbol**: rotatable, two lines w 140: (450,0)->(825,650) and (-450,0)->(-75,650). segment 3750, end 2325, show_at_least_one **false**. |
 | 520 | area | inner colour 22. |
 | 520.1 | line | colour 15, w 100. |
-| 521 | combined | parts by index: 143 (521.3 area colour 9), 144 (521.4 line colour 2, w 140). |
-| 521.1 | point | rotatable. Elements: area colour 9 square ±180 (4 coords, no close flag); line colour 2 w 140 closed square (last coord flag 18). |
+| 521 | combined | parts by index: 143 (521.3 area colour 10, Black 50%), 144 (521.4 line colour 2, w 140). Maps from OOM's own set and from freemapper before v0.5.0 use colour 9 (Black 60%). |
+| 521.1 | point | rotatable. Elements: area colour 10 (older sets 9) square ±180 (4 coords, no close flag); line colour 2 w 140 closed square (last coord flag 18). |
 | 541 | line | colour 2, w 120. **Start + end symbol**: ring inner_radius 120, outer_width 180, colour 2, not rotatable. |
 | 542 | point | not rotatable. Elements: closed square ±750 line w 220; diagonals w 120. |
 | 543 | line | colour 2, w 220. **Start + end symbol**: rotatable, element line (0,-400)->(0,400) w 180. |
@@ -114,21 +115,34 @@ dash symbols, dash points, mid symbols on dashed lines, text framing. Real maps 
   areas would punch holes. Emit one fill per area renderable (merging strokes of equal
   width/cap/join is harmless).
 
-Priorities of the colours used (ISSprOM 2019), top to bottom:
+Priorities of the colours used (ISSprOM 2019 as bundled by freemapper v0.5.0, CMYK after IOF Printing and
+Colour Definitions Rev. 4, freemapper ADR 0044), top to bottom:
 
 | Prio | Name | C | M | Y | K |
 |---|---|---|---|---|---|
 | 2 | Black 100% | 0 | 0 | 0 | 1 |
-| 3 | Green 100% | 0.76 | 0 | 0.91 | 0 |
+| 3 | Green 100% | 0.8 | 0 | 1 | 0 |
 | 7 | Blue 100% | 1 | 0 | 0 | 0 |
-| 8 | Brown 100% | 0 | 0.56 | 1 | 0.18 |
-| 9 | Black 60% | 0 | 0 | 0 | 0.6 |
-| 13 | Lower brown 50% | 0 | 0.28 | 0.5 | 0.09 |
-| 14 | Lower brown 30% | 0 | 0.168 | 0.3 | 0.054 |
+| 8 | Brown 100% | 0.25 | 0.75 | 1 | 0 |
+| 10 | Black 50% (building fill 521.3, 521.1) | 0 | 0 | 0 | 0.5 |
+| 13 | Lower brown 50% | 0.1 | 0.35 | 0.5 | 0 |
+| 14 | Lower brown 30% | 0.06 | 0.23 | 0.33 | 0 |
 | 15 | Black below lower light brown | 0 | 0 | 0 | 1 |
 | 21 | White over green | 0 | 0 | 0 | 0 |
-| 22 | Green 50%/Yellow 100% | 0.38 | 0.27 | 0.886 | 0 |
+| 22 | Green 50%/Yellow 100% | 0.38 | 0.27 | 1 | 0 |
 | 30 | Yellow 100% | 0 | 0.27 | 0.79 | 0 |
+
+Older values. OOM's bundled `ISSprOM 2019_4000.omap` (also `assets/symbol-sets/` here, used only by tests) and
+freemapper maps before v0.5.0 carry the IOF colours before Rev. 4: Green 100% 0.76/0/0.91/0, Brown 100%
+0/0.56/1/0.18, Lower brown 50% 0/0.28/0.5/0.09, Lower brown 30% 0/0.168/0.3/0.054, Green 50%/Yellow 100%
+0.38/0.27/0.886/0, and they fill buildings with Black 60% at priority 9. Rev. 4 (valid from 2024-12-01) prints
+CMYK only and drops spot-colour printing; ISSprOM 2019-2 moved 521 to black 50 %. In freemapper v0.5.0 the six
+spot colours take their Rev. 4 rows; a tint whose Rev. 4 row is not "spot colour × factor" (Purple 50%, Lower
+brown 50% and 30%, Green 50%/Yellow 100%, Yellow 50%) has `cmyk method="custom"` and its own CMYK, the other
+tints stay derived from the spot colours. The renderer needs no change for any of this: it reads the `c m y k`
+attributes and the priority of each colour from the map file (1.3), so a map prints in the colours it carries.
+The building fill moves from priority 9 to 10, which changes nothing visible, because no colour of the listed
+symbols lies between the two.
 
 Consequences: 501.5/501.11 fills (14/13) cover the inner half of their own edge line (15);
 505.x brown fill (14) covers the black dashed borders (15) of a crossing path; 520.1 (15) lies
