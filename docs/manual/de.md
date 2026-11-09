@@ -53,16 +53,17 @@ Die neue Datei enthält:
 
 - den Titel aus `--title`, ohne die Option den Dateinamen der Karte;
 - die Kartenart. Sie kommt aus `--kind`, sonst aus der `freemapper.toml` neben der Karte, sonst aus dem
-  Symbolsatz und dem Maßstab der Karte. Findet das Programm keine, bricht es ab und fragt nach `--kind sprint`,
-  `--kind schoolyard` oder `--kind forest`;
-- einen Vorschlag für die Äquidistanz: 2,5 m für Sprintkarten, 5 m für Waldkarten, keinen für Schulhofkarten.
+  Symbolsatz und dem Maßstab der Karte, und `init` sagt, woher. Findet das Programm keine, bricht es ab und
+  fragt nach `--kind sprint`, `--kind schoolyard` oder `--kind forest`;
+- einen Vorschlag für die Äquidistanz: 2 m für Sprintkarten, 5 m für Waldkarten, keinen für Schulhofkarten.
   Ein Kommentar in der Datei markiert den Wert. Sehen Sie auf der Karte nach, welche Äquidistanz sie hat, und
   korrigieren Sie ihn;
 - einen Titelblock mit `{event}` und `1:{print_scale} · {contour_interval}` oben links im Kartenausschnitt
   und eine Kontrollstrecke unten rechts;
 - ein Layout im Maßstab der Karte. `init` probiert A4 mit 8 mm Passepartout, dann A4 mit breiterem
-  Passepartout, dann A3 und nimmt das erste Blatt, auf dem `check` nichts zu melden hat. Für die Lübecker
-  Sprintkarte ist das A3 mit 14 mm.
+  Passepartout (in Schritten von 2 mm bis 24 mm), dann A3 und nimmt das erste Blatt, auf dem `check` nichts zu
+  melden hat. Für die Lübecker Sprintkarte ist das A3 mit 14 mm. Passt keines, bleibt die Datei bei A4 mit
+  8 mm; `init` beginnt seine Meldung dann mit „Warnung:“ und zeigt, was `check` melden wird.
 
 Die Blattsprache, also die Sprache von Datum, Dezimalzeichen und Namensnennung auf dem Blatt, setzt `init` auf
 die Programmsprache. Sie steht in `event.lang`.
@@ -71,7 +72,8 @@ die Programmsprache. Sie steht in `event.lang`.
 
 Die Datei ist [TOML](https://toml.io/de/). Jede Zeile hat die Form `schlüssel = wert`, Abschnitte stehen in
 eckigen Klammern. Ein Schlüssel, den das Programm nicht kennt, ist ein Fehler mit Datei, Zeile und Spalte, damit
-ein Tippfehler nicht still übergangen wird. Pfade gelten relativ zur Projektdatei.
+ein Tippfehler nicht still übergangen wird. Ein Wert außerhalb seines Bereichs ist ein Fehler mit Zeile und
+Spalte des Werts. Pfade gelten relativ zur Projektdatei.
 
 ```toml
 format = 1
@@ -116,7 +118,7 @@ print_scale = 4000
 | | `lang` | Blattsprache `de` oder `en`: „15.05.2027“ oder „15 May 2027“, „2,5 m“ oder „2.5 m“, „Erstellt mit“ oder „Created with“ |
 | `[sources]` | `map` | Pfad zur OOM-Karte (`.omap`) |
 | `[map]` | `kind` | Kartenart: `sprint`, `schoolyard` oder `forest`. Sie bestimmt, wie die Symbole bei einem anderen Druckmaßstab wachsen (Kapitel 9) und wie weit Nordlinien auseinanderliegen. |
-| | `contour_interval_m` | Äquidistanz in Metern, größer als 0 |
+| | `contour_interval_m` | Äquidistanz in Metern, größer als 0 und höchstens 100 |
 | `[print]` | `copyright` | Quellenangaben, eine je Zeile. Ohne den Schlüssel nimmt das Programm die Kartennotizen. |
 | `[[shared]]` | | ein gemeinsames Blattelement; der Abschnitt darf mehrfach vorkommen |
 | `[[layouts]]` | | ein Layout; mindestens eines, beliebig viele |
@@ -132,7 +134,7 @@ Datei, und gibt je Layout eine Zeile mit Papier, Ausrichtung, Maßstab und Fakto
 Zum Schluss steht „1 Layout geprüft, keine Hinweise.“ oder „Layouts mit Hinweisen: 1 von 2.“
 
 Der Exit-Code ist 0, wenn kein Layout etwas zu melden hat, und 1, wenn eines einen Hinweis hat oder sich nicht
-zeichnen lässt. Ergänzte Nordlinien zählen nicht als Hinweis. So kann ein Skript `check` vor `export` setzen.
+zeichnen lässt. Ergänzte Nordlinien und ein gewollter Beschnitt (`map_frame.crop`) zählen nicht als Hinweis. So kann ein Skript `check` vor `export` setzen.
 Ein Hinweis hält den Export nicht auf. Manche Hinweise sind gewollt, etwa der Überstand einer Karte, die größer
 ist als das Blatt. Kapitel 10 erklärt jeden Hinweis.
 
@@ -156,7 +158,9 @@ PDFs geschrieben sind, auch wenn es Hinweise gab.
 Vor dem Schreiben prüft das Programm den freien Platz: Es braucht die Größe des PDFs und 50 MB Reserve. Das PDF
 entsteht zuerst als `<Name>.pdf.part` und bekommt erst seinen Namen, wenn es vollständig auf dem Datenträger
 steht. Ist der Datenträger voll, bleibt ein älteres PDF gleichen Namens unverändert, und es bleibt kein halbes
-PDF zurück. Die Meldung nennt, wie viel Platz nötig und wie viel frei ist.
+PDF zurück; ebenso bei jedem anderen Fehler. Die Meldung nennt, wie viel Platz nötig und wie viel frei ist, oder
+dass der Datenträger das nicht meldet. Lassen Sie nicht zwei Exporte gleichzeitig in denselben Ordner
+schreiben: Sie teilten sich die `.part`-Datei.
 
 ## 6. Layouts: Blattformat, Maßstab, Kartenausschnitt
 
@@ -185,9 +189,10 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 | `hide_parts` | leer | Kartenteile, die das Blatt nicht zeigt, mit ihrem genauen Namen aus OOM |
 | `hide_shared` | leer | IDs gemeinsamer Elemente, die dieses Layout nicht zeigt |
 | `elements` | leer | eigene Blattelemente dieses Layouts, Kapitel 7 |
-| `map_frame.margin_mm` | 8 | Breite des Passepartouts in mm, auf allen Seiten gleich |
-| `map_frame.border_mm` | 0,25 | Breite der Rahmenlinie in mm; 0 zeichnet keine |
-| `map_frame.centre_map_mm` | Mitte der Karte | Kartenpunkt `[x, y]` in der Mitte des Kartenausschnitts |
+| `map_frame.margin_mm` | 8 | Breite des Passepartouts in mm, auf allen Seiten gleich; kleiner als die halbe kürzere Papierseite |
+| `map_frame.border_mm` | 0,25 | Breite der Rahmenlinie in mm, höchstens 20; 0 zeichnet keine |
+| `map_frame.centre_map_mm` | Mitte der Karte | Kartenpunkt `[x, y]` in der Mitte des Kartenausschnitts, so wie OOM ihn anzeigt |
+| `map_frame.crop` | `false` | `true`: Der Kartenausschnitt beschneidet die Karte mit Absicht; der Überstand ist nur ein Hinweis |
 
 Die Layout-ID wird zum Dateinamen. Sie darf deshalb keines der Zeichen `/ \ : * ? " < > |` enthalten, nicht
 mit einem Punkt beginnen oder enden und kein Gerätename von Windows sein (`con`, `nul`, `com1` …). Zwei IDs, die
@@ -203,8 +208,16 @@ Karte, die andere liegt auf dem Passepartout.
 
 Ohne `centre_map_mm` liegt die Mitte dessen, was gedruckt wird, in der Mitte des Ausschnitts. Mit
 `centre_map_mm = [x, y]` liegt dort dieser Punkt der Karte. Die Zahlen sind Millimeter auf der Karte im
-Kartenmaßstab, so wie sie in der `.omap` stehen, mit y nach unten. Bei einer Karte, die größer ist als das
-Blatt, legen Sie so den Ausschnitt auf das Wettkampfgebiet.
+Kartenmaßstab, genau so, wie OOM sie in der Statusleiste anzeigt, wenn die Koordinatenanzeige auf
+Kartenkoordinaten steht: Zeigen Sie in OOM auf die Stelle und übernehmen Sie beide Zahlen. OOM zeigt y nach oben
+(sein Quelltext gibt in `MapWidget::updateCursorposLabel` `x` und `-y` aus); das Programm rechnet das in die
+Koordinaten der `.omap` mit y nach unten um. Jede Zahl darf höchstens 2 000 000 mm vom Ursprung der Karte
+entfernt sein. Bei einer Karte, die größer ist als das Blatt, legen Sie so den Ausschnitt auf das
+Wettkampfgebiet.
+
+Soll das Blatt nur einen Teil der Karte zeigen, setzen Sie dazu `crop = true`
+(`map_frame = { centre_map_mm = [120.0, -80.0], crop = true }`). Der Überstand ist dann ein Hinweis zur
+Information, und `check` endet trotzdem mit 0.
 
 Wie breit das Passepartout sein muss, hängt vor allem von der Fußzeile ab (Kapitel 7): Sie steht nur dann unter
 dem Kartenausschnitt, wenn sie dort ganz Platz hat. Für zwei Zeilen reichen 8 mm, für fünf braucht es etwa
@@ -250,7 +263,7 @@ Jedes Element hat:
 | `anchor.corner` | eine von neun Stellen: `top_left`, `top`, `top_right`, `left`, `centre`, `right`, `bottom_left`, `bottom`, `bottom_right` |
 | `anchor.offset_mm` | `[x, y]`, Abstand in mm von dieser Stelle nach innen |
 
-Der Abstand zählt von einer linken oder oberen Kante nach rechts oder unten, von einer rechten oder unteren
+Jeder Abstand liegt zwischen -2000 und 2000 mm. Er zählt von einer linken oder oberen Kante nach rechts oder unten, von einer rechten oder unteren
 nach links oder oben, von einer Mitte nach rechts oder unten. Das Element liegt innen an seiner Stelle:
 `top_right` mit `[2, 2]` setzt seine rechte obere Ecke 2 mm links und 2 mm unter die rechte obere Ecke.
 
@@ -269,7 +282,7 @@ lines = ["{event}", "{date} · {organiser}", "1:{print_scale} · Äquidistanz {c
 anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
 ```
 
-Ein Titelblock setzt die erste Zeile fett in 14 pt (`size_pt` ändert das) und die übrigen in 9 pt. Ein `text`
+Ein Titelblock setzt die erste Zeile fett in 14 pt (`size_pt` ändert das, bis 200) und die übrigen in 9 pt. Ein `text`
 setzt alle Zeilen in 9 pt oder in `size_pt`. Beide stehen auf einem weißen Kasten mit 1 mm Rand;
 `box_white = false` lässt ihn weg. Die Schrift ist Arimo, dieselbe wie für Kartentexte.
 
@@ -302,7 +315,7 @@ width_mm = 35.0
 anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
 ```
 
-`width_mm` ist die Breite auf dem Papier; die Höhe folgt aus dem Seitenverhältnis. Das Programm nimmt PNG, JPEG
+`width_mm` ist die Breite auf dem Papier, höchstens 2000; die Höhe folgt aus dem Seitenverhältnis. Das Programm nimmt PNG, JPEG
 und SVG:
 
 - **PNG und JPEG** bleiben Pixelbilder, ein PNG behält seine Transparenz. Für den Druck sollte das Bild etwa
@@ -334,6 +347,12 @@ Beschneidungspfade wirken nicht. Ein PNG oder JPEG über 25 Megapixel oder über
 Datei über 10 MB und eine fehlende oder kaputte Datei werden ausgelassen und gemeldet. Die genauen Grenzen
 stehen im [Glossar](../glossary.md) unter „Logo“ und in ADR 0026.
 
+Das Programm liest und dekodiert jede Logodatei einmal je `check` oder `export`, egal wie viele Elemente und
+Layouts sie nutzen, und das PDF enthält sie einmal. Ein Blatt trägt höchstens 50 Megapixel an PNG- und
+JPEG-Logos und 1 000 000 Einheiten SVG-Arbeit, jedes Logo so oft gezählt, wie es platziert ist. Ein Logo
+darüber hinaus fehlt mit einem Hinweis. Zwei Logos der größten erlaubten Größe passen; ein Vereinslogo von
+einigen hundert Pixeln braucht fast nichts davon.
+
 ### Kontrollstrecke
 
 ```toml
@@ -356,13 +375,16 @@ https://github.com/HenryJobst/freemapper-print“ (auf englischen Blättern „C
 lässt sich nicht abschalten.
 
 Die Fußzeile steht unter dem Kartenausschnitt, wenn sie dort ganz Platz hat. Sonst steht sie links unten im
-Kartenausschnitt auf einem weißen Kasten, und `check` meldet, dass sie einen Teil der Karte abdeckt. Abhilfe:
-ein breiteres Passepartout (`margin_mm`) oder weniger Zeilen in `print.copyright`. Mehr als sechs Zeilen
-Quellenangaben zeigt das Programm nicht: fünf und eine sechste, die den Rest zählt. Eine Zeile, die breiter ist
-als der Kartenausschnitt, kürzt es mit „…“.
+Kartenausschnitt auf einem weißen Kasten, und `check` meldet, dass sie einen Teil der Karte abdeckt, und nennt
+jedes Element, das der Kasten abdeckt. Abhilfe: ein breiteres Passepartout (`margin_mm`) oder weniger Zeilen in
+`print.copyright`. Mehr als sechs Zeilen Quellenangaben zeigt das Programm nicht: fünf und eine sechste, die den
+Rest zählt. Eine Zeile, die breiter ist als der Kartenausschnitt, kürzt es mit „…“, und `check` nennt sie.
 
 Ein Element `copyright_line` oder `credit_line` holt diesen Teil aus der Fußzeile und setzt ihn an seinen eigenen
-Anker, in 5 pt oder `size_pt`. Es verschiebt die Zeilen nur; die Namensnennung bleibt auf dem Blatt.
+Anker, in 5 pt oder `size_pt`. Es verschiebt die Zeilen nur; die Namensnennung bleibt auf dem Blatt. Ein
+`credit_line` braucht mindestens 5 pt. Läge es nicht ganz auf dem Blatt, bleibt die Namensnennung in der
+Fußzeile, und `check` meldet das. Die Namensnennung wird nach allem anderen auf dem Blatt gezeichnet, kein
+Element kann sie verdecken.
 
 ## 9. Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop
 
@@ -382,7 +404,10 @@ freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 3000` druckt in 1:3000. Zum Drucken wählen
 Sie A4 oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm
 die Ausrichtung, die weniger von der Karte abschneidet. `render` lässt rundum 5 mm frei und druckt weder
-Titel noch Kontrollstrecke. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren,
+Titel noch Kontrollstrecke. Die Fußzeile druckt es aber: die Quellenangaben aus den Kartennotizen und die
+Namensnennung in der Programmsprache, auf einem weißen Kasten unten links im Druckbereich. Unter der Karte ist
+dafür bei 5 mm Rand kein Platz. Deckt der Kasten einen Teil der Karte ab, meldet `render` das; ein Projekt mit
+breiterem Passepartout setzt die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren,
 danach folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
 
 ### In Originalgröße drucken
@@ -403,8 +428,8 @@ Warnung: Die Karte passt nicht auf die Seite. Sie ist 4,0 mm zu hoch für den be
 Die Zahl sagt, um wie viele Millimeter die Karte hinausragt, oben und unten zusammen. Gemessen wird an dem, was
 tatsächlich gedruckt würde, also mit Linienbreiten, Punktsymbolen und Texten. Die Karte wird nicht verkleinert,
 denn das würde den Maßstab verfälschen. Sie können ein größeres Papier nehmen (A3), einen Druckmaßstab mit
-größerer Zahl oder in einem Layout mit `centre_map_mm` den Ausschnitt wählen. Haben Sie die Ausrichtung selbst
-gewählt, nennt die Meldung auch die andere. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen
+größerer Zahl oder in einem Layout mit `centre_map_mm` den Ausschnitt wählen und den Schnitt mit
+`map_frame.crop = true` als gewollt kennzeichnen (Kapitel 6). Haben Sie die Ausrichtung selbst gewählt, nennt die Meldung auch die andere. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen
 können, was fehlt.
 
 ### Wie groß die Symbole sind
@@ -430,7 +455,8 @@ Das Programm kennt dafür die Kartenart (Sprintkarte, Schulhofkarte, Waldkarte).
 
 ### Den Maßstab mit dem Lineal prüfen
 
-Die Blätter eines Layouts haben eine Kontrollstrecke (Kapitel 7). Legen Sie das Lineal an den Balken: Bei
+Ein Layout zeigt eine Kontrollstrecke, wenn es ein Element `scale_check_bar` hat (Kapitel 7). `init` legt eines
+an, und `check` meldet ein Layout ohne. Legen Sie das Lineal an den Balken: Bei
 „200 m = 50 mm“ muss er genau 50 mm lang sein. Bei `render` fehlt die Kontrollstrecke. Messen Sie dann zwischen
 zwei Punkten, deren Abstand Sie kennen, etwa zwei Gebäudeecken oder den Enden eines geraden Straßenstücks. Für
 100 m muss das Lineal diese Werte zeigen:
@@ -467,6 +493,8 @@ Diese Hinweise kommen von `render`, `check` und `export`:
   Programm durch sie.
 - „Die eingebettete Schrift kann diese Zeichen nicht darstellen …“: Ein Zeichen der Karte fehlt in Arimo und
   wird nicht gedruckt.
+- „Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten … und deckt einen Teil der
+  Karte ab“ (nur `render`): Die Fußzeile liegt unten links auf der Karte. Ein Projekt setzt sie unter die Karte.
 - Den Informationsblock von freemapper (Titel, Maßstab, Maßstabsleiste, Namensnennung) druckt `render` nur mit
   `--show-sheet-objects`. Bei einem anderen Druckmaßstab skaliert er mit der Karte, ein darin gedruckter
   Maßstab kann also falsch sein. Die Nordlinien gehören zur Karte und stehen immer im PDF.
@@ -474,26 +502,32 @@ Diese Hinweise kommen von `render`, `check` und `export`:
 ## 10. Meldungen und was zu tun ist
 
 Dieses Kapitel erklärt die Hinweise zu den Blättern eines Layouts. Die Hinweise zum Druck der Karte selbst
-stehen in Kapitel 9. Keiner hält den Export auf, aber jeder außer „Nordlinien ergänzt“ lässt `check` mit
-Exit-Code 1 enden.
+stehen in Kapitel 9. Keiner hält den Export auf, aber jeder außer „Nordlinien ergänzt“ und „mit Absicht
+beschnitten“ lässt `check` mit Exit-Code 1 enden.
 
 | Hinweis (gekürzt) | Bedeutung und Abhilfe |
 |---|---|
-| „Die Karte passt nicht auf die Seite. Sie ist … zu hoch/zu breit …“ | Die Karte ist größer als der Kartenausschnitt und wird abgeschnitten. A3, ein anderer Maßstab, ein schmaleres Passepartout oder `centre_map_mm` für den gewünschten Ausschnitt. Bei einer großen Karte kann der Hinweis gewollt sein. |
+| „Die Karte passt nicht auf die Seite. Sie ist … zu hoch/zu breit …“ | Die Karte ist größer als der Kartenausschnitt und wird abgeschnitten. A3, ein anderer Maßstab, ein schmaleres Passepartout oder `centre_map_mm` für den gewünschten Ausschnitt. Ist der Schnitt gewollt, `map_frame.crop = true` setzen. |
+| „Die Karte ist … für den Kartenausschnitt und wird dort mit Absicht beschnitten“ | Nur zur Information: Das Layout hat `map_frame.crop = true`. |
 | „Das Passepartout ist zu schmal für die Fußzeile …“ | Die Fußzeile steht auf weißem Kasten in der Karte. `margin_mm` erhöhen, `print.copyright` kürzen oder die Zeilen mit `copyright_line`/`credit_line` woanders hinsetzen. |
+| „Die Fußzeile … deckt einen Teil des Elements … ab“ | Der weiße Kasten der Fußzeile überdeckt ein Element unten links im Kartenausschnitt. Das Element versetzen oder `margin_mm` so erhöhen, dass die Fußzeile unter den Ausschnitt passt. |
+| „Das Element … läge mit der Namensnennung nicht ganz auf dem Blatt“ | Das Element `credit_line` würde über den Blattrand ragen, deshalb bleibt die Namensnennung in der Fußzeile. Anker, Abstand und `size_pt` prüfen. |
 | „Die Fußzeile … ragt über den Blattrand“ | Die Fußzeile reicht über das Blatt hinaus. Passepartout und Quellenangaben prüfen. |
 | „Das Element … ragt über den Blattrand“ | Anker oder Abstand des Elements prüfen; ein Logo eventuell schmaler machen. |
 | „Das Element … hängt am Blatt und deckt einen Teil des Kartenausschnitts ab“ | Ein Element am Blatt (`to = "page"`) liegt über der Karte. Ans Passepartout rücken oder an den Kartenausschnitt hängen, wenn es auf der Karte stehen soll. |
 | „Das Papier ist größer als A3“ | Nur bei Papierformaten über A3; derzeit kennt das Programm nur A4 und A3. |
 | „Im Layout … fehlt ein Text mit {print_scale} …“ | Maßstab oder Äquidistanz stehen auf keinem Blattelement, oder `map.contour_interval_m` fehlt. Einen Titelblock oder Text mit dem Platzhalter ergänzen, den Wert eintragen. |
+| „Layout … hat keine Kontrollstrecke“ | Das Layout zeigt kein Element `scale_check_bar`. Eines ergänzen (gemeinsam oder im Layout), damit ein Lineal am Ausdruck zeigt, ob der Drucker skaliert hat. |
 | „Die Karte hat keine Nordlinien, deshalb wurden … Linien ergänzt“ | Nur zur Information, siehe Kapitel 6. `north_lines = "never"` schaltet das ab. |
 | „… weder Nordlinien noch ein brauchbares Liniensymbol 601 …“ | Die Karte hat kein Symbol für Nordlinien. Das Programm zieht schwarze Linien von 0,14 mm über die Karte; sie liegen über allem. Besser: Nordlinien in OOM zeichnen. |
 | „Layout … zeigt … von … Quellenangaben“ | Mehr als sechs Quellenzeilen. In `print.copyright` zusammenfassen. |
-| „Das Logo … fehlt auf dem Blatt: …“ | Datei fehlt, ist kaputt, zu groß oder ein SVG mit nicht erlaubten Teilen; der Grund steht dahinter. Siehe „Logo“ in Kapitel 7. |
+| „Die Quellenangabe ‚…‘ ist breiter als der Kartenausschnitt und wird mit ‚…‘ gekürzt“ | Die Zeile in den Kartennotizen oder in `print.copyright` kürzen oder auf zwei Zeilen verteilen. |
+| „Das Logo … fehlt auf dem Blatt: …“ | Datei fehlt, ist kaputt, zu groß oder ein SVG mit nicht erlaubten Teilen, oder das Blatt trägt schon 50 Megapixel an Logos oder hat sein SVG-Budget aufgebraucht; der Grund steht dahinter. Siehe „Logo“ in Kapitel 7. |
 | „Das Logo … wird vereinfacht gezeichnet: …“ | Verlauf, Transparenz, Strichelung oder Beschneidung im SVG. Das Logo erscheint, aber nicht ganz wie im Grafikprogramm. |
 | „Der Text … enthält {…}. Das ist kein Platzhalter …“ | Tippfehler im Platzhalter. Die Liste steht in Kapitel 7. |
 | „Layout … blendet den Kartenteil … aus, die Karte hat aber keinen Teil dieses Namens“ | Namen in `hide_parts` genau so schreiben wie in OOM, mit Groß- und Kleinschreibung. |
 
-Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Datei, Zeile und Spalte oder den
-Schlüssel, etwa ``freemapper-print.toml: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm` ``.
+Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Datei, Zeile, Spalte und den
+Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm` ``.
+Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört.
 Diese Texte kommen aus der Bibliothek und sind vorerst Englisch.
