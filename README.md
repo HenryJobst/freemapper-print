@@ -7,48 +7,65 @@ druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
 gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt die fertige Karte aufs Papier.
 
-Das kann es schon (Version 0.1.0):
+Das kann es schon:
 
 - eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4 oder A3;
 - in einem anderen Maßstab drucken, mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die
   jüngsten Klassen mit Symbolen auf 133 %);
 - die Nordlinien der Karte immer mitdrucken.
 
+Neu seit 0.1.0, noch nicht veröffentlicht (M2, auf `main`):
+
+- eine Projektdatei je Veranstaltung mit beliebig vielen Layouts, angelegt mit `init`, geprüft mit `check`, als
+  PDFs geschrieben mit `export`;
+- auf jedem Blatt Passepartout, Rahmenlinie, Titelblock und Texte mit Platzhaltern, Vereins- und
+  Sponsorenlogos (PNG, JPEG, SVG), eine Kontrollstrecke zum Nachmessen und unten links Quellenangaben und
+  Namensnennung;
+- Nordlinien ergänzt das Programm, wenn die Karte keine hat;
+- Meldungen und Hilfe auf Deutsch und Englisch;
+- ein volles Laufwerk hinterlässt kein halbes PDF.
+
 Geplant ist:
 
-- eine Projektdatei je Veranstaltung mit mehreren Layouts: Passepartout, Titel, Vereins- und Sponsorenlogos,
-  Kontrollstrecke zum Nachmessen und eine Fußzeile mit der Projektadresse; Nordlinien ergänzt das Programm, wenn
-  die Karte keine hat (M2, in Arbeit);
 - Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Purple Pen, Condes,
   OCAD-Bahnlegung), mit Bahnaufdruck und Postenbeschreibung (M3);
 - Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet (M4);
 - Bedienung über einen KI-Assistenten (MCP, M5) und einen Editor im Browser (M6), später auch OCAD-Karten.
 
-Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows. Meldungen und Hilfe gibt es ab M2 auf
-Deutsch und Englisch.
+Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 
 ## Beispiele
 
-Fertige Beispiele liegen in [`examples/`](examples/README.md). Ein Klick auf das Bild öffnet das Beispiel mit
+Fertige Beispiele liegen in [`examples/`](examples/README.md). Ein Klick auf ein Bild öffnet das Beispiel mit
 den PDFs.
+
+<a href="examples/luebeck-competition-layouts/README.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
+alt="Ein Stadtsprint in Lübeck auf A4 in 1:4000 und auf A3 in 1:3000, mit Titel, Logos und Kontrollstrecke"></a>
+
+**Ein Wettkampf, zwei Layouts** ([`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.md)):
+ein Stadtsprint mit einem A4-Blatt in 1:4000 für die älteren Klassen und einem A3-Blatt in 1:3000 für die
+jüngsten, beide mit Titelblock, Vereins- und Sponsorenlogo, Kontrollstrecke und Fußzeile. Gebaut nur mit
+`init`, `check` und `export`.
 
 <a href="examples/luebeck-scales/README.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
 alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 **Lübeck in zwei Maßstäben** ([`luebeck-scales`](examples/luebeck-scales/README.md)): dieselbe Sprintkarte in
-1:4000 auf A4 und in 1:3000 auf A3. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf 133 %. Weitere Beispiele
-kommen mit jedem Meilenstein dazu: ein Wettkampf mit zwei Layouts und Logos (M2), Bahnen aus Purple Pen (M3),
-Fenster- und Korridor-OL (M4).
+1:4000 auf A4 und in 1:3000 auf A3, gedruckt mit `render`. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf
+133 %. Weitere Beispiele kommen mit jedem Meilenstein dazu: Bahnen aus Purple Pen (M3), Fenster- und
+Korridor-OL (M4).
 
 ## Status
 
 Aktuelle Version ist [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) vom
 8. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
-OOM-Karte maßstabsgetreu (`freemapper-print render`). Gerade entsteht M2 mit Projektdatei, Layouts und
-Blattelementen. Danach folgen Bahnen aus Purple Pen (M3) und Abdeckungen für Fenster- und Korridor-OL (M4). Die
-erste Version richtet sich an Vereinstrainings in Stadt und Park: Sprintkarten auf A4, gedruckt am eigenen Drucker
-oder im Copyshop. Mehr steht im [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im
-[Glossar](docs/glossary.md) und in den [Architekturentscheidungen](docs/adr/README.md).
+OOM-Karte maßstabsgetreu (`freemapper-print render`). M2 mit Projektdatei, Layouts, Blattelementen und den
+Befehlen `init`, `check` und `export` ist fertig und liegt auf `main`; es erscheint mit der nächsten Version.
+Wer es schon nutzen will, baut das Programm selbst (siehe unten). Danach folgen Bahnen aus Purple Pen (M3) und
+Abdeckungen für Fenster- und Korridor-OL (M4). Die erste Version richtet sich an Vereinstrainings in Stadt und
+Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
+[Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
+[Architekturentscheidungen](docs/adr/README.md).
 
 ## Installation
 
@@ -82,11 +99,30 @@ prüft [lefthook](https://github.com/evilmartians/lefthook) Formatierung und cli
 
 ## Benutzung
 
+### Eine Veranstaltung (ab M2, noch nicht veröffentlicht)
+
+```sh
+freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print check stadtsprint
+freemapper-print export stadtsprint
+```
+
+`init` legt im Ordner `stadtsprint` die Projektdatei `freemapper-print.toml` an: ein Layout im Maßstab der
+Karte auf A4 oder A3, einen Titelblock, eine Kontrollstrecke und einen Vorschlag für die Äquidistanz, den Sie an
+der Karte prüfen. In der Datei ergänzen Sie weitere Layouts, Logos und Texte. `check` zeichnet jedes Layout,
+ohne etwas zu schreiben, und listet die Hinweise: Karte zu groß für den Kartenausschnitt, Passepartout zu
+schmal für die Fußzeile, Logo nicht lesbar und so weiter. `export` schreibt je Layout ein PDF in den Ordner
+`out` neben der Projektdatei, benannt nach der Layout-ID. Das [Handbuch](docs/manual/de.md#5-eine-veranstaltung-anlegen)
+beschreibt die Projektdatei Schlüssel für Schlüssel.
+
+### Nur die Karte
+
 ```sh
 freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
-Das schreibt die Sprintkarte als PDF auf eine A3-Seite im Maßstab 1:3000. Die wichtigsten Optionen:
+Das schreibt die Sprintkarte als PDF auf eine A3-Seite im Maßstab 1:3000, ohne Titel und Kontrollstrecke. Die
+wichtigsten Optionen:
 
 - `--paper a4|a3` wählt das Papier (Standard A4), `--orientation auto|portrait|landscape` die Ausrichtung. Bei
   `auto` nimmt das Programm die Ausrichtung, die weniger von der Karte abschneidet.
@@ -98,14 +134,15 @@ Das schreibt die Sprintkarte als PDF auf eine A3-Seite im Maßstab 1:3000. Die w
   noch aus der Kartendatei erkennt.
 - `--show-sheet-objects` druckt auch den Informationsblock von freemapper: Titel, Maßstab, Maßstabsleiste und
   Namensnennung. Die Nordlinien gehören zur Karte und stehen immer im PDF.
+- `--lang de|en` wählt die Sprache der Meldungen (ab M2); ohne die Option entscheiden `FREEMAPPER_LANG` und
+  die Spracheinstellung des Systems.
 
 Passt die Karte nicht auf die Seite, schreibt das Programm das PDF trotzdem und meldet, wie viele Millimeter
 fehlen. Es nennt auch Objekte, die es nicht oder nur vereinfacht gezeichnet hat.
 
-Drucken Sie das PDF in Originalgröße (100 %, "Tatsächliche Größe") und schalten Sie "An Seite anpassen"
-aus. Sonst stimmt der Maßstab nicht. Ein fertiges Beispiel mit derselben Karte in 1:4000 auf A4 und 1:3000 auf
-A3 liegt in [examples/luebeck-scales](examples/luebeck-scales/README.md). Das Handbuch erklärt das Drucken im
-Kapitel [Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
+Drucken Sie das PDF in Originalgröße (100 %, „Tatsächliche Größe“) und schalten Sie „An Seite anpassen“
+aus. Sonst stimmt der Maßstab nicht. Das Handbuch erklärt das Drucken im Kapitel
+[Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
 
 ## Mit einem KI-Agenten
 

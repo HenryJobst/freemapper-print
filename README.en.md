@@ -7,48 +7,61 @@ ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in
 OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on paper.
 
-What it does already (version 0.1.0):
+What it does already:
 
 - print a finished OOM map (`.omap`) as a vector PDF at the exact print scale, on A4 or A3;
 - print at another scale with the symbol sizes the standard sets (for example 1:3000 for the youngest classes,
   symbols at 133 %);
 - always print the map's north lines.
 
+New since 0.1.0, not yet released (M2, on `main`):
+
+- one project file per event with any number of layouts, created with `init`, checked with `check` and written
+  as PDFs with `export`;
+- on every sheet a passe-partout, a frame line, a title block and texts with placeholders, club and sponsor logos
+  (PNG, JPEG, SVG), a scale check bar to measure against, and the copyright and credit lines at the bottom left;
+- north lines added when the map has none;
+- messages and help in German and English;
+- a full disk leaves no half-written PDF.
+
 Planned:
 
-- one project file per event with several layouts: passe-partout, title, club and sponsor logos, a scale check bar
-  to measure against and a footer with the project address; north lines added when the map has none (M2, in
-  progress);
 - courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Purple Pen, Condes, OCAD course
   setting), with course overprint and control descriptions (M3);
 - masks for window and corridor orienteering, in variants assigned to single courses (M4);
 - use through an AI assistant (MCP, M5) and an editor in the browser (M6), OCAD maps later.
 
-The program needs no OCAD and runs on macOS, Linux and Windows. Messages and help come in German and English
-from M2.
+The program needs no OCAD and runs on macOS, Linux and Windows.
 
 ## Examples
 
-Finished examples are in [`examples/`](examples/README.en.md). Click the picture to open the example with its
-PDFs.
+Finished examples are in [`examples/`](examples/README.en.md). Click a picture to open the example with its PDFs.
+
+<a href="examples/luebeck-competition-layouts/README.en.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
+alt="A city sprint in Lübeck on A4 at 1:4000 and on A3 at 1:3000, with title, logos and scale check bar"></a>
+
+**One competition, two layouts**
+([`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.en.md)): a city sprint with an A4
+sheet at 1:4000 for the older classes and an A3 sheet at 1:3000 for the youngest, both with title block, club
+and sponsor logo, scale check bar and footer. Built with `init`, `check` and `export` alone.
 
 <a href="examples/luebeck-scales/README.en.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
 alt="The same sprint map of Lübeck old town at 1:4000 and 1:3000"></a>
 
 **Lübeck at two scales** ([`luebeck-scales`](examples/luebeck-scales/README.en.md)): the same sprint map at 1:4000
-on A4 and at 1:3000 on A3. At 1:3000 every symbol grows to 133 % as ISSprOM requires. Each milestone adds
-examples: a competition with two layouts and logos (M2), courses from Purple Pen (M3), window and corridor
-orienteering (M4).
+on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows to 133 % as ISSprOM requires.
+Each milestone adds examples: courses from Purple Pen (M3), window and corridor orienteering (M4).
 
 ## Status
 
 The current version is [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) of
 8 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
-(`freemapper-print render`). M2 is in progress: project file, layouts and sheet elements. Courses from Purple Pen
-(M3) and masks for window and corridor orienteering (M4) follow. The first version targets club training in towns
-and parks: sprint maps on A4, printed at home or in a copy shop. More in the
-[design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the [glossary](docs/glossary.md) and the
-[architecture decisions](docs/adr/README.md).
+(`freemapper-print render`). M2, with the project file, layouts, sheet elements and the commands `init`,
+`check` and `export`, is finished and on `main`; it ships with the next version. To use it now, build the
+program yourself (see below). Courses from Purple Pen (M3) and masks for window and corridor orienteering (M4)
+follow. The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
+copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
+[glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
 
 ## Installation
 
@@ -81,11 +94,28 @@ cargo build --release
 
 ## Usage
 
+### An event (from M2, not yet released)
+
+```sh
+freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print check citysprint
+freemapper-print export citysprint
+```
+
+`init` creates the project file `freemapper-print.toml` in the folder `citysprint`: one layout at the map's
+scale on A4 or A3, a title block, a scale check bar and a proposed contour interval for you to check against the
+map. In the file you add more layouts, logos and texts. `check` draws every layout without writing anything and
+lists the notes: map too large for the map frame, passe-partout too narrow for the footer, logo unreadable, and so
+on. `export` writes one PDF per layout into the folder `out` next to the project file, named after the layout id.
+The [manual](docs/manual/en.md#5-setting-up-an-event) describes the project file key by key.
+
+### The map alone
+
 ```sh
 freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
-This writes the sprint map as a PDF on an A3 page at 1:3000. The main options:
+This writes the sprint map as a PDF on an A3 page at 1:3000, without title or scale check bar. The main options:
 
 - `--paper a4|a3` picks the paper (default A4), `--orientation auto|portrait|landscape` the orientation. With
   `auto` the program takes the orientation that cuts off less of the map.
@@ -97,13 +127,14 @@ This writes the sprint map as a PDF on an A3 page at 1:3000. The main options:
   nor from the map file.
 - `--show-sheet-objects` also prints freemapper's information block: title, scale, scale bar and credits.
   North lines belong to the map and are always in the PDF.
+- `--lang de|en` picks the language of the messages (from M2); without it `FREEMAPPER_LANG` and the system's
+  language settings decide.
 
 If the map does not fit on the page, the program writes the PDF anyway and says how many millimetres are
 missing. It also lists objects it did not draw, or drew in simplified form.
 
-Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. A finished
-example with the same map at 1:4000 on A4 and 1:3000 on A3 is in
-[examples/luebeck-scales](examples/luebeck-scales/README.en.md). The manual explains printing in the chapter
+Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. The manual
+explains printing in the chapter
 [Printing](docs/manual/en.md#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop).
 
 ## With an AI agent
