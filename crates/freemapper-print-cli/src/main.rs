@@ -640,10 +640,12 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
     }
     let selected = match &courses {
         Some(courses) => Some(select_courses(courses, &args.course).map_err(|unknown| {
-            let known: Vec<String> = unknown.known.iter().map(|n| printable(n)).collect();
             UsageError(texts.get(
                 "error-unknown-course",
-                Some(&args!("name" => printable(&unknown.name), "known" => known.join(", "))),
+                Some(&args!(
+                    "name" => printable(&unknown.name),
+                    "known" => quoted_list(texts, &unknown.known),
+                )),
             ))
         })?),
         None => None,
@@ -654,6 +656,11 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
     match (&courses, selected) {
         (Some(courses), Some(selected)) => {
             print_course_file_notes(texts, courses);
+            if selected.is_empty() {
+                // Every course was left out by the reader: nothing to write, not even an empty PDF.
+                eprintln!("{}", texts.plain("note-no-courses-to-export"));
+                return Ok(0);
+            }
             let print = |id: &str, out: String, done: &freemapper_print::export::ExportedCourse| {
                 let head = summary_line(
                     texts,
@@ -686,13 +693,15 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                     },
                 )
                 .map_err(|err| export_error(texts, err))?;
-                eprintln!(
-                    "{}",
-                    texts.get(
-                        "report-single-file",
-                        Some(&args!("out" => path.display().to_string(), "count" => count))
-                    )
-                );
+                if let Some(path) = path {
+                    eprintln!(
+                        "{}",
+                        texts.get(
+                            "report-single-file",
+                            Some(&args!("out" => path.display().to_string(), "count" => count))
+                        )
+                    );
+                }
             } else {
                 export_courses(&loaded, &map, courses, &selected, &out_dir, |done| {
                     print(
@@ -1010,6 +1019,12 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-map-cropped",
             Some(&args!("cut" => cut_text(texts, *x, *y))),
         ),
+        SheetNote::MapCroppedToCourse {
+            overflow_mm: (x, y),
+        } => texts.get(
+            "note-map-cropped-to-course",
+            Some(&args!("cut" => cut_text(texts, *x, *y))),
+        ),
         SheetNote::NorthLinesAdded { count } => {
             texts.get("note-north-lines-added", Some(&args!("count" => *count)))
         }
@@ -1100,6 +1115,10 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
                 "name" => format!("{{{name}}}"),
             )),
         ),
+        SheetNote::CoursePlaceholderNotFilled { element, name } => texts.get(
+            "note-course-placeholder-not-filled",
+            Some(&args!("id" => printable(element), "name" => format!("{{{name}}}"))),
+        ),
         SheetNote::Course(note) => course_note_line(texts, note),
         SheetNote::Fit(note) => fit_note_line(texts, note),
         SheetNote::Stale(stale) => stale_line(texts, stale),
@@ -1117,7 +1136,7 @@ fn course_note_line(texts: &Texts, note: &CourseNote) -> String {
             "note-course-forked",
             Some(&args!(
                 "family" => printable(family),
-                "variants" => printable(&variants.join(", ")),
+                "variants" => quoted_list(texts, variants),
             )),
         ),
         CourseNote::AlternativeControls(course) => texts.get(
@@ -1136,6 +1155,15 @@ fn course_note_line(texts: &Texts, note: &CourseNote) -> String {
             Some(&args!("course" => printable(course))),
         ),
     }
+}
+
+/// Course names, each in the quotes of the language, joined by commas.
+fn quoted_list(texts: &Texts, names: &[String]) -> String {
+    names
+        .iter()
+        .map(|n| texts.get("quoted", Some(&args!("text" => printable(n)))))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The message for a note of fitting the course file to the map. No wildcard arm.
@@ -1737,6 +1765,19 @@ mod tests {
             ),
             (SheetNote::OverprintCut { course: s("Kurz") }, vec!["Kurz"]),
             (
+                SheetNote::MapCroppedToCourse {
+                    overflow_mm: (12.0, 0.0),
+                },
+                vec!["12"],
+            ),
+            (
+                SheetNote::CoursePlaceholderNotFilled {
+                    element: s("t2"),
+                    name: s("length_km"),
+                },
+                vec!["t2", "{length_km}"],
+            ),
+            (
                 SheetNote::CourseValueUnknown {
                     course: s("Kurz"),
                     id: s("t1"),
@@ -1753,7 +1794,7 @@ mod tests {
                     family: s("Staffel"),
                     variants: vec![s("A1"), s("A2")],
                 }),
-                vec!["Staffel", "A1, A2"],
+                vec!["Staffel", "A1", "A2"],
             ),
             (
                 SheetNote::Course(CourseNote::AlternativeControls(s("Lang"))),

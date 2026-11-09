@@ -7,8 +7,10 @@ use std::collections::HashSet;
 use crate::course::{Course, CourseKind, FittedEvent, LoadedCourses, Special, layout_for};
 use crate::omap::{MapCoord, MapDocument};
 use crate::overprint::{applies, control_count, file_numbers, overprint};
+use crate::print::Orientation;
 use crate::project::{LayoutSpec, LoadedProject};
 use crate::render::page::{Pt, RenderedPage};
+use crate::scale::geometry_factor;
 
 use super::placeholders::CourseValues;
 use super::{LogoCache, SheetError, SheetNote, SheetReport, render_body};
@@ -39,7 +41,8 @@ pub fn render_course_sheet(
         control_count(course, event),
         lang,
     );
-    let centre = course_centre(course, event);
+    let map_scale = map.georef.scale_denominator;
+    let centre = course_centre(course, event, |w, h| fits_frame(layout, map_scale, w, h));
     let (mut page, mut report) = render_body(project, map, layout, logos, Some(&values), centre)?;
 
     let gf = report.print.geometry_factor;
@@ -118,9 +121,8 @@ pub fn course_event_notes(courses: &LoadedCourses) -> Vec<SheetNote> {
     course.chain(fit).chain(stale).collect()
 }
 
-/// The points of `course` that the frame should show: its stops, the bends of its legs and the points of the
-/// special objects that apply to it (white-out is not drawn yet and does not count).
-fn course_points<'a>(
+/// The map positions of the stops of `course` and the bends of its legs.
+fn stops_and_bends<'a>(
     course: &'a Course<MapCoord>,
     event: &'a FittedEvent,
 ) -> impl Iterator<Item = MapCoord> + 'a {
@@ -132,46 +134,105 @@ fn course_points<'a>(
             .and_then(|c| c.position)
     });
     let bends = course.legs.iter().flat_map(|l| l.bends.iter().copied());
-    let specials = event.specials.iter().flat_map(move |special| {
-        let points: Vec<MapCoord> = match special {
-            Special::OutOfBounds { rings, courses } | Special::Dangerous { rings, courses }
-                if applies(courses, &course.name) =>
-            {
-                rings.iter().flatten().copied().collect()
-            }
-            Special::ForbiddenRoute { path, courses }
-            | Special::Boundary { path, courses }
-            | Special::MarkedRoute { path, courses }
-            | Special::Line { path, courses }
-                if applies(courses, &course.name) =>
-            {
-                path.clone()
-            }
-            Special::FirstAid { pt, courses }
-            | Special::Water { pt, courses }
-            | Special::Text { pt, courses, .. }
-                if applies(courses, &course.name) =>
-            {
-                vec![*pt]
-            }
-            _ => Vec::new(),
-        };
-        points
-    });
-    stops.chain(bends).chain(specials)
+    stops.chain(bends)
 }
 
-/// The centre of the box around [`course_points`] (map coordinates), or `None` for a course without any.
-pub fn course_centre(course: &Course<MapCoord>, event: &FittedEvent) -> Option<MapCoord> {
-    let mut points = course_points(course, event);
-    let first = points.next()?;
-    let (mut min, mut max) = ((first.x, first.y), (first.x, first.y));
-    for p in points {
-        min = (min.0.min(p.x), min.1.min(p.y));
-        max = (max.0.max(p.x), max.1.max(p.y));
+/// The points of `special` when it applies to the course named `course` (white-out is not drawn yet and does
+/// not count).
+fn special_points(special: &Special<MapCoord>, course: &str) -> Vec<MapCoord> {
+    match special {
+        Special::OutOfBounds { rings, courses } | Special::Dangerous { rings, courses }
+            if applies(courses, course) =>
+        {
+            rings.iter().flatten().copied().collect()
+        }
+        Special::ForbiddenRoute { path, courses }
+        | Special::Boundary { path, courses }
+        | Special::MarkedRoute { path, courses }
+        | Special::Line { path, courses }
+            if applies(courses, course) =>
+        {
+            path.clone()
+        }
+        Special::FirstAid { pt, courses }
+        | Special::Water { pt, courses }
+        | Special::Text { pt, courses, .. }
+            if applies(courses, course) =>
+        {
+            vec![*pt]
+        }
+        _ => Vec::new(),
     }
-    let mid = |a: i32, b: i32| ((i64::from(a) + i64::from(b)) / 2) as i32;
-    Some(MapCoord::new(mid(min.0, max.0), mid(min.1, max.1)))
+}
+
+/// A box in map coordinates (µm).
+#[derive(Debug, Clone, Copy)]
+struct MapBox {
+    min: (i32, i32),
+    max: (i32, i32),
+}
+
+impl MapBox {
+    fn around(points: impl IntoIterator<Item = MapCoord>, start: Option<MapBox>) -> Option<MapBox> {
+        points.into_iter().fold(start, |b, p| {
+            Some(match b {
+                None => MapBox {
+                    min: (p.x, p.y),
+                    max: (p.x, p.y),
+                },
+                Some(b) => MapBox {
+                    min: (b.min.0.min(p.x), b.min.1.min(p.y)),
+                    max: (b.max.0.max(p.x), b.max.1.max(p.y)),
+                },
+            })
+        })
+    }
+
+    /// Width and height in map mm.
+    fn size_mm(self) -> (f64, f64) {
+        let len = |a: i32, b: i32| (f64::from(b) - f64::from(a)) / 1000.0;
+        (len(self.min.0, self.max.0), len(self.min.1, self.max.1))
+    }
+
+    fn centre(self) -> MapCoord {
+        let mid = |a: i32, b: i32| ((i64::from(a) + i64::from(b)) / 2) as i32;
+        MapCoord::new(mid(self.min.0, self.max.0), mid(self.min.1, self.max.1))
+    }
+}
+
+/// The map point the frame centres on for `course`: the centre of the box around its stops and leg bends. Each
+/// special object that applies to the course widens the box, in file order, as long as `fits` (width and
+/// height in map mm) accepts the widened box, so an object far away, such as an out-of-bounds area for all
+/// courses, does not pull the course off the frame. `None` for a course without any stop on the map.
+pub fn course_centre(
+    course: &Course<MapCoord>,
+    event: &FittedEvent,
+    fits: impl Fn(f64, f64) -> bool,
+) -> Option<MapCoord> {
+    let mut b = MapBox::around(stops_and_bends(course, event), None)?;
+    for special in &event.specials {
+        if let Some(wider) = MapBox::around(special_points(special, &course.name), Some(b)) {
+            let (w, h) = wider.size_mm();
+            if fits(w, h) {
+                b = wider;
+            }
+        }
+    }
+    Some(b.centre())
+}
+
+/// Whether a box of `w` × `h` map mm fits in the map frame of `layout` at its print scale: in its orientation,
+/// or in either for `auto`.
+fn fits_frame(layout: &LayoutSpec, map_scale: u32, w: f64, h: f64) -> bool {
+    let gf = geometry_factor(map_scale, layout.print_scale.unwrap_or(map_scale));
+    let (pw, ph) = layout.paper.size_mm();
+    let m = 2.0 * layout.map_frame.margin_mm;
+    let fit = |fw: f64, fh: f64| w * gf <= fw - m && h * gf <= fh - m;
+    match layout.orientation {
+        Orientation::Portrait => fit(pw, ph),
+        Orientation::Landscape => fit(ph, pw),
+        Orientation::Auto => fit(pw, ph) || fit(ph, pw),
+    }
 }
 
 /// The length of `course` in metres: the file's when it gives one, else the legs through their bends (a marked
@@ -266,7 +327,7 @@ fn reserved_on_windows(stem: &str) -> bool {
 /// 1. the Latin-1 letters precomposed (NFC), so `Lübeck` in NFD and NFC give one name;
 /// 2. each of `/ \ : * ? " < > |` and every control character replaced by `-`;
 /// 3. dots and spaces trimmed at both ends (and the stem cut to 150 bytes); an empty stem becomes `course`, and a
-///    device name Windows reserves gets a `-`;
+///    device name Windows reserves (the part before the first dot, without trailing spaces) gets a `-`;
 /// 4. ` (2)`, ` (3)` … added until no stem in `taken` matches it ignoring case.
 pub fn course_file_stem(name: &str, taken: &mut HashSet<String>) -> String {
     let replaced: String = nfc_latin1(name)
@@ -291,8 +352,11 @@ pub fn course_file_stem(name: &str, taken: &mut HashSet<String>) -> String {
     if stem.is_empty() {
         stem = "course".to_string();
     }
-    if reserved_on_windows(&stem) {
-        stem.push('-');
+    // Windows takes `con.1` and `con .txt` for the device too: the part before the first dot counts, without
+    // its trailing spaces.
+    let base = stem.split('.').next().unwrap_or("").trim_end_matches(' ');
+    if reserved_on_windows(base) {
+        stem.insert(base.len(), '-');
     }
     let mut unique = stem.clone();
     let mut n = 2;
@@ -408,9 +472,12 @@ mod tests {
                 .any(|t| t.contains(crate::credit_line(crate::project::SheetLang::De))),
             "{texts:?}"
         );
-        assert!(report.notes.contains(&SheetNote::NoDescriptionBox {
-            course: "Kurz".into()
-        }));
+        let no_box = SheetNote::NoDescriptionBox {
+            course: "Kurz".into(),
+        };
+        assert!(report.notes.contains(&no_box));
+        // Informs until Task 9 draws boxes from `.ppen` files.
+        assert!(no_box.is_info());
         assert!(report.notes.contains(&SheetNote::DefaultLayout {
             course: "Kurz".into(),
             layout: "a4".into()
@@ -441,7 +508,7 @@ mod tests {
         let gf = report.print.geometry_factor;
         // Kurz spans x from S1 (-50 mm) to 32 (100 mm) and y from S1 (-60 mm) to 32 (120 mm), y down: its centre,
         // (25, 30) mm, lies at the centre of the frame.
-        let centre = course_centre(course(&courses, "Kurz"), &courses.event).unwrap();
+        let centre = course_centre(course(&courses, "Kurz"), &courses.event, |_, _| true).unwrap();
         assert_eq!(centre, MapCoord::new(25_000, 30_000));
         let (x, y) = on_page(&page, gf, centre);
         let frame = page.clip;
@@ -455,6 +522,71 @@ mod tests {
             (x - 105.0).abs() < 1e-6 && (y - 148.5).abs() < 1e-6,
             "{x} {y}"
         );
+    }
+
+    #[test]
+    fn specials_widen_the_frame_only_while_it_fits() {
+        use crate::course::{CourseFilter, Special};
+        let (_dir, project, map, mut courses) = course_project(A4);
+        let water = |x: i32, y: i32| Special::Water {
+            pt: MapCoord::new(x, y),
+            courses: CourseFilter::All,
+        };
+        // A water point 2 km east of the course, for all courses, and one just west of it.
+        courses.event.specials = vec![water(500_000, 30_000), water(-80_000, 30_000)];
+        let kurz = course(&courses, "Kurz");
+        // Stops span x -50..100 mm; the near point widens that to -80..100 mm, the far one would not fit.
+        let layout = &project.project.layouts[0];
+        let fits = |w, h| fits_frame(layout, map.georef.scale_denominator, w, h);
+        assert_eq!(
+            course_centre(kurz, &courses.event, fits),
+            Some(MapCoord::new(10_000, 30_000))
+        );
+        // Without a frame to fit, the far point would pull the centre away.
+        let all = course_centre(kurz, &courses.event, |_, _| true).unwrap();
+        assert_eq!(all, MapCoord::new(210_000, 30_000));
+        // The sheet centres on the near box.
+        let (page, report) =
+            render_course_sheet(&project, &map, &courses, kurz, layout, &LogoCache::new()).unwrap();
+        let (x, y) = on_page(
+            &page,
+            report.print.geometry_factor,
+            MapCoord::new(10_000, 30_000),
+        );
+        assert!(
+            (x - 105.0).abs() < 1e-6 && (y - 148.5).abs() < 1e-6,
+            "{x} {y}"
+        );
+    }
+
+    #[test]
+    fn map_beyond_the_frame_is_expected_on_course_sheets() {
+        // The Lübeck map is wider than an A4 frame at 1:4000.
+        let (_, report, _) = sheet(A4, "Kurz");
+        assert_eq!(report.print.overflow_mm, None);
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::MapCroppedToCourse { .. }) && n.is_info()),
+            "{:?}",
+            report.notes
+        );
+        // With crop = true the layout's own note stays.
+        let body = "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\nmap_frame = { crop = true }\n";
+        let (_, report, _) = sheet(body, "Kurz");
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::MapCropped { .. }))
+        );
+        // Controls outside the frame still count.
+        let outside = SheetNote::CourseOutsideFrame {
+            course: "K".into(),
+            controls: vec!["31".into()],
+        };
+        assert!(!outside.is_info());
     }
 
     #[test]
@@ -481,7 +613,7 @@ mod tests {
             "{:?}",
             report.notes
         );
-        let centre = course_centre(kurz, &courses.event).unwrap();
+        let centre = course_centre(kurz, &courses.event, |_, _| true).unwrap();
         let (x, y) = on_page(&page, report.print.geometry_factor, centre);
         assert!(
             (x - 105.0).abs() < 1e-6 && (y - 148.5).abs() < 1e-6,
@@ -543,12 +675,27 @@ mod tests {
                 .iter()
                 .any(|n| matches!(n, SheetNote::CourseValueUnknown { .. }))
         );
-        // A layout sheet does not know the course placeholders.
-        let (_, report) = super::super::render_sheet(&project, &map, layout, &logos).unwrap();
+        // A layout sheet fills the course placeholders with nothing and says so; they are no unknown ones.
+        let (page, report) = super::super::render_sheet(&project, &map, layout, &logos).unwrap();
+        assert!(sheet_texts(&page).contains(&":  km,  m,  Posten".to_string()));
         assert!(
-            report.notes.iter().any(
-                |n| matches!(n, SheetNote::UnknownPlaceholder { name, .. } if name == "course")
-            )
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::UnknownPlaceholder { .. }))
+        );
+        let not_filled: Vec<&SheetNote> = report
+            .notes
+            .iter()
+            .filter(|n| matches!(n, SheetNote::CoursePlaceholderNotFilled { .. }))
+            .collect();
+        assert_eq!(not_filled.len(), 4, "{:?}", report.notes);
+        assert!(not_filled.iter().all(|n| n.is_info()));
+        assert!(
+            not_filled.contains(&&SheetNote::CoursePlaceholderNotFilled {
+                element: "t".into(),
+                name: "course".into()
+            })
         );
     }
 
@@ -598,6 +745,10 @@ mod tests {
         assert_eq!(stem(".."), "course");
         assert_eq!(stem(""), "course (2)");
         assert_eq!(stem("con"), "con-");
+        assert_eq!(stem("con.1"), "con-.1");
+        assert_eq!(stem("Nul .txt"), "Nul- .txt");
+        assert_eq!(stem("lpt1.a.b"), "lpt1-.a.b");
+        assert_eq!(stem("Console.1"), "Console.1");
         assert_eq!(stem("Ça va? Øre"), "Ça va- Øre");
         let long = stem(&"ü".repeat(200));
         assert_eq!(long.len(), MAX_STEM_BYTES);

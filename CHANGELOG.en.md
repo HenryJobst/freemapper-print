@@ -25,10 +25,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   its assignment names, with the course overprint in purple. The file is named after the course; characters a
   file name cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm`
   the map frame centres on the course. `--course <NAME>` (repeatable) exports only those courses.
-  `--single-file` writes all courses into one PDF named after the event, one page per course on its own
-  paper. `--layout` still exports a layout without courses. Texts can use `{course}`, `{length_km}`,
-  `{climb_m}` and `{controls}`. `check` checks every course and reports controls outside the map frame. Until
-  the control description box arrives it also notes that the sheet has none. Projects without a course file
+  `--single-file` writes all courses into one PDF, "<event> - all courses.pdf" on English sheets, one page
+  per course on its own paper. A map larger than the frame is expected on a course sheet and only noted as
+  Info. `--layout` still exports a layout without courses. Texts can use `{course}`, `{length_km}`,
+  `{climb_m}` and `{controls}`. `check` checks every course and reports controls outside the map frame. Projects without a course file
   export as before (ADR 0035).
 
 ### Fixed

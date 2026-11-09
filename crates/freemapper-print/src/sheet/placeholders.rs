@@ -1,7 +1,7 @@
 //! Placeholders in sheet texts: `{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`,
 //! `{contour_interval}` and `{layout}`, and on a course sheet also `{course}`, `{length_km}`, `{climb_m}` and
-//! `{controls}`. A name that is none of these stays as written and is reported; so do the course placeholders
-//! on a sheet without a course.
+//! `{controls}`. A name that is none of these stays as written and is reported. The course placeholders are
+//! always known: on a sheet without a course they are filled with nothing, and the sheet notes that.
 
 use toml::value::Date;
 
@@ -13,6 +13,9 @@ const MAX_NAME_CHARS: usize = 40;
 /// The grouping space of scale denominators: U+202F, the narrow no-break space.
 const THIN_SPACE: char = '\u{202f}';
 
+/// The placeholders that only a course sheet fills.
+pub const COURSE_PLACEHOLDERS: [&str; 4] = ["course", "length_km", "climb_m", "controls"];
+
 /// What each placeholder stands for on one sheet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaceholderValues {
@@ -23,7 +26,7 @@ pub struct PlaceholderValues {
     pub map_scale: String,
     pub contour_interval: String,
     pub layout: String,
-    /// The course of a course sheet; `None` on a layout sheet, where the course placeholders are unknown.
+    /// The course of a course sheet; `None` on a layout sheet, where the course placeholders are empty.
     pub course: Option<CourseValues>,
 }
 
@@ -107,10 +110,10 @@ impl PlaceholderValues {
             "map_scale" => &self.map_scale,
             "contour_interval" => &self.contour_interval,
             "layout" => &self.layout,
-            "course" => &self.course.as_ref()?.name,
-            "length_km" => &self.course.as_ref()?.length_km,
-            "climb_m" => &self.course.as_ref()?.climb_m,
-            "controls" => &self.course.as_ref()?.controls,
+            "course" => self.course.as_ref().map_or("", |c| &c.name),
+            "length_km" => self.course.as_ref().map_or("", |c| &c.length_km),
+            "climb_m" => self.course.as_ref().map_or("", |c| &c.climb_m),
+            "controls" => self.course.as_ref().map_or("", |c| &c.controls),
             _ => return None,
         })
     }
@@ -221,8 +224,10 @@ mod tests {
     #[test]
     fn course_placeholders_only_on_course_sheets() {
         let mut v = values();
-        let (_, unknown) = fill("{course} {length_km} {climb_m} {controls}", &v);
-        assert_eq!(unknown, ["course", "length_km", "climb_m", "controls"]);
+        // Known everywhere, empty without a course.
+        let (text, unknown) = fill("[{course}|{length_km}|{climb_m}|{controls}]", &v);
+        assert_eq!(text, "[|||]");
+        assert!(unknown.is_empty());
         v.course = Some(CourseValues::new(
             "Lang",
             Some(3449.0),
@@ -261,9 +266,9 @@ mod tests {
 
     #[test]
     fn unknown_placeholder_reported() {
-        let (text, unknown) = fill("{course} {event} {course} {x y} {}", &values());
-        assert_eq!(text, "{course} Lübeck Sprint {course} {x y} {}");
-        assert_eq!(unknown, ["course"]);
+        let (text, unknown) = fill("{curse} {event} {curse} {x y} {}", &values());
+        assert_eq!(text, "{curse} Lübeck Sprint {curse} {x y} {}");
+        assert_eq!(unknown, ["curse"]);
         let (text, unknown) = fill("{Event} {print-scale} {event}", &values());
         assert_eq!(text, "{Event} {print-scale} Lübeck Sprint");
         assert_eq!(unknown, ["Event", "print-scale"]);

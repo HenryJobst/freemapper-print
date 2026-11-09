@@ -802,8 +802,8 @@ fn export_course_filter_and_single_file() {
     assert_eq!(files_in(&out), ["D-H 12.pdf", "Kurz.pdf"]);
     assert_page_mm(&out.join("Kurz.pdf"), 210.0, 297.0);
     assert_page_mm(&out.join("D-H 12.pdf"), 420.0, 297.0);
-    assert!(err.contains("for course Kurz on layout a4"), "{err}");
-    assert!(err.contains("course Kurz has no assignment"), "{err}");
+    assert!(err.contains("for course \"Kurz\" on layout a4"), "{err}");
+    assert!(err.contains("course \"Kurz\" has no assignment"), "{err}");
     // The notes of the course file come once, before the courses.
     assert_eq!(err.matches("not checked").count(), 1, "{err}");
     // --course picks courses; the rest stays as written.
@@ -812,7 +812,7 @@ fn export_course_filter_and_single_file() {
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     assert_eq!(files_in(&out), ["D-H 12.pdf"]);
     assert!(
-        stderr(&o).contains("für Bahn D/H 12 auf Layout a3"),
+        stderr(&o).contains("für Bahn „D/H 12“ auf Layout a3"),
         "{}",
         stderr(&o)
     );
@@ -820,12 +820,13 @@ fn export_course_filter_and_single_file() {
     let o = run("en", &["export", p, "--single-file"]);
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(0), "{err}");
-    assert_eq!(files_in(&out), ["D-H 12.pdf", "Lübeck- Training.pdf"]);
-    let pdf = std::fs::read(out.join("Lübeck- Training.pdf")).unwrap();
+    let single = "Lübeck- Training - alle Bahnen.pdf";
+    assert_eq!(files_in(&out), ["D-H 12.pdf", single]);
+    let pdf = std::fs::read(out.join(single)).unwrap();
     assert_eq!(pdf.windows(9).filter(|w| w == b"/MediaBox").count(), 2);
     assert!(pdf.windows(8).any(|w| w == b"/Count 2"));
     assert!(
-        err.contains("Page 2, course D/H 12") && err.contains("with 2 pages"),
+        err.contains("Page 2, course \"D/H 12\"") && err.contains("with 2 pages"),
         "{err}"
     );
     // An unknown course is a usage error that lists the known ones.
@@ -833,7 +834,7 @@ fn export_course_filter_and_single_file() {
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(2), "{err}");
     assert!(
-        err.contains("Lang") && err.contains("Kurz, D/H 12"),
+        err.contains("\"Lang\"") && err.contains("\"Kurz\", \"D/H 12\""),
         "{err}"
     );
     // --layout exports the layout sheets without courses and cannot be combined with --course.
@@ -852,8 +853,8 @@ fn check_runs_per_course() {
     let err = stderr(&o);
     // No description box yet: every course has a note.
     assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("Course Kurz on layout a4"), "{err}");
-    assert!(err.contains("Course D/H 12 on layout a3"), "{err}");
+    assert!(err.contains("Course \"Kurz\" on layout a4"), "{err}");
+    assert!(err.contains("Course \"D/H 12\" on layout a3"), "{err}");
     assert!(err.contains("Courses with notes: 2 of 2."), "{err}");
     assert!(!err.contains("Layout a4:"), "{err}");
     let o = run("de", &["check", path.to_str().unwrap()]);
@@ -873,4 +874,42 @@ fn course_flags_need_a_course_file() {
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(2), "{err}");
     assert!(err.contains("[sources] courses"), "{err}");
+}
+
+#[test]
+fn nothing_to_export_writes_no_pdf() {
+    // The only course offers alternative controls, so the reader leaves it out.
+    let (ws, path) = course_workspace();
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CourseData xmlns="http://www.orienteering.org/datastandard/3.0" iofVersion="3.0">
+  <RaceCourseData>
+    <Map><Scale>4000</Scale></Map>
+    <Control type="Start"><Id>S1</Id><MapPosition x="-50" y="60" unit="mm"/></Control>
+    <Control type="Control"><Id>31</Id><MapPosition x="20" y="-30" unit="mm"/></Control>
+    <Control type="Control"><Id>32</Id><MapPosition x="100" y="-120" unit="mm"/></Control>
+    <Control type="Finish"><Id>F1</Id><MapPosition x="60" y="20" unit="mm"/></Control>
+    <Course>
+      <Name>Wahl</Name>
+      <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Control"><Control>31</Control><Control>32</Control></CourseControl>
+      <CourseControl type="Finish"><Control>F1</Control></CourseControl>
+    </Course>
+  </RaceCourseData>
+</CourseData>
+"#;
+    std::fs::write(ws.event().join("c.xml"), xml).unwrap();
+    for single in [false, true] {
+        let mut args = vec!["export", path.to_str().unwrap()];
+        if single {
+            args.push("--single-file");
+        }
+        let o = run("en", &args);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(0), "{err}");
+        assert!(
+            err.contains("\"Wahl\"") && err.contains("no PDF was written"),
+            "{err}"
+        );
+        assert_eq!(files_in(&ws.event().join("out")), Vec::<String>::new());
+    }
 }

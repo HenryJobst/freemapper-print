@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::course::{Course, LoadedCourses, layout_for};
 use crate::omap::{MapCoord, MapDocument};
 use crate::output::{OutputError, write_pdf_file};
-use crate::project::{LayoutSpec, LoadedProject};
+use crate::project::{LayoutSpec, LoadedProject, SheetLang};
 use crate::render::page::RenderedPage;
 use crate::render::pdf::{MultiPagePdf, PdfError, PdfMeta, write_pdf};
 use crate::sheet::{
@@ -214,23 +214,45 @@ pub fn select_courses<'a>(
     Ok(selected)
 }
 
-/// The PDF file of each course of the course file, in file order: `<out_dir>/<stem>.pdf` with
-/// [`course_file_stem`]. Stems are made unique over all courses, so a course keeps its file name when
-/// `--course` picks only some.
-pub fn course_pdf_paths(courses: &LoadedCourses, out_dir: &Path) -> Vec<PathBuf> {
+/// The file stem of each course of the course file, in file order ([`course_file_stem`]), and the lower-case
+/// stems taken. Stems are made unique over all courses, so a course keeps its file name when `--course` picks
+/// only some.
+fn course_stems(courses: &LoadedCourses) -> (Vec<String>, HashSet<String>) {
     let mut taken = HashSet::new();
-    courses
+    let stems = courses
         .event
         .courses
         .iter()
-        .map(|c| out_dir.join(format!("{}.pdf", course_file_stem(&c.name, &mut taken))))
+        .map(|c| course_file_stem(&c.name, &mut taken))
+        .collect();
+    (stems, taken)
+}
+
+/// The PDF file of each course of the course file, in file order: `<out_dir>/<stem>.pdf`.
+pub fn course_pdf_paths(courses: &LoadedCourses, out_dir: &Path) -> Vec<PathBuf> {
+    course_stems(courses)
+        .0
+        .iter()
+        .map(|stem| out_dir.join(format!("{stem}.pdf")))
         .collect()
 }
 
-/// The single PDF of all courses: `<out_dir>/<stem>.pdf`, the stem made from the event title as course file
-/// stems are.
-pub fn single_file_path(project: &LoadedProject, out_dir: &Path) -> PathBuf {
-    let stem = course_file_stem(&project.project.event.title, &mut HashSet::new());
+/// The single PDF of all courses: `<out_dir>/<event stem> - alle Bahnen.pdf` on German sheets, `… - all
+/// courses.pdf` on English ones, the event stem made from the event title as course stems are, and the whole
+/// unique against the course stems.
+pub fn single_file_path(
+    project: &LoadedProject,
+    courses: &LoadedCourses,
+    out_dir: &Path,
+) -> PathBuf {
+    let event = &project.project.event;
+    let suffix = match event.lang {
+        SheetLang::De => " - alle Bahnen",
+        SheetLang::En => " - all courses",
+    };
+    let event_stem = course_file_stem(&event.title, &mut HashSet::new());
+    let mut taken = course_stems(courses).1;
+    let stem = course_file_stem(&format!("{event_stem}{suffix}"), &mut taken);
     out_dir.join(format!("{stem}.pdf"))
 }
 
@@ -313,8 +335,8 @@ pub fn export_courses<'a>(
 /// Draws `selected` one after the other as the pages of one PDF, [`single_file_path`] in `out_dir` (which must
 /// exist), each page on its course's layout and paper. Each page is dropped once it is in the PDF, so only one
 /// is held at a time; the PDF bytes grow until the file is written at the end. `on_course` gets each course
-/// once its page is in the PDF, before the file is written. Returns the file written; nothing is written when
-/// a course fails.
+/// once its page is in the PDF, before the file is written. Returns the file written, or `None` without a
+/// course: a PDF has at least one page. Nothing is written when a course fails.
 pub fn export_courses_single_file<'a>(
     project: &'a LoadedProject,
     map: &MapDocument,
@@ -322,9 +344,12 @@ pub fn export_courses_single_file<'a>(
     selected: &[&'a Course<MapCoord>],
     out_dir: &Path,
     mut on_course: impl FnMut(ExportedCourse<'a>),
-) -> Result<PathBuf, ExportError> {
+) -> Result<Option<PathBuf>, ExportError> {
+    if selected.is_empty() {
+        return Ok(None);
+    }
     let logos = LogoCache::new();
-    let path = single_file_path(project, out_dir);
+    let path = single_file_path(project, courses, out_dir);
     let mut pdf = MultiPagePdf::new();
     for &course in selected {
         let (page, layout, mut report) = course_page(project, map, courses, course, &logos)?;
@@ -349,7 +374,7 @@ pub fn export_courses_single_file<'a>(
         file: path.clone(),
         error,
     })?;
-    Ok(path)
+    Ok(Some(path))
 }
 
 /// A rendered page counted by [`live_pages`] while it exists.
@@ -596,8 +621,9 @@ mod tests {
         let path = export_courses_single_file(&p, &map, &courses, &selected, dir.path(), |c| {
             pages.push((c.page, c.course.name.clone(), c.path.clone()));
         })
+        .unwrap()
         .unwrap();
-        assert_eq!(path, dir.path().join("Lübeck Training.pdf"));
+        assert_eq!(path, dir.path().join("Lübeck Training - alle Bahnen.pdf"));
         assert_eq!(
             pages,
             [
@@ -609,6 +635,47 @@ mod tests {
         assert_eq!(page_count(&pdf), 2);
         assert_eq!(media_boxes(&pdf), [A4_BOX, A3_LANDSCAPE_BOX]);
         assert!(!dir.path().join("Kurz.pdf").exists());
+    }
+
+    #[test]
+    fn single_file_without_courses_writes_nothing() {
+        let (dir, p, map, mut courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        courses.event.courses.clear();
+        let none = export_courses_single_file(&p, &map, &courses, &[], dir.path(), |_| {}).unwrap();
+        assert_eq!(none, None);
+        assert!(
+            !dir.path()
+                .join("Lübeck Training - alle Bahnen.pdf")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn single_file_name_differs_from_every_course_file() {
+        let (_dir, mut p, _map, mut courses) =
+            crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let out = Path::new("/out");
+        // An event titled like one of its courses.
+        p.project.event.title = "Kurz".into();
+        assert_eq!(
+            single_file_path(&p, &courses, out),
+            out.join("Kurz - alle Bahnen.pdf")
+        );
+        p.project.event.lang = SheetLang::En;
+        assert_eq!(
+            single_file_path(&p, &courses, out),
+            out.join("Kurz - all courses.pdf")
+        );
+        // A course that already has the single file's name keeps it; the single file moves aside.
+        courses.event.courses[1].name = "kurz - ALL courses".into();
+        assert_eq!(
+            single_file_path(&p, &courses, out),
+            out.join("Kurz - all courses (2).pdf")
+        );
+        assert_eq!(
+            course_pdf_paths(&courses, out)[1],
+            out.join("kurz - ALL courses.pdf")
+        );
     }
 
     #[test]

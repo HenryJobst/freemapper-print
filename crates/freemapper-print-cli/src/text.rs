@@ -339,6 +339,7 @@ mod tests {
             "control",
             "scope",
             "page",
+            "text",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

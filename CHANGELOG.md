@@ -28,10 +28,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Dateinamen stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung
   unterscheiden, bekommen ` (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert.
   `--course <NAME>` (mehrfach möglich) exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein
-  PDF, benannt nach der Veranstaltung, eine Seite je Bahn in ihrem Papierformat. `--layout` exportiert weiter
+  PDF, „<Veranstaltung> - alle Bahnen.pdf“ auf deutschen Blättern, eine Seite je Bahn in ihrem Papierformat.
+  Dass die Karte über den Kartenausschnitt hinausreicht, ist auf einem Bahnblatt erwartet und nur eine
+  Information. `--layout` exportiert weiter
   ein Layout ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und `{controls}` nutzen. `check`
-  prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Bis die Postenbeschreibung kommt, meldet
-  es auch, dass sie auf dem Blatt fehlt. Projekte ohne Bahndatei exportieren wie bisher (ADR 0035).
+  prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Projekte ohne Bahndatei exportieren wie bisher (ADR 0035).
 
 ### Behoben
 

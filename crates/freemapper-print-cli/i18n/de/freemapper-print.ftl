@@ -54,9 +54,9 @@ error-title-control = --title darf keine Zeilenumbrüche, Tabulatoren oder ander
 error-unknown-layout = Das Projekt hat kein Layout { $id }; vorhanden sind { $known }
 error-out-dir-missing = Der Ordner { $path } für die PDFs existiert nicht; zuerst anlegen
 error-sheet = Layout { $layout } konnte nicht gezeichnet werden
-error-course-sheet = Bahn { $course } konnte nicht gezeichnet werden
+error-course-sheet = Bahn „{ $course }“ konnte nicht gezeichnet werden
 error-courses = Die Bahndatei lässt sich nicht verwenden
-error-unknown-course = Die Bahndatei hat keine Bahn { $name }; vorhanden sind { $known }
+error-unknown-course = Die Bahndatei hat keine Bahn „{ $name }“; vorhanden sind { $known }
 error-no-course-file = --course und --single-file brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
 error-disk-full = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, frei sind { $available } MB
 error-write-file = { $path } konnte nicht geschrieben werden
@@ -127,13 +127,13 @@ check-clean = { $count ->
        *[other] { $count } Layouts
     } geprüft, keine Hinweise.
 check-with-notes = Layouts mit Hinweisen: { $count } von { $total }.
-report-course-summary = { $out } für Bahn { $course } auf Layout { $layout } geschrieben: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
-report-course-page = Seite { $page }, Bahn { $course } auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+report-course-summary = { $out } für Bahn „{ $course }“ auf Layout { $layout } geschrieben: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+report-course-page = Seite { $page }, Bahn „{ $course }“ auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
 report-single-file = { $out } mit { $count ->
         [one] 1 Seite
        *[other] { $count } Seiten
     } geschrieben.
-check-course-summary = Bahn { $course } auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+check-course-summary = Bahn „{ $course }“ auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
 check-courses-clean = { $count ->
         [one] 1 Bahn
        *[other] { $count } Bahnen
@@ -224,25 +224,25 @@ note-map-cropped = Zur Information: Die Karte ist { $cut } für den Kartenaussch
 
 ## Bahnblätter
 
-note-course-outside-frame = Hinweis: Auf dem Blatt der Bahn { $course } { $count ->
+note-course-outside-frame = Hinweis: Auf dem Blatt der Bahn „{ $course }“ { $count ->
         [one] liegt Posten { $controls }
        *[other] liegen die Posten { $controls }
     } außerhalb des Kartenausschnitts oder auf seinem Rand. Ohne map_frame.centre_map_mm wird der Ausschnitt auf die Bahn zentriert; größeres Papier oder ein Druckmaßstab mit größerer Zahl zeigt mehr.
-note-default-layout = Zur Information: Die Bahn { $course } hat keine Zuordnung und wird auf dem ersten Layout gedruckt, { $layout }.
-note-no-description-box = Hinweis: Das Blatt der Bahn { $course } hat keine Postenbeschreibung.
-note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn { $course } verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
-note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn { $course } aber keinen Wert. Der Platzhalter bleibt leer.
+note-default-layout = Zur Information: Die Bahn „{ $course }“ hat keine Zuordnung und wird auf dem ersten Layout gedruckt, { $layout }.
+note-no-description-box = Zur Information: Das Blatt der Bahn „{ $course }“ hat keine Postenbeschreibung.
+note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
+note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
 
 ## Hinweise zur Bahndatei
 
 note-course-unknown-element = Hinweis: Die Bahndatei enthält das Element { $name }, das diese Version nicht liest. Es fehlt auf den Blättern.
-note-course-forked = Zur Information: Die Bahnen { $variants } sind die Varianten der Gabelung { $family }. Jede wird als eigenes Blatt gedruckt.
-note-course-alternative-controls = Hinweis: Die Bahn { $course } bietet an einer Stelle alternative Posten an. Das kann diese Version nicht drucken, die Bahn fehlt deshalb.
+note-course-forked = Zur Information: Die Bahnen { $variants } sind die Varianten der Gabelung „{ $family }“. Jede wird als eigenes Blatt gedruckt.
+note-course-alternative-controls = Hinweis: Die Bahn „{ $course }“ bietet an einer Stelle alternative Posten an. Das kann diese Version nicht drucken, die Bahn fehlt deshalb.
 note-course-notes-truncated = Zur Information: Die Bahndatei hat mehr Hinweise ergeben, als hier stehen.
 note-course-white-out = Hinweis: Die Bahndatei hat Abdeckflächen (White-out). Diese Version lässt sie weg; spätere Versionen machen Masken daraus.
 note-course-no-descriptions = Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
 note-course-map-issue-as-start = Zur Information: Die Kartenausgabe { $code } dient als Start.
-note-course-variations = Hinweis: Die Bahn { $course } hat Gabelungen oder Schleifen (Varianten in Purple Pen). Diese Version kann sie nicht drucken, die Bahn fehlt deshalb. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene Bahn.
+note-course-variations = Hinweis: Die Bahn „{ $course }“ hat Gabelungen oder Schleifen (Varianten in Purple Pen). Diese Version kann sie nicht drucken, die Bahn fehlt deshalb. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene Bahn.
 note-fit-y-up = Zur Information: Die y-Achse der Bahndatei zeigt nach oben; das Programm hat sie zur Karte passend gedreht.
 note-fit-orientation-assumed = Hinweis: Die Bahn passt mit der y-Achse nach oben und nach unten auf die Karte, und nichts in der Datei entscheidet. Das Programm hat „oben“ genommen. Prüfen Sie ein Blatt und tragen Sie dann in der Projektdatei unter [sources] course_y_axis = "up" oder "down" ein.
 note-fit-scale-unchecked = Zur Information: Die Bahndatei nennt keinen Kartenmaßstab, deshalb wurde er nicht mit dem der Karte verglichen.
@@ -260,8 +260,12 @@ note-fit-placed-by-georef = Zur Information: { $count ->
         [one] Posten { $controls } hat
        *[other] Die Posten { $controls } haben
     } nur geografische Koordinaten. Die Georeferenzierung der Karte hat sie platziert.
-note-stale-assignment = Hinweis: Die Projektdatei ordnet die Bahn { $course } einem Layout zu, die Bahndatei hat aber keine solche Bahn. Die Zuordnung bleibt in der Projektdatei.
+note-stale-assignment = Hinweis: Die Projektdatei ordnet die Bahn „{ $course }“ einem Layout zu, die Bahndatei hat aber keine solche Bahn. Die Zuordnung bleibt in der Projektdatei.
 note-stale-correction = Hinweis: Die Projektdatei korrigiert die Nummer von Posten { $control } für { $scope }, die Bahndatei hat dort aber keinen solchen Posten. Die Korrektur bleibt in der Projektdatei.
 stale-scope-layout = Layout { $name }
-stale-scope-course = Bahn { $name }
+stale-scope-course = Bahn „{ $name }“
 note-stale-changed-base = Hinweis: Die Bahndatei hat die Nummer von Posten { $control } verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.
+note-map-cropped-to-course = Zur Information: Die Karte ist { $cut } für den Kartenausschnitt. Ein Bahnblatt zeigt den Teil um die Bahn, der Rest wird mit Absicht abgeschnitten.
+note-course-placeholder-not-filled = Zur Information: Der Text { $id } nutzt { $name }, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+note-no-courses-to-export = Hinweis: Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.
+quoted = „{ $text }“

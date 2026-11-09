@@ -54,9 +54,9 @@ error-title-control = --title must not contain line breaks, tabs or other contro
 error-unknown-layout = the project has no layout { $id }; its layouts are { $known }
 error-out-dir-missing = the folder { $path } for the PDFs does not exist; create it first
 error-sheet = could not draw layout { $layout }
-error-course-sheet = could not draw course { $course }
+error-course-sheet = could not draw course "{ $course }"
 error-courses = could not use the course file
-error-unknown-course = the course file has no course { $name }; its courses are { $known }
+error-unknown-course = the course file has no course "{ $name }"; its courses are { $known }
 error-no-course-file = --course and --single-file need a course file, and the project names none under [sources] courses
 error-disk-full = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and { $available } MB are free
 error-write-file = could not write { $path }
@@ -127,13 +127,13 @@ check-clean = Checked { $count ->
        *[other] { $count } layouts
     }, no notes.
 check-with-notes = Layouts with notes: { $count } of { $total }.
-report-course-summary = Wrote { $out } for course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
-report-course-page = Page { $page }, course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+report-course-summary = Wrote { $out } for course "{ $course }" on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+report-course-page = Page { $page }, course "{ $course }" on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
 report-single-file = Wrote { $out } with { $count ->
         [one] 1 page
        *[other] { $count } pages
     }.
-check-course-summary = Course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+check-course-summary = Course "{ $course }" on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
 check-courses-clean = Checked { $count ->
         [one] 1 course
        *[other] { $count } courses
@@ -221,25 +221,25 @@ note-map-cropped = Info: the map is { $cut } for the map frame and is cut there 
 
 ## Course sheets
 
-note-course-outside-frame = Note: on the sheet of course { $course }, { $count ->
+note-course-outside-frame = Note: on the sheet of course "{ $course }", { $count ->
         [one] control { $controls } lies
        *[other] controls { $controls } lie
     } outside the map frame or across its edge. Without map_frame.centre_map_mm the frame centres on the course; larger paper or a print scale with a larger number shows more.
-note-default-layout = Info: course { $course } has no assignment and prints on the first layout, { $layout }.
-note-no-description-box = Note: the sheet of course { $course } has no control description box.
-note-overprint-cut = Note: the course overprint of course { $course } asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
-note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course { $course }, so it prints empty.
+note-default-layout = Info: course "{ $course }" has no assignment and prints on the first layout, { $layout }.
+note-no-description-box = Info: the sheet of course "{ $course }" has no control description box.
+note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
+note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
 
 ## Notes on the course file
 
 note-course-unknown-element = Note: the course file contains the element { $name }, which this version does not read. It is left out.
-note-course-forked = Info: courses { $variants } are the variants of fork { $family }. Each prints as a sheet of its own.
-note-course-alternative-controls = Note: course { $course } offers alternative controls at one stop. This version cannot print that, so the course is left out.
+note-course-forked = Info: courses { $variants } are the variants of fork "{ $family }". Each prints as a sheet of its own.
+note-course-alternative-controls = Note: course "{ $course }" offers alternative controls at one stop. This version cannot print that, so the course is left out.
 note-course-notes-truncated = Info: the course file gave more notes than are listed here.
 note-course-white-out = Note: the course file has white-out areas. This version leaves them out; later versions turn them into masks.
 note-course-no-descriptions = Info: the course file has no control descriptions.
 note-course-map-issue-as-start = Info: the map issue point { $code } is used as the start.
-note-course-variations = Note: course { $course } has forks or loops (Purple Pen variations). This version cannot print them, so the course is left out. Purple Pen's IOF XML export writes each variation as a course of its own.
+note-course-variations = Note: course "{ $course }" has forks or loops (Purple Pen variations). This version cannot print them, so the course is left out. Purple Pen's IOF XML export writes each variation as a course of its own.
 note-fit-y-up = Info: the course file's y axis points up; the program turned it to match the map.
 note-fit-orientation-assumed = Note: the course fits the map with its y axis pointing up and pointing down, and nothing in the file decides, so the program assumes it points up. Check a sheet, then set course_y_axis = "up" or "down" under [sources] in the project file.
 note-fit-scale-unchecked = Info: the course file states no map scale, so it was not compared with the map's scale.
@@ -257,8 +257,12 @@ note-fit-placed-by-georef = Info: { $count ->
         [one] control { $controls } has
        *[other] controls { $controls } have
     } only latitude and longitude. The map's georeferencing placed them.
-note-stale-assignment = Note: the project file assigns course { $course } to a layout, but the course file has no such course. The assignment stays in the project file.
+note-stale-assignment = Note: the project file assigns course "{ $course }" to a layout, but the course file has no such course. The assignment stays in the project file.
 note-stale-correction = Note: the project file corrects the number of control { $control } for { $scope }, but the course file has no such control there. The correction stays in the project file.
 stale-scope-layout = layout { $name }
-stale-scope-course = course { $name }
+stale-scope-course = course "{ $name }"
 note-stale-changed-base = Note: the course file has moved the number of control { $control } since the project file corrected it. Check whether the correction still fits.
+note-map-cropped-to-course = Info: the map is { $cut } for the map frame. A course sheet shows the part around the course, so the rest is cut off on purpose.
+note-course-placeholder-not-filled = Info: the text { $id } uses { $name }, which is only filled on course sheets. On this sheet it stays empty.
+note-no-courses-to-export = Note: the course file has no course to export, so no PDF was written.
+quoted = "{ $text }"

@@ -141,6 +141,17 @@ pub(super) fn place_text_element(
                 .iter()
                 .map(|template| {
                     let (text, unknown) = fill(template, &values);
+                    if values.course.is_none() {
+                        for name in super::placeholders::COURSE_PLACEHOLDERS {
+                            let note = SheetNote::CoursePlaceholderNotFilled {
+                                element: spec.id.clone(),
+                                name: name.to_string(),
+                            };
+                            if mentions(template, name) && !notes.contains(&note) {
+                                notes.push(note);
+                            }
+                        }
+                    }
                     if let Some(course) = &values.course {
                         let empty = [
                             ("climb_m", &course.climb_m),

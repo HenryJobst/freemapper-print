@@ -87,6 +87,10 @@ pub enum SheetNote {
     /// The layout crops the map on purpose (`map_frame.crop`): the map reaches this far (mm, in x
     /// and in y) past the map frame. Informs only; the print report then has no overflow.
     MapCropped { overflow_mm: (f64, f64) },
+    /// A course sheet shows the part of the map around the course: the map reaches this far (mm, in x and in
+    /// y) past the map frame, as expected. Informs only, like [`SheetNote::MapCropped`]; the print report then
+    /// has no overflow.
+    MapCroppedToCourse { overflow_mm: (f64, f64) },
     /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
     /// is the mapper's job in OOM, and the program cannot know where.
@@ -145,6 +149,9 @@ pub enum SheetNote {
         id: String,
         name: String,
     },
+    /// The text `element` uses the course placeholder `name` on a sheet without a course, where it is filled
+    /// with nothing. Informs only.
+    CoursePlaceholderNotFilled { element: String, name: String },
     /// What the course reader found but does not support.
     Course(CourseNote),
     /// What fitting the course file to the map found out.
@@ -160,8 +167,12 @@ impl SheetNote {
         match self {
             SheetNote::NorthLinesAdded { .. }
             | SheetNote::MapCropped { .. }
+            | SheetNote::MapCroppedToCourse { .. }
             | SheetNote::DefaultLayout { .. }
-            | SheetNote::CourseValueUnknown { .. } => true,
+            | SheetNote::CourseValueUnknown { .. }
+            | SheetNote::CoursePlaceholderNotFilled { .. }
+            // Until Task 9 draws the box from a `.ppen`; then only a box that cannot be drawn counts.
+            | SheetNote::NoDescriptionBox { .. } => true,
             // A course note informs unless something of the course file is left out of the print.
             SheetNote::Course(note) => !matches!(
                 note,
@@ -272,10 +283,15 @@ fn render_body(
             &mut notes,
         )?;
     }
-    if layout.map_frame.crop
+    // A course sheet crops the map around the course as a matter of course.
+    if (layout.map_frame.crop || course.is_some())
         && let Some(overflow_mm) = print.overflow_mm.take()
     {
-        notes.push(SheetNote::MapCropped { overflow_mm });
+        notes.push(if layout.map_frame.crop {
+            SheetNote::MapCropped { overflow_mm }
+        } else {
+            SheetNote::MapCroppedToCourse { overflow_mm }
+        });
     }
     let page_box = PaperBox {
         min: (0.0, 0.0),
@@ -1073,18 +1089,18 @@ mod tests {
         layout.elements = vec![text_element(
             "c",
             ElementKind::Text,
-            &["Bahn {course}", "{layout}"],
+            &["Bahn {kurs}", "{layout}"],
             Corner::TopLeft,
         )];
         let lp = project(MapKind::Sprint, Vec::new(), &layout);
         let (page, report) = sheet_of(&lp, &empty_map());
         let t = texts(&page.sheet);
-        assert_eq!(t[0].0, "Bahn {course}");
+        assert_eq!(t[0].0, "Bahn {kurs}");
         assert_eq!(t[1].0, "a4");
         // (The element also covers part of the map: noted as well.)
         assert!(report.notes.contains(&SheetNote::UnknownPlaceholder {
             id: "c".into(),
-            name: "course".into()
+            name: "kurs".into()
         }));
     }
 
