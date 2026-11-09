@@ -41,8 +41,9 @@ All three courses start at the same spot in the west of the old town and finish 
 The last control (code 47) is shared, and a marked route of 100 m leads from it to the finish. The descriptions
 show it in the finish row with symbol 14.1.
 
-Every control sits on a feature of the map: the corner of a building (symbol 521) or the junction of two paths
-(505.1) on the eastern edge of the old town. A small script read the building corners and path nodes from
+Every control except start and finish sits on a feature of the map: the corner of a building (symbol 521) or the
+junction of two paths (505.1) on the eastern edge of the old town. The start stands on the street in front of a
+block of houses, the finish on a square. A small script read the building corners and path nodes from
 `luebeck.omap`. Each control position is one of those points, converted to millimetres and written with y
 pointing up, as Purple Pen writes it (ADR 0032). The descriptions follow the IOF 2018 standard: column D
 "building" or "path", column G the outside corner with its compass direction, column F "junction".
@@ -87,7 +88,8 @@ as stale.
 
 After the correction everything is fine, and `check` ends with exit code 0. The "Zur Information" (Info) lines do
 not count. A course sheet cuts the map to the course on purpose, and the file has no latitude and longitude for
-the program to check.
+the program to check. After the courses, `check` checks the two layouts as sheets without a course, as
+`export --layout` writes them; there the course placeholders stay empty.
 
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
@@ -97,7 +99,16 @@ Bahn „B“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaß
 Zur Information: Die Karte ist 16,7 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „C“ auf Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
 Zur Information: Die Karte ist 3,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
-3 Bahnen geprüft, keine Hinweise.
+Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+3 Bahnen und 2 Layoutblätter geprüft, keine Hinweise.
 ```
 
 ## How it was made
@@ -110,7 +121,7 @@ freemapper-print --lang de init . --map luebeck.omap --title "Stadtsprint Lübec
 
 ```
 Kartenart: Sprintkarten, wie in der freemapper.toml neben der Karte angegeben.
-Bahndatei …/courses.ppen gelesen: 3 Bahnen, an die Karte angepasst.
+Bahndatei courses.ppen gelesen: 3 Bahnen, an die Karte angepasst.
 Suche ein A4- oder A3-Blatt, das die Karte in 1:4000 zeigt …
 Suche ein A4- oder A3-Blatt, das die Karte in 1:3000 zeigt …
 ./freemapper-print.toml geschrieben mit 2 Layouts und 3 Bahnzuordnungen, für Sprintkarten.
@@ -124,16 +135,13 @@ Das Projekt schlägt eine Äquidistanz von 2 m vor, üblich für Sprintkarten. S
 Als Nächstes freemapper-print check ./freemapper-print.toml aufrufen. Es meldet die Hinweise oben, bis das Layout geändert ist.
 ```
 
-The second line names the full path of the course file, shortened here. From the file's print scales (4000 for
-A and B, 3000 for C) `init` makes two layouts. For each it looks for the paper the whole map fits on. A course
-sheet does not need that, so the layouts were changed by hand afterwards. The first `check` also reports that the
-program assumed the direction of the y axis. The sheet shows the controls at their building corners, so "up" is
-right.
+From the file's print scales (4000 for A and B, 3000 for C) `init` makes two layouts. For each it looks for the
+paper the whole map fits on. A course sheet does not need that, so the layouts were changed by hand afterwards.
+Nobody has to confirm the y axis: Purple Pen always writes it pointing up, and the program reads the file so.
 
 Edited by hand:
 
 - `[event]`: date and organiser added.
-- `[sources]`: `course_y_axis = "up"` set.
 - The proposed contour interval of 2 m compared with the map's information block and confirmed.
 - `[print]` added with the two copyright lines from luebeck-competition-layouts.
 - The title block shows `{event} · Bahn {course}`, then `{length_km} km · {controls} Posten` and
@@ -167,21 +175,23 @@ freemapper-print --lang de check iof
 freemapper-print --lang de export iof
 ```
 
-`init` writes `iof/freemapper-print.toml` with one layout for all three courses: A3 at 1:4000, without a
-description box. The title block names the course, since otherwise its name appears nowhere on the sheet. The
-first `check` again reports the assumed y axis. With `course_y_axis = "up"` in `[sources]`, `check` ends with
-exit code 0:
+`init` writes `iof/freemapper-print.toml` with one layout `a3-4000` for all three courses: A3 at 1:4000, without
+a description box. The title block names the course, since otherwise its name appears nowhere on the sheet. The
+first `check` reports the assumed y axis, because IOF XML does not say which one applies. With
+`course_y_axis = "up"` in `[sources]`, `check` ends with exit code 0:
 
 ```
 Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
-Bahn „A“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „A“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „A“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-Bahn „B“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „B“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „B“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-Bahn „C“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „C“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „C“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-3 Bahnen geprüft, keine Hinweise.
+Layout a3-4000: A3 Hochformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+3 Bahnen und 1 Layoutblatt geprüft, keine Hinweise.
 ```
 
 Compared with `out/`, the sheets in `iof/out/` lack the description box, the out-of-bounds area, the forbidden

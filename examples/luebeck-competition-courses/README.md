@@ -40,8 +40,9 @@ Alle drei Bahnen starten an derselben Stelle im Westen der Altstadt und enden au
 letzte Posten (Code 47) ist für alle derselbe, von dort führt eine markierte Strecke von 100 m ins Ziel. Die
 Beschreibung zeigt sie in der Zielzeile mit dem Symbol 14.1.
 
-Jeder Posten liegt auf einem Objekt der Karte: an der Ecke eines Gebäudes (Symbol 521) oder an der Gabelung
-zweier Wege (505.1) am Ostrand der Altstadt. Ein kleines Skript hat die Eckpunkte und Wegeknoten aus `luebeck.omap`
+Jeder Posten außer Start und Ziel liegt auf einem Objekt der Karte: an der Ecke eines Gebäudes (Symbol 521) oder
+an der Gabelung zweier Wege (505.1) am Ostrand der Altstadt. Der Start steht auf der Straße vor einem Häuserblock,
+das Ziel auf einem Platz. Ein kleines Skript hat die Eckpunkte und Wegeknoten aus `luebeck.omap`
 gelesen. Die Lage jedes Postens ist ein solcher Punkt, in Millimeter umgerechnet und mit der y-Achse nach oben
 geschrieben, wie Purple Pen es tut (ADR 0032). Die Beschreibungen folgen der IOF-Norm von 2018: Spalte D
 „Gebäude“ oder „Weg“, Spalte G die Außenecke mit ihrer Himmelsrichtung, Spalte F „Gabelung“.
@@ -84,7 +85,8 @@ Korrektur als veraltet.
 
 Nach der Korrektur ist alles in Ordnung, `check` endet mit Exit-Code 0. Die Zeilen „Zur Information“ zählen
 nicht. Ein Bahnblatt schneidet die Karte mit Absicht auf die Bahn zu, und die Datei hat keine geografischen
-Koordinaten, die das Programm prüfen könnte.
+Koordinaten, die das Programm prüfen könnte. Nach den Bahnen prüft `check` die beiden Layouts als Blätter ohne
+Bahn, so wie `export --layout` sie schreibt; dort bleiben die Platzhalter der Bahn leer.
 
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
@@ -94,7 +96,16 @@ Bahn „B“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaß
 Zur Information: Die Karte ist 16,7 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „C“ auf Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
 Zur Information: Die Karte ist 3,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
-3 Bahnen geprüft, keine Hinweise.
+Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+3 Bahnen und 2 Layoutblätter geprüft, keine Hinweise.
 ```
 
 ## So ist es entstanden
@@ -107,7 +118,7 @@ freemapper-print --lang de init . --map luebeck.omap --title "Stadtsprint Lübec
 
 ```
 Kartenart: Sprintkarten, wie in der freemapper.toml neben der Karte angegeben.
-Bahndatei …/courses.ppen gelesen: 3 Bahnen, an die Karte angepasst.
+Bahndatei courses.ppen gelesen: 3 Bahnen, an die Karte angepasst.
 Suche ein A4- oder A3-Blatt, das die Karte in 1:4000 zeigt …
 Suche ein A4- oder A3-Blatt, das die Karte in 1:3000 zeigt …
 ./freemapper-print.toml geschrieben mit 2 Layouts und 3 Bahnzuordnungen, für Sprintkarten.
@@ -121,23 +132,22 @@ Das Projekt schlägt eine Äquidistanz von 2 m vor, üblich für Sprintkarten. S
 Als Nächstes freemapper-print check ./freemapper-print.toml aufrufen. Es meldet die Hinweise oben, bis das Layout geändert ist.
 ```
 
-Die zweite Zeile nennt den vollen Pfad der Bahndatei, hier gekürzt. Aus den Druckmaßstäben der Datei (4000 für A
-und B, 3000 für C) macht `init` zwei Layouts. Es sucht dafür das Papier, auf das die ganze Karte passt. Ein
-Bahnblatt braucht das nicht, deshalb sind die Layouts danach von Hand geändert. Der erste `check` meldet außerdem,
-dass das Programm die Richtung der y-Achse angenommen hat. Das Blatt zeigt die Posten an ihren Gebäudeecken, also
-stimmt „oben“.
+Aus den Druckmaßstäben der Datei (4000 für A und B, 3000 für C) macht `init` zwei Layouts. Es sucht dafür das
+Papier, auf das die ganze Karte passt. Ein Bahnblatt braucht das nicht, deshalb sind die Layouts danach von Hand
+geändert. Die y-Achse muss niemand bestätigen: Purple Pen schreibt sie immer nach oben, und so liest das Programm
+die Datei.
 
 Von Hand bearbeitet:
 
 - `[event]`: Datum und Ausrichter ergänzt.
-- `[sources]`: `course_y_axis = "up"` eingetragen.
 - Die vorgeschlagene Äquidistanz von 2 m mit dem Informationsblock der Karte verglichen und bestätigt.
 - `[print]` mit den zwei Quellenzeilen aus luebeck-competition-layouts ergänzt.
 - Der Titelblock zeigt `{event} · Bahn {course}`, darunter `{length_km} km · {controls} Posten` und
   `1:{print_scale} · Äquidistanz {contour_interval}`.
 - Die Layouts `a3-4000` und `a4-3000` durch `a4-4000` (A4 quer, 10 mm Passepartout) und `a3-3000` (A3 quer,
   10 mm) ersetzt, beide mit `crop = true` und dem Beschreibungskasten oben rechts. Auf A4 hat der Kasten Zellen
-  von 5 mm statt 6 mm. Mit 6 mm reicht er bei Bahn A bis zum Posten 50 (Nummer 9) hinunter, und `check` meldet, dass er ihn abdeckt.
+  von 5 mm statt 6 mm. Mit 6 mm reicht er bei Bahn A bis zum Posten 50 (Nummer 9) hinunter, und `check` meldet,
+  dass er ihn abdeckt.
 - Die Bahnzuordnungen auf die neuen Layout-IDs umgestellt.
 
 Dann prüfen, die Korrektur für Posten 49 übernehmen (siehe oben), noch einmal prüfen und die PDFs schreiben:
@@ -164,21 +174,24 @@ freemapper-print --lang de check iof
 freemapper-print --lang de export iof
 ```
 
-`init` legt `iof/freemapper-print.toml` an, mit einem Layout für alle drei Bahnen: A3 in 1:4000, ohne
+`init` legt `iof/freemapper-print.toml` an, mit einem Layout `a3-4000` für alle drei Bahnen: A3 in 1:4000, ohne
 Beschreibungskasten. Der Titelblock nennt die Bahn, denn sonst steht ihr Name nirgends auf dem Blatt. Der erste
-`check` meldet wieder die angenommene y-Achse. Nach `course_y_axis = "up"` in `[sources]` endet `check` mit
+`check` meldet die angenommene y-Achse, denn IOF-XML sagt nicht, welche gilt. Nach `course_y_axis = "up"` in
+`[sources]` endet `check` mit
 Exit-Code 0:
 
 ```
 Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
-Bahn „A“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „A“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „A“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-Bahn „B“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „B“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „B“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-Bahn „C“ auf Layout a3: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „C“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „C“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
-3 Bahnen geprüft, keine Hinweise.
+Layout a3-4000: A3 Hochformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Zur Information: Der Text title nutzt {course}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
+3 Bahnen und 1 Layoutblatt geprüft, keine Hinweise.
 ```
 
 Im Vergleich mit `out/` fehlen auf den Blättern in `iof/out/` der Beschreibungskasten, das Sperrgebiet, die

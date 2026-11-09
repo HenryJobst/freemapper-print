@@ -50,7 +50,7 @@ offset_mm = [
 ]
 
 [[layouts]]
-id = "a3"
+id = "a3-4000"
 paper = "A3"
 orientation = "auto"
 print_scale = 4000
@@ -63,12 +63,12 @@ crop = true
 
 [[assignments]]
 course = "A"
-layout = "a3"
+layout = "a3-4000"
 
 [[assignments]]
 course = "B"
-layout = "a3"
+layout = "a3-4000"
 
 [[assignments]]
 course = "C"
-layout = "a3"
+layout = "a3-4000"

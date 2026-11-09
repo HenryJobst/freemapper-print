@@ -37,8 +37,10 @@ Finished on `main`, not yet released (milestone M3):
 - `init --courses` builds a project from a course file;
 - `export` writes one PDF per course, only chosen courses with `--course`, or one PDF with all courses with
   `--single-file`;
-- the course must fit the map: the program detects the y axis, checks the map scale and compares the controls
-  with latitude and longitude, and stops on a doubtful fit.
+- course symbols at the size the standard sets for the print scale, such as 7.5 mm control circles on a forest
+  map at 1:10000;
+- the course must fit the map: the program reads Purple Pen with the y axis up and detects it for IOF XML, checks
+  the map scale and compares the controls with latitude and longitude, and stops on a doubtful fit.
 
 Planned:
 

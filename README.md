@@ -38,8 +38,11 @@ Fertig auf `main`, noch nicht veröffentlicht (Meilenstein M3):
 - `init --courses` legt ein Projekt aus einer Bahndatei an;
 - `export` schreibt ein PDF je Bahn, mit `--course` nur gewählte Bahnen, mit `--single-file` ein PDF mit allen
   Bahnen;
-- die Bahn muss zur Karte passen: Das Programm erkennt die y-Achse, prüft den Kartenmaßstab, vergleicht die Posten
-  mit Breite und Länge und hält bei einer zweifelhaften Einpassung an.
+- die Bahnsymbole in der Größe, die die Norm für den Druckmaßstab vorgibt, etwa Postenkreise von 7,5 mm auf einer
+  Waldkarte in 1:10000;
+- die Bahn muss zur Karte passen: Das Programm liest Purple Pen mit der y-Achse nach oben und erkennt sie bei
+  IOF-XML, prüft den Kartenmaßstab, vergleicht die Posten mit Breite und Länge und hält bei einer zweifelhaften
+  Einpassung an.
 
 Geplant ist:
 
