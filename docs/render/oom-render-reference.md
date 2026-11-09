@@ -125,12 +125,14 @@ Colour Definitions Rev. 4, freemapper ADR 0044), top to bottom:
 | 7 | Blue 100% | 1 | 0 | 0 | 0 |
 | 8 | Brown 100% | 0.25 | 0.75 | 1 | 0 |
 | 10 | Black 50% (building fill 521.3, 521.1) | 0 | 0 | 0 | 0.5 |
+| 11 | Black 20% (canopy fill 522.3) | 0 | 0 | 0 | 0.2 |
 | 13 | Lower brown 50% | 0.1 | 0.35 | 0.5 | 0 |
 | 14 | Lower brown 30% | 0.06 | 0.23 | 0.33 | 0 |
 | 15 | Black below lower light brown | 0 | 0 | 0 | 1 |
 | 21 | White over green | 0 | 0 | 0 | 0 |
 | 22 | Green 50%/Yellow 100% | 0.38 | 0.27 | 1 | 0 |
 | 30 | Yellow 100% | 0 | 0.27 | 0.79 | 0 |
+| 32 | Lower brown 30% for walkable area (base area 990, from freemapper v0.8.0) | 0.06 | 0.23 | 0.33 | 0 |
 
 Older values. OOM's bundled `ISSprOM 2019_4000.omap` (also in freemapper-omap's `assets/symbol-sets/`, used
 only by tests) and freemapper maps before v0.5.0 carry the IOF colours before Rev. 4: Green 100% 0.76/0/0.91/0, Brown 100%

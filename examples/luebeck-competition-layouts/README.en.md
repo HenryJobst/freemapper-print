@@ -36,6 +36,9 @@ print scale of the map.
 
 **North lines.** The map has its own north lines, so the program adds none.
 
+**Base area.** The map lies on the light brown base area that freemapper puts under every sprint map. It prints
+with the map, clipped to the map frame, and does not count for the overflow (ADR 0044).
+
 **Footer.** The map notes name the sources in four lines. With the freemapper-print credit line that makes five
 lines, and on the A3 sheet such a block fits only into a 14 mm margin. The map frame at 1:3000 needs almost the
 whole page, though. `print.copyright` therefore puts the sources into two lines. Then a 10 mm passe-partout is
@@ -108,7 +111,7 @@ and `out/a3-3000.pdf` as input.
 - Exported twice: the PDFs are identical byte for byte.
 - The pages viewed at 200 dpi: title block and classes at the top left, the logos at the top right, the scale
   check bar at the bottom right, the three footer lines below the map frame, the map's north lines over the whole
-  map.
+  map, the light brown base area up to the map frame.
 
 ## Printing
 
@@ -118,7 +121,7 @@ whether the printer scaled the page.
 ## Credits
 
 Map and `freemapper.toml` from the example `schleswig-holstein-luebeck` of
-[freemapper](https://github.com/HenryJobst/freemapper), version 0.5.0 (commit `e8b6db9`), unchanged. Map data
+[freemapper](https://github.com/HenryJobst/freemapper), version 0.8.0 (commit `a2b41b4`), unchanged. Map data
 © OpenStreetMap contributors (ODbL) and © GeoBasis-DE/LVermGeo SH (CC BY 4.0, source modified). The logos were
 made for this example (CC0). The PDFs were made with
 [freemapper-print](https://github.com/HenryJobst/freemapper-print).
