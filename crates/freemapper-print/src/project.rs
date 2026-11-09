@@ -1303,6 +1303,15 @@ mod tests {
     }
 
     #[test]
+    fn print_scale_zero_is_refused() {
+        let msg = err_for("", String::new().as_str(), "print_scale = 0");
+        assert!(
+            msg.contains("layouts[0].print_scale") && msg.contains("larger than 0"),
+            "{msg}"
+        );
+    }
+
+    #[test]
     fn checked_values_name_their_line() {
         // HEAD has 7 lines, then a blank one and the layout.
         let msg = err_for(

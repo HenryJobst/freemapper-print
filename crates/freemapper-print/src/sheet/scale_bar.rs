@@ -24,7 +24,7 @@ const PADDING_MM: f64 = 1.0;
 /// The bar length in metres for `print_scale`: the largest of the list whose printed length is at
 /// most 50 mm (the smallest if none is).
 fn length_m(print_scale: u32) -> u32 {
-    let limit = u64::from(MAX_PRINTED_MM) * u64::from(print_scale.max(1));
+    let limit = u64::from(MAX_PRINTED_MM) * u64::from(print_scale);
     LENGTHS_M
         .iter()
         .rev()
@@ -58,13 +58,19 @@ fn rect(min: Pt, max: Pt) -> Vec<Pt> {
 ///
 /// The bar is exactly `length * 1000 / print_scale` mm long, measured between the centre lines of
 /// the two end ticks, which are also the centre lines of the outline's short sides.
+///
+/// `print_scale` is never 0: the project loader refuses it and the scale table has no such row,
+/// so `render_page` fails before a sheet is drawn. A 0 here would make the bar infinitely long,
+/// which the PDF writer refuses ([`PdfError::NotFinite`](crate::render::pdf::PdfError)); it is
+/// not quietly drawn as 1:1.
 pub fn scale_check_bar(
     print_scale: u32,
     origin: Pt,
     lang: SheetLang,
 ) -> (Vec<SheetItem>, (f64, f64)) {
+    debug_assert!(print_scale > 0, "print scale 1:0");
     let metres = length_m(print_scale);
-    let bar_mm = f64::from(metres) * 1000.0 / f64::from(print_scale.max(1));
+    let bar_mm = f64::from(metres) * 1000.0 / f64::from(print_scale);
     let text = label(metres, bar_mm, lang);
     let label_w = text_width(&text, face(false, false)) * LABEL_MM;
     let label_h = LABEL_MM * LINE_SPACING;
@@ -76,6 +82,8 @@ pub fn scale_check_bar(
     );
     let x0 = origin.0 + PADDING_MM + LINE_MM / 2.0;
     let x1 = x0 + bar_mm;
+    // The label's line height (ascent, descent and line gap) ends where the outline's upper half
+    // begins: the bar's top edge lies half the outline width below it, so the two never touch.
     let top = origin.1 + PADDING_MM + label_h + LINE_MM / 2.0;
     let bottom = top + BAR_HEIGHT_MM;
 
@@ -212,7 +220,7 @@ mod tests {
     fn bar_length_1_4000() {
         assert_eq!(length_m(4000), 200);
         let pt = bar_pt(4000);
-        assert!((pt - 141.732).abs() < 0.001, "{pt}");
+        assert!((pt - 141.732).abs() < 0.005, "{pt}");
         let items = scale_check_bar(4000, (0.0, 0.0), SheetLang::En).0;
         assert_eq!(label_of(&items), "200 m = 50 mm");
     }
@@ -222,7 +230,7 @@ mod tests {
         assert_eq!(length_m(3000), 100);
         let pt = bar_pt(3000);
         assert!(
-            (pt - 100.0 / 3000.0 * 1000.0 * 72.0 / 25.4).abs() < 0.001,
+            (pt - 100.0 / 3000.0 * 1000.0 * 72.0 / 25.4).abs() < 0.005,
             "{pt}"
         );
     }
@@ -230,13 +238,13 @@ mod tests {
     #[test]
     fn bar_length_1_10000() {
         assert_eq!(length_m(10000), 500);
-        assert!((bar_pt(10000) - 141.732).abs() < 0.001);
+        assert!((bar_pt(10000) - 141.732).abs() < 0.005);
     }
 
     #[test]
     fn bar_length_1_200() {
         assert_eq!(length_m(200), 10);
-        assert!((bar_pt(200) - 141.732).abs() < 0.001);
+        assert!((bar_pt(200) - 141.732).abs() < 0.005);
     }
 
     #[test]

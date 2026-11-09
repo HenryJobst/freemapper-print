@@ -676,6 +676,14 @@ mod tests {
         let (_, report) = render_sheet(&lp, &map, &a4(), &LogoCache::new()).unwrap();
         assert_eq!(report.print.print_scale, 10000);
         assert_eq!(report.print.symbol_factor, 1.0);
+        // A print scale of 0, which the loader refuses, fails here too instead of drawing.
+        let mut zero = layout.clone();
+        zero.print_scale = Some(0);
+        let err = render_sheet(&lp, &map, &zero, &LogoCache::new()).unwrap_err();
+        assert!(
+            matches!(err, SheetError::Print(PrintError::Scale(_))),
+            "{err}"
+        );
         // The kind comes from the project: 1:7500 is no sprint scale.
         let sprint = project(MapKind::Sprint, Vec::new(), &layout);
         let err = render_sheet(&sprint, &map, &layout, &LogoCache::new()).unwrap_err();
