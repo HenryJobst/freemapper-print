@@ -174,3 +174,4 @@ logo-simplified-image = an embedded image is left out.
 logo-simplified-text = text is left out; convert it to paths.
 logo-simplified-clip-path = a clip path is ignored.
 note-missing-scale-check-bar = Note: layout { $layout } has no scale check bar. An element of kind scale_check_bar shows on the print whether the printer scaled it.
+note-footer-covers-element = Note: the footer with the copyright and credit lines sits on a white box inside the map frame and covers part of the element { $id }. A wider margin_mm, another place for the element, or a copyright_line or credit_line element keeps them apart.

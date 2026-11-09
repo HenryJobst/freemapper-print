@@ -65,6 +65,8 @@ pub enum SheetNote {
         layout: String,
         missing: Vec<MissingItem>,
     },
+    /// The default footer, on its white box inside the map frame, covers part of the element.
+    FooterCoversElement { id: String },
     /// The layout shows no `scale_check_bar` element. The design puts one on every sheet by
     /// default (§5.4); `init` adds it, and the note makes a missing one visible.
     MissingScaleCheckBar { layout: String },
@@ -195,12 +197,15 @@ pub fn render_sheet(
     };
     // The credit line goes on top of everything else, so no element can hide it.
     let mut credit_lines = Vec::new();
+    // Where each element lies, for the footer's overlap check.
+    let mut placed_rects: Vec<(&str, PaperBox)> = Vec::new();
     for spec in layout_elements(project, layout) {
         let Some(placed) = place_element(&ctx, spec, &mut notes) else {
             continue;
         };
         if spec.kind == ElementKind::CreditLine {
             if layout::inside(placed.rect, page_box) {
+                placed_rects.push((&spec.id, placed.rect));
                 credit_lines.push((spec, placed));
             } else {
                 notes.push(SheetNote::CreditLineMoved {
@@ -216,6 +221,7 @@ pub fn render_sheet(
             page_box,
             frame,
         ));
+        placed_rects.push((&spec.id, placed.rect));
         page.sheet.extend(placed.items);
     }
     let credit_in_footer = credit_lines.is_empty();
@@ -228,6 +234,13 @@ pub fn render_sheet(
             page_box,
             frame,
         ));
+        for (id, rect) in &placed_rects {
+            if layout::overlap(footer.rect, *rect) {
+                notes.push(SheetNote::FooterCoversElement {
+                    id: (*id).to_string(),
+                });
+            }
+        }
         page.sheet.extend(footer.items);
     }
     for (spec, credit) in credit_lines {
@@ -1270,6 +1283,33 @@ mod tests {
             missing(&report).unwrap(),
             [MissingItem::PrintScaleText, MissingItem::ContourText]
         );
+    }
+
+    #[test]
+    fn footer_covering_an_element_noted() {
+        // Three source lines do not fit below the frame: the footer goes into its bottom-left
+        // corner, where the bar hangs too.
+        let mut map = empty_map();
+        map.notes = "a\nb\nc".into();
+        let mut bar = element("bar");
+        bar.anchor = Anchor {
+            to: AnchorTarget::MapFrame,
+            corner: Corner::BottomLeft,
+            offset_mm: [2.0, 2.0],
+        };
+        let mut layout = a4();
+        layout.elements = vec![bar.clone()];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (_, report) = sheet_of(&lp, &map);
+        let note = SheetNote::FooterCoversElement { id: "bar".into() };
+        assert!(report.notes.contains(&note), "{:?}", report.notes);
+        // In the other corner, or with the footer below the frame: nothing to note.
+        let mut right = lp.clone();
+        right.project.layouts[0].elements[0].anchor.corner = Corner::BottomRight;
+        let (_, report) = sheet_of(&right, &map);
+        assert!(!report.notes.contains(&note));
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(!report.notes.contains(&note));
     }
 
     #[test]

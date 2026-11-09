@@ -177,3 +177,4 @@ logo-simplified-image = Ein eingebettetes Bild fehlt.
 logo-simplified-text = Text fehlt; wandeln Sie ihn in Pfade um.
 logo-simplified-clip-path = Ein Beschneidungspfad wird ignoriert.
 note-missing-scale-check-bar = Hinweis: Layout { $layout } hat keine Kontrollstrecke. Ein Element vom Typ scale_check_bar zeigt am Ausdruck, ob der Drucker skaliert hat.
+note-footer-covers-element = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil des Elements { $id } ab. Ein breiteres margin_mm, ein anderer Platz für das Element oder ein Element copyright_line oder credit_line trennt sie.

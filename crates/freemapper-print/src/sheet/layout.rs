@@ -90,6 +90,12 @@ pub fn inside(rect: PaperBox, outer: PaperBox) -> bool {
         && rect.max.1 <= outer.max.1 + EPSILON_MM
 }
 
+/// Whether `a` and `b` share some area (touching edges do not count).
+pub fn overlap(a: PaperBox, b: PaperBox) -> bool {
+    let along = |a: (f64, f64), b: (f64, f64)| a.0.max(b.0) + EPSILON_MM < a.1.min(b.1);
+    along((a.min.0, a.max.0), (b.min.0, b.max.0)) && along((a.min.1, a.max.1), (b.min.1, b.max.1))
+}
+
 /// The notes for an element `id` hung on `to` that covers `rect`: [`SheetNote::ElementOutsidePage`]
 /// when any of it lies outside the page, [`SheetNote::ElementOverlapsMap`] when it hangs on the
 /// page and covers part of the map frame. An element hung on the map frame is meant to sit on
@@ -105,11 +111,7 @@ pub fn bounds_notes(
     if !inside(rect, page) {
         notes.push(SheetNote::ElementOutsidePage { id: id.into() });
     }
-    let overlaps = |a: (f64, f64), b: (f64, f64)| a.0.max(b.0) + EPSILON_MM < a.1.min(b.1);
-    if to == AnchorTarget::Page
-        && overlaps((rect.min.0, rect.max.0), (frame.min.0, frame.max.0))
-        && overlaps((rect.min.1, rect.max.1), (frame.min.1, frame.max.1))
-    {
+    if to == AnchorTarget::Page && overlap(rect, frame) {
         notes.push(SheetNote::ElementOverlapsMap { id: id.into() });
     }
     notes

@@ -920,6 +920,7 @@ fn only_footer_in_the_way(project: &Project, report: &crate::sheet::SheetReport)
         !matches!(n,
             SheetNote::ElementOverlapsMap { id } | SheetNote::ElementOutsidePage { id }
                 if id == FOOTER_ID)
+            && !matches!(n, SheetNote::FooterCoversElement { .. })
     });
     rest.notes.len() < report.notes.len() && starter_is_clean(project, &rest)
 }
