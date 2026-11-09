@@ -20,8 +20,10 @@ S1 (−50000, −60000), 31 (20000, 30000), 32 (100000, 120000), 33 (−80000, 9
 `MapPosition` values are these in mm with y negated (y up, as Purple Pen writes).
 
 The map's georeferencing (scale 4000, `grid_scale_factor` 0.999751, grivation 3.19°, reference point
-E 610932.039697268, N 5969932.064166221 at map (0, 0)) turns a map position into EPSG:25832 the way OOM does
-(`Georeferencing::updateTransformation`): `E = E0 + qx·cos g + qy·sin g`, `N = N0 − qx·sin g + qy·cos g`, with
+E 610932.039697268, N 5969932.064166221 at map (0, 0)) turns a map position into EPSG:25832 the way OOM does.
+OOM's `Georeferencing::updateTransformation` (`src/core/georeferencing.cpp`) builds `translate(ref) ·
+rotate(−grivation) · scale(s, −s) · translate(−map_ref)`, and Qt's `QTransform::rotate(a)` maps (x, y) to
+(x·cos a − y·sin a, x·sin a + y·cos a). Written out: `E = E0 + qx·cos g + qy·sin g`, `N = N0 − qx·sin g + qy·cos g`, with
 `qx = s·x`, `qy = −s·y`, `s = 4000 · 0.999751 / 1000` m per map mm and `g` the grivation. PROJ 9.8.1 (pyproj 3.8.0,
 installed in a throw-away virtual environment) turned E/N into ETRS89 lat/lng:
 
@@ -38,5 +40,12 @@ lng, lat = inv.transform(E, N)   # printed with 9 decimals
 | 32 | 611304.6164 | 5969430.6739 | 53.861415655 | 10.692481375 |
 | 33 | 610592.5871 | 5969590.5142 | 53.863003863 | 10.681717122 |
 | F1 | 611176.0588 | 5969998.5683 | 53.866545281 | 10.690733243 |
+
+The test `lat_lng_near_the_x_axis_decides_nothing` (`tests/fit_courses.rs`) uses one more point computed the
+same way: map (20000, −1000), E 611012.1184, N 5969931.6063, lat 53.865978767, lng 10.688217049.
+
+This step uses the same formula as `course::fit`, so the fixture cannot catch an error in it; the unit test
+`grivation_turns_map_up_east_of_grid_north` in `course/fit.rs` checks its direction on its own. The
+grid-to-lat/lng step is independent (PROJ).
 
 IOF XML gives WGS84; ETRS89 differs from it by under a metre in Germany, far below the 20 m tolerance.

@@ -2,7 +2,9 @@
 
 use std::path::Path;
 
-use freemapper_print::course::fit::{FitError, FitNote, SkipReason, fit};
+use freemapper_print::course::fit::{
+    FitError, FitNote, FitOptions, GEOREF_TOLERANCE_M, SkipReason, YAxis, fit,
+};
 use freemapper_print::course::model::Offset;
 use freemapper_print::course::{
     Control, ControlKind, Course, CourseEvent, CourseKind, CourseSource, Leg, RawEvent, RawPoint,
@@ -127,7 +129,7 @@ fn y_up_detected() {
         control("31", Some((50.0, -30.0)), None),
         control("32", Some((150.0, -80.0)), None),
     ]);
-    let fitted = fit(ev, &map).unwrap();
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
     assert!(fitted.notes.contains(&FitNote::YUpDetected));
     assert_eq!(pos(&fitted.event, "31"), MapCoord::new(50_000, 30_000));
     assert_eq!(pos(&fitted.event, "32"), MapCoord::new(150_000, 80_000));
@@ -155,7 +157,7 @@ fn y_down_kept() {
         control("31", Some((50.0, 30.0)), None),
         control("32", Some((150.0, 80.0)), None),
     ]);
-    let fitted = fit(ev, &map).unwrap();
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
     assert!(!fitted.notes.contains(&FitNote::YUpDetected));
     assert_eq!(pos(&fitted.event, "31"), MapCoord::new(50_000, 30_000));
     let course = &fitted.event.courses[0];
@@ -176,9 +178,65 @@ fn both_fit_without_lat_lng_prefers_y_up() {
         control("31", Some((10.0, 20.0)), None),
         control("32", Some((-30.0, 40.0)), None),
     ]);
-    let fitted = fit(ev, &map).unwrap();
-    assert!(fitted.notes.contains(&FitNote::YUpDetected));
+    let fitted = fit(ev.clone(), &map, &FitOptions::default()).unwrap();
+    // Nothing decided it: y up is assumed, and that is a warning, not a detection.
+    assert!(!fitted.notes.contains(&FitNote::YUpDetected));
+    assert!(fitted.notes.contains(&FitNote::OrientationAssumed));
+    assert!(FitNote::OrientationAssumed.is_warning());
+    assert!(!FitNote::YUpDetected.is_warning());
     assert_eq!(pos(&fitted.event, "31"), MapCoord::new(10_000, -20_000));
+    // The project file can set the axis.
+    let down = FitOptions {
+        y_axis: Some(YAxis::Down),
+        ..FitOptions::default()
+    };
+    let fitted = fit(ev, &map, &down).unwrap();
+    assert!(!fitted.notes.contains(&FitNote::OrientationAssumed));
+    assert_eq!(pos(&fitted.event, "31"), MapCoord::new(10_000, 20_000));
+}
+
+#[test]
+fn set_y_axis_must_still_fit() {
+    let map = plain_map((0, 0), (200_000, 100_000));
+    let ev = event(vec![
+        control("31", Some((50.0, 30.0)), None),
+        control("32", Some((150.0, 80.0)), None),
+    ]);
+    let up = FitOptions {
+        y_axis: Some(YAxis::Up),
+        ..FitOptions::default()
+    };
+    assert!(matches!(
+        fit(ev, &map, &up),
+        Err(FitError::OutsideMap {
+            inside: 0,
+            total: 2
+        })
+    ));
+}
+
+#[test]
+fn file_scale_must_match_the_map() {
+    let map = plain_map((0, 0), (200_000, 100_000));
+    let mut ev = event(vec![
+        control("31", Some((50.0, 30.0)), None),
+        control("32", Some((150.0, 80.0)), None),
+    ]);
+    let fitted = fit(ev.clone(), &map, &FitOptions::default()).unwrap();
+    assert!(fitted.notes.contains(&FitNote::ScaleUnchecked));
+    ev.source.map_scale = Some(4000);
+    let fitted = fit(ev.clone(), &map, &FitOptions::default()).unwrap();
+    assert!(!fitted.notes.contains(&FitNote::ScaleUnchecked));
+    ev.source.map_scale = Some(10000);
+    let err = fit(ev, &map, &FitOptions::default()).unwrap_err();
+    assert_eq!(
+        err,
+        FitError::ScaleMismatch {
+            file: 10000,
+            map: 4000
+        }
+    );
+    assert!(err.to_string().contains("10000"), "{err}");
 }
 
 #[test]
@@ -189,13 +247,13 @@ fn ten_mm_margin_around_the_map() {
         control("31", Some((-9.9, 50.0)), None),
         control("32", Some((150.0, 80.0)), None),
     ]);
-    assert!(fit(near, &map).is_ok());
+    assert!(fit(near, &map, &FitOptions::default()).is_ok());
     let far = event(vec![
         control("31", Some((-10.1, 50.0)), None),
         control("32", Some((150.0, 80.0)), None),
     ]);
     assert!(matches!(
-        fit(far, &map),
+        fit(far, &map, &FitOptions::default()),
         Err(FitError::OutsideMap {
             inside: 1,
             total: 2
@@ -211,7 +269,7 @@ fn course_outside_map_is_error() {
         control("32", Some((600.0, 80.0)), None),
         control("33", Some((50.0, 40.0)), None),
     ]);
-    let err = fit(ev, &map).unwrap_err();
+    let err = fit(ev, &map, &FitOptions::default()).unwrap_err();
     assert!(
         matches!(
             err,
@@ -227,7 +285,7 @@ fn course_outside_map_is_error() {
 
 #[test]
 fn georef_checked_on_luebeck() {
-    let fitted = fit(luebeck_course(), &luebeck()).unwrap();
+    let fitted = fit(luebeck_course(), &luebeck(), &FitOptions::default()).unwrap();
     assert!(fitted.notes.contains(&FitNote::YUpDetected));
     let checked = fitted.notes.iter().find_map(|n| match n {
         FitNote::GeorefChecked { controls, metres } => Some((*controls, *metres)),
@@ -267,7 +325,7 @@ fn georef_mismatch_is_error() {
     // Control 31 moved 12.5 mm east on the map: 50 m at 1:4000.
     let c = ev.controls.iter_mut().find(|c| c.code == "31").unwrap();
     c.position.as_mut().unwrap().x_mm += 12.5;
-    let err = fit(ev, &luebeck()).unwrap_err();
+    let err = fit(ev, &luebeck(), &FitOptions::default()).unwrap_err();
     match &err {
         FitError::GeorefMismatch { control, metres } => {
             assert_eq!(control, "31");
@@ -276,6 +334,92 @@ fn georef_mismatch_is_error() {
         other => panic!("{other:?}"),
     }
     assert!(err.to_string().contains("31"), "{err}");
+    assert!(
+        err.to_string()
+            .contains(&format!("{GEOREF_TOLERANCE_M} m allowed")),
+        "{err}"
+    );
+}
+
+#[test]
+fn lat_lng_near_the_x_axis_decides_nothing() {
+    // One control with lat/lng 1 mm above the map's x axis: y up and y down lie 2 mm (8 m) apart,
+    // both within the tolerance. Lat/lng computed like the fixture's (README), map (20000, -1000).
+    let ev = event(vec![
+        control(
+            "N1",
+            Some((20.0, 1.0)),
+            Some((53.865_978_767, 10.688_217_049)),
+        ),
+        control("S1", Some((-50.0, 60.0)), None),
+        control("F1", Some((60.0, 20.0)), None),
+    ]);
+    let fitted = fit(ev, &luebeck(), &FitOptions::default()).unwrap();
+    assert!(fitted.notes.contains(&FitNote::OrientationAssumed));
+    assert!(!fitted.notes.contains(&FitNote::YUpDetected));
+    assert!(
+        fitted
+            .notes
+            .iter()
+            .any(|n| matches!(n, FitNote::GeorefChecked { controls: 1, .. }))
+    );
+    assert_eq!(pos(&fitted.event, "N1"), MapCoord::new(20_000, -1_000));
+}
+
+#[test]
+fn georef_check_off_ignores_lat_lng() {
+    let off = FitOptions {
+        check_georef: false,
+        ..FitOptions::default()
+    };
+    // Geo-only control 33 cannot be placed.
+    let err = fit(luebeck_course(), &luebeck(), &off).unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            FitError::NoPositionNoGeoref { controls, reason: SkipReason::CheckOff }
+                if controls == &["33".to_string()]
+        ),
+        "{err:?}"
+    );
+    // A control 50 m off is not an error, and lat/lng no longer pick y down.
+    let mut ev = luebeck_course();
+    ev.controls.retain(|c| c.position.is_some());
+    ev.controls[1].position.as_mut().unwrap().x_mm += 12.5;
+    let fitted = fit(ev, &luebeck(), &off).unwrap();
+    assert!(fitted.notes.contains(&FitNote::GeorefCheckOff));
+    assert!(fitted.notes.contains(&FitNote::YUpDetected));
+    let src = luebeck_course();
+    let controls = src
+        .controls
+        .into_iter()
+        .filter(|c| ["S1", "31", "F1"].contains(&c.code.as_str()))
+        .map(|mut c| {
+            let p = c.position.as_mut().unwrap();
+            p.y_mm = -p.y_mm;
+            c
+        })
+        .collect();
+    let fitted = fit(event(controls), &luebeck(), &off).unwrap();
+    assert!(fitted.notes.contains(&FitNote::OrientationAssumed));
+    assert_eq!(pos(&fitted.event, "S1"), MapCoord::new(-50_000, 60_000));
+}
+
+#[test]
+fn blank_crs_is_not_georeferenced() {
+    let mut map = plain_map((0, 0), (200_000, 100_000));
+    map.georef.crs_spec = Some("  ".into());
+    map.georef.ref_projected = Some((0.0, 0.0));
+    let ev = event(vec![
+        control("31", Some((50.0, 30.0)), Some((53.86, 10.68))),
+        control("32", Some((150.0, 80.0)), None),
+    ]);
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
+    assert!(
+        fitted
+            .notes
+            .contains(&FitNote::GeorefSkipped(SkipReason::NotGeoreferenced))
+    );
 }
 
 #[test]
@@ -293,7 +437,7 @@ fn lat_lng_decides_when_both_orientations_fit() {
             c
         })
         .collect();
-    let fitted = fit(event(controls), &luebeck()).unwrap();
+    let fitted = fit(event(controls), &luebeck(), &FitOptions::default()).unwrap();
     assert!(!fitted.notes.contains(&FitNote::YUpDetected));
     assert_eq!(pos(&fitted.event, "S1"), MapCoord::new(-50_000, -60_000));
     assert!(
@@ -311,7 +455,7 @@ fn geo_only_control_without_georef_is_error() {
         control("31", Some((50.0, 30.0)), None),
         control("32", None, Some((53.86, 10.68))),
     ]);
-    let err = fit(ev, &map).unwrap_err();
+    let err = fit(ev, &map, &FitOptions::default()).unwrap_err();
     match &err {
         FitError::NoPositionNoGeoref { controls, reason } => {
             assert_eq!(controls, &["32".to_string()]);
@@ -331,7 +475,7 @@ fn other_crs_skips_the_check() {
         control("31", Some((50.0, 30.0)), Some((53.86, 10.68))),
         control("32", Some((150.0, 80.0)), None),
     ]);
-    let fitted = fit(ev, &map).unwrap();
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
     assert!(fitted.notes.iter().any(|n| matches!(
         n,
         FitNote::GeorefSkipped(SkipReason::UnsupportedCrs(spec)) if spec.contains("lcc")
@@ -345,7 +489,7 @@ fn no_lat_lng_in_file_skips_the_check() {
     for c in &mut ev.controls {
         c.geo = None;
     }
-    let fitted = fit(ev, &luebeck()).unwrap();
+    let fitted = fit(ev, &luebeck(), &FitOptions::default()).unwrap();
     assert!(
         fitted
             .notes
