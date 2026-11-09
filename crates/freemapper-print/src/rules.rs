@@ -437,6 +437,25 @@ fn profile_in(files: &[(&str, &str)], id: &str) -> Result<RuleProfile, RuleError
     }
 }
 
+/// [`load_from`] for tests elsewhere in the crate, with test-only profiles.
+#[cfg(test)]
+pub(crate) fn load_for_tests(
+    files: &[(&str, &str)],
+    base: &str,
+    overlays: &[String],
+) -> Result<RuleSet, RuleError> {
+    load_from(files, base, overlays)
+}
+
+/// The text of the embedded profile `id`, for tests elsewhere in the crate.
+#[cfg(test)]
+pub(crate) fn embedded_text(id: &str) -> &'static str {
+    EMBEDDED
+        .iter()
+        .find(|(stem, _)| *stem == id)
+        .map_or("", |(_, text)| text)
+}
+
 fn load_from(
     files: &[(&str, &str)],
     base: &str,
@@ -620,6 +639,18 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
     if scales.windows(2).any(|w| w[0].scale >= w[1].scale) {
         return Err(format!(
             "the scale_table rows{} are not in ascending order of scale",
+            for_kind(k)
+        ));
+    }
+    // The base scale is where every other value holds, and `scale.rs` refers to it.
+    let base = kind.base_scale();
+    let at_base = scales
+        .iter()
+        .any(|e| e.scale == base && e.size_factor == 1.0 && e.standard);
+    if !at_base {
+        return Err(format!(
+            "the scale_table rows{} have no row {{ scale = {base}, size_factor = 1.0 }} for the \
+             base scale",
             for_kind(k)
         ));
     }
@@ -1305,14 +1336,10 @@ mod tests {
             base().course_symbol(MapKind::Schoolyard),
             base().course_symbol(MapKind::Sprint)
         );
-        assert!(
-            base()
-                .rule("iofprint.course.schoolyard")
-                .unwrap()
-                .rule
-                .note
-                .is_some()
-        );
+        // The assumption is our call, so the note check of PROPOSAL_DOC applies.
+        let schoolyard = &base().rule("iofprint.course.schoolyard").unwrap().rule;
+        assert_eq!(schoolyard.source.doc, PROPOSAL_DOC);
+        assert!(schoolyard.note.is_some());
     }
 
     #[test]
@@ -1384,6 +1411,55 @@ mod tests {
                 overlay: s("test-off"),
                 rule: s("iofprint.course.nope"),
             })
+        );
+    }
+
+    #[test]
+    fn scale_table_keeps_the_base_scale() {
+        // An overlay whose sprint table drops 1:4000 would make every base-scale project unusable.
+        let drops = REPLACE
+            .replace("key = \"north_lines\"", "key = \"scale_table\"")
+            .replace("iofprint.north_lines.sprint", "iofprint.scale.sprint")
+            .replace(
+                "values = { spacing_metres = 100.0 }",
+                "values = { rows = [{ scale = 3000, size_factor = 1.3333333333333333 }, \
+                 { scale = 5000, size_factor = 1.0, standard = false }] }",
+            );
+        let files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-replace", drops.as_str()),
+        ];
+        let err = load_from(&files, "iof-print", &[s("test-replace")]).unwrap_err();
+        assert!(matches!(err, RuleError::Incomplete { .. }), "{err:?}");
+        assert!(err.to_string().contains("scale = 4000"), "{err}");
+        // A base-scale row that is not at 100 %, or not standard, is refused too.
+        for row in [
+            "{ scale = 4000, size_factor = 1.1 }",
+            "{ scale = 4000, size_factor = 1.0, standard = false }",
+        ] {
+            let text = drops.replace("{ scale = 5000, size_factor = 1.0, standard = false }", row);
+            let files = [
+                ("iof-print", EMBEDDED[0].1),
+                ("test-replace", text.as_str()),
+            ];
+            assert!(
+                load_from(&files, "iof-print", &[s("test-replace")]).is_err(),
+                "{row}"
+            );
+        }
+        // With the base row the overlay loads.
+        let keeps = drops.replace(
+            "{ scale = 5000, size_factor = 1.0, standard = false }",
+            "{ scale = 4000, size_factor = 1.0 }",
+        );
+        let files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-replace", keeps.as_str()),
+        ];
+        let set = load_from(&files, "iof-print", &[s("test-replace")]).unwrap();
+        assert_eq!(
+            set.scale_table(MapKind::Sprint),
+            [(3000, 4.0 / 3.0), (4000, 1.0)]
         );
     }
 

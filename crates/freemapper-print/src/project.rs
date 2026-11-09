@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::print::{Orientation, Paper};
+use crate::rules::RuleSet;
 use crate::scale::MapKind;
 
 /// The only format version this program reads and writes.
@@ -282,6 +283,10 @@ pub struct LoadedProject {
     /// Absolute directory of the project file; relative paths inside it resolve against this.
     pub dir: PathBuf,
     pub project: Project,
+    /// The rule set `[print] rule_profile` and `rule_overlays` name (ADR 0031), loaded once by
+    /// [`load`]. Course symbol sizes, the description cell, placement weights and the north-line
+    /// spacing on sheets come from here; the scale table behind `scale.rs` stays the base profile's.
+    pub rules: RuleSet,
 }
 
 impl LoadedProject {
@@ -393,10 +398,12 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
         source,
     })?;
     let dir = abs.parent().map(Path::to_path_buf).unwrap_or_default();
+    let rules = rule_set_of(&file, &project.print).map_err(|e| with_line(e, &text))?;
     let loaded = LoadedProject {
         path: path.to_path_buf(),
         dir,
         project,
+        rules,
     };
     validate(&file, &loaded).map_err(|e| with_line(e, &text))?;
     Ok(loaded)
@@ -503,7 +510,6 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             "m",
         )?;
     }
-    check_rule_profiles(file, &p.print)?;
     let mut layout_ids = HashSet::new();
     // Lower-case id -> the id as written: the PDFs `<id>.pdf` of `A4` and `a4` are one file on
     // macOS and Windows.
@@ -572,12 +578,13 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
     Ok(())
 }
 
-/// `[print] rule_profile` and `rule_overlays` must name embedded profiles that load together. The
-/// error names the field of the profile that is wrong.
-fn check_rule_profiles(file: &str, print: &PrintSettings) -> Result<(), ProjectError> {
+/// The rule set of `[print] rule_profile` and `rule_overlays`, which must name embedded profiles
+/// that load together. The error names the field of the profile that is wrong.
+fn rule_set_of(file: &str, print: &PrintSettings) -> Result<RuleSet, ProjectError> {
     use crate::rules::{RuleError, load_rule_set};
-    let Err(err) = load_rule_set(&print.rule_profile, &print.rule_overlays) else {
-        return Ok(());
+    let err = match load_rule_set(&print.rule_profile, &print.rule_overlays) {
+        Ok(set) => return Ok(set),
+        Err(err) => err,
     };
     let overlay_field = |id: &str| {
         print
@@ -1120,6 +1127,8 @@ fn fit_with(
         path: dir.join(FILE_NAME),
         dir: dir.to_path_buf(),
         project: starter,
+        // A starter names the default profile.
+        rules: crate::rules::base().clone(),
     };
     // Clean, only the footer in the way, or something else.
     enum Outcome {
@@ -1297,6 +1306,8 @@ mod tests {
         assert_eq!(lp.project.print.rule_profile, "iof-print");
         assert!(lp.project.print.rule_overlays.is_empty());
         assert!(lp.project.print.is_empty());
+        // `load` loads the named set once; the default is the base profile alone.
+        assert_eq!(&lp.rules, crate::rules::base());
         // Written out as the default, both are named; the file loads the same.
         let (_d, path) = temp_project(&format!(
             "{HEAD}[print]\nrule_profile = \"iof-print\"\nrule_overlays = []\n[[layouts]]\nid = \"a\"\n"

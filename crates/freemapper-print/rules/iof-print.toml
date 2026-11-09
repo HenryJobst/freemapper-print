@@ -210,8 +210,8 @@ key = "course_symbol"
 severity = "warning"
 map_kinds = ["schoolyard"]
 values = { start_side_mm = 7.0, circle_diameter_mm = 6.0, number_height_mm = 4.0, line_width_mm = 0.35, finish_inner_mm = 5.0, finish_outer_mm = 7.0, marked_route_dash_mm = 2.0, marked_route_gap_mm = 0.5, out_of_bounds_line_mm = 1.0, crossing_point_mm = 3.0 }
-source = { doc = "ISSprOM", section = "4.7, symbols 701 to 710.1" }
-note = { de = "Annahme: Schulhofkarten übernehmen die Sprintwerte bei 1:1000. Der IOF-Schulsymbolsatz ist dafür nicht geprüft.", en = "Assumption: schoolyard maps take the sprint values at 1:1000. Not checked against the IOF school symbol set." }
+source = { doc = "fmp", section = "ADR 0031 (the ISSprOM 2019-2 values of section 4.7, symbols 701 to 710.1, assumed at 1:1000)" }
+note = { de = "Annahme: Schulhofkarten übernehmen die Sprintwerte aus ISSprOM 2019-2 §4.7 bei 1:1000. Der IOF-Schulsymbolsatz ist dafür nicht geprüft.", en = "Assumption: schoolyard maps take the sprint values of ISSprOM 2019-2 section 4.7 at 1:1000. Not checked against the IOF school symbol set." }
 
 # --- Course planning symbols, forest maps (ISOM 2017-2 section 3.7, at 1:15000) ---------------
 

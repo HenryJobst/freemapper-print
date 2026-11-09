@@ -200,8 +200,15 @@ pub fn render_sheet(
     };
     let (mut page, mut print) = render_page(&map, &options)?;
     if layout.north_lines == NorthLines::Auto && !north_lines::has_north_lines(original) {
-        let kind = project.project.map.kind;
-        add_north_lines(&map, kind, &mut options, &mut page, &mut print, &mut notes)?;
+        let spacing_m = project.rules.north_line_spacing_m(project.project.map.kind);
+        add_north_lines(
+            &map,
+            spacing_m,
+            &mut options,
+            &mut page,
+            &mut print,
+            &mut notes,
+        )?;
     }
     if layout.map_frame.crop
         && let Some(overflow_mm) = print.overflow_mm.take()
@@ -407,7 +414,7 @@ fn without_hidden_parts<'a>(
 /// lines go on the sheet layer of `page`, within the frame.
 fn add_north_lines(
     map: &MapDocument,
-    kind: crate::scale::MapKind,
+    spacing_m: f64,
     options: &mut PrintOptions,
     page: &mut RenderedPage,
     print: &mut PrintReport,
@@ -424,7 +431,7 @@ fn add_north_lines(
     };
     let inset = north_lines::inset_mm(half_width);
     let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf, inset);
-    let spacing = north_lines::spacing_mm(kind, map.georef.scale_denominator);
+    let spacing = north_lines::spacing_mm(spacing_m, map.georef.scale_denominator);
     let xs = north_lines::line_xs_mm(spacing, frame.min.0, frame.max.0);
     if xs.is_empty() {
         return Ok(());
@@ -549,6 +556,7 @@ mod tests {
         LoadedProject {
             path: PathBuf::from("freemapper-print.toml"),
             dir: PathBuf::from("/nowhere"),
+            rules: crate::rules::base().clone(),
             project: Project {
                 format: 1,
                 event: Event {
@@ -1692,6 +1700,28 @@ mod tests {
         let xs = map_xs(&page);
         assert!(xs.len() >= 4, "{xs:?}");
         assert!(gaps(&xs).iter().all(|g| (g - 40.0).abs() < 1e-6), "{xs:?}");
+    }
+
+    #[test]
+    fn lines_follow_the_projects_rule_set() {
+        // A test-only overlay sets the sprint spacing to 60 m: 15 mm at 1:4000.
+        let overlay = "format = 1\n[profile]\nid = \"test-north\"\nkind = \"overlay\"\n\
+                       base = \"iof-print\"\nname = { en = \"Test\" }\n[sources.T]\ntitle = \"T\"\n\
+                       [[rules]]\nid = \"iofprint.north_lines.sprint\"\nkey = \"north_lines\"\n\
+                       severity = \"hint\"\nmap_kinds = [\"sprint\"]\n\
+                       values = { spacing_metres = 60.0 }\nsource = { doc = \"T\", section = \"1\" }\n";
+        let files = [
+            ("iof-print", crate::rules::embedded_text("iof-print")),
+            ("test-north", overlay),
+        ];
+        let layout = auto();
+        let mut lp = project(MapKind::Sprint, Vec::new(), &layout);
+        lp.rules =
+            crate::rules::load_for_tests(&files, "iof-print", &["test-north".to_string()]).unwrap();
+        let (page, _) = render_sheet(&lp, &no_lines_map(), &layout, &LogoCache::new()).unwrap();
+        let xs = map_xs(&page);
+        assert!(xs.len() >= 5, "{xs:?}");
+        assert!(gaps(&xs).iter().all(|g| (g - 15.0).abs() < 1e-6), "{xs:?}");
     }
 
     #[test]

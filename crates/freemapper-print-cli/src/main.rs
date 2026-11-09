@@ -432,6 +432,8 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             path: file.clone(),
             dir: dir.clone(),
             project: new.clone(),
+            // `init` writes the default profile.
+            rules: freemapper_print::rules::base().clone(),
         };
         let (lines, _) = check_lines(texts, &loaded, &map, layout, &LogoCache::new());
         for line in lines {

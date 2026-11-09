@@ -23,6 +23,12 @@ Die Projektdatei nennt das Basisprofil in `[print] rule_profile` (Vorgabe `iof-p
 `rule_overlays` (Vorgabe: keine). Die Aufsätze gelten in der angegebenen Reihenfolge. Eigene Profildateien
 neben der Projektdatei kann das Programm noch nicht lesen.
 
+Was ein Aufsatz zurzeit ändern kann: die Größen der Bahnsymbole, die Kästchengröße der Postenbeschreibung,
+die Platzierungsgewichte, das Violett und den Abstand der Nordlinien auf den Blättern. Was vorerst nur aus
+`iof-print` kommt: die Tabelle der Symbolgrößen je Maßstab (erlaubte Maßstäbe, Symbolfaktor), der
+Nordlinienabstand beim Befehl `render` ohne Projekt und die Äquidistanz, die `init` vorschlägt. Diese Werte
+liest `scale.rs`, und das nimmt immer das Basisprofil.
+
 ### Ein Regelprofil hinzufügen
 
 1. `iof-print.toml` kopieren und umbenennen. Der Dateiname ohne `.toml` ist die Kennung des Profils, etwa
@@ -125,14 +131,17 @@ values = { rows = [
 ```
 
 `scale` ist die Maßstabszahl, `size_factor` die Symbolgröße relativ zum Basismaßstab. `standard = false`
-markiert eine Verkleinerung, die die Norm nicht vorsieht. Die Zeilen stehen aufsteigend nach Maßstab.
+markiert eine Verkleinerung, die die Norm nicht vorsieht. Die Zeilen stehen aufsteigend nach Maßstab. Jede
+Tabelle braucht eine Zeile für den Basismaßstab ihrer Kartenart mit `size_factor = 1.0`, ohne
+`standard = false`.
 
 ### Quellen
 
 Jede Regel nennt ein Dokument aus der `[sources]`-Tabelle ihrer Datei: `source = { doc, section }`.
 `iof-print.toml` nutzt ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD
 (Control Descriptions) und `fmp`. `fmp` steht für eine Entscheidung von freemapper-print, wo keine Norm eine
-Zahl nennt. Eine solche Regel braucht eine `note` und nennt als Abschnitt das ADR.
+Zahl nennt. Eine solche Regel braucht eine `note` und nennt als Abschnitt das ADR. Auch die Annahme, dass
+Schulhofkarten die Sprintwerte nehmen, steht unter `fmp`.
 
 Die Größen der Bahnsymbole stammen aus dem Text von ISSprOM 2019-2 §4.7 und ISOM 2017-2 §3.7. Purple Pen
 nutzt dieselben Werte (`NormalCourseAppearance`). Für Schulhofkarten nimmt das Profil die Sprintwerte an;
@@ -171,6 +180,11 @@ There are two kinds of rule profile:
 The project file names the base profile in `[print] rule_profile` (default `iof-print`) and the overlays in
 `rule_overlays` (default none). Overlays apply in the order given. The program cannot read profile files next
 to the project file yet.
+
+What an overlay can change for now: the course symbol sizes, the control description cell size, the placement
+weights, the purple and the north-line spacing on sheets. What comes from `iof-print` only for now: the symbol
+size table per scale (allowed scales, symbol factor), the north-line spacing of `render` without a project, and
+the contour interval `init` proposes. `scale.rs` reads these values, and it always takes the base profile.
 
 ### Adding a rule profile
 
@@ -237,14 +251,16 @@ A number carries its unit in its name: the name is a unit or ends in `_<unit>`. 
 The only table is `rows` of `scale_table`, described in `TABLE_VALUES` in `src/rules.rs` and shown in the
 German section above. `scale` is the scale denominator and `size_factor` the symbol size relative to the base
 scale. `standard = false` marks a reduction the standard does not foresee. Rows are in ascending order of
-scale.
+scale. Every table needs a row for the base scale of its kind with `size_factor = 1.0` and without
+`standard = false`.
 
 ### Sources
 
 Every rule names a document from its file's `[sources]` table: `source = { doc, section }`. `iof-print.toml`
 uses ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD (Control Descriptions) and
 `fmp`. `fmp` stands for a decision of freemapper-print where no standard gives a number. Such a rule needs a
-`note` and names the ADR as its section.
+`note` and names the ADR as its section. The assumption that schoolyard maps take the sprint values is cited
+under `fmp` too.
 
 The course symbol sizes come from the text of ISSprOM 2019-2 §4.7 and ISOM 2017-2 §3.7. Purple Pen uses the
 same values (`NormalCourseAppearance`). For schoolyard maps the profile assumes the sprint values, and the
