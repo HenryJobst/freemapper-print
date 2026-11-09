@@ -91,6 +91,7 @@ impl<P> CourseEvent<P> {
                         .into_iter()
                         .map(|s| Stop {
                             control: s.control,
+                            kind: s.kind,
                             number: s.number,
                             number_text_at: s.number_text_at.map(&fo),
                             circle_gaps: s.circle_gaps,
@@ -175,6 +176,10 @@ pub struct Course<P> {
 pub struct Stop {
     /// The control code.
     pub control: String,
+    /// The kind of the control in this course, if the course overrides the control's own kind (IOF XML
+    /// `CourseControl/@type`, a Purple Pen map exchange). A control can be the finish of one course and a
+    /// plain control of another.
+    pub kind: Option<ControlKind>,
     pub number: Option<NumberPlacement>,
     /// Where the file puts the number text, relative to the circle centre (IOF XML `MapTextPosition`).
     /// Converted to `number` once circle and box sizes are known.

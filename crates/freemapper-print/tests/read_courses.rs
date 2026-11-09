@@ -154,10 +154,14 @@ fn course_control_type_overrides_and_end_of_marked_route() {
     let xml = wrap(
         "<Control type=\"Control\"><Id>A</Id><MapPosition x=\"1\" y=\"1\"/></Control>\
          <Control type=\"EndOfMarkedRoute\"><Id>E</Id><MapPosition x=\"2\" y=\"2\"/></Control>\
-         <Course><Name>c</Name><CourseControl type=\"Finish\"><Control>A</Control></CourseControl></Course>",
+         <Course><Name>c</Name><CourseControl type=\"Finish\"><Control>A</Control></CourseControl></Course>\
+         <Course><Name>d</Name><CourseControl><Control>A</Control></CourseControl></Course>",
     );
     let ev = read_iof_xml(&xml).unwrap();
-    assert_eq!(ev.controls[0].kind, ControlKind::Finish);
+    // The override belongs to the stop: A is the finish of course c and a plain control of course d.
+    assert_eq!(ev.controls[0].kind, ControlKind::Control);
+    assert_eq!(ev.courses[0].stops[0].kind, Some(ControlKind::Finish));
+    assert_eq!(ev.courses[1].stops[0].kind, None);
     assert_eq!(ev.controls[1].kind, ControlKind::EndOfMarkedRoute);
 }
 

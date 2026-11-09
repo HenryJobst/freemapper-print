@@ -71,6 +71,7 @@ fn event(controls: Vec<Control<RawPoint>>) -> RawEvent {
     let codes: Vec<String> = controls.iter().map(|c| c.code.clone()).collect();
     let stop = |code: &String, at: Option<Offset>| Stop {
         control: code.clone(),
+        kind: None,
         number: None,
         number_text_at: at,
         circle_gaps: Vec::new(),

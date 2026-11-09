@@ -12,7 +12,8 @@
 //! Courses of one `CourseFamily` are the variants of a fork; each stays its own course and the event gets a
 //! `Forked` note. A `CourseControl` with several `Control` children means alternative controls (the runner
 //! punches one of them); such a course is left out and noted `AlternativeControls`. `MapTextPosition` is the
-//! text centre relative to the circle centre and is kept as an [`Offset`]. `RaceCourseData` is read only
+//! text centre relative to the circle centre and is kept as an [`Offset`]. `CourseControl/@type` sets
+//! [`Stop::kind`] for that course only; the control keeps its own `type`. `RaceCourseData` is read only
 //! directly under the root `CourseData`.
 
 use std::collections::HashSet;
@@ -129,7 +130,6 @@ struct CcB {
 struct CourseB {
     course: Course<RawPoint>,
     alternatives: bool,
-    overrides: Vec<(String, ControlKind)>,
 }
 
 fn kind_of(s: &str) -> Option<ControlKind> {
@@ -158,7 +158,6 @@ struct State {
     controls: Vec<Control<RawPoint>>,
     codes: HashSet<String>,
     courses: Vec<Course<RawPoint>>,
-    overrides: Vec<(String, ControlKind)>,
     /// Courses seen so far, including those left out.
     course_count: usize,
     notes: Vec<CourseNote>,
@@ -285,7 +284,6 @@ impl State {
                         print_scale_hint: None,
                     },
                     alternatives: false,
-                    overrides: Vec::new(),
                 });
             }
             ("Course", "CourseControl") if self.course.is_some() => {
@@ -422,11 +420,9 @@ impl State {
                             marked_route: false,
                         });
                     }
-                    if let Some(k) = cc.kind {
-                        c.overrides.push((code.clone(), k));
-                    }
                     c.course.stops.push(Stop {
                         control: code,
+                        kind: cc.kind,
                         number: None,
                         number_text_at: cc.text_at,
                         circle_gaps: Vec::new(),
@@ -438,7 +434,6 @@ impl State {
                 if c.alternatives {
                     self.note(CourseNote::AlternativeControls(c.course.name));
                 } else {
-                    self.overrides.extend(c.overrides);
                     self.courses.push(c.course);
                 }
             }
@@ -473,11 +468,6 @@ impl State {
                     )));
                 }
             }
-        }
-        let overrides = std::mem::take(&mut self.overrides);
-        for (code, kind) in overrides {
-            let i = index[code.as_str()];
-            self.controls[i].kind = kind;
         }
         let mut families: Vec<(String, Vec<String>)> = Vec::new();
         for c in &self.courses {
