@@ -1662,7 +1662,8 @@ mod tests {
     fn missing_logo_file_noted() {
         let (page, report) = sheet_with(Path::new("nope/logo.png"), 40.0);
         let reason = skipped_reason(&report);
-        assert!(reason.contains("/nowhere/nope/logo.png"), "{reason}");
+        let shown = Path::new("/nowhere").join("nope/logo.png");
+        assert!(reason.contains(&shown.display().to_string()), "{reason}");
         assert!(reason.contains("not found"), "{reason}");
         assert_eq!(logo_items(&page), []);
         // The rest of the sheet still renders: the credit footer is there.
