@@ -167,7 +167,7 @@ pub fn render_sheet(
         kind: project.project.map.kind,
         paper: layout.paper,
         orientation: layout.orientation,
-        centre: layout.map_frame.centre_map_mm.map(map_coord),
+        centre: layout.map_frame.centre_map_mm.map(oom_display_to_map),
         show_sheet_objects: false,
         frame_margin_mm: Some(layout.map_frame.margin_mm),
     };
@@ -427,6 +427,13 @@ fn add_north_lines(
     Ok(())
 }
 
+/// `centre_map_mm` as OOM's status bar shows map coordinates (mm, y pointing up) to the file's
+/// map coordinates (y pointing down): OOM's `MapWidget::updateCursorposLabel` prints `x` and
+/// `-y` (ADR 0028).
+fn oom_display_to_map([x, y]: [f64; 2]) -> MapCoord {
+    map_coord([x, -y])
+}
+
 /// A point in mm on the map sheet as map coordinates (µm). Far outside the `i32` range it
 /// saturates at ±2147 m, kilometres off any page.
 fn map_coord([x, y]: [f64; 2]) -> MapCoord {
@@ -591,6 +598,23 @@ mod tests {
         // Map x = 10 mm sits at the frame centre, x = 105 mm on the page.
         assert!((path[0].0 - 95.0).abs() < 1e-9, "{path:?}");
         assert!((path[0].1 - 148.5).abs() < 1e-9, "{path:?}");
+    }
+
+    #[test]
+    fn centre_map_mm_takes_oom_coordinates_with_y_up() {
+        // The file stores y pointing down: the line runs from the origin 40 mm down. OOM's
+        // status bar shows that end as y = -40 (y up), and so does `centre_map_mm`.
+        let map = doc(4000, vec![("default part", vec![line((0, 40_000))])]);
+        let mut layout = a4();
+        layout.map_frame.centre_map_mm = Some([0.0, -40.0]);
+        let (page, _) = sheet(&map, &layout);
+        let Shape::Stroke { path, .. } = &page.primitives[0].shape else {
+            panic!()
+        };
+        // The lower end sits at the frame centre (105, 148.5), the origin 40 mm above it.
+        assert!((path[1].0 - 105.0).abs() < 1e-9, "{path:?}");
+        assert!((path[1].1 - 148.5).abs() < 1e-9, "{path:?}");
+        assert!((path[0].1 - 108.5).abs() < 1e-9, "{path:?}");
     }
 
     #[test]
