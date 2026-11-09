@@ -13,6 +13,9 @@ pub const MAX_COURSES: usize = 1_000;
 pub const MAX_STOPS_PER_COURSE: usize = 500;
 /// Most points in one path or ring of a special object or leg.
 pub const MAX_POINTS_PER_PATH: usize = 10_000;
+/// Most points one read returns in total: leg bends, leg and circle gap ranges, and special object points,
+/// counted over all courses (a leg or control shared by many courses counts once per course).
+pub const MAX_TOTAL_POINTS: usize = 2_000_000;
 /// Most special objects in one file.
 pub const MAX_SPECIALS: usize = 10_000;
 /// Most notes kept; further ones are dropped and one `NotesTruncated` is added.

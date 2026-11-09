@@ -46,7 +46,11 @@ course model.
   names no course.
 - **Limits.** The reader applies the limits of the IOF reader (ADR 0019): file size, nesting depth,
   controls, courses, stops per course, points per path, special objects and notes. Course-controls and legs
-  are capped at courses × stops per course. A `next` chain that loops is an error.
+  are capped at courses × stops per course. A `next` chain that loops is an error. Legs and controls are
+  shared between courses, so each course gets its own copy of their bends and gaps; all bends, gap ranges and
+  special points of one read together may not exceed `MAX_TOTAL_POINTS` (2 000 000). Purple Pen's load-time
+  circle-gap fixes are applied on lookup instead of copying old gaps to every scale, so a control keeps at
+  most 256 gap scales.
 
 ## Consequences
 

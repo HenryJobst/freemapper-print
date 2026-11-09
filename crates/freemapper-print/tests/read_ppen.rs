@@ -2,8 +2,8 @@
 
 use freemapper_print::course::model::{
     ControlKind, CourseFilter, CourseKind, CourseNote, MAX_CONTROLS, MAX_COURSE_FILE_BYTES,
-    MAX_COURSES, MAX_NOTES, MAX_POINTS_PER_PATH, MAX_SPECIALS, MAX_STOPS_PER_COURSE, MAX_XML_DEPTH,
-    Offset, RawPoint, SourceFormat, Special,
+    MAX_COURSES, MAX_NOTES, MAX_POINTS_PER_PATH, MAX_SPECIALS, MAX_STOPS_PER_COURSE,
+    MAX_TOTAL_POINTS, MAX_XML_DEPTH, Offset, RawPoint, SourceFormat, Special,
 };
 use freemapper_print::course::{CourseError, RawEvent, read_ppen};
 
@@ -755,4 +755,56 @@ fn limits_enforced() {
     let ev = read_ppen(&ppen(&many)).unwrap();
     assert_eq!(ev.notes.len(), MAX_NOTES + 1);
     assert_eq!(ev.notes.last(), Some(&CourseNote::NotesTruncated));
+}
+
+/// `n` courses over the same two controls, each with its own course-controls, at print scale 1:10000.
+fn shared(n: usize, control_extra: &str, extra: &str) -> Vec<u8> {
+    let mut body = format!(
+        "<control id=\"1\" kind=\"start\"><location x=\"0\" y=\"0\"/></control>\
+         <control id=\"2\" kind=\"normal\"><code>31</code><location x=\"10\" y=\"5\"/>{control_extra}</control>{extra}"
+    );
+    for i in 0..n {
+        let (a, b) = (2 * i + 1, 2 * i + 2);
+        body.push_str(&format!(
+            "<course id=\"{i}\" kind=\"normal\" order=\"{}\"><name>{i}</name><first course-control=\"{a}\"/>\
+             <options print-scale=\"10000\"/></course>\
+             <course-control id=\"{a}\" control=\"1\"><next course-control=\"{b}\"/></course-control>\
+             <course-control id=\"{b}\" control=\"2\"/>",
+            i + 1
+        ));
+    }
+    ppen(&body)
+}
+
+#[test]
+fn shared_legs_and_gaps_cannot_multiply_points() {
+    let n = MAX_TOTAL_POINTS / MAX_POINTS_PER_PATH;
+    assert!(n < MAX_COURSES);
+    // One leg with the most bends a path may have, used by every course.
+    let bends = "<location x=\"1\" y=\"1\"/>".repeat(MAX_POINTS_PER_PATH);
+    let leg =
+        format!("<leg id=\"1\" start-control=\"1\" end-control=\"2\"><bends>{bends}</bends></leg>");
+    let ev = read_ppen(&shared(n, "", &leg)).unwrap();
+    let total: usize = ev.courses.iter().map(|c| c.legs[0].bends.len()).sum();
+    assert_eq!(total, MAX_TOTAL_POINTS);
+    assert!(matches!(
+        read_ppen(&shared(n + 1, "", &leg)),
+        Err(CourseError::Limit(_))
+    ));
+    // One control with the most circle gaps, used by every course.
+    let gaps = format!(
+        "<circle-gaps scale=\"10000\">{}</circle-gaps>",
+        vec!["1:2"; MAX_POINTS_PER_PATH].join(",")
+    );
+    let ev = read_ppen(&shared(n, &gaps, "")).unwrap();
+    let total: usize = ev
+        .courses
+        .iter()
+        .map(|c| c.stops[1].circle_gaps.len())
+        .sum();
+    assert_eq!(total, MAX_TOTAL_POINTS);
+    assert!(matches!(
+        read_ppen(&shared(n + 1, &gaps, "")),
+        Err(CourseError::Limit(_))
+    ));
 }

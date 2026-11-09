@@ -27,7 +27,8 @@
 //! - Circle gaps are stored per control and per scale (`circle-gaps scale` as `start:stop,...` in degrees,
 //!   older files as a 32-bit string in `gaps`); a course uses the entry for its circle-gap scale, which is
 //!   its print scale unless `course-appearance/@scale-sizes` says otherwise. The load-time fixes of
-//!   `EventDB.FixControlPointGaps` are applied.
+//!   `EventDB.FixControlPointGaps` are applied on lookup, without copying entries; old gaps (scale 0)
+//!   are also the fallback for a scale without an entry of its own.
 //! - Legs belong to an ordered pair of controls (`start-control`, `end-control`) and carry `bends`, `gaps`
 //!   (start and length along the leg) and `flagging`. A leg is a marked route when its flagging is `all`, or
 //!   when Purple Pen flags it on its own: from a map issue point, into a map exchange control, or into a
@@ -60,6 +61,59 @@ const MAX_COURSE_CONTROLS: usize = MAX_COURSES * MAX_STOPS_PER_COURSE;
 const MAX_GAP_SCALES: usize = 256;
 /// Purple Pen's default print scale of a course without `options`.
 const DEFAULT_PRINT_SCALE: f64 = 15000.0;
+
+/// Takes `n` points from the output budget of one read (bends, gap ranges and special points over all
+/// courses), so that shared legs and controls cannot multiply into an unbounded result.
+fn spend(left: &mut usize, n: usize) -> Result<(), CourseError> {
+    *left = left.checked_sub(n).ok_or_else(|| {
+        CourseError::Limit(format!(
+            "more than {MAX_TOTAL_POINTS} points, gaps and special points in all courses together"
+        ))
+    })?;
+    Ok(())
+}
+
+/// Purple Pen's load-time circle-gap fixes (`EventDB.FixControlPointGaps`), applied on lookup.
+struct GapRules {
+    map_key: i64,
+    course_keys: HashSet<i64>,
+    /// The largest key fix 1 would create from old gaps.
+    max_old_key: i64,
+    /// Fix 2: with item scaling, a scale without gaps takes those of the largest scale.
+    copy_to: Option<i64>,
+}
+
+impl GapRules {
+    /// Fix 1: old gaps (scale 0) replace the entries of the map scale and of every course print scale.
+    fn fixed<'a>(&self, c: &'a PControl, key: i64) -> Option<&'a Vec<(f64, f64)>> {
+        let old = c.gaps.get(&0);
+        if old.is_some() && (key == self.map_key || self.course_keys.contains(&key)) {
+            old
+        } else if key != 0 {
+            c.gaps.get(&key)
+        } else {
+            None
+        }
+    }
+
+    /// The gaps of `c` at the circle-gap scale `key`. Old gaps (scale 0) are the fallback for a scale
+    /// without an entry of its own.
+    fn gaps_at<'a>(&self, c: &'a PControl, key: i64) -> &'a [(f64, f64)] {
+        if let Some(g) = self.fixed(c, key) {
+            return g;
+        }
+        if self.copy_to == Some(key) {
+            let explicit = c.gaps.keys().copied().filter(|k| *k != 0).max();
+            let old = c.gaps.contains_key(&0).then_some(self.max_old_key);
+            if let Some(from) = explicit.into_iter().chain(old).max()
+                && let Some(g) = self.fixed(c, from)
+            {
+                return g;
+            }
+        }
+        c.gaps.get(&0).map_or(&[], Vec::as_slice)
+    }
+}
 
 /// The children Purple Pen knows below `parent` (whose parent is `grand`), or `None` if the reader does not
 /// look inside `parent`.
@@ -793,36 +847,31 @@ impl State {
         Ok(())
     }
 
-    /// `EventDB.FixControlPointGaps`: old gaps for every scale go to the map scale and each course's print
-    /// scale; with item scaling, gaps written before Purple Pen took it into account are copied to the
-    /// scaled size.
-    fn fix_gaps(&mut self) {
+    /// What `EventDB.FixControlPointGaps` needs to know, so that a lookup gives the gaps Purple Pen would
+    /// have after its load-time fixes without copying any entry.
+    fn gap_rules(&self) -> GapRules {
         let map_key = self.map_scale.map_or(0, |s| s.round() as i64);
-        let course_keys: Vec<i64> = self
+        let course_keys: HashSet<i64> = self
             .courses
             .iter()
             .map(|c| c.print_scale.unwrap_or(DEFAULT_PRINT_SCALE).round() as i64)
             .collect();
-        let scale_to = match self.item_scaling {
+        let copy_to = match self.item_scaling {
+            _ if self.gaps_scaled => None,
             ItemScaling::None => None,
             ItemScaling::RelativeToMap => Some(map_key),
             ItemScaling::RelativeTo15000 => Some(15000),
         };
-        for c in &mut self.controls {
-            if let Some(g) = c.gaps.remove(&0) {
-                c.gaps.insert(map_key, g.clone());
-                for k in &course_keys {
-                    c.gaps.insert(*k, g.clone());
-                }
-            }
-            if let Some(to) = scale_to
-                && !self.gaps_scaled
-                && !c.gaps.contains_key(&to)
-                && let Some(from) = c.gaps.keys().max().copied()
-                && let Some(g) = c.gaps.get(&from).cloned()
-            {
-                c.gaps.insert(to, g);
-            }
+        GapRules {
+            map_key,
+            max_old_key: course_keys
+                .iter()
+                .copied()
+                .chain([map_key])
+                .max()
+                .unwrap_or(map_key),
+            course_keys,
+            copy_to,
         }
     }
 
@@ -841,7 +890,14 @@ impl State {
         if !self.stack.is_empty() || !self.seen_root {
             return Err(CourseError::Xml("unexpected end of file".into()));
         }
-        self.fix_gaps();
+        let rules = self.gap_rules();
+        if let Some(c) = self.controls.iter().find(|c| c.gaps.len() > MAX_GAP_SCALES) {
+            return Err(CourseError::Limit(format!(
+                "circle gaps for more than {MAX_GAP_SCALES} scales at control id {}",
+                c.id
+            )));
+        }
+        let mut budget = MAX_TOTAL_POINTS;
         let standard = self.standard.clone().unwrap_or_else(|| "2004".into());
 
         // Codes: a normal control's own code, else the code Purple Pen's IOF XML export gives it.
@@ -944,7 +1000,9 @@ impl State {
                     )));
                 }
                 variations |= cc.variation;
-                let gaps = c.gaps.get(&self.gap_key(pc)).cloned().unwrap_or_default();
+                let gaps = rules.gaps_at(c, self.gap_key(pc));
+                spend(&mut budget, gaps.len())?;
+                let gaps = gaps.to_vec();
                 stops.push(Stop {
                     control: codes[i].clone(),
                     kind: (cc.map_exchange && c.kind == PKind::Normal)
@@ -975,7 +1033,13 @@ impl State {
                     )));
                 }
                 legs.push(Leg {
-                    bends: leg.map(|l| l.bends.clone()).unwrap_or_default(),
+                    bends: match leg {
+                        Some(l) => {
+                            spend(&mut budget, l.bends.len() + l.gaps.len())?;
+                            l.bends.clone()
+                        }
+                        None => Vec::new(),
+                    },
                     gaps: leg.map(|l| l.gaps.clone()).unwrap_or_default(),
                     marked_route: marked,
                 });
@@ -1022,6 +1086,7 @@ impl State {
 
         let mut specials = Vec::new();
         for s in std::mem::take(&mut self.specials) {
+            spend(&mut budget, s.locations.len())?;
             if let Some(sp) = self.special(s, &names) {
                 specials.push(sp);
             }
@@ -1183,6 +1248,54 @@ mod tests {
         for c in &ev.courses {
             assert_eq!(c.stops[0].circle_gaps, vec![(-11.25, 11.25)], "{}", c.name);
         }
+    }
+
+    #[test]
+    fn old_gaps_are_a_fallback_not_copied_per_scale() {
+        // Old gaps for every scale plus explicit entries up to the limit, and 300 courses at their own print
+        // scales: the entries stay as read, and every course finds the old gaps.
+        let explicit: String = (1..MAX_GAP_SCALES as i64)
+            .map(|k| format!("<circle-gaps scale=\"{}\">1:2</circle-gaps>", 100_000 + k))
+            .collect();
+        let mut xml = format!(
+            "<course-scribe-event><event id=\"1\"><map kind=\"none\" scale=\"10000\"/></event>\
+             <control id=\"1\" kind=\"normal\" gaps=\"01111111111111111111111111111110\">\
+             <code>31</code><location x=\"0\" y=\"0\"/>{explicit}</control>"
+        );
+        for i in 0..300 {
+            xml.push_str(&format!(
+                "<course id=\"{i}\" kind=\"normal\" order=\"{}\"><name>{i}</name>\
+                 <first course-control=\"{i}\"/><options print-scale=\"{}\"/></course>\
+                 <course-control id=\"{i}\" control=\"1\"/>",
+                i + 1,
+                1000 + i
+            ));
+        }
+        xml.push_str("</course-scribe-event>");
+        let mut state = State::default();
+        drive(xml.as_bytes(), &mut state).unwrap();
+        assert_eq!(state.controls[0].gaps.len(), MAX_GAP_SCALES);
+        let rules = state.gap_rules();
+        assert_eq!(rules.gaps_at(&state.controls[0], 1000), &[(-11.25, 11.25)]);
+        assert_eq!(rules.gaps_at(&state.controls[0], 100_001), &[(1.0, 2.0)]);
+        assert_eq!(state.controls[0].gaps.len(), MAX_GAP_SCALES);
+        let ev = state.finish().unwrap();
+        assert_eq!(ev.courses.len(), 300);
+        let with_old = ev
+            .courses
+            .iter()
+            .filter(|c| c.stops[0].circle_gaps == [(-11.25, 11.25)])
+            .count();
+        assert_eq!(with_old, 300);
+        // One scale more is refused.
+        let over = xml.replace(
+            "<location x=\"0\" y=\"0\"/>",
+            "<location x=\"0\" y=\"0\"/><circle-gaps scale=\"99\">1:2</circle-gaps>",
+        );
+        assert!(matches!(
+            read_ppen(over.as_bytes()),
+            Err(CourseError::Limit(_))
+        ));
     }
 
     #[test]
