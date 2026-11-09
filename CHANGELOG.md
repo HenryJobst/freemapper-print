@@ -9,94 +9,108 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- Druckregeln als Regelprofil im Format von freemapper-courseplan (ADR 0031). Das eingebettete Profil
-  `iof-print` enthält die Tabelle der Symbolgrößen je Maßstab, den Abstand der Nordlinien und die
-  vorgeschlagene Äquidistanz, dazu für den Bahnaufdruck die Größen der Bahnsymbole aus ISSprOM 2019-2 und
-  ISOM 2017-2, das Violett 35/85/0/0 und die Kästchengröße der Postenbeschreibung. Jeder Wert nennt seine
-  Quelle. Die Projektdatei kann in `[print]` ein anderes Profil (`rule_profile`) und Aufsätze
-  (`rule_overlays`) nennen; ein unbekannter Name ist ein Fehler mit Zeile und Spalte. Die gedruckten Blätter
-  ändern sich nicht.
+- Druckregeln als Regelprofil im Format von freemapper-courseplan (ADR 0031). Das eingebettete Profil `iof-print`
+  enthält die Tabelle der Symbolgrößen je Maßstab, den Abstand der Nordlinien und die vorgeschlagene Äquidistanz,
+  dazu für den Bahnaufdruck die Größen der Bahnsymbole aus ISSprOM 2019-2 und ISOM 2017-2, das Violett 35/85/0/0
+  und die Kästchengröße der Postenbeschreibung. Jeder Wert nennt seine Quelle. Die Projektdatei kann in `[print]`
+  ein anderes Profil (`rule_profile`) und Aufsätze (`rule_overlays`) nennen; ein unbekannter Name ist ein Fehler
+  mit Zeile und Spalte. Die gedruckten Blätter ändern sich nicht.
 - Bahnen aus Purple Pen und IOF-XML 3.0 (ADR 0033). Das Programm liest `.ppen`-Dateien (Posten, Bahnen, Knickpunkte
-  und Lücken der Strecken, Kreislücken je Maßstab, Beschreibungen, Sperrgebiete, verbotene Strecken, Pflichtstrecken,
-  Lage der Nummern, Druckmaßstäbe) und IOF-XML 3.0 `CourseData` (Posten, Bahnen, Positionen, Lage der Nummern,
-  Länge und Anstieg). IOF-XML kennt keine Beschreibungen, Sonderobjekte, Knickpunkte und Druckmaßstäbe, seine Blätter
-  zeigen deshalb nur Posten, Strecken und Nummern. Der Leser wird nach der Dateiendung gewählt. Was das Programm
-  noch nicht drucken kann, lässt es weg und meldet es: Bahnen mit Varianten (Gabelungen und Schleifen) oder
-  alternativen Posten und unbekannte Elemente. Das White-out aus Purple Pen wird gelesen und gemeldet, aber nicht
-  gedruckt; es wartet auf die Abdeckungen (M4).
-- Eine Bahn muss zur Karte passen (ADR 0032). Das Programm probiert beide Lesarten der y-Achse und nimmt die, bei der
-  alle Posten auf der Karte liegen. Stehen in der Datei Breite und Länge und ist die Karte in UTM georeferenziert,
-  entscheiden sie. Passen beide und entscheidet nichts, nimmt es „oben“ an und warnt, bis `course_y_axis` die Achse
-  bestätigt. Ein Kartenmaßstab in der Bahndatei muss dem der Karte entsprechen. Ein Posten, der mehr als 20 m von
-  dem Ort entfernt liegt, den seine Breite und Länge angeben, hält die Einpassung an. Jeder Fehlschlag ist ein
-  Fehler, der sagt, was zu prüfen ist; aus einer Bahn, die nicht passt, wird nichts gedruckt.
-- Der Bahnaufdruck (ADR 0034). Das Programm zeichnet Start, Posten, Strecken, Ziel, Sperrgebiete, verbotene Strecken,
-  Pflichtstrecken, Querungsstellen, Kartenwechsel, Texte und Nummern im Violett der Bahn, in zwei Schichten. Das
-  untere Violett liegt unter Schwarz, Braun und Blau 100 %, das obere über der ganzen Karte. Beide werden im
-  Mischmodus `Multiply` gemalt. Die Größen kommen aus dem Regelprofil und wachsen mit dem Symbolfaktor.
-- Die Projektdatei kann Bahnen einbinden. `[sources] courses` nennt die Bahndatei (`.ppen` oder IOF-XML,
-  relativ zur Projektdatei); sie wird bei jeder Prüfung und jedem Export neu gelesen. `course_y_axis`
-  („up“ oder „down“) legt die y-Achse der Datei fest, `course_georef_check = false` schaltet die Prüfung mit
-  Breite und Länge ab. `[[assignments]]` ordnet einer Bahn ein Layout zu, ohne Zuordnung gilt das erste Layout.
-  `[[numbers]]` korrigiert die Lage einer Postennummer je Layout oder je Bahn. Gibt es eine Bahn oder einen
-  Posten der Projektdatei in der Bahndatei nicht mehr, bleibt der Eintrag stehen und `check` meldet ihn; die
-  übrigen Bahnen werden trotzdem gelesen.
+  und Lücken der Strecken, Kreislücken je Maßstab, Beschreibungen, Sperrgebiete, verbotene Strecken,
+  Pflichtstrecken, Lage der Nummern, Druckmaßstäbe) und IOF-XML 3.0 `CourseData` (Posten, Bahnen, Positionen, Lage
+  der Nummern, Länge und Anstieg). IOF-XML kennt keine Beschreibungen, Sonderobjekte, Knickpunkte und
+  Druckmaßstäbe, seine Blätter zeigen deshalb nur Posten, Strecken und Nummern. Der Leser wird nach der Dateiendung
+  gewählt. Was das Programm noch nicht drucken kann, lässt es weg und meldet es: Bahnen mit Varianten (Gabelungen
+  und Schleifen) oder alternativen Posten und unbekannte Elemente. Das White-out aus Purple Pen wird gelesen und
+  gemeldet, aber nicht gedruckt; es wartet auf die Abdeckungen (M4).
+- Eine Bahn muss zur Karte passen (ADR 0032). Eine Purple-Pen-Datei liest das Programm mit der y-Achse nach oben,
+  wie Purple Pen sie schreibt; passt sie so nicht, ist das ein Fehler, gespiegelt gedruckt wird nie. Bei IOF-XML
+  probiert es beide Lesarten der y-Achse und nimmt die, bei der alle Posten auf der Karte liegen. Stehen in der
+  Datei Breite und Länge und ist die Karte in UTM georeferenziert, entscheiden sie. Passen beide und entscheidet
+  nichts, nimmt es „oben“ an und warnt, bis `course_y_axis` die Achse bestätigt. Ein `course_y_axis = "down"` bei
+  einer Purple-Pen-Datei gibt eine Warnung. Ein Kartenmaßstab in der Bahndatei muss dem der Karte entsprechen. Ein
+  Posten, der mehr als 20 m von dem Ort entfernt liegt, den seine Breite und Länge angeben, hält die Einpassung an.
+  Jeder Fehlschlag ist ein Fehler, der sagt, was zu prüfen ist; aus einer Bahn, die nicht passt, wird nichts
+  gedruckt.
+- Der Bahnaufdruck (ADR 0034). Das Programm zeichnet Start, Posten, Strecken, Ziel, Sperrgebiete, verbotene
+  Strecken, Pflichtstrecken, Querungsstellen, Kartenwechsel, Texte und Nummern im Violett der Bahn, in zwei
+  Schichten. Das untere Violett liegt unter Schwarz, Braun und Blau 100 %, das obere über der ganzen Karte. Beide
+  werden im Mischmodus `Multiply` gemalt. Die Größen kommen aus dem Regelprofil und haben die Größe, die die Norm
+  für den Druckmaßstab vorgibt, den Bahnfaktor: Eine Waldkarte in 1:10000 bekommt Postenkreise von 7,5 mm, in
+  1:15000 von 5,0 mm, gleich in welchem Maßstab die Kartendatei gezeichnet ist. Eine verbotene Strecke ist eine
+  Reihe von Kreuzen, wie ISOM 2017-2 das Symbol 711 zeichnet.
+- Die Projektdatei kann Bahnen einbinden. `[sources] courses` nennt die Bahndatei (`.ppen` oder IOF-XML, relativ
+  zur Projektdatei); sie wird bei jeder Prüfung und jedem Export neu gelesen. `course_y_axis` („up“ oder „down“)
+  legt die y-Achse der Datei fest (ein Purple-Pen-Projekt braucht das nicht), `course_georef_check = false`
+  schaltet die Prüfung mit Breite und Länge ab. `[[assignments]]` ordnet einer Bahn ein Layout zu, ohne Zuordnung
+  gilt das erste Layout. `[[numbers]]` korrigiert die Lage einer Postennummer je Layout oder je Bahn. Gibt es eine
+  Bahn oder einen Posten der Projektdatei in der Bahndatei nicht mehr, bleibt der Eintrag stehen und `check` meldet
+  ihn; die übrigen Bahnen werden trotzdem gelesen.
 - Ein Blatt je Bahn. Hat das Projekt eine Bahndatei, schreibt `export` je Bahn ein PDF auf dem Layout, das ihre
-  Zuordnung nennt, mit dem Bahnaufdruck in Violett. Die Datei heißt wie die Bahn; Zeichen, die in keinem
-  Dateinamen stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung unterscheiden,
-  bekommen ` (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert. `--course <NAME>`
-  (mehrfach möglich) exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein PDF,
-  „<Veranstaltung> - alle Bahnen.pdf“ auf deutschen Blättern, eine Seite je Bahn in ihrem Papierformat. Dass die
-  Karte über den Kartenausschnitt hinausreicht, ist auf einem Bahnblatt erwartet und nur eine Information.
-  `--layout` exportiert weiter ein Layout ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und
-  `{controls}` nutzen. `check` prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Projekte ohne
-  Bahndatei exportieren wie bisher (ADR 0035).
+  Zuordnung nennt, mit dem Bahnaufdruck in Violett. Die Datei heißt wie die Bahn; Zeichen, die in keinem Dateinamen
+  stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung unterscheiden, bekommen `
+  (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert. `--course <NAME>` (mehrfach möglich)
+  exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein PDF, „<Veranstaltung> - alle Bahnen.pdf“
+  auf deutschen Blättern, eine Seite je Bahn in ihrem Papierformat. Dass die Karte über den Kartenausschnitt
+  hinausreicht, ist auf einem Bahnblatt erwartet und nur eine Information. `--layout` exportiert weiter ein Layout
+  ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und `{controls}` nutzen. `check` prüft jede Bahn
+  und meldet Posten außerhalb des Kartenausschnitts, danach die Layoutblätter, die `export --layout` schreibt.
+  Projekte ohne Bahndatei exportieren wie bisher (ADR 0035).
 - Die Postenbeschreibung auf Bahnblättern. Ein Layout-Element vom Typ `control_descriptions` zeichnet die
-  IOF-Postenbeschreibung der Bahn aus einer `.ppen`-Datei: Veranstaltung, Bahn mit Länge und Steigung, Start,
-  je Posten eine Zeile mit Nummer, Code und Symbolen, Zeilen für ausgeflaggte Strecken und Kartenwechsel mit
-  ihrer Länge, und das Ziel. Der Zweittitel einer Bahn aus Purple Pen bekommt eine eigene Zeile, das Wenden
-  der Karte seine Zeile 15.6, und Score-Bahnen listen ihre Posten wie Purple Pen nach Code. Symbole und
-  Linienstärken folgen Purple Pen. Ein Kästchen ist 6 mm groß,
-  `cell_mm` stellt 4 bis 10 mm ein, und die Größe bleibt bei jedem Druckmaßstab gleich. Die Beschreibung hängt
-  wie jedes Element an ihrem Anker und liegt auf weißem Grund. Bahnen aus IOF-XML haben keine Beschreibungen,
-  ihre Blätter bleiben ohne, und `check` sagt das zur Information. `check` warnt, wenn die Beschreibung über
-  den Blattrand reichen würde (das Blatt lässt sie dann weg), wenn kein Posten der Bahn eine Beschreibung hat
-  und wenn die Bahndatei ein Symbol nutzt, das der Beschreibungsstandard nicht kennt (sein Kästchen bleibt
-  leer). Auf jedem Bahnblatt warnt `check` außerdem, wenn ein Blattelement einen Posten, den Start oder das
-  Ziel verdeckt (ADR 0037).
+  IOF-Postenbeschreibung der Bahn aus einer `.ppen`-Datei: Veranstaltung, Bahn mit Länge und Steigung, Start, je
+  Posten eine Zeile mit Nummer, Code und Symbolen, Zeilen für ausgeflaggte Strecken und Kartenwechsel mit ihrer
+  Länge, und das Ziel. Der Zweittitel einer Bahn aus Purple Pen bekommt eine eigene Zeile, das Wenden der Karte
+  seine Zeile 15.6, und Score-Bahnen listen ihre Posten wie Purple Pen nach Code. Symbole und Linienstärken folgen
+  Purple Pen. Ein Kästchen ist 6 mm groß, `cell_mm` stellt 4 bis 10 mm ein, und die Größe bleibt bei jedem
+  Druckmaßstab gleich. Die Beschreibung hängt wie jedes Element an ihrem Anker und liegt auf weißem Grund. Bahnen
+  aus IOF-XML haben keine Beschreibungen, ihre Blätter bleiben ohne, und `check` sagt das zur Information. `check`
+  warnt, wenn die Beschreibung über den Blattrand reichen würde (das Blatt lässt sie dann weg), wenn kein Posten
+  der Bahn eine Beschreibung hat und wenn die Bahndatei ein Symbol nutzt, das der Beschreibungsstandard nicht kennt
+  (sein Kästchen bleibt leer). Auf jedem Bahnblatt warnt `check` außerdem, wenn ein Blattelement einen Posten, den
+  Start oder das Ziel verdeckt (ADR 0037).
 - Postennummern auf Bahnblättern. Eine Nummer steht, wo die Bahndatei sie hinsetzt: bei Purple Pen die Lage je
-  Bahn, umgerechnet im Druckmaßstab der Bahn, bei IOF-XML `MapTextPosition`. Eine Korrektur in `[[numbers]]` für
-  das Layout oder für die Bahn geht vor; ihr Abstand `gap_mm` liegt über 0 und höchstens bei 10 mm. Hat die Datei
-  keine Lage, setzt freemapper-print die Nummer selbst: hinter den Posten, in Verlängerung der hereinführenden
-  Strecke, und nicht auf Kreise, Strecken, andere Nummern, Blattelemente sowie Punkt- und Liniensymbole der
-  Karte. `check` prüft jede Nummer. Liegt sie auf dem Bahnaufdruck, einem Blattelement, über dem Rand des
-  Kartenausschnitts oder auf einem Punkt- oder Liniensymbol der Karte, nennt die Warnung, was sie verdeckt,
-  Kartensymbole mit ihrem Code, und schlägt Richtung und Abstand vor. Gibt es keinen freien Platz, sagt sie das
-  und schlägt den am wenigsten verdeckten vor. Gedruckt wird die Nummer trotzdem an ihrer Stelle, verschoben wird
-  nichts. Das Regelprofil legt mit der Regel `number_gap` 0,5 bis 5 mm Abstand fest, wie in freemapper-courseplan
-  auf 0,01 mm gerundet; `check` warnt bei Abständen außerhalb. Hat die Bahndatei eine Lage geändert, über der
-  eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und Suche sitzen in einem eigenen Modul,
-  das freemapper-courseplan übernehmen wird (ADR 0038).
+  Bahn, umgerechnet mit Druckmaßstab und Größenanpassung der Bahn, bei IOF-XML `MapTextPosition`. Eine Korrektur in
+  `[[numbers]]` für das Layout oder für die Bahn geht vor; ihr Abstand `gap_mm` liegt über 0 und höchstens bei 10
+  mm. Hat die Datei keine Lage, setzt freemapper-print die Nummer selbst: hinter den Posten, in Verlängerung der
+  hereinführenden Strecke, und nicht auf Kreise, Strecken, andere Nummern, Blattelemente sowie Punkt- und
+  Liniensymbole der Karte. `check` prüft jede Nummer. Liegt sie auf dem Bahnaufdruck, einem Blattelement, über dem
+  Rand des Kartenausschnitts oder auf einem Punkt- oder Liniensymbol der Karte, nennt die Warnung, was sie
+  verdeckt, Kartensymbole mit ihrem Code, und schlägt Richtung und Abstand vor. Gibt es keinen freien Platz, sagt
+  sie das und schlägt den am wenigsten verdeckten vor. Gedruckt wird die Nummer trotzdem an ihrer Stelle,
+  verschoben wird nichts. Das Regelprofil legt mit der Regel `number_gap` 0,5 bis 5 mm Abstand fest, wie in
+  freemapper-courseplan auf 0,01 mm gerundet; `check` warnt bei Abständen außerhalb. Die Suche nach Plätzen hat
+  eine Grenze je Blatt; erreicht ein Blatt sie, sagt es das, und seine übrigen Nummern bleiben ohne Suche. Hat die
+  Bahndatei eine Lage geändert, über der eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und
+  Suche sitzen in einem eigenen Modul, das freemapper-courseplan übernehmen wird (ADR 0038).
 - `init --courses <DATEI>` legt ein Projekt aus einer Bahndatei an. Es liest die Datei zuerst und passt sie an die
   Karte an, eine Datei, die nicht zur Karte passt, stoppt `init` also vor dem Schreiben. Aus einer `.ppen`
   entstehen ein Layout je Druckmaßstab der Datei, eine Zuordnung für jede Bahn, ein Beschreibungskasten in der
   oberen rechten Ecke des Kartenausschnitts und `map_frame.crop = true`; eine Bahn ohne Druckmaßstab bekommt den
-  Kartenmaßstab. Aus IOF-XML entsteht ein Layout im Kartenmaßstab ohne Beschreibungskasten. Der Titelblock
-  beginnt mit `{event} · {course}`, so nennt jedes Bahnblatt seine Bahn, auch eines aus IOF-XML ohne
-  Beschreibungskasten. `init` sagt, woher jeder Wert stammt.
-- `numbers accept <PROJEKT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` trägt eine
-  Nummernkorrektur in die Projektdatei ein. Ohne `--direction` und `--gap` nimmt es den Vorschlag, den `check`
-  zeigt. Es hängt eine Tabelle `[[numbers]]` an und lässt alles davor unverändert, auch die Kommentare, und lädt
-  die Datei danach neu; schlägt das fehl, stellt es den alten Inhalt wieder her. Eine Korrektur für denselben
-  Posten und Geltungsbereich lehnt es ab (ADR 0025).
+  Kartenmaßstab. Aus IOF-XML entsteht ein Layout im Kartenmaßstab ohne Beschreibungskasten. Jede Layout-ID nennt
+  ihren Druckmaßstab, etwa `a4-4000`. Der Titelblock beginnt mit `{event} · {course}`, so nennt jedes Bahnblatt
+  seine Bahn, auch eines aus IOF-XML ohne Beschreibungskasten. `init` sagt, woher jeder Wert stammt.
+- `numbers accept <PROJEKT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` trägt eine Nummernkorrektur
+  in die Projektdatei ein. Ohne `--direction` und `--gap` nimmt es den Vorschlag, den `check` zeigt. Es hängt eine
+  Tabelle `[[numbers]]` an und lässt alles davor unverändert, auch die Kommentare, und lädt die Datei danach neu;
+  schlägt das fehl, stellt es den alten Inhalt wieder her. Ein Link auf die Projektdatei bleibt ein Link, die Datei
+  behält Rechte und Zeilenenden. Eine Korrektur für denselben Posten und Geltungsbereich lehnt es ab.
+  `--layout-wide` übernimmt den Vorschlag nur, wenn er auf jeder Bahn des Layouts frei ist, die die Nummer druckt
+  (ADR 0025, ADR 0038).
 - Beispiel `examples/luebeck-competition-courses`: der Lübecker Sprint mit drei Bahnen aus einer von Hand
   geschriebenen Purple-Pen-Datei, A und B auf A4 in 1:4000, C auf A3 in 1:3000, mit Postenbeschreibung,
   Sperrgebiet, verbotener Querung, markierter Strecke zum Ziel und einer mit `numbers accept` versetzten Nummer.
-  Der Ordner `iof/` druckt dieselben Bahnen aus IOF-XML 3.0, ohne Beschreibung.
+  Der Ordner `iof/` druckt dieselben Bahnen aus IOF-XML 3.0, ohne Beschreibung. Der Start steht auf der Straße im
+  Westen der Altstadt.
 - Beispiel `examples/berlin-viktoriapark-training`: ein Vereinstraining von 1,7 km auf der Viktoriapark-Karte von
   freemapper (Version 0.6.0), eine Bahn aus Purple Pen auf A4 in 1:4000 mit Postenbeschreibung.
 - Handbuch-Kapitel 8 „Bahnen“ und die Hinweise und Fehler zu Bahnen in Kapitel 10, auf Deutsch und Englisch. Die
   READMEs nennen, was M3 bringt.
+
+### Behoben
+
+- Erzeugte Nordlinien ohne Nordlinien-Symbol in der Karte (die schlichten schwarzen Linien von 0,14 mm) wuchsen mit
+  dem Symbolfaktor und wurden deshalb auf einer Karte, die in einem vergrößerten Maßstab gezeichnet ist, zu dünn
+  gedruckt. Sie haben jetzt die Größe, die die Norm für den Druckmaßstab vorgibt, wie die Bahnsymbole (ADR 0018).
 
 ## [0.2.0] - 2026-11-09
 

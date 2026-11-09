@@ -10,85 +10,99 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 ### Added
 
 - Print rules as a rule profile in freemapper-courseplan's format (ADR 0031). The embedded profile `iof-print`
-  holds the symbol size table per scale, the north-line spacing and the proposed contour interval. For the
-  course overprint it adds the course symbol sizes from ISSprOM 2019-2 and ISOM 2017-2, the purple 35/85/0/0
-  and the cell size of control descriptions. Every value names its source. The project file can name another
-  profile (`rule_profile`) and overlays (`rule_overlays`) under `[print]`; an unknown name is an error with
-  line and column. Printed sheets do not change.
-- Courses from Purple Pen and IOF XML 3.0 (ADR 0033). The program reads `.ppen` files (controls, courses, bends
-  and gaps of legs, circle gaps per scale, descriptions, out-of-bounds areas, forbidden routes, marked routes,
-  number positions, print scales) and IOF XML 3.0 `CourseData` (controls, courses, positions, number positions,
-  length and climb). IOF XML has no descriptions, special objects, bends or print scales, so its sheets show
-  controls, legs and numbers only. The reader is chosen by the file extension. What the program cannot print yet
-  is left out and reported: courses with variations (forks and loops) or alternative controls, and unknown
-  elements. Purple Pen's white-out is read and reported but not printed; it waits for the masks (M4).
-- A course must fit the map (ADR 0032). The program tries both readings of the y axis and takes the one that puts
-  all controls on the map. With latitude and longitude in the file and a georeferenced UTM map, those decide.
-  If both fit and nothing decides, it assumes "up" and warns until `course_y_axis` confirms it. A map scale in
-  the course file must equal the map's. A control more than 20 m from where its latitude and longitude put it
-  stops the fit. Each failure is an error that says what to check; nothing is printed from a course that does not
-  fit.
+  holds the symbol size table per scale, the north-line spacing and the proposed contour interval. For the course
+  overprint it adds the course symbol sizes from ISSprOM 2019-2 and ISOM 2017-2, the purple 35/85/0/0 and the cell
+  size of control descriptions. Every value names its source. The project file can name another profile
+  (`rule_profile`) and overlays (`rule_overlays`) under `[print]`; an unknown name is an error with line and
+  column. Printed sheets do not change.
+- Courses from Purple Pen and IOF XML 3.0 (ADR 0033). The program reads `.ppen` files (controls, courses, bends and
+  gaps of legs, circle gaps per scale, descriptions, out-of-bounds areas, forbidden routes, marked routes, number
+  positions, print scales) and IOF XML 3.0 `CourseData` (controls, courses, positions, number positions, length and
+  climb). IOF XML has no descriptions, special objects, bends or print scales, so its sheets show controls, legs
+  and numbers only. The reader is chosen by the file extension. What the program cannot print yet is left out and
+  reported: courses with variations (forks and loops) or alternative controls, and unknown elements. Purple Pen's
+  white-out is read and reported but not printed; it waits for the masks (M4).
+- A course must fit the map (ADR 0032). A Purple Pen file is read with its y axis up, as Purple Pen writes it; one
+  that does not fit that way is an error and never prints mirrored. For IOF XML the program tries both readings of
+  the y axis and takes the one that puts all controls on the map. With latitude and longitude in the file and a
+  georeferenced UTM map, those decide. If both fit and nothing decides, it assumes "up" and warns until
+  `course_y_axis` confirms it. A `course_y_axis = "down"` on a Purple Pen file gets a warning. A map scale in the
+  course file must equal the map's. A control more than 20 m from where its latitude and longitude put it stops the
+  fit. Each failure is an error that says what to check; nothing is printed from a course that does not fit.
 - The course overprint (ADR 0034). The program draws start, controls, legs, finish, out-of-bounds areas, forbidden
-  routes, marked routes, crossing points, map exchanges, texts and numbers in the course purple, in two layers.
-  The lower purple lies below black, brown and blue 100 %, the upper over the whole map. Both are painted in
-  `Multiply` blend mode. Sizes come from the rule profile and grow with the symbol factor.
-- The project file can link courses. `[sources] courses` names the course file (`.ppen` or IOF XML, relative
-  to the project file); it is read again at every check and export. `course_y_axis` ("up" or "down") sets the
-  file's y axis, and `course_georef_check = false` switches off the check against latitude and longitude.
-  `[[assignments]]` gives a course a layout; a course without one takes the first layout. `[[numbers]]` corrects
-  the position of a control number per layout or per course. If the course file no longer has a course or
-  control that the project file names, the entry stays and `check` reports it; the other courses still load.
+  routes, marked routes, crossing points, map exchanges, texts and numbers in the course purple, in two layers. The
+  lower purple lies below black, brown and blue 100 %, the upper over the whole map. Both are painted in `Multiply`
+  blend mode. Sizes come from the rule profile and take the standard's size at the print scale, the course factor:
+  a forest map printed at 1:10000 gets 7.5 mm circles, at 1:15000 5.0 mm, whatever scale the map file is drawn at.
+  A forbidden route is a row of crosses, as ISOM 2017-2 draws symbol 711.
+- The project file can link courses. `[sources] courses` names the course file (`.ppen` or IOF XML, relative to the
+  project file); it is read again at every check and export. `course_y_axis` ("up" or "down") sets the file's y
+  axis (a Purple Pen project needs none), and `course_georef_check = false` switches off the check against latitude
+  and longitude. `[[assignments]]` gives a course a layout; a course without one takes the first layout.
+  `[[numbers]]` corrects the position of a control number per layout or per course. If the course file no longer
+  has a course or control that the project file names, the entry stays and `check` reports it; the other courses
+  still load.
 - One sheet per course. When the project has a course file, `export` writes one PDF per course, on the layout its
-  assignment names, with the course overprint in purple. The file is named after the course; characters a file
-  name cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm` the map
-  frame centres on the course. `--course <NAME>` (repeatable) exports only those courses. `--single-file` writes
-  all courses into one PDF, "<event> - all courses.pdf" on English sheets, one page per course on its own paper.
-  A map larger than the frame is expected on a course sheet and only noted as Info. `--layout` still exports a
-  layout without courses. Texts can use `{course}`, `{length_km}`, `{climb_m}` and `{controls}`. `check` checks
-  every course and reports controls outside the map frame. Projects without a course file export as before
-  (ADR 0035).
+  assignment names, with the course overprint in purple. The file is named after the course; characters a file name
+  cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm` the map frame
+  centres on the course. `--course <NAME>` (repeatable) exports only those courses. `--single-file` writes all
+  courses into one PDF, "<event> - all courses.pdf" on English sheets, one page per course on its own paper. A map
+  larger than the frame is expected on a course sheet and only noted as Info. `--layout` still exports a layout
+  without courses. Texts can use `{course}`, `{length_km}`, `{climb_m}` and `{controls}`. `check` checks every
+  course and reports controls outside the map frame, then checks the layout sheets that `export --layout` writes.
+  Projects without a course file export as before (ADR 0035).
 - The control description box on course sheets. A layout element of kind `control_descriptions` draws the IOF
   description table of the course from a `.ppen` file: the event title, the course with length and climb, the
-  start, one row per control with its number, code and symbols, rows for marked routes and map exchanges with
-  their length, and the finish. A course's secondary title from Purple Pen gets its own row, a map flip its
-  15.6 row, and score courses list their controls by code as Purple Pen does. Symbols and line widths follow
-  Purple Pen. A cell is 6 mm by default; `cell_mm`
-  sets 4 to 10 mm, and the box keeps that size at every print scale. It hangs on its anchor like any element
-  and sits on a white background. Courses from IOF XML have no descriptions, so their sheets show no box and
-  `check` says so as Info. `check` warns when the box would reach past the page edge (the sheet then leaves it
-  out), when no control of the course has descriptions, and when the course file uses a symbol the
-  description standard does not have (its cell stays empty). On every course sheet `check` also warns when a
+  start, one row per control with its number, code and symbols, rows for marked routes and map exchanges with their
+  length, and the finish. A course's secondary title from Purple Pen gets its own row, a map flip its 15.6 row, and
+  score courses list their controls by code as Purple Pen does. Symbols and line widths follow Purple Pen. A cell
+  is 6 mm by default; `cell_mm` sets 4 to 10 mm, and the box keeps that size at every print scale. It hangs on its
+  anchor like any element and sits on a white background. Courses from IOF XML have no descriptions, so their
+  sheets show no box and `check` says so as Info. `check` warns when the box would reach past the page edge (the
+  sheet then leaves it out), when no control of the course has descriptions, and when the course file uses a symbol
+  the description standard does not have (its cell stays empty). On every course sheet `check` also warns when a
   sheet element covers a control, the start or the finish (ADR 0037).
-- Control numbers on course sheets. A number sits where the course file puts it: for Purple Pen at the position
-  per course, converted at the course's print scale, for IOF XML at `MapTextPosition`. A correction in
-  `[[numbers]]` for the layout or the course comes first; its `gap_mm` is above 0 and at most 10 mm. Where the
+- Control numbers on course sheets. A number sits where the course file puts it: for Purple Pen at the position per
+  course, converted with the course's print scale and item scaling, for IOF XML at `MapTextPosition`. A correction
+  in `[[numbers]]` for the layout or the course comes first; its `gap_mm` is above 0 and at most 10 mm. Where the
   file has no position, freemapper-print places the number itself: behind the control, in line with the incoming
   leg, and off circles, legs, other numbers, sheet elements and the map's point and line symbols. `check` checks
-  every number. When one lies on the course overprint, on a sheet element, over the edge of the map frame, or on
-  a point or line symbol of the map, the warning names what it covers, map symbols by their code, and proposes a
-  direction and gap. Without a free place it says so and proposes the least covered one. The number still prints
-  in its place; nothing moves on its own. The rule profile's `number_gap` rule sets a gap of 0.5 to 5 mm, rounded
-  to 0.01 mm as in freemapper-courseplan, and `check` warns about gaps outside it. When the course file has
-  changed a position that a correction with `base_seen` overrides, `check` reports it. Scoring and search live in
-  a module of their own, which freemapper-courseplan will take over (ADR 0038).
+  every number. When one lies on the course overprint, on a sheet element, over the edge of the map frame, or on a
+  point or line symbol of the map, the warning names what it covers, map symbols by their code, and proposes a
+  direction and gap. Without a free place it says so and proposes the least covered one. The number still prints in
+  its place; nothing moves on its own. The rule profile's `number_gap` rule sets a gap of 0.5 to 5 mm, rounded to
+  0.01 mm as in freemapper-courseplan, and `check` warns about gaps outside it. The search for places has a budget
+  per sheet; a sheet that reaches it says so, and its remaining numbers stay unsearched. When the course file has
+  changed a position that a correction with `base_seen` overrides, `check` reports it. Scoring and search live in a
+  module of their own, which freemapper-courseplan will take over (ADR 0038).
 - `init --courses <FILE>` builds a project from a course file. It reads and fits the file first, so a file that
   does not fit the map stops `init` before it writes anything. A `.ppen` gets one layout per print scale in the
   file, an assignment for every course, a control description box in the top-right corner of the map frame and
   `map_frame.crop = true`; a course without a print scale takes the map scale. IOF XML gets one layout at the map
-  scale and no description box. The title block starts with `{event} · {course}`, so every course sheet names
-  its course, including one from IOF XML without a description box. `init` says where each value came from.
+  scale and no description box. Every layout id names its print scale, such as `a4-4000`. The title block starts
+  with `{event} · {course}`, so every course sheet names its course, including one from IOF XML without a
+  description box. `init` says where each value came from.
 - `numbers accept <PROJECT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` writes a number correction
   into the project file. Without `--direction` and `--gap` it takes the proposal that `check` shows. It appends a
-  `[[numbers]]` table and leaves everything before it unchanged, comments included, then loads the file again;
-  if that fails, it restores the old content. A correction for the same control and scope is refused (ADR 0025).
+  `[[numbers]]` table and leaves everything before it unchanged, comments included, then loads the file again; if
+  that fails, it restores the old content. A link to the project file stays a link, the file keeps its permissions
+  and line endings. A correction for the same control and scope is refused. `--layout-wide` takes the proposal only
+  when it is free on every course of that layout that prints the number (ADR 0025, ADR 0038).
 - Example `examples/luebeck-competition-courses`: the Lübeck sprint with three courses from a hand-written Purple
   Pen file, A and B on A4 at 1:4000 and C on A3 at 1:3000, with control descriptions, an out-of-bounds area, a
   forbidden crossing, a marked route to the finish and one number moved with `numbers accept`. The folder `iof/`
-  prints the same courses from IOF XML 3.0, without descriptions.
+  prints the same courses from IOF XML 3.0, without descriptions. The start stands on the street west of the old
+  town.
 - Example `examples/berlin-viktoriapark-training`: a club training of 1.7 km on freemapper's Viktoriapark map
   (version 0.6.0), one course from Purple Pen on A4 at 1:4000 with control descriptions.
-- Manual chapter 8 "Courses" and the course notes and errors in chapter 10, in German and English. The READMEs
-  list what M3 adds.
+- Manual chapter 8 "Courses" and the course notes and errors in chapter 10, in German and English. The READMEs list
+  what M3 adds.
+
+### Fixed
+
+- Generated north lines without a north-line symbol in the map (the plain 0.14 mm black lines) took the symbol
+  factor, so on a map drawn at an enlarged scale they printed too thin. They now take the standard's size at the
+  print scale, as the course symbols do (ADR 0018).
 
 ## [0.2.0] - 2026-11-09
 
