@@ -18,9 +18,9 @@
   </control>
   <control id="3" kind="normal">
     <code>34</code>
-    <location x="-65.711" y="23.363" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="-67.329" y="29.119" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SW" />
   </control>
   <control id="4" kind="normal">
     <code>52</code>
@@ -30,21 +30,21 @@
   </control>
   <control id="5" kind="normal">
     <code>41</code>
-    <location x="-25.91" y="-66.525" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="-23.04" y="-64.831" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SW" />
   </control>
   <control id="6" kind="normal">
     <code>47</code>
-    <location x="1.442" y="-10.308" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="1.57" y="-16.121" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NE" />
   </control>
   <control id="7" kind="normal">
     <code>38</code>
-    <location x="16.859" y="-10.557" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="15.868" y="-13.838" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5N" />
   </control>
   <control id="8" kind="normal">
     <code>56</code>
@@ -60,9 +60,9 @@
   </control>
   <control id="10" kind="normal">
     <code>49</code>
-    <location x="31.028" y="18.266" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="28.905" y="25.188" />
+    <description box="D" iof-2004-ref="4.1" />
+    <description box="G" iof-2004-ref="11.5NE" />
   </control>
   <control id="11" kind="normal">
     <code>35</code>

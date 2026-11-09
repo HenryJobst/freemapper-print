@@ -21,16 +21,21 @@ The sheet is in German (`event.lang = "de"`), as for a German club.
 
 ## The course
 
-The start is on the street along the north edge of the park, and the finish is on the same street, 200 m
-further east. In between the course runs anticlockwise through the park and around it: five controls at path
-junctions in the park, five at building corners. The finish row of the descriptions has symbol 14.3: from the
-last control, runners navigate to the finish without tapes.
+The start is on the street along the north edge of the park, and the finish is on the same street, 200 m further
+east. In between the course runs anticlockwise through the park and around it. Nine controls stand at building
+corners, one (code 49) at a corner of the open land in the park. The finish row of the descriptions has symbol
+14.3: from the last control, runners navigate to the finish without tapes.
 
-Every control except start and finish sits on a feature of the map, a corner of a building (symbol 521) or a node
-where two paths meet (505.1). A small script read these points from `berlin-viktoriapark.omap`, converted them to
+Every control except start and finish sits on a feature of the map, a corner of a building (symbol 521) or of the
+open land (401). A small script read these points from `berlin-viktoriapark.omap`, converted them to
 millimetres and wrote them with y pointing up, as Purple Pen writes it (ADR 0032). The descriptions follow the IOF
-2018 standard: column D "building" or "path", column G the outside corner with its compass direction, column F
-"junction". The file gives no number positions, so the program places every number itself.
+2018 standard: column D "building" or "open land", column G the outside corner with its compass direction. The
+file gives no number positions, so the program places every number itself.
+
+On the map from freemapper 0.6.0, five controls (34, 41, 47, 38 and 49) stood on junctions of the park paths. In
+version 0.8.0 the park is yellow open land, and the paths of compacted gravel are candidates and no longer paths
+of the map. The five controls now stand on the nearest fitting corner, four on a building and 49 on the open
+land, 13 to 29 m from where they were. The course is 3.5 m longer for it and stays at 1.7 km.
 
 ## What `check` reports
 
@@ -40,9 +45,9 @@ course, `check` checks the layout as a sheet without a course, as `export --layo
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
 Bahn „Training“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 37,4 mm zu breit und 18,3 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 38,2 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 18,1 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 21,8 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
 Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
 1 Bahn und 1 Layoutblatt geprüft, keine Hinweise.
@@ -99,15 +104,16 @@ freemapper-print --lang de export .
 ## Open
 
 - Open `training.ppen` once in Purple Pen (macOS beta) and check it. Does Purple Pen load the map
-  `berlin-viktoriapark.omap`? Do the controls sit at their building corners and path junctions, and are the
-  descriptions right? The value `Spr2019` for the map standard has not been checked against Purple Pen.
+  `berlin-viktoriapark.omap`? Do the controls sit at their building corners and the corner of the open land, and
+  are the descriptions right? The value `Spr2019` for the map standard has not been checked against Purple Pen.
 
 ## Checked
 
 - `check` and `export` as above, with the messages above.
 - Exported twice: the PDF is identical byte for byte.
-- The page viewed at 110 dpi: every control sits at its building corner or path junction, the description box
-  covers no control, and the footer sits below the map frame.
+- The page viewed at 100 dpi and the controls at 300 dpi: every control sits at its building corner or at the
+  corner of the open land, the description box covers no control, and the footer sits below the map frame. The
+  light brown base area reaches to the edge of the map; west and east of it the paper stays white.
 
 ## Regenerate
 
@@ -123,9 +129,9 @@ whether the printer scaled the page.
 ## Credits and licence
 
 Map, `freemapper.toml` and `ATTRIBUTION.txt` from the example `berlin-viktoriapark` of
-[freemapper](https://github.com/HenryJobst/freemapper), version 0.6.0 (commit `a2f8b80`), unchanged. The map's
-templates (orthophoto, K5 and others under `templates/`) were not copied; freemapper-print does not print
-templates. The map is under the terms `ATTRIBUTION.txt` names: © OpenStreetMap contributors (ODbL),
+[freemapper](https://github.com/HenryJobst/freemapper), version 0.8.0 (commit `a2b41b4`), unchanged. The map's
+templates (orthophoto, hillshade, the candidates and others under `templates/`) were not copied; freemapper-print
+does not print templates. The map is under the terms `ATTRIBUTION.txt` names: © OpenStreetMap contributors (ODbL),
 © GeoBasis-DE/LGB 2026 (dl-de/by-2-0) and data of the Geoportal Berlin (dl-de/zero-2-0, partly modified). The
 course in `training.ppen` was written for this example and is released under CC0. The PDF was made with
 [freemapper-print](https://github.com/HenryJobst/freemapper-print).
