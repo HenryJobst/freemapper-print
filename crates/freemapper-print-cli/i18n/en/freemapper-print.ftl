@@ -60,7 +60,7 @@ error-unknown-course = the course file has no course "{ $name }"; its courses ar
 error-no-course-file = --course and --single-file need a course file, and the project names none under [sources] courses
 error-disk-full = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and { $available } MB are free
 error-write-file = could not write { $path }
-error-outside-project = { $path }: a link leads out of the project folder, so nothing is written there; replace the link with a real folder
+error-outside-project = { $path }: a link leads out of the project folder, so nothing is written there; replace the link with a real folder, or give the folder it leads to with --out-dir
 
 ## Notes and warnings after a print
 

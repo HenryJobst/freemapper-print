@@ -60,7 +60,7 @@ error-unknown-course = Die Bahndatei hat keine Bahn „{ $name }“; vorhanden s
 error-no-course-file = --course und --single-file brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
 error-disk-full = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, frei sind { $available } MB
 error-write-file = { $path } konnte nicht geschrieben werden
-error-outside-project = { $path }: Ein Link führt aus dem Projektordner hinaus, deshalb wird dort nichts geschrieben; den Link durch einen echten Ordner ersetzen
+error-outside-project = { $path }: Ein Link führt aus dem Projektordner hinaus, deshalb wird dort nichts geschrieben; den Link durch einen echten Ordner ersetzen oder den Zielordner mit --out-dir angeben
 
 ## Hinweise und Warnungen nach dem Druck
 

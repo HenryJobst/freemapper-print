@@ -22,7 +22,7 @@ is replaced. A failed write removes its partial file.
   the project go through `write_cache_file`.
 - `init` (only when the project folder exists already) and `export` check `out`, and `export` an inside
   `--out-dir`, with `check_folder_inside` before anything is written. The message names the folder: `<path>: a link
-  leads out of the project folder, so nothing is written there; replace the link with a real folder`.
+  leads out of the project folder, so nothing is written there; replace the link with a real folder, or give the folder it leads to with --out-dir`.
 - Plain std, as before: `init` claims the project file's name with `create_new` (an existing file or link is
   "exists already"), and the CLI creates `out` with `create_dir_all`. The library writes create no folder; a
   missing one is `NotFound`. `export` removes partial files older than an hour from the project's own output folder.
