@@ -35,7 +35,10 @@ that grow with the square of the input. `roxmltree` looks every entity reference
 declarations, so 80 000 empty entities and 180 000 references to the last one passed the size count and ran
 past 20 s. `simplecss`, which both `usvg` and the check use to split `style` attributes, works out the line
 and column from the start of the value for every declaration: a plain 180 KB style took 7 s, and a 4.8 KB
-file that builds its style from entities ran past 20 s.
+file that builds its style from entities ran past 20 s. After that fix a review found the same costs
+multiplied by `use`: `usvg` parses the attributes of a used element again for every copy, while the work
+count charged a copy one unit however long its attributes were. A 16 KB file with a 2 KB style used 50 000
+times through nested `use`, or a 1 MB dash array or transform used 1000 times, ran past 20 s.
 
 ## Decision
 
@@ -110,6 +113,12 @@ file that builds its style from entities ran past 20 s.
   - What `usvg` still copies is counted: one unit per element plus one per two bytes of path data, again for
     every `use` and for every element a clip path clips, the stops of every gradient that takes them
     through `href`, and the largest number of stops once per shape (ADR 0019 has the limits).
+  - The bytes of attribute values are counted the same way, once per copy: at most 256 KiB of `style`
+    and 4 MiB of all values once every `use` and clip path is resolved. The first number is the file
+    limit on `style` from the byte scan, now also after copies. The second started at 32 MiB and was
+    lowered by measurement: 31 MiB of dash arrays through 30 copies took 1.8 s, and next to 245 KB of
+    style 3.3 s. At 4 MiB the slowest measured file is 0.54 s (two copies of a 1 MiB dash array next to
+    120 styles of 2048 bytes); 256 KiB of number-heavy style alone takes 0.52 s.
 - `usvg` runs without its default features: no text, no fonts, no svgz, no writer. Embedded images are never
   loaded and external files are never read. Each path becomes a fill and a stroke in the SVG's paint order,
   at its absolute transform, with curves flattened by the map renderer's `flatten_cubic`. Strokes keep their

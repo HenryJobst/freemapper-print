@@ -2161,4 +2161,46 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn svg_attribute_bytes_counted_per_copy() {
+        // `usvg` parses the attributes of a used element again for every `use`. A 2 KB style
+        // used 200 times through nested `use` is 400 KB of CSS, though the file holds it once.
+        let style = format!("stroke-dasharray:{}", "1 ".repeat(1000));
+        let reason = svg_skipped(&format!(
+            r##"<defs><rect id="r" width="1" height="1" style="{style}"/><g id="g">{}</g></defs>{}"##,
+            r##"<use href="#r"/>"##.repeat(10),
+            r##"<use href="#g"/>"##.repeat(20)
+        ));
+        assert!(
+            reason.ends_with(&plain(
+                "this much style once `use` and clip paths are resolved"
+            )),
+            "{reason}"
+        );
+        // A dash array of 1 MB used five times: 6 MB of values to parse.
+        let dashes = "1 ".repeat(500_000);
+        let reason = svg_skipped(&format!(
+            r##"<defs><rect id="r" width="1" height="1" stroke="#000" stroke-dasharray="{dashes}"/></defs>{}"##,
+            r##"<use href="#r"/>"##.repeat(5)
+        ));
+        assert!(reason.ends_with(TOO_COMPLEX), "{reason}");
+    }
+
+    #[test]
+    fn svg_symbol_used_a_few_times_drawn() {
+        let (items, notes) = svg_drawn(
+            r##"<defs><symbol id="s"><path d="M0 0H10V10Z" style="fill:#008000;stroke:none;fill-opacity:1"/></symbol></defs>
+            <use href="#s" x="0"/><use href="#s" x="20"/><use xlink:href="#s" x="40"/><use href="#s" x="60"/>"##,
+        );
+        // `usvg` clips a symbol to its viewport; the sheet draws it unclipped and says so.
+        assert_eq!(
+            notes,
+            [SheetNote::LogoSimplified {
+                id: "logo".into(),
+                reason: CLIP.into(),
+            }]
+        );
+        assert_eq!(fills(&items).len(), 4);
+    }
 }

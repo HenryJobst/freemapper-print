@@ -45,6 +45,9 @@ const MAX_STYLE_DECLARATIONS: u64 = 64;
 const MAX_CSS_BYTES: u64 = 256 * 1024;
 /// Longest attribute value other than path data, entities expanded.
 const MAX_VALUE_BYTES: u64 = 1024 * 1024;
+/// Most bytes of attribute values `usvg` parses, every `use` and clip path copy counted: its
+/// parsers of `style`, transforms and number lists slow down with long values.
+const MAX_COPIED_BYTES: u64 = 4 * 1024 * 1024;
 
 /// The SVG elements a logo may use. `symbol` only takes effect through `use` and is counted with
 /// it.
@@ -1036,6 +1039,10 @@ struct Expanded {
     /// Shapes, each of which may get its own copy of a gradient.
     shapes: u64,
     depth: u64,
+    /// Bytes of attribute values, and of `style` attributes alone, that `usvg` parses: it
+    /// parses the attributes of a used element again for every `use`.
+    bytes: u64,
+    style: u64,
 }
 
 /// The children of `node` plus what `usvg` copies into it: the target of a `use` and the clip
@@ -1090,16 +1097,29 @@ fn check_work<'a, 'input>(
             work: element_work(node),
             shapes: u64::from(is_svg(node) && SHAPES.contains(&name(node))),
             depth: 0,
+            bytes: node.attributes().map(|a| a.value().len() as u64).sum(),
+            style: node
+                .attributes()
+                .filter(|a| a.name() == "style")
+                .map(|a| a.value().len() as u64)
+                .sum(),
         };
         for part in parts(node) {
             let p = done.get(&part.id()).copied().unwrap_or_default();
             sum.work = sum.work.saturating_add(p.work);
             sum.shapes = sum.shapes.saturating_add(p.shapes);
             sum.depth = sum.depth.max(p.depth);
+            sum.bytes = sum.bytes.saturating_add(p.bytes);
+            sum.style = sum.style.saturating_add(p.style);
         }
         sum.depth += 1;
-        if sum.work > MAX_WORK {
+        if sum.work > MAX_WORK || sum.bytes > MAX_COPIED_BYTES {
             return Err(too_complex());
+        }
+        if sum.style > MAX_CSS_BYTES {
+            return Err(unsupported(
+                "this much style once `use` and clip paths are resolved",
+            ));
         }
         if sum.depth > MAX_DEPTH {
             return Err(format!("SVG nested deeper than {MAX_DEPTH} levels"));

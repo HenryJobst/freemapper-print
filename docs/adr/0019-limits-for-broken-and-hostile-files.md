@@ -45,7 +45,8 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
   references of the allow-list in ADR 0026, nesting at most 256 levels deep with `use` resolved, and at most
   1 000 000 units of work: one per element plus one per two bytes of path data, counted again for every `use`
   and for every element a clip path clips, the stops of every gradient that takes them from another, and
-  shapes times the largest number of stops. Then at most 20 000 path segments and 500 000 points after
+  shapes times the largest number of stops; and, counted again for every copy too, at most 256 KiB of
+  `style` and 4 MiB of attribute values. Then at most 20 000 path segments and 500 000 points after
   flattening. A logo that breaks a limit is left out whole with `SheetNote::LogoSkipped`; none is drawn in
   part. An earlier count of `use` and markers alone missed copies `usvg` makes of masks, patterns and clip
   paths and resolved some `href` forms differently; the allow-list replaced it. Attributes are read as `usvg`
