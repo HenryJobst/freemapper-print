@@ -81,3 +81,5 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0038](0038-number-positions-and-the-placement-module.md) | Number positions and the placement module | Accepted | 2026-11-09 |
 | [0039](0039-module-boundaries-for-freemapper-core.md) | Module boundaries for freemapper-core | Accepted | 2026-11-09 |
 | [0040](0040-m3-closing-rulings.md) | M3 closing rulings: German state names and the slow probe | Accepted | 2026-11-09 |
+| [0041](0041-writes-go-through-freemapper-fs.md) | Writes go through freemapper-fs | Accepted | 2026-11-09 |
+| [0042](0042-suite-crates-as-git-dependencies.md) | Suite crates as git dependencies | Accepted | 2026-11-09 |

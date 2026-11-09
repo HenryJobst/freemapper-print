@@ -20,6 +20,10 @@ before changing code.
 - Every significant decision gets an ADR in `docs/adr/` in the same branch. Every merged feature or fix gets an
   entry under "Unveröffentlicht"/"Unreleased" in `CHANGELOG.md` and `CHANGELOG.en.md`.
 - Dependencies must be at least two weeks old (ADR 0006). The toolchain is pinned (ADR 0007).
+- Core crates (`freemapper-text`, `-rules`, `-fs`) are git dependencies pinned to a tag; their own crates are exempt from ADR
+  0006 (ADR 0042). Owners: text and rules freemapper-courseplan, georef and fs freemapper, omap, render and course
+  freemapper-print. Ask the owner over SendMessage before changing a core crate. A local `[patch]` to `../freemapper-core`
+  never reaches `main`.
 - `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test` must pass; hooks in
   `.claude/` and `lefthook.yml` run them.
 - Superpowers process: brainstorming, then writing-plans, then subagent-driven development; TDD for readers,

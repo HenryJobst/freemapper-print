@@ -19,7 +19,7 @@ use freemapper_print::export::{
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
-use freemapper_print::output::OutputError;
+use freemapper_print::output::{self, OutputError};
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
@@ -355,6 +355,12 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         && title.chars().any(|c| c.is_control() || is_format(c))
     {
         return Err(UsageError(texts.plain("error-title-control")).into());
+    }
+    // `export` writes into `out` later; a link there that leads out of the project stops `init`
+    // already (ADR 0041). A folder that does not exist yet holds no link.
+    if args.folder.is_dir() {
+        output::check_out_folder(&args.folder, &args.folder.join("out"))
+            .map_err(|e| output_error(texts, e))?;
     }
     let map = read_map(texts, &args.map)?;
     let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
@@ -1217,8 +1223,10 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
 }
 
 /// The output folder: `--out-dir`, which must exist, else `out` next to the project file, created if missing.
+/// A folder inside the project by name that a link leads out of the project stops the command before anything
+/// is written (ADR 0041). Partial files older than an hour that interrupted runs left there are removed.
 fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::Result<PathBuf> {
-    match &args.out_dir {
+    let dir = match &args.out_dir {
         Some(dir) => {
             if !dir.is_dir() {
                 bail!(texts.get(
@@ -1226,19 +1234,24 @@ fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::
                     Some(&args!("path" => dir.display().to_string()))
                 ));
             }
-            Ok(dir.clone())
+            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, e))?;
+            dir.clone()
         }
         None => {
             let dir = loaded.dir.join("out");
+            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, e))?;
+            // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
             std::fs::create_dir_all(&dir).with_context(|| {
                 texts.get(
                     "error-create-folder",
                     Some(&args!("path" => dir.display().to_string())),
                 )
             })?;
-            Ok(dir)
+            dir
         }
-    }
+    };
+    output::remove_stale_parts(&loaded.dir, &dir);
+    Ok(dir)
 }
 
 /// The message for a full disk, translated whole. `available` is `None` when the volume did not
@@ -1258,7 +1271,8 @@ fn disk_full_message(texts: &Texts, needed: u64, available: Option<u64>, path: &
     }
 }
 
-/// A write error with a translated lead-in; a full disk is translated whole.
+/// A write error with a translated lead-in; a full disk and a write refused because a link leads
+/// out of the project folder are translated whole.
 fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
     match err {
         OutputError::DiskFull {
@@ -1266,6 +1280,12 @@ fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
             available,
             path,
         } => anyhow!(disk_full_message(texts, needed, available, &path)),
+        OutputError::Io { path, source } if output::is_outside_project(&source) => {
+            anyhow!(texts.get(
+                "error-outside-project",
+                Some(&args!("path" => path.display().to_string()))
+            ))
+        }
         OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),

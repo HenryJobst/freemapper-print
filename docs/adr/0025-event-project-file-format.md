@@ -125,8 +125,9 @@ source, shared sheet elements and layouts.
   to use `--sheet` or to give the values. With explicit values the choice is the user's.
 - Append-only writing. The command does not parse and re-serialise the file, because that would drop comments
   and reorder keys. It adds the new table after the old bytes, which stay as they were, writes the result through a
-  `.part` file and a rename, loads the file again and runs the usual validation. A symbolic link is followed:
-  the file it points to is replaced, keeps its permissions, and the link stays. When the file's lines end in
+  partial file and a rename, loads the file again and runs the usual validation. The new file keeps the old one's
+  permissions. A project file that is a symbolic link is replaced by a regular file, and the file the link pointed
+  to stays as it was (ADR 0041; up to 0.3.0 the link was followed and stayed). When the file's lines end in
   CRLF, so do the new ones. If that fails (an inline
   `numbers = [...]` array, say), the old content is written back and the command exits 1. A correction with the
   same control and scope that exists already is refused with exit 2 and a hint to edit the file; the command only

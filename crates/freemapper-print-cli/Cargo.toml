@@ -16,11 +16,10 @@ freemapper-print.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 fluent-bundle.workspace = true
-unic-langid.workspace = true
+freemapper-text.workspace = true
 
 [dev-dependencies]
 freemapper-print = { workspace = true, features = ["test-hooks"] }
-fluent-syntax.workspace = true
 tempfile.workspace = true
 
 [lints]

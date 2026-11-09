@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::course::Course;
 use crate::courses::{LoadedCourses, layout_for};
 use crate::omap::{MapCoord, MapDocument};
-use crate::output::{OutputError, write_pdf_file};
+use crate::output::{OutputError, write_project_pdf};
 use crate::project::{LayoutSpec, LoadedProject, SheetLang};
 use crate::render::page::RenderedPage;
 use crate::render::pdf::{MultiPagePdf, PdfError, PdfMeta, write_pdf};
@@ -181,8 +181,9 @@ fn sheet_pdf_at(
     Ok((pdf, report))
 }
 
-/// Draws and writes `layouts` one after the other into `out_dir` (which must exist), each through
-/// [`write_pdf_file`], and hands each written layout to `on_layout` before the next is drawn.
+/// Draws and writes `layouts` one after the other into `out_dir` (which must exist; a missing
+/// folder is a write error, never created), each through [`write_project_pdf`], and hands each
+/// written layout to `on_layout` before the next is drawn.
 /// Stops at the first layout that fails; the ones before it stay written. Each logo file is
 /// decoded once for all layouts ([`LogoCache`]).
 pub fn export_layouts<'a>(
@@ -196,7 +197,7 @@ pub fn export_layouts<'a>(
     for &layout in layouts {
         let (pdf, report) = sheet_pdf(project, map, layout, &logos)?;
         let path = pdf_path(out_dir, layout);
-        write_pdf_file(&path, &pdf).map_err(|error| ExportError::Write {
+        write_project_pdf(&project.dir, &path, &pdf).map_err(|error| ExportError::Write {
             layout: layout.id.clone(),
             error,
         })?;
@@ -340,9 +341,10 @@ fn course_sheet_pdf_at<'a>(
     Ok((pdf, layout, report))
 }
 
-/// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist),
-/// each to its file of [`course_pdf_paths`], and hands each written course to `on_course` before the next is
-/// drawn. Stops at the first course that fails; the ones before it stay written.
+/// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist; a
+/// missing folder is a write error, never created), each to its file of [`course_pdf_paths`] through
+/// [`write_project_pdf`], and hands each written course to `on_course` before the next is drawn. Stops at the
+/// first course that fails; the ones before it stay written.
 pub fn export_courses<'a>(
     project: &'a LoadedProject,
     map: &MapDocument,
@@ -362,7 +364,7 @@ pub fn export_courses<'a>(
             .position(|c| std::ptr::eq(c, course))
             .expect("a selected course is a course of the course file");
         let path = paths[index].clone();
-        write_pdf_file(&path, &pdf).map_err(|error| ExportError::CourseWrite {
+        write_project_pdf(&project.dir, &path, &pdf).map_err(|error| ExportError::CourseWrite {
             file: path.clone(),
             error,
         })?;
@@ -379,10 +381,11 @@ pub fn export_courses<'a>(
 }
 
 /// Draws `selected` one after the other as the pages of one PDF, [`single_file_path`] in `out_dir` (which must
-/// exist), each page on its course's layout and paper. Each page is dropped once it is in the PDF, so only one
-/// is held at a time; the PDF bytes grow until the file is written at the end. `on_course` gets each course
-/// once its page is in the PDF, before the file is written. Returns the file written, or `None` without a
-/// course: a PDF has at least one page. Nothing is written when a course fails.
+/// exist; it is not created), written through [`write_project_pdf`], each page on its course's layout and
+/// paper. Each page is dropped once it is in the PDF, so only one is held at a time; the PDF bytes grow until
+/// the file is written at the end. `on_course` gets each course once its page is in the PDF, before the file is
+/// written. Returns the file written, or `None` without a course: a PDF has at least one page. Nothing is
+/// written when a course fails.
 pub fn export_courses_single_file<'a>(
     project: &'a LoadedProject,
     map: &MapDocument,
@@ -416,7 +419,7 @@ pub fn export_courses_single_file<'a>(
         });
     }
     let bytes = pdf.finish(&PdfMeta::new(&project.project.event.title));
-    write_pdf_file(&path, &bytes).map_err(|error| ExportError::CourseWrite {
+    write_project_pdf(&project.dir, &path, &bytes).map_err(|error| ExportError::CourseWrite {
         file: path.clone(),
         error,
     })?;
@@ -780,5 +783,6 @@ mod tests {
             matches!(&err, ExportError::Write { layout, .. } if layout == "a4"),
             "{err}"
         );
+        assert!(!missing.exists(), "the output folder is not created");
     }
 }

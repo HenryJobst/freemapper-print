@@ -60,6 +60,7 @@ error-unknown-course = the course file has no course "{ $name }"; its courses ar
 error-no-course-file = --course and --single-file need a course file, and the project names none under [sources] courses
 error-disk-full = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and { $available } MB are free
 error-write-file = could not write { $path }
+error-outside-project = { $path }: a link leads out of the project folder, so nothing is written there; replace the link with a real folder, or give the folder it leads to with --out-dir
 
 ## Notes and warnings after a print
 
@@ -160,7 +161,10 @@ note-footer-overlaps-map = Note: the passe-partout is too narrow for the footer 
        *[both] the copyright and credit lines
     }. The footer sits inside the map frame on a white box and covers part of the map. A wider margin_mm or a copyright_line or credit_line element moves it.
 note-larger-than-a3 = Note: the paper is larger than A3, which most office printers cannot take.
-note-missing-scale-or-contour = Note: layout { $layout } lacks { $missing }.
+note-missing-scale-or-contour = Note: layout { $layout } { $count ->
+        [one] lacks
+       *[other] lacks
+    } { $missing }.
 missing-print-scale-text = a text with { $name } for the print scale
 missing-contour-text = a text with { $name } for the contour interval
 missing-contour-value = a value for { $name }, the contour interval in metres

@@ -77,6 +77,50 @@ size of control descriptions and weights for placing control numbers.
 - Cost if wrong: renaming keys or value names in the embedded file. A shared `freemapper-rules` crate with
   courseplan may come later (courseplan ADR 0025).
 
+## Addendum: the loader moves to freemapper-rules (core switch, Task 2)
+
+- The file format, the parser, the merge of base and overlays, the id, unit and range checks and the types
+  `Rule`, `RuleProfile`, `SetRule`, `SwitchedOff`, `Source`, `SourceRef`, `LocalizedText`, `Severity` and
+  `ProfileKind` now come from `freemapper-rules` (freemapper-core v0.2.0, core ADR 0011). `rules.rs` re-exports
+  them. The copy of courseplan's loader is gone.
+- `rules.rs` describes the print profiles in a `static SCHEMA`. It lists the eight keys with the values each
+  reads (formerly `KNOWN_KEYS`) and the units. The only table is `scale_table` `rows`, whose check (formerly
+  `TABLE_VALUES` and part of the resolution) refuses a row of the wrong shape and rows that do not ascend by
+  scale. There are two filters, `map_kinds` (text) and `print_scales` (whole numbers from 1 to 2^32 - 1).
+  `course_colour`, `placement_weights` and `number_gap` take neither filter. The proposal source is `fmp`.
+- A value check in the schema keeps `description_box` `cell_mm` within 4 to 10 mm (`MIN_CELL_MM` and
+  `MAX_CELL_MM` of `project.rs`). It also refuses a list under any value name but `rows`. freemapper-rules
+  accepts a list of numbers under a unit name and checks it item by item. Every value print reads is one
+  number, so a list there was an error before the switch and stays one ("is a list, but north_lines reads
+  one number").
+- These stay in freemapper-print: the embedded profiles and `base()`, the resolution of every value per map
+  kind, `needed` and `optional`, the completeness check (`Incomplete`), the base-scale row rule, `number_gap`
+  with `GapRange`, `KindValues` and the typed accessors. Our `RuleSet` wraps the merged set of
+  freemapper-rules and adds the resolved values. `RuleError` keeps its variants and texts. A core error is
+  mapped to the variant of the same name.
+- The resolution asks `RuleSet::pick` with the map kind and its base scale. This gives the rule the old
+  `applies(kind, base_scale)` chose. When `pick` finds several rules (`Ambiguous`), the set is `Incomplete`
+  and the message names every rule and the map kind. Two rules read as before ("rules a and b both give
+  north_lines spacing_metres for sprint maps"). Three or more are now all named ("rules a, b and c all
+  give ...").
+- Three refusals changed. Rows that do not ascend are now `Malformed` when the profile is parsed, where they
+  were `Incomplete` when the set was resolved. A rule that cites `fmp` without a note is now refused by the
+  loader. Before, only a test over the embedded profile checked it. Some `Malformed` texts read differently:
+  unknown filter values, print scales, a filter on a kind-independent key, non-finite numbers, value names a
+  key does not read, and an id that differs from the file name. Variants and rule ids are unchanged.
+- A golden snapshot (`tests/fixtures/rules/resolved.txt`), made with the old loader, holds every resolved
+  value of the base set and the test overlays. One test case per refusal the old tests had checks variant
+  and rule id. Refusals the old tests never covered (`print_scales` not a list, `[4000.0]`, `rows = []`,
+  `enabled = "yes"`) are not pinned by a case here; core tests them. The structural refusals (TOML syntax,
+  `[profile]` fields, the type of `enabled`, the shape of a scale row) live in core now and are covered there.
+  Both pass unchanged after the switch, and the example PDFs are byte-identical.
+
+- Ruling R4: the `Incomplete` text for a missing base-scale row keeps the old wording and names no rule id, so
+  nothing observable changes in this switch. Three tests for it assert the variant only.
+- Accepted, no caller: `RuleSet` derefs to the core set, so core's `pick` is reachable from outside. Profile
+  and overlay names that match several sets give `Ambiguous`, which `profile()` and `parse_profile()` map to
+  `Incomplete`.
+
 Source: spec §5.9; M3 plan Task 1; freemapper-courseplan ADR 0025; ISSprOM 2019-2 (January 2022), ISOM 2017-2
 (errata to February 2022), IOF Printing and Colour Definitions Rev. 4, International Specification for Control
 Descriptions 2024; Purple Pen source code.

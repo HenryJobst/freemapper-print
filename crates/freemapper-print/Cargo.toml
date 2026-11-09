@@ -14,6 +14,8 @@ rust-version.workspace = true
 test-hooks = []
 
 [dependencies]
+freemapper-fs.workspace = true
+freemapper-rules.workspace = true
 fs4.workspace = true
 image.workspace = true
 miniz_oxide.workspace = true
@@ -27,6 +29,9 @@ subsetter.workspace = true
 svgtypes.workspace = true
 ttf-parser.workspace = true
 usvg.workspace = true
+
+[target.'cfg(not(unix))'.dependencies]
+same-file.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

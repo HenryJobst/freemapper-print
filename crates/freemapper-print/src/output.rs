@@ -1,14 +1,12 @@
-//! Safe writing of finished PDFs: free space is checked first, the bytes go to a `.part` file next
-//! to the target (`a4.pdf` is written as `a4.pdf.part`), and the target appears only by renaming a
-//! fully written, synced file. A full disk, any other error, an early return or a panic leaves no
-//! half-written PDF and no leftover `.part` file (ADR 0030).
-//!
-//! One writer per target is assumed: two exports into the same folder at the same time would
-//! share the `.part` name of a layout they both write.
+//! Safe writing of finished PDFs (ADR 0030, ADR 0041). Free space is checked first. Then
+//! `freemapper-fs` writes the bytes to a new partial file next to the target
+//! (`<file>.<process id>.<counter>.part`, created new, so no existing entry of that name is used),
+//! flushes it to the disk and renames it over the target. A full disk or any other error leaves
+//! no half-written PDF and no partial file. A link at the target's name is replaced, never
+//! written through (core ADR 0009).
 
-use std::fs::{self, File};
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::{Component, Path, PathBuf};
 
 /// Free space that must remain after the PDF is written, in bytes.
 pub const DISK_RESERVE_BYTES: u64 = 50 * 1024 * 1024;
@@ -53,35 +51,129 @@ pub enum OutputError {
 #[doc(hidden)]
 pub const FAKE_FREE_SPACE_ENV: &str = "FREEMAPPER_PRINT_TEST_FREE_SPACE";
 
-/// Writes `bytes` to `path`, replacing an existing file only when the whole PDF is on disk.
+/// Writes `bytes` to `path` outside a project folder (`render --out`, an `--out-dir` outside the
+/// project), replacing an existing file only when the whole PDF is on disk. A link at `path` is
+/// replaced by the PDF; the file it pointed to stays as it was. The folder of `path` must exist:
+/// a missing one is the operating system's `NotFound` error, and no folder is created.
 ///
 /// Fails with [`OutputError::DiskFull`] when the volume has less than `bytes.len()` plus
 /// [`DISK_RESERVE_BYTES`] free. If the free space cannot be determined, the check is skipped and a
 /// full disk is still caught while writing.
 pub fn write_pdf_file(path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
-    #[cfg(any(test, feature = "test-hooks"))]
-    let fake = std::env::var(FAKE_FREE_SPACE_ENV)
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok());
-    #[cfg(not(any(test, feature = "test-hooks")))]
-    let fake: Option<u64> = None;
-    write_checked(
-        path,
-        bytes,
-        |folder| match fake {
-            Some(bytes) => Ok(bytes),
-            None => fs4::available_space(folder),
-        },
-        |file, bytes| file.write_all(bytes),
-    )
+    write_checked(path, bytes, free_space, freemapper_fs::write_cache_file)
 }
 
-/// [`write_pdf_file`] with the free-space query and the byte writer replaceable for tests.
+/// Writes the PDF `path` of the project in `project_dir`. A `path` whose name lies in the project
+/// folder (`out/` below it, or an `--out-dir` there) goes through [`freemapper_fs::write_inside`]:
+/// it is refused with [`freemapper_fs::OUTSIDE_PROJECT`] when a link leads its folder out of the
+/// project. Any other `path` is written like [`write_pdf_file`]. The folder of `path` must exist,
+/// as for [`write_pdf_file`]. Which paths count as in the project folder: see [`names_inside`].
+pub fn write_project_pdf(project_dir: &Path, path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
+    if names_inside(project_dir, path) {
+        write_checked(path, bytes, free_space, |path, bytes| {
+            freemapper_fs::write_inside(project_dir, path, bytes)
+        })
+    } else {
+        write_pdf_file(path, bytes)
+    }
+}
+
+/// Refuses the output folder `folder` of the project in `project_dir` when a link leads it out of
+/// the project folder. A folder outside the project ([`names_inside`]), or one that does not exist
+/// yet, passes. The commands call it once before they write anything.
+pub fn check_out_folder(project_dir: &Path, folder: &Path) -> Result<(), OutputError> {
+    if !names_inside(project_dir, &folder.join("file")) {
+        return Ok(());
+    }
+    freemapper_fs::check_folder_inside(project_dir, folder)
+        .map_err(|(path, source)| OutputError::Io { path, source })
+}
+
+/// Removes partial files older than an hour that interrupted runs left in the output folder
+/// `folder` of the project in `project_dir`. Only the project's own `out` folder is cleaned, not any other
+/// folder inside the project, and only when no link leads it out; partial files that are links stay.
+/// Best effort.
+pub fn remove_stale_parts(project_dir: &Path, folder: &Path) {
+    const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+    let is_out = match (
+        std::path::absolute(project_dir.join("out")),
+        std::path::absolute(folder),
+    ) {
+        (Ok(out), Ok(folder)) => by_name(&out) == by_name(&folder),
+        _ => false,
+    };
+    if is_out && names_inside(project_dir, &folder.join("file")) {
+        let _ = freemapper_fs::remove_stale_parts_inside(project_dir, folder, STALE_AFTER);
+    }
+}
+
+/// Whether `error` is the refusal of a write whose folder a link leads out of the project folder
+/// ([`freemapper_fs::OUTSIDE_PROJECT`]).
+pub fn is_outside_project(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::Other && error.to_string() == freemapper_fs::OUTSIDE_PROJECT
+}
+
+/// Whether `path` is a file of the project in `root`, so that [`freemapper_fs::write_inside`] must
+/// write it. That is so when `path` lies in `root` by its name (both made absolute, `.` dropped and
+/// `..` taken back by name), or when it does once the nearest existing folder above the folder of
+/// `path` is resolved: an `--out-dir` that names the project folder by another link to it. The
+/// folder of `path` itself is not resolved, so a link there that leads out of the project still
+/// counts as inside and `write_inside` refuses it.
+fn names_inside(root: &Path, path: &Path) -> bool {
+    let (Ok(root), Ok(path)) = (std::path::absolute(root), std::path::absolute(path)) else {
+        return false;
+    };
+    if by_name(&path).starts_with(by_name(&root)) {
+        return true;
+    }
+    let (Ok(root), Some(above)) = (
+        std::fs::canonicalize(&root),
+        path.parent().and_then(Path::parent),
+    ) else {
+        return false;
+    };
+    above
+        .ancestors()
+        .find_map(|folder| Some((std::fs::canonicalize(folder).ok()?, folder)))
+        .and_then(|(resolved, folder)| Some(resolved.join(path.strip_prefix(folder).ok()?)))
+        .is_some_and(|resolved| by_name(&resolved).starts_with(&root))
+}
+
+/// `path` with `.` dropped and each `..` taking back the name before it.
+fn by_name(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// The free space of the volume of `folder`, or the fake value of the test hook.
+fn free_space(folder: &Path) -> io::Result<u64> {
+    #[cfg(any(test, feature = "test-hooks"))]
+    if let Some(bytes) = std::env::var(FAKE_FREE_SPACE_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        return Ok(bytes);
+    }
+    fs4::available_space(folder)
+}
+
+/// The writes of this module with the free-space query and the `freemapper-fs` write replaceable
+/// for tests. Our check of the free space stays before the write (ADR 0030); the partial file and
+/// the rename are `write`'s.
 fn write_checked(
     path: &Path,
     bytes: &[u8],
     available_space: impl Fn(&Path) -> io::Result<u64>,
-    write: impl Fn(&mut File, &[u8]) -> io::Result<()>,
+    write: impl FnOnce(&Path, &[u8]) -> Result<(), (PathBuf, io::Error)>,
 ) -> Result<(), OutputError> {
     let needed = bytes.len() as u64 + DISK_RESERVE_BYTES;
     let folder = match path.parent() {
@@ -99,63 +191,27 @@ fn write_checked(
     {
         return Err(disk_full(Some(available)));
     }
-    let mut part = PartFile {
-        path: part_path(path),
-        done: false,
-    };
-    let result = (|| {
-        let mut file = File::create(&part.path)?;
-        write(&mut file, bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&part.path, path)
-    })();
-    match result {
-        Ok(()) => {
-            part.done = true;
-            Ok(())
-        }
-        Err(source) => {
-            // The `.part` file goes first, so that the free space counts without it.
-            drop(part);
-            if source.kind() == io::ErrorKind::StorageFull {
-                Err(disk_full(query()))
-            } else {
-                Err(OutputError::Io {
-                    path: path.to_path_buf(),
-                    source,
-                })
-            }
-        }
+    // `freemapper-fs` would create a missing folder; the callers create theirs themselves.
+    if let Err(source) = std::fs::metadata(folder) {
+        return Err(OutputError::Io {
+            path: path.to_path_buf(),
+            source,
+        });
     }
-}
-
-/// The `.part` file of one write. Dropping it removes the file unless the write is `done` (renamed
-/// onto the target): on an error, an early return and a panic alike.
-struct PartFile {
-    path: PathBuf,
-    done: bool,
-}
-
-impl Drop for PartFile {
-    fn drop(&mut self) {
-        if !self.done {
-            // Best effort: the original error is the one to report.
-            let _ = fs::remove_file(&self.path);
+    // A failed write has removed its partial file, so the free space counts without it.
+    write(path, bytes).map_err(|(path, source)| {
+        if source.kind() == io::ErrorKind::StorageFull {
+            disk_full(query())
+        } else {
+            OutputError::Io { path, source }
         }
-    }
-}
-
-/// `<name>.part` next to `path`: `a4.pdf.part` for `a4.pdf`.
-fn part_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".part");
-    path.with_file_name(name)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn leftovers(dir: &Path) -> Vec<String> {
         let mut names: Vec<String> = fs::read_dir(dir)
@@ -164,6 +220,11 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    /// The real write of `freemapper-fs`, outside a project.
+    fn core_write(path: &Path, bytes: &[u8]) -> Result<(), (PathBuf, io::Error)> {
+        freemapper_fs::write_cache_file(path, bytes)
     }
 
     #[test]
@@ -185,7 +246,7 @@ mod tests {
             &target,
             &bytes,
             |_| Ok(1000 + DISK_RESERVE_BYTES - 1),
-            |f, b| f.write_all(b),
+            core_write,
         )
         .unwrap_err();
         match &err {
@@ -209,18 +270,12 @@ mod tests {
     fn enough_space_writes() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("map.pdf");
-        write_checked(
-            &target,
-            b"x",
-            |_| Ok(1 + DISK_RESERVE_BYTES),
-            |f, b| f.write_all(b),
-        )
-        .unwrap();
+        write_checked(&target, b"x", |_| Ok(1 + DISK_RESERVE_BYTES), core_write).unwrap();
         assert_eq!(leftovers(dir.path()), ["map.pdf"]);
     }
 
     #[test]
-    fn cleans_up_on_write_error() {
+    fn a_write_error_names_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("map.pdf");
         fs::write(&target, b"old").unwrap();
@@ -228,41 +283,96 @@ mod tests {
             &target,
             b"new",
             |_| Ok(u64::MAX),
-            |f, b| {
-                f.write_all(&b[..1])?;
-                Err(io::Error::other("simulated"))
-            },
+            |path, _| Err((path.to_path_buf(), io::Error::other("simulated"))),
         )
         .unwrap_err();
-        assert!(matches!(err, OutputError::Io { .. }), "{err}");
+        match &err {
+            OutputError::Io { path, .. } => assert_eq!(path, &target),
+            other => panic!("{other}"),
+        }
         assert_eq!(fs::read(&target).unwrap(), b"old", "target untouched");
+    }
+
+    /// The disk is too full before writing, or fills up while writing: either way the error is
+    /// [`OutputError::DiskFull`]. The first half runs the real write of `freemapper-fs` and shows
+    /// that the check stops it before a partial file exists. The second half fakes the full disk
+    /// in place of that write, so it checks only the mapping to `DiskFull`; that `freemapper-fs`
+    /// removes its partial file when the disk fills up is its own test
+    /// (`storage_full_while_writing_removes_the_part_file`).
+    #[test]
+    fn disk_full_leaves_no_part_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("map.pdf");
+        fs::write(&target, b"old").unwrap();
+        let before =
+            write_checked(&target, b"new", |_| Ok(DISK_RESERVE_BYTES), core_write).unwrap_err();
+        let full = |path: &Path, _: &[u8]| -> Result<(), (PathBuf, io::Error)> {
+            Err((path.to_path_buf(), io::ErrorKind::StorageFull.into()))
+        };
+        let while_writing = write_checked(&target, b"new", |_| Ok(u64::MAX), full).unwrap_err();
+        for err in [before, while_writing] {
+            assert!(matches!(err, OutputError::DiskFull { .. }), "{err}");
+        }
         assert_eq!(leftovers(dir.path()), ["map.pdf"]);
+        assert_eq!(fs::read(&target).unwrap(), b"old");
     }
 
     #[test]
-    fn storage_full_while_writing_is_disk_full() {
+    fn a_missing_folder_is_not_created() {
         let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("map.pdf");
-        let err = write_checked(
-            &target,
-            b"new",
-            |_| Ok(u64::MAX),
-            |_, _| Err(io::ErrorKind::StorageFull.into()),
-        )
-        .unwrap_err();
-        assert!(matches!(err, OutputError::DiskFull { .. }), "{err}");
-        assert!(leftovers(dir.path()).is_empty());
+        let missing = dir.path().join("nope");
+        for err in [
+            write_pdf_file(&missing.join("a4.pdf"), b"%PDF").unwrap_err(),
+            write_project_pdf(dir.path(), &missing.join("a4.pdf"), b"%PDF").unwrap_err(),
+        ] {
+            match &err {
+                OutputError::Io { path, source } => {
+                    assert_eq!(path, &missing.join("a4.pdf"));
+                    assert_eq!(source.kind(), io::ErrorKind::NotFound, "{source}");
+                }
+                other => panic!("{other}"),
+            }
+        }
+        assert!(!missing.exists());
+    }
+
+    /// A folder named through another link to the project folder is inside it too; the link at
+    /// `out` itself is not resolved, so `write_inside` sees and refuses it.
+    #[cfg(unix)]
+    #[test]
+    fn another_name_of_the_project_folder_is_inside() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let real = dir.path().join("event");
+        fs::create_dir(&real).unwrap();
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), real.join("out")).unwrap();
+        for (root, path) in [
+            (&alias, real.join("out/a4.pdf")),
+            (&real, alias.join("out/a4.pdf")),
+            (&real, alias.join("new/deeper/a4.pdf")),
+        ] {
+            assert!(names_inside(root, &path), "{root:?} {path:?}");
+        }
+        for (root, folder) in [(&alias, real.join("out")), (&real, alias.join("out"))] {
+            assert!(check_out_folder(root, &folder).is_err(), "{folder:?}");
+            assert!(write_project_pdf(root, &folder.join("a4.pdf"), b"%PDF").is_err());
+        }
+        assert!(leftovers(elsewhere.path()).is_empty());
+        // The folder the link leads to is outside.
+        assert!(!names_inside(&real, &elsewhere.path().join("a4.pdf")));
     }
 
     #[test]
     fn failing_rename_leaves_no_part_file() {
         let dir = tempfile::tempdir().unwrap();
-        // A folder with something in it where the PDF should go: the rename fails.
+        // A folder with something in it where the PDF should go: the rename fails after the
+        // partial file is written.
         let target = dir.path().join("map.pdf");
         fs::create_dir(&target).unwrap();
         fs::write(target.join("keep"), b"x").unwrap();
-        let err =
-            write_checked(&target, b"%PDF", |_| Ok(u64::MAX), |f, b| f.write_all(b)).unwrap_err();
+        let err = write_checked(&target, b"%PDF", |_| Ok(u64::MAX), core_write).unwrap_err();
         assert!(matches!(err, OutputError::Io { .. }), "{err}");
         assert_eq!(leftovers(dir.path()), ["map.pdf"]);
         assert!(target.join("keep").is_file());
@@ -285,7 +395,7 @@ mod tests {
                     Err(io::Error::other("no answer"))
                 }
             },
-            |_, _| Err(io::ErrorKind::StorageFull.into()),
+            |path, _| Err((path.to_path_buf(), io::ErrorKind::StorageFull.into())),
         )
         .unwrap_err();
         match &err {
@@ -294,33 +404,98 @@ mod tests {
         }
         let text = err.to_string();
         assert!(text.contains("unknown") && !text.contains("0 MB"), "{text}");
-        assert!(leftovers(dir.path()).is_empty());
     }
 
     #[test]
-    fn panic_while_writing_leaves_no_part_file() {
+    fn project_pdfs_go_by_the_names_of_their_folders() {
+        let root = Path::new("/p/event");
+        assert!(names_inside(root, Path::new("/p/event/out/a4.pdf")));
+        assert!(names_inside(root, Path::new("/p/event/./x/../out/a4.pdf")));
+        assert!(names_inside(
+            Path::new("/p/x/../event"),
+            Path::new("/p/event/a.pdf")
+        ));
+        assert!(!names_inside(root, Path::new("/p/event/../maps/a4.pdf")));
+        assert!(!names_inside(root, Path::new("/p/eventual/a4.pdf")));
+        assert!(!names_inside(root, Path::new("/elsewhere/a4.pdf")));
+    }
+
+    #[test]
+    fn a_project_pdf_is_written_inside_and_outside_the_project() {
         let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("map.pdf");
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            write_checked(
-                &target,
-                b"new",
-                |_| Ok(u64::MAX),
-                |f, b| {
-                    f.write_all(b).unwrap();
-                    panic!("simulated");
-                },
-            )
-        }));
-        assert!(result.is_err());
-        assert!(leftovers(dir.path()).is_empty());
+        let project = dir.path().join("event");
+        fs::create_dir(&project).unwrap();
+        fs::create_dir(project.join("out")).unwrap();
+        let inside = project.join("out/a4.pdf");
+        write_project_pdf(&project, &inside, b"%PDF in").unwrap();
+        assert_eq!(fs::read(&inside).unwrap(), b"%PDF in");
+        // An `--out-dir` outside the project folder.
+        let outside = dir.path().join("maps/a4.pdf");
+        fs::create_dir(dir.path().join("maps")).unwrap();
+        write_project_pdf(&project, &outside, b"%PDF out").unwrap();
+        assert_eq!(fs::read(&outside).unwrap(), b"%PDF out");
+        assert_eq!(leftovers(&project.join("out")), ["a4.pdf"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_out_folder_of_the_project_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::os::unix::fs::symlink(elsewhere.path(), &out).unwrap();
+        let err = write_project_pdf(dir.path(), &out.join("a4.pdf"), b"%PDF").unwrap_err();
+        match &err {
+            OutputError::Io { path, source } => {
+                assert_eq!(path, &out.join("a4.pdf"));
+                assert!(is_outside_project(source), "{source}");
+            }
+            other => panic!("{other}"),
+        }
+        assert!(leftovers(elsewhere.path()).is_empty());
+        let OutputError::Io { path, source } = check_out_folder(dir.path(), &out).unwrap_err()
+        else {
+            panic!("not an I/O error");
+        };
+        assert_eq!(path, out);
+        assert!(is_outside_project(&source), "{source}");
+        // A folder outside the project by name is the user's choice.
+        assert!(check_out_folder(dir.path(), elsewhere.path()).is_ok());
+        assert!(check_out_folder(dir.path(), &dir.path().join("new")).is_ok());
+        assert!(!is_outside_project(&io::Error::other("other")));
     }
 
     #[test]
-    fn part_file_is_named_after_the_target() {
+    fn stale_parts_are_removed_from_the_project_out_folder_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        fs::create_dir(&out).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        let plant = |folder: &Path| {
+            for name in ["a4.pdf.1.0.part", "fresh.part"] {
+                fs::write(folder.join(name), b"x").unwrap();
+            }
+            let file = fs::File::options()
+                .write(true)
+                .open(folder.join("a4.pdf.1.0.part"))
+                .unwrap();
+            file.set_modified(old).unwrap();
+        };
+        let other = dir.path().join("other");
+        fs::create_dir(&other).unwrap();
+        plant(&out);
+        plant(elsewhere.path());
+        plant(&other);
+        remove_stale_parts(dir.path(), &other);
+        remove_stale_parts(dir.path(), dir.path());
+        assert_eq!(leftovers(&other), ["a4.pdf.1.0.part", "fresh.part"]);
+        remove_stale_parts(dir.path(), &out);
+        remove_stale_parts(dir.path(), elsewhere.path());
+        assert_eq!(leftovers(&out), ["fresh.part"]);
         assert_eq!(
-            part_path(Path::new("/x/a4.pdf")),
-            PathBuf::from("/x/a4.pdf.part")
+            leftovers(elsewhere.path()),
+            ["a4.pdf.1.0.part", "fresh.part"]
         );
     }
 

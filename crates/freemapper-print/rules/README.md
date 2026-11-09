@@ -10,7 +10,9 @@ Violett, die Kästchengröße der Postenbeschreibung und die Gewichte für die L
 Wert nennt seine Quelle. Das Programm bettet die Dateien beim Bauen ein; ein neues oder geändertes Profil
 braucht einen neuen Build. ADR 0031 legt das fest, `src/rules.rs` liest die Dateien.
 
-Das Format ist das von freemapper-courseplan (dort ADR 0025), mit den Unterschieden aus ADR 0031.
+Das Format ist das von freemapper-courseplan (dort ADR 0025), mit den Unterschieden aus ADR 0031. Gelesen
+werden die Dateien mit der gemeinsamen Bibliothek `freemapper-rules` aus freemapper-core (dort ADR 0011).
+`src/rules.rs` beschreibt in `SCHEMA`, was ein Druckprofil enthalten darf.
 
 Es gibt zwei Arten von Regelprofilen:
 
@@ -90,7 +92,7 @@ ihre `id` ab.
 | `number_gap` | `min_gap_mm`, `max_gap_mm` | kleinster und größter Abstand zwischen Postenkreis und Nummer (ADR 0038) |
 
 Eine Regel mit einem anderen Schlüssel oder einem Wert, den ihr Schlüssel nicht liest, lehnt das Programm
-ab. Ein neuer Schlüssel braucht Code und einen Eintrag in `KNOWN_KEYS` in `src/rules.rs`.
+ab. Ein neuer Schlüssel braucht Code und einen Eintrag in `SCHEMA` in `src/rules.rs`.
 
 Die Bahnsymbole verteilen sich auf mehrere Regeln, eine je Symbol und Norm. Jede nennt so ihren eigenen
 Abschnitt.
@@ -120,9 +122,10 @@ Mindestabstand und der kleinste Höchstabstand. Ohne Regel setzt das Programm Nu
 
 Eine Zahl trägt ihre Einheit im Namen: Der Name ist eine Einheit oder endet auf `_<einheit>`. Die Einheiten
 sind `metres`, `mm`, `degrees`, `percent` und `factor`. Werte in `mm` und `metres` sind größer als 0,
-`factor` ist 0 oder mehr, `percent` liegt zwischen 0 und 100.
+`factor` ist 0 oder mehr, `percent` liegt zwischen 0 und 100. Jeder Wert außer `rows` ist eine einzelne
+Zahl. Eine Liste wie `spacing_metres = [100, 120]` lehnt das Programm ab.
 
-Die einzige Tabelle ist `rows` von `scale_table`, beschrieben in `TABLE_VALUES` in `src/rules.rs`:
+Die einzige Tabelle ist `rows` von `scale_table`, beschrieben in `SCHEMA` in `src/rules.rs`:
 
 ```toml
 values = { rows = [
@@ -142,8 +145,8 @@ Tabelle braucht eine Zeile für den Basismaßstab ihrer Kartenart mit `size_fact
 Jede Regel nennt ein Dokument aus der `[sources]`-Tabelle ihrer Datei: `source = { doc, section }`.
 `iof-print.toml` nutzt ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD
 (Control Descriptions) und `fmp`. `fmp` steht für eine Entscheidung von freemapper-print, wo keine Norm eine
-Zahl nennt. Eine solche Regel braucht eine `note` und nennt als Abschnitt das ADR. Auch die Annahme, dass
-Schulhofkarten die Sprintwerte nehmen, steht unter `fmp`.
+Zahl nennt. Eine solche Regel braucht eine `note`, sonst lehnt das Programm die Datei ab, und sie nennt als
+Abschnitt das ADR. Auch die Annahme, dass Schulhofkarten die Sprintwerte nehmen, steht unter `fmp`.
 
 Die Größen der Bahnsymbole stammen aus dem Text von ISSprOM 2019-2 §4.7 und ISOM 2017-2 §3.7. Purple Pen
 nutzt dieselben Werte (`NormalCourseAppearance`). Für Schulhofkarten nimmt das Profil die Sprintwerte an;
@@ -170,7 +173,9 @@ size and the weights for placing control numbers. Every value names its source. 
 at build time, so a new or changed profile needs a new build. ADR 0031 sets this, and `src/rules.rs` reads the
 files.
 
-The format is freemapper-courseplan's (its ADR 0025), with the differences listed in ADR 0031.
+The format is freemapper-courseplan's (its ADR 0025), with the differences listed in ADR 0031. The shared
+library `freemapper-rules` from freemapper-core (its ADR 0011) reads the files. `SCHEMA` in `src/rules.rs`
+says what a print profile may contain.
 
 There are two kinds of rule profile:
 
@@ -222,7 +227,7 @@ hyphens (`iofprint.scale.sprint`). An overlay replaces or switches off a rule by
 | `number_gap` | `min_gap_mm`, `max_gap_mm` | smallest and largest gap between control circle and number (ADR 0038) |
 
 A rule with another key, or with a value its key does not read, is rejected. A new key needs code and an entry
-in `KNOWN_KEYS` in `src/rules.rs`.
+in `SCHEMA` in `src/rules.rs`.
 
 The course symbols are split over several rules, one per symbol and standard, so each names its own section.
 
@@ -251,9 +256,10 @@ places numbers at a gap of 0.5 mm.
 
 A number carries its unit in its name: the name is a unit or ends in `_<unit>`. The units are `metres`, `mm`,
 `degrees`, `percent` and `factor`. Values in `mm` and `metres` are above 0, a `factor` is 0 or more, and a
-`percent` lies between 0 and 100.
+`percent` lies between 0 and 100. Every value but `rows` is one number. A list such as
+`spacing_metres = [100, 120]` is rejected.
 
-The only table is `rows` of `scale_table`, described in `TABLE_VALUES` in `src/rules.rs` and shown in the
+The only table is `rows` of `scale_table`, described in `SCHEMA` in `src/rules.rs` and shown in the
 German section above. `scale` is the scale denominator and `size_factor` the symbol size relative to the base
 scale. `standard = false` marks a reduction the standard does not foresee. Rows are in ascending order of
 scale. Every table needs a row for the base scale of its kind with `size_factor = 1.0` and without
@@ -264,8 +270,8 @@ scale. Every table needs a row for the base scale of its kind with `size_factor 
 Every rule names a document from its file's `[sources]` table: `source = { doc, section }`. `iof-print.toml`
 uses ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD (Control Descriptions) and
 `fmp`. `fmp` stands for a decision of freemapper-print where no standard gives a number. Such a rule needs a
-`note` and names the ADR as its section. The assumption that schoolyard maps take the sprint values is cited
-under `fmp` too.
+`note`, or the file is rejected, and names the ADR as its section. The assumption that schoolyard maps take
+the sprint values is cited under `fmp` too.
 
 The course symbol sizes come from the text of ISSprOM 2019-2 §4.7 and ISOM 2017-2 §3.7. Purple Pen uses the
 same values (`NormalCourseAppearance`). For schoolyard maps the profile assumes the sprint values, and the

@@ -3,37 +3,40 @@
 //!
 //! A rule profile is a TOML file in `rules/`, embedded with `include_str!`. A base profile (such as
 //! `iof-print`) holds a full rule set; an overlay names its base and adds rules, replaces base rules
-//! with the same `id`, or switches them off with `enabled = false`. [`load_rule_set`] merges one base
-//! and its overlays into a [`RuleSet`] that remembers where each rule came from and checks that every
-//! map kind gets each value exactly once. `rules/README.md` describes the file format.
+//! with the same `id`, or switches them off with `enabled = false`. `rules/README.md` describes the
+//! file format.
 //!
-//! Each rule names a `key`; [`KNOWN_KEYS`] lists the keys and the values each reads. Value names carry
-//! their unit ([`UNITS`]); value names without a unit are tables whose shape [`TABLE_VALUES`]
-//! documents. Every value holds at the base scale of its map kind, so a `print_scales` filter is
+//! The format, the parser, the merge and the checks of ids, units and ranges live in the shared
+//! crate `freemapper-rules` (freemapper-core ADR 0011). This module holds what is specific to
+//! freemapper-print: the embedded profiles, the [`SCHEMA`] with the rule keys and the values each
+//! reads, the scale table check and the description cell range, and the [`RuleSet`] that resolves
+//! every value for every map kind when it is loaded and checks that each map kind gets each value
+//! exactly once. Every value holds at the base scale of its map kind, so a `print_scales` filter is
 //! read at the base scale (sprint 1:4000, forest 1:15000, schoolyard 1:1000).
-//!
-//! Provenance: the format, the loader and its validation are copied from freemapper-courseplan,
-//! `crates/freemapper-courseplan/src/rules.rs` at commit 86f9a42399397883762ecaf362d76fc36e3a3170
-//! (tag v0.2.0, GPL-3.0-or-later, same author), and adapted: print rule keys instead of check keys,
-//! no `disciplines` filter, values checked against the key, and a set that resolves its values per
-//! map kind when it is loaded.
 
-use std::collections::BTreeMap;
+use std::ops::Deref;
 use std::sync::OnceLock;
 
-use toml::{Table, Value};
+use freemapper_rules::toml::Value;
+pub use freemapper_rules::{
+    FORMAT, FilterArg, FilterItem, FilterKind, FilterSchema, KeySchema, LocalizedText, ProfileKind,
+    Rule, RuleProfile, RulesError, Schema, SetRule, Severity, Source, SourceRef, SwitchedOff,
+    TableSchema, value_number,
+};
 
 use crate::placement::GapRange;
 use crate::scale::MapKind;
-
-/// The profile file format this program reads.
-pub const FORMAT: i64 = 1;
 
 /// The base profile a project uses unless it names another (`[print] rule_profile`).
 pub const BASE_PROFILE: &str = "iof-print";
 
 /// The embedded profiles: profile id and content.
 const EMBEDDED: &[(&str, &str)] = &[("iof-print", include_str!("../rules/iof-print.toml"))];
+
+/// The filter field of the map kinds a rule applies to.
+pub const FIELD_MAP_KINDS: &str = "map_kinds";
+/// The filter field of the print scale denominators a rule applies to.
+pub const FIELD_PRINT_SCALES: &str = "print_scales";
 
 /// The value names of `course_symbol` rules, one per field of [`CourseSymbolSizes`].
 const COURSE_SYMBOL_VALUES: [&str; 18] = [
@@ -57,175 +60,101 @@ const COURSE_SYMBOL_VALUES: [&str; 18] = [
     "refreshment_line_mm",
 ];
 
-/// The rule keys this program reads, each with the value names a rule of that key may give.
-pub const KNOWN_KEYS: &[(&str, &[&str])] = &[
-    ("scale_table", &["rows"]),
-    ("north_lines", &["spacing_metres"]),
-    ("contour_interval", &["proposed_metres"]),
-    ("course_symbol", &COURSE_SYMBOL_VALUES),
-    ("description_box", &["cell_mm"]),
-    (
-        "course_colour",
-        &[
-            "cyan_percent",
-            "magenta_percent",
-            "yellow_percent",
-            "black_percent",
-        ],
-    ),
-    (
-        "placement_weights",
-        &[
-            "black_factor",
-            "brown_factor",
-            "blue_factor",
-            "other_factor",
-        ],
-    ),
-    ("number_gap", &["min_gap_mm", "max_gap_mm"]),
+/// The value names of `course_colour` rules.
+const COLOUR_VALUES: [&str; 4] = [
+    "cyan_percent",
+    "magenta_percent",
+    "yellow_percent",
+    "black_percent",
 ];
 
-/// Keys whose values hold for every map kind: their rules take no filter.
-const KIND_INDEPENDENT_KEYS: &[&str] = &["course_colour", "placement_weights", "number_gap"];
+/// The filters a key whose values hold for every map kind must not carry.
+const KIND_INDEPENDENT: &[&str] = &[FIELD_MAP_KINDS, FIELD_PRINT_SCALES];
 
 /// Units a numeric value name ends in (`metres`, `spacing_metres`, `cyan_percent`).
 pub const UNITS: &[&str] = &["metres", "mm", "degrees", "percent", "factor"];
-
-/// Value names that hold a table or a list instead of a number with a unit: rule key, value name
-/// and the shape of the value.
-pub const TABLE_VALUES: &[(&str, &str, &str)] = &[(
-    "scale_table",
-    "rows",
-    "[{ scale, size_factor, standard }, ...]: one row per scale denominator a map of the kind may be \
-     drawn and printed at, ascending; size_factor is the symbol size relative to the base scale, \
-     standard = false marks a reduction the standard does not foresee (default true)",
-)];
 
 /// The document key of values freemapper-print chose itself where no standard gives a number
 /// (`[sources.fmp]` in a profile). Such a rule needs a note.
 pub const PROPOSAL_DOC: &str = "fmp";
 
-/// A text in several languages, keyed by language code. English is always present.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalizedText(pub BTreeMap<String, String>);
-
-impl LocalizedText {
-    /// The text in `lang` (a language code such as `de`), else the English text.
-    pub fn get(&self, lang: &str) -> &str {
-        self.0
-            .get(lang)
-            .or_else(|| self.0.get("en"))
-            .map(String::as_str)
-            .unwrap_or("")
-    }
-}
-
-/// How serious a deviation from a rule is when the program reports one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity {
-    Error,
-    Warning,
-    Hint,
-}
-
-impl Severity {
-    /// The name used in profile files.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-            Severity::Hint => "hint",
-        }
-    }
-
-    fn parse(text: &str) -> Option<Severity> {
-        [Severity::Error, Severity::Warning, Severity::Hint]
-            .into_iter()
-            .find(|s| s.as_str() == text)
-    }
-}
-
-/// Whether a profile stands alone or extends a base profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileKind {
-    Base,
-    Overlay,
-}
-
-/// A document a profile cites, listed under `[sources.<doc>]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Source {
-    pub title: String,
-    pub url: Option<String>,
-}
-
-/// Where a rule comes from: the document key of the profile's `[sources]` and the section.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRef {
-    pub doc: String,
-    pub section: String,
-}
-
-/// One print rule of a profile.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Rule {
-    /// Stable dotted id, `<profile>.<family>.<name>`.
-    pub id: String,
-    /// What the rule sets, one of [`KNOWN_KEYS`].
-    pub key: String,
-    pub severity: Severity,
-    /// `false` in an overlay switches the base rule with the same id off.
-    pub enabled: bool,
-    /// Map kinds the rule applies to; empty means all.
-    pub map_kinds: Vec<MapKind>,
-    /// Print scale denominators the rule applies to; empty means all.
-    pub print_scales: Vec<u32>,
-    /// The values; names carry their unit.
-    pub values: Table,
-    pub source: SourceRef,
-    pub note: Option<LocalizedText>,
-}
-
-impl Rule {
-    /// Whether the rule's filters select a map of `kind` printed at 1:`print_scale`.
-    pub fn applies(&self, kind: MapKind, print_scale: u32) -> bool {
-        (self.map_kinds.is_empty() || self.map_kinds.contains(&kind))
-            && (self.print_scales.is_empty() || self.print_scales.contains(&print_scale))
-    }
-}
-
-/// One parsed profile file.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RuleProfile {
-    /// The profile id, such as `iof-print`.
-    pub id: String,
-    pub kind: ProfileKind,
-    /// The base profile an overlay extends.
-    pub base: Option<String>,
-    pub name: LocalizedText,
-    /// The date the rules apply from, as written in the file.
-    pub valid_from: Option<String>,
-    pub sources: BTreeMap<String, Source>,
-    pub rules: Vec<Rule>,
-}
-
-/// A rule of a rule set with the profile it came from.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SetRule {
-    pub rule: Rule,
-    pub profile: String,
-}
-
-/// A rule that a profile switched off with `enabled = false`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SwitchedOff {
-    /// The rule as it was before it was switched off.
-    pub rule: Rule,
-    /// The profile the switched-off rule came from.
-    pub profile: String,
-    /// The profile that switched it off.
-    pub by: String,
-}
+/// What the print profiles may contain: the rule keys this program reads, each with the value names
+/// a rule of that key may give; the units; the one table value; the filters; and the checks of the
+/// scale table and of single values.
+pub static SCHEMA: Schema = Schema {
+    keys: &[
+        KeySchema {
+            key: "scale_table",
+            values: Some(&["rows"]),
+            without_filters: &[],
+        },
+        KeySchema {
+            key: "north_lines",
+            values: Some(&["spacing_metres"]),
+            without_filters: &[],
+        },
+        KeySchema {
+            key: "contour_interval",
+            values: Some(&["proposed_metres"]),
+            without_filters: &[],
+        },
+        KeySchema {
+            key: "course_symbol",
+            values: Some(&COURSE_SYMBOL_VALUES),
+            without_filters: &[],
+        },
+        KeySchema {
+            key: "description_box",
+            values: Some(&["cell_mm"]),
+            without_filters: &[],
+        },
+        KeySchema {
+            key: "course_colour",
+            values: Some(&COLOUR_VALUES),
+            without_filters: KIND_INDEPENDENT,
+        },
+        KeySchema {
+            key: "placement_weights",
+            values: Some(&[
+                "black_factor",
+                "brown_factor",
+                "blue_factor",
+                "other_factor",
+            ]),
+            without_filters: KIND_INDEPENDENT,
+        },
+        KeySchema {
+            key: "number_gap",
+            values: Some(&["min_gap_mm", "max_gap_mm"]),
+            without_filters: KIND_INDEPENDENT,
+        },
+    ],
+    units: UNITS,
+    tables: &[TableSchema {
+        key: "scale_table",
+        value: "rows",
+        shape: "[{ scale, size_factor, standard }, ...]: one row per scale denominator a map of the \
+                kind may be drawn and printed at, ascending; size_factor is the symbol size relative \
+                to the base scale, standard = false marks a reduction the standard does not foresee \
+                (default true)",
+        check: Some(check_scale_rows),
+    }],
+    filters: &[
+        FilterSchema {
+            field: FIELD_MAP_KINDS,
+            kind: FilterKind::Text(&["sprint", "schoolyard", "forest"]),
+        },
+        FilterSchema {
+            field: FIELD_PRINT_SCALES,
+            kind: FilterKind::Int {
+                min: 1,
+                max: u32::MAX as i64,
+            },
+        },
+    ],
+    proposal_doc: PROPOSAL_DOC,
+    value_check: Some(check_value),
+};
 
 /// Sizes of the course planning symbols (7xx) in mm at the base scale of a map kind. Circle
 /// diameters run from line centre to line centre.
@@ -301,15 +230,12 @@ struct KindValues {
 }
 
 /// A base profile merged with its overlays: the print rules a sheet uses.
+///
+/// It wraps the merged set of `freemapper-rules` (its rules, switched-off rules and sources, reached
+/// through `Deref`) and adds the values resolved per map kind.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleSet {
-    pub base: String,
-    pub overlays: Vec<String>,
-    /// Active rules in file order: base rules first, then rules the overlays add.
-    pub rules: Vec<SetRule>,
-    pub switched_off: Vec<SwitchedOff>,
-    /// The `[sources]` of every profile in the set, by profile id.
-    pub sources: BTreeMap<String, BTreeMap<String, Source>>,
+    set: freemapper_rules::RuleSet,
     /// Per map kind, in the order of [`MapKind::ALL`].
     kinds: Vec<KindValues>,
     purple_cmyk: [f64; 4],
@@ -318,17 +244,15 @@ pub struct RuleSet {
     number_gap_allowed: Option<(f64, f64)>,
 }
 
+impl Deref for RuleSet {
+    type Target = freemapper_rules::RuleSet;
+
+    fn deref(&self) -> &Self::Target {
+        &self.set
+    }
+}
+
 impl RuleSet {
-    /// The active rule with this id.
-    pub fn rule(&self, id: &str) -> Option<&SetRule> {
-        self.rules.iter().find(|r| r.rule.id == id)
-    }
-
-    /// The document a rule cites, from the profile the rule came from.
-    pub fn source(&self, rule: &SetRule) -> Option<&Source> {
-        self.sources.get(&rule.profile)?.get(&rule.rule.source.doc)
-    }
-
     fn kind(&self, kind: MapKind) -> &KindValues {
         let slot = match kind {
             MapKind::Sprint => 0,
@@ -421,7 +345,8 @@ impl RuleSet {
     }
 }
 
-/// Why a rule profile or rule set cannot be loaded.
+/// Why a rule profile or rule set cannot be loaded. The variants up to `UnknownRule` are those of
+/// [`RulesError`] with the same texts; `Incomplete` is this program's own.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RuleError {
     #[error("unknown rule profile {id}; available: {available}")]
@@ -450,14 +375,73 @@ pub enum RuleError {
     Incomplete { set: String, message: String },
 }
 
-/// The ids of the embedded profiles, base profiles and overlays.
-pub fn available() -> Vec<&'static str> {
-    EMBEDDED.iter().map(|(id, _)| *id).collect()
+impl RuleError {
+    /// The error of `freemapper-rules` as this program's. `set` names the rule set for
+    /// `Ambiguous`, which only [`freemapper_rules::RuleSet::pick`] returns and which makes the set
+    /// unusable.
+    fn from_core(err: RulesError, set: &str) -> RuleError {
+        match err {
+            RulesError::UnknownProfile { id, available } => {
+                RuleError::UnknownProfile { id, available }
+            }
+            RulesError::NotABase(id) => RuleError::NotABase(id),
+            RulesError::NotAnOverlay(id) => RuleError::NotAnOverlay(id),
+            RulesError::OverlayForAnotherBase {
+                overlay,
+                extends,
+                base,
+            } => RuleError::OverlayForAnotherBase {
+                overlay,
+                extends,
+                base,
+            },
+            RulesError::Malformed { profile, message } => RuleError::Malformed { profile, message },
+            RulesError::UnknownKey { profile, rule, key } => {
+                RuleError::UnknownKey { profile, rule, key }
+            }
+            RulesError::UnknownRule { overlay, rule } => RuleError::UnknownRule { overlay, rule },
+            ambiguous @ RulesError::Ambiguous { .. } => RuleError::Incomplete {
+                set: set.to_owned(),
+                message: ambiguous_text(&ambiguous, None),
+            },
+        }
+    }
 }
 
-/// The embedded profile `id`.
+/// The ids of the embedded profiles, base profiles and overlays.
+pub fn available() -> Vec<&'static str> {
+    freemapper_rules::available(EMBEDDED)
+}
+
+/// The embedded profile `id`. `id` also goes to `from_core` as the set name for `Ambiguous`, which
+/// these calls can never return.
 pub fn profile(id: &str) -> Result<RuleProfile, RuleError> {
-    profile_in(EMBEDDED, id)
+    freemapper_rules::profile(&SCHEMA, EMBEDDED, id).map_err(|e| RuleError::from_core(e, id))
+}
+
+/// Parses one profile file embedded as `id` against [`SCHEMA`]. `id` also goes to `from_core` as the
+/// set name for `Ambiguous`, which this call can never return.
+pub fn parse_profile(id: &str, text: &str) -> Result<RuleProfile, RuleError> {
+    freemapper_rules::parse_profile(&SCHEMA, id, text).map_err(|e| RuleError::from_core(e, id))
+}
+
+/// Value names of `rule` that carry no unit and are no table value of its key (see
+/// [`freemapper_rules::value_name_problems`]).
+pub fn value_name_problems(rule: &Rule) -> Vec<String> {
+    freemapper_rules::value_name_problems(&SCHEMA, rule)
+}
+
+/// The filter arguments of a map of `kind` printed at 1:`print_scale`.
+fn filter_args(kind: MapKind, print_scale: u32) -> [(&'static str, FilterArg<'static>); 2] {
+    [
+        (FIELD_MAP_KINDS, FilterArg::Text(kind.name())),
+        (FIELD_PRINT_SCALES, FilterArg::Int(i64::from(print_scale))),
+    ]
+}
+
+/// Whether the filters of `rule` select a map of `kind` printed at 1:`print_scale`.
+pub fn applies(rule: &Rule, kind: MapKind, print_scale: u32) -> bool {
+    rule.applies(&filter_args(kind, print_scale))
 }
 
 /// The embedded base profile `iof-print` without overlays, loaded once.
@@ -473,20 +457,6 @@ pub fn base() -> &'static RuleSet {
 /// Merges the embedded base profile `base` with the overlays, in order.
 pub fn load_rule_set(base: &str, overlays: &[String]) -> Result<RuleSet, RuleError> {
     load_from(EMBEDDED, base, overlays)
-}
-
-fn profile_in(files: &[(&str, &str)], id: &str) -> Result<RuleProfile, RuleError> {
-    match files.iter().find(|(stem, _)| *stem == id) {
-        Some((stem, text)) => parse_profile(stem, text),
-        None => Err(RuleError::UnknownProfile {
-            id: id.to_owned(),
-            available: files
-                .iter()
-                .map(|(stem, _)| *stem)
-                .collect::<Vec<_>>()
-                .join(", "),
-        }),
-    }
 }
 
 /// [`load_from`] for tests elsewhere in the crate, with test-only profiles.
@@ -513,64 +483,36 @@ fn load_from(
     base: &str,
     overlays: &[String],
 ) -> Result<RuleSet, RuleError> {
-    let base_profile = profile_in(files, base)?;
-    if base_profile.kind != ProfileKind::Base {
-        return Err(RuleError::NotABase(base.to_owned()));
-    }
-    let mut merged = Merged::default();
-    merge(&mut merged, base_profile)?;
-    for overlay in overlays {
-        let profile = profile_in(files, overlay)?;
-        if profile.kind != ProfileKind::Overlay {
-            return Err(RuleError::NotAnOverlay(overlay.clone()));
-        }
-        let extends = profile.base.clone().unwrap_or_default();
-        if extends != base {
-            return Err(RuleError::OverlayForAnotherBase {
-                overlay: overlay.clone(),
-                extends,
-                base: base.to_owned(),
-            });
-        }
-        merge(&mut merged, profile)?;
-    }
     let set_name = std::iter::once(base)
         .chain(overlays.iter().map(String::as_str))
         .collect::<Vec<_>>()
         .join(" + ");
+    let set = freemapper_rules::load_rule_set(&SCHEMA, files, base, overlays)
+        .map_err(|e| RuleError::from_core(e, &set_name))?;
     let incomplete = |message: String| RuleError::Incomplete {
         set: set_name.clone(),
         message,
     };
     let mut kinds = Vec::new();
     for kind in MapKind::ALL {
-        kinds.push(resolve_kind(&merged.rules, kind).map_err(incomplete)?);
+        kinds.push(resolve_kind(&set, kind).map_err(incomplete)?);
     }
-    let colour = |name| needed(&merged.rules, "course_colour", name, None);
+    let colour = |name| needed(&set, "course_colour", name, None);
     let mut purple_cmyk = [0.0; 4];
-    for (slot, name) in purple_cmyk.iter_mut().zip([
-        "cyan_percent",
-        "magenta_percent",
-        "yellow_percent",
-        "black_percent",
-    ]) {
+    for (slot, name) in purple_cmyk.iter_mut().zip(COLOUR_VALUES) {
         *slot = colour(name).map_err(incomplete)? / 100.0;
     }
-    let weight = |name| needed(&merged.rules, "placement_weights", name, None);
+    let weight = |name| needed(&set, "placement_weights", name, None);
     let placement_weights = PlacementWeights {
         black: weight("black_factor").map_err(incomplete)?,
         brown: weight("brown_factor").map_err(incomplete)?,
         blue: weight("blue_factor").map_err(incomplete)?,
         other: weight("other_factor").map_err(incomplete)?,
     };
-    let number_gap = gap_limits(&merged.rules, GapRange::from_limits);
-    let number_gap_allowed = gap_limits(&merged.rules, GapRange::allowed);
+    let number_gap = gap_limits(&set, GapRange::from_limits);
+    let number_gap_allowed = gap_limits(&set, GapRange::allowed);
     Ok(RuleSet {
-        base: base.to_owned(),
-        overlays: overlays.to_vec(),
-        rules: merged.rules,
-        switched_off: merged.switched_off,
-        sources: merged.sources,
+        set,
         kinds,
         purple_cmyk,
         placement_weights,
@@ -584,14 +526,14 @@ fn load_from(
 /// check; ruling R30, courseplan ADR 0032). A rule with neither value is skipped; `None` when no rule gives one.
 /// Values that are not finite or not above 0 never get here: the profile loader refuses them.
 fn gap_limits(
-    rules: &[SetRule],
+    set: &freemapper_rules::RuleSet,
     range: fn(Option<f64>, Option<f64>) -> GapRange,
 ) -> Option<(f64, f64)> {
     let values = |name: &str| -> Vec<f64> {
-        rules
+        set.rules
             .iter()
             .filter(|r| r.rule.key == "number_gap")
-            .filter_map(|r| r.rule.values.get(name).and_then(number))
+            .filter_map(|r| value_number(&r.rule, name))
             .collect()
     };
     let (mins, maxs) = (values("min_gap_mm"), values("max_gap_mm"));
@@ -605,83 +547,37 @@ fn gap_limits(
     Some((range.min, range.max))
 }
 
-#[derive(Default)]
-struct Merged {
-    rules: Vec<SetRule>,
-    switched_off: Vec<SwitchedOff>,
-    sources: BTreeMap<String, BTreeMap<String, Source>>,
-}
-
-/// Adds the rules of `profile` to `set`: a rule with a known id replaces the rule, a new id is
-/// added, and `enabled = false` switches the rule off.
-fn merge(set: &mut Merged, profile: RuleProfile) -> Result<(), RuleError> {
-    let from = profile.id.clone();
-    set.sources.insert(from.clone(), profile.sources);
-    for rule in profile.rules {
-        let active = set.rules.iter().position(|r| r.rule.id == rule.id);
-        let off = set.switched_off.iter().position(|r| r.rule.id == rule.id);
-        if rule.enabled {
-            let entry = SetRule {
-                rule,
-                profile: from.clone(),
-            };
-            match active {
-                Some(i) => set.rules[i] = entry,
-                None => {
-                    if let Some(i) = off {
-                        set.switched_off.remove(i);
-                    }
-                    set.rules.push(entry);
-                }
-            }
-        } else if let Some(i) = active {
-            let old = set.rules.remove(i);
-            set.switched_off.push(SwitchedOff {
-                rule: old.rule,
-                profile: old.profile,
-                by: from.clone(),
-            });
-        } else if off.is_some() {
-            // Already switched off by an earlier profile.
-        } else if profile.kind == ProfileKind::Base {
-            set.switched_off.push(SwitchedOff {
-                rule,
-                profile: from.clone(),
-                by: from.clone(),
-            });
-        } else {
-            return Err(RuleError::UnknownRule {
-                overlay: from,
-                rule: rule.id,
-            });
-        }
-    }
-    Ok(())
-}
-
-/// The one active rule with `key` that gives `name` for maps of `kind` at their base scale (all
-/// rules of the key when `kind` is `None`), and the value. Two such rules are an error.
+/// The one active rule with `key` that gives `name` for maps of `kind` at their base scale (any
+/// rule of the key when `kind` is `None`; such keys take no filter). Two such rules are an error that
+/// names them and the map kind.
 fn pick<'a>(
-    rules: &'a [SetRule],
+    set: &'a freemapper_rules::RuleSet,
     key: &str,
     name: &str,
     kind: Option<MapKind>,
-) -> Result<Option<&'a Value>, String> {
-    let mut found = rules.iter().filter(|r| {
-        r.rule.key == key
-            && r.rule.values.contains_key(name)
-            && kind.is_none_or(|k| r.rule.applies(k, k.base_scale()))
-    });
-    let first = found.next();
-    if let Some(second) = found.next() {
-        let first = first.map_or("", |r| r.rule.id.as_str());
-        return Err(format!(
-            "rules {first} and {} both give {key} {name}{}",
-            second.rule.id,
-            for_kind(kind)
-        ));
+) -> Result<Option<&'a SetRule>, String> {
+    let picked = match kind {
+        Some(k) => set.pick(key, name, &filter_args(k, k.base_scale())),
+        None => set.pick(key, name, &[]),
+    };
+    picked.map_err(|e| ambiguous_text(&e, kind))
+}
+
+/// The text of an error of [`freemapper_rules::RuleSet::pick`]: for `Ambiguous`, which rules give
+/// the value, with the map kind.
+fn ambiguous_text(err: &RulesError, kind: Option<MapKind>) -> String {
+    match err {
+        RulesError::Ambiguous { key, value, rules } => {
+            let (last, rest) = rules.split_last().map_or(("", &[][..]), |(l, r)| (l, r));
+            let all = if rest.len() == 1 { "both" } else { "all" };
+            format!(
+                "rules {} and {last} {all} give {key} {value}{}",
+                rest.join(", "),
+                for_kind(kind)
+            )
+        }
+        other => other.to_string(),
     }
-    Ok(first.and_then(|r| r.rule.values.get(name)))
 }
 
 fn for_kind(kind: Option<MapKind>) -> String {
@@ -690,40 +586,33 @@ fn for_kind(kind: Option<MapKind>) -> String {
 
 /// The number `pick` finds, or `None` without a rule.
 fn optional(
-    rules: &[SetRule],
+    set: &freemapper_rules::RuleSet,
     key: &str,
     name: &str,
     kind: Option<MapKind>,
 ) -> Result<Option<f64>, String> {
-    Ok(pick(rules, key, name, kind)?.and_then(number))
+    Ok(pick(set, key, name, kind)?.and_then(|r| value_number(&r.rule, name)))
 }
 
 /// The number `pick` finds; an error without a rule.
-fn needed(rules: &[SetRule], key: &str, name: &str, kind: Option<MapKind>) -> Result<f64, String> {
-    optional(rules, key, name, kind)?
+fn needed(
+    set: &freemapper_rules::RuleSet,
+    key: &str,
+    name: &str,
+    kind: Option<MapKind>,
+) -> Result<f64, String> {
+    optional(set, key, name, kind)?
         .ok_or_else(|| format!("no rule gives {key} {name}{}", for_kind(kind)))
 }
 
-fn number(value: &Value) -> Option<f64> {
-    match value {
-        Value::Integer(n) => Some(*n as f64),
-        Value::Float(f) => Some(*f),
-        _ => None,
-    }
-}
-
-fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> {
+fn resolve_kind(set: &freemapper_rules::RuleSet, kind: MapKind) -> Result<KindValues, String> {
     let k = Some(kind);
-    let rows = pick(rules, "scale_table", "rows", k)?
+    let rows = pick(set, "scale_table", "rows", k)?
+        .and_then(|r| r.rule.values.get("rows"))
         .ok_or_else(|| format!("no rule gives scale_table rows{}", for_kind(k)))?;
-    // parse_rule checked the shape of each row.
+    // The schema's table check passed when the profile was parsed: the rows have their shape and
+    // ascend by scale.
     let scales = scale_rows(rows)?;
-    if scales.windows(2).any(|w| w[0].scale >= w[1].scale) {
-        return Err(format!(
-            "the scale_table rows{} are not in ascending order of scale",
-            for_kind(k)
-        ));
-    }
     // The base scale is where every other value holds, and `scale.rs` refers to it.
     let base = kind.base_scale();
     let at_base = scales
@@ -736,11 +625,11 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
             for_kind(k)
         ));
     }
-    let course = |name| needed(rules, "course_symbol", name, k);
+    let course = |name| needed(set, "course_symbol", name, k);
     Ok(KindValues {
         scales,
-        north_line_spacing_m: needed(rules, "north_lines", "spacing_metres", k)?,
-        contour_interval_m: optional(rules, "contour_interval", "proposed_metres", k)?,
+        north_line_spacing_m: needed(set, "north_lines", "spacing_metres", k)?,
+        contour_interval_m: optional(set, "contour_interval", "proposed_metres", k)?,
         course: CourseSymbolSizes {
             circle_diameter_mm: course("circle_diameter_mm")?,
             line_width_mm: course("line_width_mm")?,
@@ -754,7 +643,7 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
             crossing_point_mm: course("crossing_point_mm")?,
             out_of_bounds_hatch_angle_degrees: course("out_of_bounds_hatch_angle_degrees")?,
             out_of_bounds_hatch_second_angle_degrees: optional(
-                rules,
+                set,
                 "course_symbol",
                 "out_of_bounds_hatch_second_angle_degrees",
                 k,
@@ -766,8 +655,17 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
             refreshment_mm: course("refreshment_mm")?,
             refreshment_line_mm: course("refreshment_line_mm")?,
         },
-        description_cell_mm: needed(rules, "description_box", "cell_mm", k)?,
+        description_cell_mm: needed(set, "description_box", "cell_mm", k)?,
     })
+}
+
+/// The schema's check of a `scale_table` `rows` value: the shape of each row and ascending scales.
+fn check_scale_rows(rows: &Value) -> Result<(), String> {
+    let scales = scale_rows(rows)?;
+    if scales.windows(2).any(|w| w[0].scale >= w[1].scale) {
+        return Err("the rows are not in ascending order of scale".to_owned());
+    }
+    Ok(())
 }
 
 /// The rows of a `scale_table` value; an error names the first row that is not
@@ -786,15 +684,24 @@ fn scale_rows(rows: &Value) -> Result<Vec<ScaleEntry>, String> {
             let Value::Table(row) = row else {
                 return Err(format!("{place} is not {{ scale, size_factor }}"));
             };
-            only_fields(row, &["scale", "size_factor", "standard"], &place)?;
+            if let Some(unknown) = row
+                .keys()
+                .find(|k| !["scale", "size_factor", "standard"].contains(&k.as_str()))
+            {
+                return Err(format!("{place} has the unknown field {unknown}"));
+            }
             let scale = match row.get("scale") {
                 Some(Value::Integer(n)) if *n > 0 && *n <= i64::from(u32::MAX) => *n as u32,
                 _ => return Err(format!("{place}: scale is no scale denominator")),
             };
-            let size_factor = match row.get("size_factor").and_then(number) {
-                Some(f) if f.is_finite() && f > 0.0 => f,
-                _ => return Err(format!("{place}: size_factor is not a number above 0")),
+            let size_factor = match row.get("size_factor") {
+                Some(Value::Integer(n)) => *n as f64,
+                Some(Value::Float(f)) => *f,
+                _ => f64::NAN,
             };
+            if !(size_factor.is_finite() && size_factor > 0.0) {
+                return Err(format!("{place}: size_factor is not a number above 0"));
+            }
             let standard = match row.get("standard") {
                 None => true,
                 Some(Value::Boolean(b)) => *b,
@@ -809,404 +716,35 @@ fn scale_rows(rows: &Value) -> Result<Vec<ScaleEntry>, String> {
         .collect()
 }
 
-/// Parses one profile file embedded as `id`.
-pub fn parse_profile(id: &str, text: &str) -> Result<RuleProfile, RuleError> {
-    let bad = |message: String| RuleError::Malformed {
-        profile: id.to_owned(),
-        message,
-    };
-    let doc: Table = text
-        .parse()
-        .map_err(|e: toml::de::Error| bad(e.to_string()))?;
-    only_fields(&doc, &["format", "profile", "sources", "rules"], "the file").map_err(bad)?;
-    match doc.get("format") {
-        Some(Value::Integer(FORMAT)) => {}
-        Some(Value::Integer(n)) if *n > FORMAT => {
-            return Err(bad(format!(
-                "format {n} is newer than this program reads ({FORMAT})"
-            )));
-        }
-        Some(other) => return Err(bad(format!("format {other} is not {FORMAT}"))),
-        None => return Err(bad(format!("format = {FORMAT} is missing"))),
-    }
-
-    let head = table(&doc, "profile", "the file").map_err(bad)?;
-    only_fields(
-        head,
-        &["id", "kind", "base", "name", "valid_from"],
-        "[profile]",
-    )
-    .map_err(bad)?;
-    let file_id = string(head, "id", "[profile]").map_err(bad)?;
-    if file_id != id {
-        return Err(bad(format!(
-            "[profile] id {file_id} differs from the profile id {id}"
-        )));
-    }
-    let kind = match string(head, "kind", "[profile]").map_err(bad)?.as_str() {
-        "base" => ProfileKind::Base,
-        "overlay" => ProfileKind::Overlay,
-        other => return Err(bad(format!("kind {other} is neither base nor overlay"))),
-    };
-    let base = optional_string(head, "base", "[profile]").map_err(bad)?;
-    match (kind, &base) {
-        (ProfileKind::Overlay, None) => return Err(bad("an overlay needs a base".to_owned())),
-        (ProfileKind::Base, Some(_)) => {
-            return Err(bad("a base profile has no base".to_owned()));
-        }
-        _ => {}
-    }
-    let name = localized(head.get("name"), "[profile] name").map_err(bad)?;
-    let valid_from = match head.get("valid_from") {
-        None => None,
-        Some(Value::Datetime(date)) => Some(date.to_string()),
-        Some(Value::String(date)) => Some(date.clone()),
-        Some(_) => return Err(bad("[profile] valid_from is not a date".to_owned())),
-    };
-
-    let mut sources = BTreeMap::new();
-    if let Some(value) = doc.get("sources") {
-        let Value::Table(entries) = value else {
-            return Err(bad("[sources] is not a table".to_owned()));
-        };
-        for (doc_key, entry) in entries {
-            let place = format!("[sources.{doc_key}]");
-            let Value::Table(entry) = entry else {
-                return Err(bad(format!("{place} is not a table")));
-            };
-            only_fields(entry, &["title", "url"], &place).map_err(bad)?;
-            sources.insert(
-                doc_key.clone(),
-                Source {
-                    title: string(entry, "title", &place).map_err(bad)?,
-                    url: optional_string(entry, "url", &place).map_err(bad)?,
-                },
-            );
-        }
-    }
-
-    let mut rules: Vec<Rule> = Vec::new();
-    let entries = match doc.get("rules") {
-        None => Vec::new(),
-        Some(Value::Array(entries)) => entries.clone(),
-        Some(_) => return Err(bad("rules is not a list of [[rules]]".to_owned())),
-    };
-    for (index, entry) in entries.iter().enumerate() {
-        let Value::Table(entry) = entry else {
-            return Err(bad(format!("rule {} is not a table", index + 1)));
-        };
-        let rule = parse_rule(id, entry, index)?;
-        if rules.iter().any(|r| r.id == rule.id) {
-            return Err(bad(format!("rule {} is defined twice", rule.id)));
-        }
-        if !sources.contains_key(&rule.source.doc) {
-            return Err(bad(format!(
-                "rule {} cites source {}, which [sources] does not list",
-                rule.id, rule.source.doc
-            )));
-        }
-        rules.push(rule);
-    }
-
-    Ok(RuleProfile {
-        id: id.to_owned(),
-        kind,
-        base,
-        name,
-        valid_from,
-        sources,
-        rules,
-    })
-}
-
-fn parse_rule(profile: &str, entry: &Table, index: usize) -> Result<Rule, RuleError> {
-    let bad = |message: String| RuleError::Malformed {
-        profile: profile.to_owned(),
-        message,
-    };
-    let place = format!("rule {}", index + 1);
-    let id = string(entry, "id", &place).map_err(bad)?;
-    let place = format!("rule {id}");
-    only_fields(
-        entry,
-        &[
-            "id",
-            "key",
-            "severity",
-            "enabled",
-            "map_kinds",
-            "print_scales",
-            "values",
-            "source",
-            "note",
-        ],
-        &place,
-    )
-    .map_err(bad)?;
-    let well_formed = id.split('.').count() >= 3
-        && id.split('.').all(|part| {
-            !part.is_empty()
-                && part
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        });
-    if !well_formed {
-        return Err(bad(format!(
-            "rule id {id} is not of the form <profile>.<family>.<name> in lower case"
-        )));
-    }
-    let key = string(entry, "key", &place).map_err(bad)?;
-    let Some((_, known_values)) = KNOWN_KEYS.iter().find(|(k, _)| *k == key) else {
-        return Err(RuleError::UnknownKey {
-            profile: profile.to_owned(),
-            rule: id,
-            key,
-        });
-    };
-    let severity_text = string(entry, "severity", &place).map_err(bad)?;
-    let severity = Severity::parse(&severity_text).ok_or_else(|| {
-        bad(format!(
-            "{place}: severity {severity_text} is not error, warning or hint"
-        ))
-    })?;
-    let enabled = match entry.get("enabled") {
-        None => true,
-        Some(Value::Boolean(enabled)) => *enabled,
-        Some(_) => return Err(bad(format!("{place}: enabled is not true or false"))),
-    };
-    let map_kinds = strings(entry, "map_kinds", &place)
-        .map_err(bad)?
-        .iter()
-        .map(|kind| {
-            MapKind::ALL
-                .into_iter()
-                .find(|k| k.name() == kind)
-                .ok_or_else(|| bad(format!("{place}: unknown map kind {kind}")))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let print_scales = match entry.get("print_scales") {
-        None => Vec::new(),
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(|item| match item {
-                Value::Integer(n) if *n > 0 && *n <= i64::from(u32::MAX) => Ok(*n as u32),
-                other => Err(bad(format!("{place}: print scale {other} is no scale"))),
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-        Some(_) => return Err(bad(format!("{place}: print_scales is not a list"))),
-    };
-    if KIND_INDEPENDENT_KEYS.contains(&key.as_str())
-        && (!map_kinds.is_empty() || !print_scales.is_empty())
-    {
-        return Err(bad(format!(
-            "{place}: {key} holds for every map kind and takes no filter"
-        )));
-    }
-    let values = match entry.get("values") {
-        None => Table::new(),
-        Some(Value::Table(values)) => values.clone(),
-        Some(_) => return Err(bad(format!("{place}: values is not a table"))),
-    };
-    let source = match entry.get("source") {
-        Some(Value::Table(source)) => {
-            let where_ = format!("{place} source");
-            only_fields(source, &["doc", "section"], &where_).map_err(bad)?;
-            SourceRef {
-                doc: string(source, "doc", &where_).map_err(bad)?,
-                section: string(source, "section", &where_).map_err(bad)?,
-            }
-        }
-        _ => return Err(bad(format!("{place} has no source = {{ doc, section }}"))),
-    };
-    let note = match entry.get("note") {
-        None => None,
-        value => Some(localized(value, &format!("{place} note")).map_err(bad)?),
-    };
-    let rule = Rule {
-        id,
-        key,
-        severity,
-        enabled,
-        map_kinds,
-        print_scales,
-        values,
-        source,
-        note,
-    };
-    let problems = value_name_problems(&rule);
-    if !problems.is_empty() {
-        return Err(bad(format!(
-            "rule {}: value names without a unit: {}",
-            rule.id,
-            problems.join(", ")
-        )));
-    }
-    let unread: Vec<&str> = rule
-        .values
-        .keys()
-        .map(String::as_str)
-        .filter(|name| !known_values.contains(name))
-        .collect();
-    if !unread.is_empty() {
-        return Err(bad(format!(
-            "rule {}: {} does not read {}; it reads {}",
-            rule.id,
-            rule.key,
-            unread.join(", "),
-            known_values.join(", ")
-        )));
-    }
-    for (name, value) in &rule.values {
-        value_problem(&rule.key, name, value)
-            .map_err(|message| bad(format!("rule {}: {name}: {message}", rule.id)))?;
-    }
-    Ok(rule)
-}
-
-/// Checks one value of a rule: a documented table has its shape, a number its range by unit
-/// (`mm` and `metres` above 0, `factor` 0 or more, `percent` from 0 to 100, `degrees` any finite number;
-/// `description_box` `cell_mm` from 4 to 10, as the project file's `cell_mm`).
-fn value_problem(key: &str, name: &str, value: &Value) -> Result<(), String> {
+/// The schema's check of one value, after `freemapper-rules` checked its unit range. Every value
+/// name this program reads, apart from the table `rows`, is one number, so a list is refused (the
+/// shared loader accepts a list of numbers, core ADR 0011). `description_box` `cell_mm` has the range
+/// the project file allows for `cell_mm`.
+fn check_value(key: &str, name: &str, value: &Value) -> Option<String> {
     if key == "scale_table" && name == "rows" {
-        return scale_rows(value).map(|_| ());
+        return None;
     }
-    let Some(n) = number(value).filter(|n| n.is_finite()) else {
-        return Err("is not a number".to_owned());
+    let n = match value {
+        Value::Integer(n) => *n as f64,
+        Value::Float(f) => *f,
+        Value::Array(_) => return Some(format!("is a list, but {key} reads one number")),
+        _ => return Some("is not a number".to_owned()),
     };
-    // The description cell has the range the project file allows for `cell_mm`.
     if key == "description_box" && name == "cell_mm" {
         use crate::project::{MAX_CELL_MM, MIN_CELL_MM};
-        return if (MIN_CELL_MM..=MAX_CELL_MM).contains(&n) {
-            Ok(())
-        } else {
-            Err(format!(
+        if !(MIN_CELL_MM..=MAX_CELL_MM).contains(&n) {
+            return Some(format!(
                 "{n} is out of range; a description cell is {MIN_CELL_MM} to {MAX_CELL_MM} mm"
-            ))
-        };
-    }
-    let unit = UNITS
-        .iter()
-        .find(|unit| name == **unit || name.ends_with(&format!("_{unit}")))
-        .copied()
-        .unwrap_or("");
-    let fits = match unit {
-        "percent" => (0.0..=100.0).contains(&n),
-        "factor" => n >= 0.0,
-        // An angle may point anywhere.
-        "degrees" => true,
-        _ => n > 0.0,
-    };
-    if fits {
-        Ok(())
-    } else {
-        Err(format!("{n} is out of range for a value in {unit}"))
-    }
-}
-
-/// Value names of `rule` that carry no unit and are no documented table.
-///
-/// Text, true/false and lists of texts need no unit. A number or a list of numbers needs a name
-/// that is a unit or ends in `_<unit>`. Anything else must be listed in [`TABLE_VALUES`] for the
-/// rule's key.
-pub fn value_name_problems(rule: &Rule) -> Vec<String> {
-    fn is_text(value: &Value) -> bool {
-        match value {
-            Value::String(_) | Value::Boolean(_) | Value::Datetime(_) => true,
-            Value::Array(items) => items.iter().all(is_text),
-            _ => false,
+            ));
         }
     }
-    fn is_number(value: &Value) -> bool {
-        match value {
-            Value::Integer(_) | Value::Float(_) => true,
-            Value::Array(items) => items
-                .iter()
-                .all(|v| matches!(v, Value::Integer(_) | Value::Float(_))),
-            _ => false,
-        }
-    }
-    let has_unit = |name: &str| {
-        UNITS
-            .iter()
-            .any(|unit| name == *unit || name.ends_with(&format!("_{unit}")))
-    };
-    let documented = |name: &str| {
-        TABLE_VALUES
-            .iter()
-            .any(|(key, value, _)| *key == rule.key && *value == name)
-    };
-    rule.values
-        .iter()
-        .filter(|(name, value)| {
-            !(is_text(value) || (is_number(value) && has_unit(name)) || documented(name))
-        })
-        .map(|(name, _)| name.clone())
-        .collect()
-}
-
-fn only_fields(table: &Table, allowed: &[&str], place: &str) -> Result<(), String> {
-    match table.keys().find(|k| !allowed.contains(&k.as_str())) {
-        Some(unknown) => Err(format!("{place} has the unknown field {unknown}")),
-        None => Ok(()),
-    }
-}
-
-fn table<'a>(table: &'a Table, name: &str, place: &str) -> Result<&'a Table, String> {
-    match table.get(name) {
-        Some(Value::Table(inner)) => Ok(inner),
-        Some(_) => Err(format!("{name} in {place} is not a table")),
-        None => Err(format!("{place} has no [{name}]")),
-    }
-}
-
-fn string(table: &Table, name: &str, place: &str) -> Result<String, String> {
-    optional_string(table, name, place)?.ok_or_else(|| format!("{place} has no {name}"))
-}
-
-fn optional_string(table: &Table, name: &str, place: &str) -> Result<Option<String>, String> {
-    match table.get(name) {
-        None => Ok(None),
-        Some(Value::String(text)) if !text.trim().is_empty() => Ok(Some(text.clone())),
-        Some(_) => Err(format!("{name} in {place} is not a text")),
-    }
-}
-
-fn strings(table: &Table, name: &str, place: &str) -> Result<Vec<String>, String> {
-    match table.get(name) {
-        None => Ok(Vec::new()),
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(|item| match item {
-                Value::String(text) => Ok(text.clone()),
-                _ => Err(format!("{name} in {place} is not a list of texts")),
-            })
-            .collect(),
-        Some(_) => Err(format!("{name} in {place} is not a list")),
-    }
-}
-
-fn localized(value: Option<&Value>, place: &str) -> Result<LocalizedText, String> {
-    let Some(Value::Table(texts)) = value else {
-        return Err(format!("{place} is not {{ en = \"...\", de = \"...\" }}"));
-    };
-    let mut map = BTreeMap::new();
-    for (lang, text) in texts {
-        match text {
-            Value::String(text) if !text.trim().is_empty() => {
-                map.insert(lang.clone(), text.clone());
-            }
-            _ => return Err(format!("{place}: the {lang} text is empty or no text")),
-        }
-    }
-    if !map.contains_key("en") {
-        return Err(format!("{place} has no English text (en)"));
-    }
-    Ok(LocalizedText(map))
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use freemapper_rules::toml::Table;
 
     /// A test-only overlay for the embedded base profile: replaces the sprint north-line rule and adds
     /// a rule of its own.
@@ -1317,11 +855,7 @@ mod tests {
         assert!(!profile.rules.is_empty());
         for rule in &profile.rules {
             assert!(rule.id.starts_with("iofprint."), "{}", rule.id);
-            assert!(
-                KNOWN_KEYS.iter().any(|(key, _)| *key == rule.key),
-                "{}",
-                rule.id
-            );
+            assert!(SCHEMA.keys.iter().any(|k| k.key == rule.key), "{}", rule.id);
             assert_eq!(
                 value_name_problems(rule),
                 Vec::<String>::new(),
@@ -1354,8 +888,8 @@ mod tests {
         assert!(set.overlays.is_empty() && set.switched_off.is_empty());
         assert!(set.rules.iter().all(|r| set.source(r).is_some()));
         // Every key the program reads has a rule.
-        for (key, _) in KNOWN_KEYS {
-            assert!(set.rules.iter().any(|r| r.rule.key == *key), "{key}");
+        for key in SCHEMA.keys.iter().map(|k| k.key) {
+            assert!(set.rules.iter().any(|r| r.rule.key == key), "{key}");
         }
         assert_eq!(set.purple_cmyk(), [0.35, 0.85, 0.0, 0.0]);
         assert_eq!(
@@ -1422,28 +956,191 @@ mod tests {
         }
     }
 
+    /// Whether a base profile whose one rule of `key` gives `name = value` (TOML) parses.
+    fn value_ok(key: &str, name: &str, value: &str) -> bool {
+        let text = base_with_rule(&format!(
+            "id = \"basex.x.y\"\nkey = \"{key}\"\nseverity = \"hint\"\nvalues = {{ {name} = {value} }}\n\
+             source = {{ doc = \"DOC\", section = \"1\" }}\n"
+        ));
+        parse_profile("base-x", &text).is_ok()
+    }
+
     #[test]
     fn degrees_take_any_finite_number() {
-        let check = |name: &str, value: Value| value_problem("course_symbol", name, &value);
+        let check = |name: &str, value: &str| value_ok("course_symbol", name, value);
         let angle = "out_of_bounds_hatch_angle_degrees";
-        assert!(check(angle, Value::Integer(0)).is_ok());
-        assert!(check(angle, Value::Integer(-45)).is_ok());
-        assert!(check(angle, Value::Float(400.0)).is_ok());
-        assert!(check(angle, Value::Float(f64::NAN)).is_err());
-        assert!(check(angle, Value::Float(f64::INFINITY)).is_err());
+        assert!(check(angle, "0"));
+        assert!(check(angle, "-45"));
+        assert!(check(angle, "400.0"));
+        assert!(!check(angle, "nan"));
+        assert!(!check(angle, "inf"));
         // Lengths stay above 0.
-        assert!(check("first_aid_mm", Value::Integer(0)).is_err());
+        assert!(!check("first_aid_mm", "0"));
     }
 
     #[test]
     fn description_cell_is_bounded() {
-        let check = |value: Value| value_problem("description_box", "cell_mm", &value);
-        assert!(check(Value::Integer(4)).is_ok());
-        assert!(check(Value::Float(6.0)).is_ok());
-        assert!(check(Value::Integer(10)).is_ok());
-        assert!(check(Value::Float(3.9)).is_err());
-        assert!(check(Value::Float(10.5)).is_err());
-        assert!(check(Value::Float(f64::NAN)).is_err());
+        let check = |value: &str| value_ok("description_box", "cell_mm", value);
+        assert!(check("4"));
+        assert!(check("6.0"));
+        assert!(check("10"));
+        assert!(!check("3.9"));
+        assert!(!check("10.5"));
+        assert!(!check("nan"));
+        assert!(!check("0"));
+    }
+
+    #[test]
+    fn schema_has_no_problems() {
+        assert_eq!(SCHEMA.problems(), Vec::<String>::new());
+        // The map kinds filter allows exactly the map kinds this program knows.
+        let names: Vec<&str> = MapKind::ALL.iter().map(|k| k.name()).collect();
+        let allowed = SCHEMA
+            .filters
+            .iter()
+            .find(|f| f.field == FIELD_MAP_KINDS)
+            .map(|f| f.kind);
+        assert_eq!(
+            allowed,
+            Some(FilterKind::Text(&["sprint", "schoolyard", "forest"]))
+        );
+        assert_eq!(names, ["sprint", "schoolyard", "forest"]);
+        // The kind-independent keys refuse both filters.
+        for key in ["course_colour", "placement_weights", "number_gap"] {
+            let schema = SCHEMA.keys.iter().find(|k| k.key == key).unwrap();
+            assert_eq!(schema.without_filters, KIND_INDEPENDENT, "{key}");
+        }
+    }
+
+    #[test]
+    fn a_list_is_refused_where_one_number_is_read() {
+        // freemapper-rules checks a list item by item (core ADR 0011); every value but rows is one
+        // number here, so the schema's value check refuses the list.
+        for (key, name) in [
+            ("north_lines", "spacing_metres"),
+            ("course_colour", "cyan_percent"),
+            ("placement_weights", "black_factor"),
+            ("course_symbol", "out_of_bounds_hatch_angle_degrees"),
+            ("description_box", "cell_mm"),
+            ("number_gap", "min_gap_mm"),
+        ] {
+            assert!(!value_ok(key, name, "[5.0, 6.0]"), "{key} {name}");
+            assert!(!value_ok(key, name, "[]"), "{key} {name}: empty list");
+        }
+        let text = base_with_rule(
+            "id = \"basex.x.y\"\nkey = \"north_lines\"\nseverity = \"hint\"\n\
+             values = { spacing_metres = [100.0, 120.0] }\nsource = { doc = \"DOC\", section = \"1\" }\n",
+        );
+        let err = parse_profile("base-x", &text).unwrap_err().to_string();
+        assert!(
+            err.contains("basex.x.y")
+                && err.contains("is a list, but north_lines reads one number"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn scale_rows_must_ascend() {
+        let rows = |rows: &str| value_ok("scale_table", "rows", &format!("[{rows}]"));
+        assert!(rows(
+            "{ scale = 3000, size_factor = 1.5 }, { scale = 4000, size_factor = 1.0 }"
+        ));
+        // Since the switch to freemapper-rules the table check refuses the profile when it is parsed
+        // (Malformed); before, the set was refused when it was resolved (Incomplete).
+        assert!(!rows(
+            "{ scale = 4000, size_factor = 1.0 }, { scale = 3000, size_factor = 1.5 }"
+        ));
+        assert!(!rows(
+            "{ scale = 4000, size_factor = 1.0 }, { scale = 4000, size_factor = 1.0 }"
+        ));
+        assert!(!rows(""));
+    }
+
+    #[test]
+    fn a_proposal_without_a_note_is_refused() {
+        // freemapper-rules refuses it when the profile is parsed; before, only a test over the
+        // embedded profile checked it.
+        let text = format!(
+            "{}\n[sources.fmp]\ntitle = \"Ours\"\n",
+            base_with_rule(
+                "id = \"basex.x.y\"\nkey = \"north_lines\"\nseverity = \"hint\"\n\
+                 values = { spacing_metres = 100.0 }\nsource = { doc = \"fmp\", section = \"ADR 0031\" }\n",
+            )
+        );
+        let err = parse_profile("base-x", &text).unwrap_err();
+        assert!(matches!(err, RuleError::Malformed { .. }), "{err:?}");
+        assert!(err.to_string().contains("basex.x.y"), "{err}");
+        let with_note = text.replace(
+            "source = { doc = \"fmp\"",
+            "note = { en = \"Our call.\" }\nsource = { doc = \"fmp\"",
+        );
+        assert!(parse_profile("base-x", &with_note).is_ok());
+    }
+
+    #[test]
+    fn three_rules_for_one_slot_are_all_named() {
+        let overlay = format!(
+            "{REPLACE}\n[[rules]]\nid = \"testreplace.north_lines.a\"\nkey = \"north_lines\"\n\
+             severity = \"hint\"\nmap_kinds = [\"sprint\"]\nvalues = {{ spacing_metres = 90.0 }}\n\
+             source = {{ doc = \"REG\", section = \"§ 4\" }}\n\
+             [[rules]]\nid = \"testreplace.north_lines.b\"\nkey = \"north_lines\"\n\
+             severity = \"hint\"\nvalues = {{ spacing_metres = 80.0 }}\n\
+             source = {{ doc = \"REG\", section = \"§ 4\" }}\n"
+        );
+        let files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-replace", overlay.as_str()),
+        ];
+        let err = load_from(&files, "iof-print", &[s("test-replace")]).unwrap_err();
+        assert!(matches!(err, RuleError::Incomplete { .. }), "{err:?}");
+        assert_eq!(
+            err.to_string(),
+            "rule set iof-print + test-replace cannot be used: rules iofprint.north_lines.sprint, \
+             testreplace.north_lines.a and testreplace.north_lines.b all give north_lines \
+             spacing_metres for sprint maps"
+        );
+    }
+
+    #[test]
+    fn pick_at_the_base_scale_is_the_old_applies() {
+        // The per-kind resolution passes the map kind and its base scale. A rule that filters on a
+        // dimension matches only when the argument is in its list; one without a filter matches any.
+        let filtered = |kinds: &str, scales: &str| {
+            let text = base_with_rule(&format!(
+                "id = \"basex.north.x\"\nkey = \"north_lines\"\nseverity = \"hint\"\n\
+                 map_kinds = {kinds}\nprint_scales = {scales}\nvalues = {{ spacing_metres = 1.0 }}\n\
+                 source = {{ doc = \"DOC\", section = \"1\" }}\n"
+            ));
+            parse_profile("base-x", &text).unwrap().rules.remove(0)
+        };
+        let old_applies = |kinds: &[MapKind], scales: &[u32], kind: MapKind, scale: u32| {
+            (kinds.is_empty() || kinds.contains(&kind))
+                && (scales.is_empty() || scales.contains(&scale))
+        };
+        for (kinds, kinds_toml) in [
+            (&[][..], "[]"),
+            (&[MapKind::Sprint][..], "[\"sprint\"]"),
+            (
+                &[MapKind::Sprint, MapKind::Forest][..],
+                "[\"sprint\", \"forest\"]",
+            ),
+        ] {
+            for (scales, scales_toml) in [
+                (&[][..], "[]"),
+                (&[4000][..], "[4000]"),
+                (&[3000, 15000][..], "[3000, 15000]"),
+            ] {
+                let rule = filtered(kinds_toml, scales_toml);
+                for kind in MapKind::ALL {
+                    let scale = kind.base_scale();
+                    assert_eq!(
+                        applies(&rule, kind, scale),
+                        old_applies(kinds, scales, kind, scale),
+                        "{kinds_toml} {scales_toml} {kind:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -1871,8 +1568,626 @@ mod tests {
         let set = load_from(&files, "iof-print", &[s("test-replace")]).unwrap();
         assert_eq!(set.north_line_spacing_m(MapKind::Sprint), 100.0);
         let rule = &set.rule("iofprint.north_lines.sprint").unwrap().rule;
-        assert!(rule.applies(MapKind::Sprint, 4000));
-        assert!(!rule.applies(MapKind::Sprint, 3000));
-        assert!(!rule.applies(MapKind::Forest, 4000));
+        assert!(applies(rule, MapKind::Sprint, 4000));
+        assert!(!applies(rule, MapKind::Sprint, 3000));
+        assert!(!applies(rule, MapKind::Forest, 4000));
+    }
+
+    /// The filters of `rule` as `map_kinds = [...] print_scales = [...]`, for the snapshot.
+    fn rule_filters(rule: &Rule) -> String {
+        let kinds: Vec<&str> = rule
+            .filter(FIELD_MAP_KINDS)
+            .iter()
+            .filter_map(|item| match item {
+                FilterItem::Text(kind) => Some(kind.as_str()),
+                FilterItem::Int(_) => None,
+            })
+            .collect();
+        let scales: Vec<u32> = rule
+            .filter(FIELD_PRINT_SCALES)
+            .iter()
+            .filter_map(|item| match item {
+                FilterItem::Int(scale) => u32::try_from(*scale).ok(),
+                FilterItem::Text(_) => None,
+            })
+            .collect();
+        format!("map_kinds = {kinds:?} print_scales = {scales:?}")
+    }
+
+    /// A TOML value in a stable text form: floats with `{:?}`, tables in key order.
+    fn value_text(value: &Value) -> String {
+        match value {
+            Value::Integer(n) => n.to_string(),
+            Value::Float(f) => format!("{f:?}"),
+            Value::String(s) => format!("{s:?}"),
+            Value::Boolean(b) => b.to_string(),
+            Value::Datetime(d) => d.to_string(),
+            Value::Array(items) => format!(
+                "[{}]",
+                items.iter().map(value_text).collect::<Vec<_>>().join(", ")
+            ),
+            Value::Table(table) => table_text(table),
+        }
+    }
+
+    fn table_text(table: &Table) -> String {
+        let mut entries: Vec<(&String, &Value)> = table.iter().collect();
+        entries.sort_by_key(|(name, _)| *name);
+        let entries: Vec<String> = entries
+            .into_iter()
+            .map(|(name, value)| format!("{name} = {}", value_text(value)))
+            .collect();
+        format!("{{ {} }}", entries.join(", "))
+    }
+
+    /// Every accessor of `set`, one `key = value` line each, prefixed with `label`.
+    fn resolved_text(label: &str, set: &RuleSet, out: &mut String) {
+        use std::fmt::Write;
+        let mut line = |key: String, value: String| {
+            let _ = writeln!(out, "{label}.{key} = {value}");
+        };
+        line(s("base"), format!("{:?}", set.base));
+        line(s("overlays"), format!("{:?}", set.overlays));
+        for (i, r) in set.rules.iter().enumerate() {
+            let rule = &r.rule;
+            line(
+                format!("rule[{i}]"),
+                format!(
+                    "{} from {} key {} severity {} enabled {} {} values {} source {:?} {:?} note {:?}",
+                    rule.id,
+                    r.profile,
+                    rule.key,
+                    rule.severity.as_str(),
+                    rule.enabled,
+                    rule_filters(rule),
+                    table_text(&rule.values),
+                    rule.source.doc,
+                    rule.source.section,
+                    rule.note.as_ref().map(|n| &n.0),
+                ),
+            );
+        }
+        for (i, off) in set.switched_off.iter().enumerate() {
+            line(
+                format!("switched_off[{i}]"),
+                format!("{} from {} by {}", off.rule.id, off.profile, off.by),
+            );
+        }
+        for (profile, docs) in &set.sources {
+            for (doc, source) in docs {
+                line(
+                    format!("source.{profile}.{doc}"),
+                    format!("{:?} url {:?}", source.title, source.url),
+                );
+            }
+        }
+        for kind in MapKind::ALL {
+            let k = kind.name();
+            for e in set.scale_entries(kind) {
+                line(
+                    format!("{k}.scale.{}", e.scale),
+                    format!(
+                        "size_factor {:?} standard {} course_factor {:?} is_standard {}",
+                        e.size_factor,
+                        e.standard,
+                        set.course_factor(kind, e.scale),
+                        set.is_standard_scale(kind, e.scale)
+                    ),
+                );
+            }
+            line(
+                format!("{k}.scale_table"),
+                format!("{:?}", set.scale_table(kind)),
+            );
+            // A scale outside every table.
+            line(
+                format!("{k}.scale.12345"),
+                format!(
+                    "{:?} course_factor {:?} is_standard {}",
+                    set.scale_entry(kind, 12345),
+                    set.course_factor(kind, 12345),
+                    set.is_standard_scale(kind, 12345)
+                ),
+            );
+            line(
+                format!("{k}.north_line_spacing_m"),
+                format!("{:?}", set.north_line_spacing_m(kind)),
+            );
+            line(
+                format!("{k}.proposed_contour_interval_m"),
+                format!("{:?}", set.proposed_contour_interval_m(kind)),
+            );
+            line(
+                format!("{k}.description_cell_mm"),
+                format!("{:?}", set.description_cell_mm(kind)),
+            );
+            let c = set.course_symbol(kind);
+            for (name, value) in [
+                ("circle_diameter_mm", c.circle_diameter_mm),
+                ("line_width_mm", c.line_width_mm),
+                ("start_side_mm", c.start_side_mm),
+                ("finish_inner_mm", c.finish_inner_mm),
+                ("finish_outer_mm", c.finish_outer_mm),
+                ("number_height_mm", c.number_height_mm),
+                ("marked_route_dash_mm", c.marked_route_dash_mm),
+                ("marked_route_gap_mm", c.marked_route_gap_mm),
+                ("out_of_bounds_line_mm", c.out_of_bounds_line_mm),
+                ("crossing_point_mm", c.crossing_point_mm),
+                (
+                    "out_of_bounds_hatch_angle_degrees",
+                    c.out_of_bounds_hatch_angle_degrees,
+                ),
+                (
+                    "out_of_bounds_hatch_spacing_mm",
+                    c.out_of_bounds_hatch_spacing_mm,
+                ),
+                ("out_of_bounds_hatch_line_mm", c.out_of_bounds_hatch_line_mm),
+                ("first_aid_mm", c.first_aid_mm),
+                ("first_aid_bar_mm", c.first_aid_bar_mm),
+                ("refreshment_mm", c.refreshment_mm),
+                ("refreshment_line_mm", c.refreshment_line_mm),
+            ] {
+                line(format!("{k}.course.{name}"), format!("{value:?}"));
+            }
+            line(
+                format!("{k}.course.out_of_bounds_hatch_second_angle_degrees"),
+                format!("{:?}", c.out_of_bounds_hatch_second_angle_degrees),
+            );
+        }
+        line(s("purple_cmyk"), format!("{:?}", set.purple_cmyk()));
+        let w = set.placement_weights();
+        line(
+            s("placement_weights"),
+            format!(
+                "black {:?} brown {:?} blue {:?} other {:?}",
+                w.black, w.brown, w.blue, w.other
+            ),
+        );
+        line(s("number_gap"), format!("{:?}", set.number_gap()));
+        line(
+            s("number_gap_allowed"),
+            format!("{:?}", set.number_gap_allowed()),
+        );
+    }
+
+    /// The snapshot of every resolved value (`tests/fixtures/rules/resolved.txt`, README there).
+    /// `FMP_BLESS_RULES=1` writes the file from the current loader instead of comparing.
+    #[test]
+    fn resolved_values_unchanged() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/rules/resolved.txt"
+        );
+        let gap_overlay = overlay_with(&gap_rule(
+            "reg.number.gap",
+            "min_gap_mm = 0.8, max_gap_mm = 8.0",
+        ));
+        let at_4000 = REPLACE.replace(
+            "map_kinds = [\"sprint\"]",
+            "map_kinds = [\"sprint\"]\nprint_scales = [4000]",
+        );
+        let mut all = files();
+        all.push(("test-gaps", gap_overlay.as_str()));
+        let at_4000_files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-replace", at_4000.as_str()),
+        ];
+        let mut text = String::new();
+        resolved_text("base", base(), &mut text);
+        for (label, overlays) in [
+            ("replace", vec![s("test-replace")]),
+            ("off", vec![s("test-off")]),
+            ("replace_off", vec![s("test-replace"), s("test-off")]),
+            ("gaps", vec![s("test-gaps")]),
+        ] {
+            let set = load_from(&all, "iof-print", &overlays).unwrap();
+            resolved_text(label, &set, &mut text);
+        }
+        let set = load_from(&at_4000_files, "iof-print", &[s("test-replace")]).unwrap();
+        resolved_text("replace_at_4000", &set, &mut text);
+        if std::env::var_os("FMP_BLESS_RULES").is_some() {
+            std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
+            std::fs::write(path, &text).unwrap();
+        }
+        let expected = std::fs::read_to_string(path).unwrap();
+        assert_eq!(text, expected);
+    }
+
+    /// The name of the variant of `err`.
+    fn variant(err: &RuleError) -> &'static str {
+        match err {
+            RuleError::UnknownProfile { .. } => "UnknownProfile",
+            RuleError::NotABase(_) => "NotABase",
+            RuleError::NotAnOverlay(_) => "NotAnOverlay",
+            RuleError::OverlayForAnotherBase { .. } => "OverlayForAnotherBase",
+            RuleError::Malformed { .. } => "Malformed",
+            RuleError::UnknownKey { .. } => "UnknownKey",
+            RuleError::UnknownRule { .. } => "UnknownRule",
+            RuleError::Incomplete { .. } => "Incomplete",
+        }
+    }
+
+    /// Every refusal the loader had before the switch to freemapper-rules: the case, the files, the base and
+    /// overlays, the variant and the texts the message must contain (the rule id where the case has one, else
+    /// the profile or the value).
+    #[test]
+    fn refused_profiles_still_refused() {
+        let north = |values: &str| {
+            base_with_rule(&format!(
+                "id = \"basex.north.x\"\nkey = \"north_lines\"\nseverity = \"hint\"\nvalues = {values}\n\
+                 source = {{ doc = \"DOC\", section = \"1\" }}\n"
+            ))
+        };
+        let keyed = |key: &str, extra: &str, values: &str| {
+            base_with_rule(&format!(
+                "id = \"basex.x.y\"\nkey = \"{key}\"\nseverity = \"hint\"\n{extra}values = {values}\n\
+                 source = {{ doc = \"DOC\", section = \"1\" }}\n"
+            ))
+        };
+        let good = north("{ spacing_metres = 1.0 }");
+        let sprint_table = |rows: &str| {
+            REPLACE
+                .replace("key = \"north_lines\"", "key = \"scale_table\"")
+                .replace("iofprint.north_lines.sprint", "iofprint.scale.sprint")
+                .replace(
+                    "values = { spacing_metres = 100.0 }",
+                    &format!("values = {{ rows = [{rows}] }}"),
+                )
+        };
+        let base_only = |text: String| (vec![(s("base-x"), text)], s("base-x"), Vec::new());
+        let on_iof = |id: &str, text: String| {
+            (
+                vec![(s("iof-print"), s(EMBEDDED[0].1)), (s(id), text)],
+                s("iof-print"),
+                vec![s(id)],
+            )
+        };
+        type Setup = (Vec<(String, String)>, String, Vec<String>);
+        let cases: Vec<(&str, Setup, &str, Vec<&str>)> = vec![
+            (
+                "unknown rule key",
+                base_only(keyed("no_such_rule", "", "{}")),
+                "UnknownKey",
+                vec!["basex.x.y", "no_such_rule"],
+            ),
+            (
+                "number without a unit",
+                base_only(north("{ spacing = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing"],
+            ),
+            (
+                "misspelt unit",
+                base_only(north("{ spacing_metresx = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metresx"],
+            ),
+            (
+                "unknown value name with a unit",
+                base_only(north("{ spacing_mm = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_mm"],
+            ),
+            (
+                "extra value name",
+                base_only(north("{ spacing_metres = 120.0, extra_metres = 1.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "extra_metres"],
+            ),
+            (
+                "scale table row with an unknown field",
+                base_only(keyed(
+                    "scale_table",
+                    "",
+                    "{ rows = [{ scale = 4000, size = 1.0 }] }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "size"],
+            ),
+            (
+                "format missing",
+                base_only(good.replacen("format = 1", "", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "format newer",
+                base_only(good.replacen("format = 1", "format = 2", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "format as text",
+                base_only(good.replacen("format = 1", "format = \"1\"", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "misspelt rule field",
+                base_only(good.replacen("severity", "severty", 1)),
+                "Malformed",
+                vec!["basex.north.x", "severty"],
+            ),
+            (
+                "map_kind instead of map_kinds",
+                base_only(good.replacen("key = ", "map_kind = [\"sprint\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "map_kind"],
+            ),
+            (
+                "courseplan's disciplines filter",
+                base_only(good.replacen("key = ", "disciplines = [\"sprint\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "disciplines"],
+            ),
+            (
+                "unknown map kind",
+                base_only(good.replacen("key = ", "map_kinds = [\"moon\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "moon"],
+            ),
+            (
+                "print scale that is no scale",
+                base_only(good.replacen("key = ", "print_scales = [0]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x"],
+            ),
+            (
+                "source not listed",
+                base_only(good.replacen("doc = \"DOC\"", "doc = \"NOPE\"", 1)),
+                "Malformed",
+                vec!["basex.north.x", "NOPE"],
+            ),
+            (
+                "no source",
+                base_only(good.replacen("source = { doc = \"DOC\", section = \"1\" }", "", 1)),
+                "Malformed",
+                vec!["basex.north.x", "source"],
+            ),
+            (
+                "rule id not dotted lower case",
+                base_only(good.replacen("basex.north.x", "basex.North", 1)),
+                "Malformed",
+                vec!["basex.North"],
+            ),
+            (
+                "unknown severity",
+                base_only(good.replacen("severity = \"hint\"", "severity = \"fatal\"", 1)),
+                "Malformed",
+                vec!["basex.north.x", "fatal"],
+            ),
+            (
+                "rule defined twice",
+                base_only(format!(
+                    "{good}[[rules]]\nid = \"basex.north.x\"\nkey = \"north_lines\"\nseverity = \"hint\"\n\
+                     values = {{ spacing_metres = 2.0 }}\nsource = {{ doc = \"DOC\", section = \"1\" }}\n"
+                )),
+                "Malformed",
+                vec!["basex.north.x"],
+            ),
+            (
+                "profile id differs from the file",
+                (vec![(s("base-y"), good.clone())], s("base-y"), Vec::new()),
+                "Malformed",
+                vec!["base-x", "base-y"],
+            ),
+            (
+                "not a number: nan",
+                base_only(north("{ spacing_metres = nan }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "not a number: inf",
+                base_only(north("{ spacing_metres = inf }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "text under a unit name",
+                base_only(north("{ spacing_metres = \"120\" }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "list under a name read as one number",
+                base_only(north("{ spacing_metres = [100.0, 120.0] }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "length of 0",
+                base_only(north("{ spacing_metres = 0.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "negative length",
+                base_only(keyed("number_gap", "", "{ max_gap_mm = -1.0 }")),
+                "Malformed",
+                vec!["basex.x.y", "max_gap_mm"],
+            ),
+            (
+                "percent above 100",
+                base_only(keyed("course_colour", "", "{ cyan_percent = 101 }")),
+                "Malformed",
+                vec!["basex.x.y", "cyan_percent"],
+            ),
+            (
+                "negative factor",
+                base_only(keyed("placement_weights", "", "{ black_factor = -1.0 }")),
+                "Malformed",
+                vec!["basex.x.y", "black_factor"],
+            ),
+            (
+                "description cell below 4 mm",
+                base_only(keyed("description_box", "", "{ cell_mm = 3.9 }")),
+                "Malformed",
+                vec!["basex.x.y", "cell_mm"],
+            ),
+            (
+                "description cell above 10 mm",
+                base_only(keyed("description_box", "", "{ cell_mm = 10.5 }")),
+                "Malformed",
+                vec!["basex.x.y", "cell_mm"],
+            ),
+            (
+                "map_kinds on a kind-independent key",
+                base_only(keyed(
+                    "course_colour",
+                    "map_kinds = [\"sprint\"]\n",
+                    "{ cyan_percent = 35 }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "course_colour"],
+            ),
+            (
+                "print_scales on a kind-independent key",
+                base_only(keyed(
+                    "number_gap",
+                    "print_scales = [4000]\n",
+                    "{ min_gap_mm = 0.5 }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "number_gap"],
+            ),
+            (
+                "scale table without the base row",
+                on_iof(
+                    "test-replace",
+                    sprint_table(
+                        "{ scale = 3000, size_factor = 1.3333333333333333 }, \
+                         { scale = 5000, size_factor = 1.0, standard = false }",
+                    ),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "base row not at 100 %",
+                on_iof(
+                    "test-replace",
+                    sprint_table("{ scale = 4000, size_factor = 1.1 }"),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "base row not standard",
+                on_iof(
+                    "test-replace",
+                    sprint_table("{ scale = 4000, size_factor = 1.0, standard = false }"),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "two rules for one slot",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace(
+                        "id = \"iofprint.north_lines.sprint\"",
+                        "id = \"testreplace.north_lines.sprint\"",
+                    ),
+                ),
+                "Incomplete",
+                vec![
+                    "iofprint.north_lines.sprint",
+                    "testreplace.north_lines.sprint",
+                    "spacing_metres",
+                    "sprint",
+                ],
+            ),
+            (
+                "a value no rule gives",
+                on_iof("test-gap", s(LEAVES_A_GAP)),
+                "Incomplete",
+                vec!["line_width_mm", "forest"],
+            ),
+            (
+                "print_scales filter read at the base scale",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace(
+                        "map_kinds = [\"sprint\"]",
+                        "map_kinds = [\"sprint\"]\nprint_scales = [3000]",
+                    ),
+                ),
+                "Incomplete",
+                vec!["spacing_metres", "sprint"],
+            ),
+            (
+                "overlay switches off an unknown rule",
+                on_iof(
+                    "test-off",
+                    SWITCH_OFF.replace(
+                        "id = \"iofprint.course.control_sprint\"",
+                        "id = \"iofprint.course.nope\"",
+                    ),
+                ),
+                "UnknownRule",
+                vec!["iofprint.course.nope", "test-off"],
+            ),
+            (
+                "unknown base profile",
+                (Vec::new(), s("iof-2030"), Vec::new()),
+                "UnknownProfile",
+                vec!["iof-2030"],
+            ),
+            (
+                "unknown overlay",
+                (
+                    vec![(s("iof-print"), s(EMBEDDED[0].1))],
+                    s("iof-print"),
+                    vec![s("nope")],
+                ),
+                "UnknownProfile",
+                vec!["nope", "iof-print"],
+            ),
+            (
+                "overlay as base",
+                (
+                    vec![(s("test-off"), s(SWITCH_OFF))],
+                    s("test-off"),
+                    Vec::new(),
+                ),
+                "NotABase",
+                vec!["test-off"],
+            ),
+            (
+                "base as overlay",
+                (
+                    vec![(s("iof-print"), s(EMBEDDED[0].1))],
+                    s("iof-print"),
+                    vec![s("iof-print")],
+                ),
+                "NotAnOverlay",
+                vec!["iof-print"],
+            ),
+            (
+                "overlay for another base",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace("base = \"iof-print\"", "base = \"other\""),
+                ),
+                "OverlayForAnotherBase",
+                vec!["test-replace", "other", "iof-print"],
+            ),
+        ];
+        for (case, (files, base, overlays), expected, texts) in cases {
+            let files: Vec<(&str, &str)> = files
+                .iter()
+                .map(|(id, text)| (id.as_str(), text.as_str()))
+                .collect();
+            let err = match load_from(&files, &base, &overlays) {
+                Ok(_) => panic!("{case}: loaded"),
+                Err(err) => err,
+            };
+            assert_eq!(variant(&err), expected, "{case}: {err}");
+            let message = err.to_string();
+            for text in texts {
+                assert!(message.contains(text), "{case}: {text} not in {message}");
+            }
+        }
     }
 }
