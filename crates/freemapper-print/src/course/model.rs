@@ -20,8 +20,10 @@ pub const MAX_TOTAL_POINTS: usize = 2_000_000;
 pub const MAX_CODE_LEN: usize = 64;
 /// Longest course or course family name, in characters.
 pub const MAX_NAME_LEN: usize = 200;
-/// Most bytes of codes and names one read returns in total, counted per copy (a code shared by many stops
-/// counts once per stop).
+/// Longest description standard, in characters (real values are "2004", "2018", "2024").
+pub const MAX_STANDARD_LEN: usize = 16;
+/// Most bytes of codes, names and description standards one read returns in total, counted per copy (a code
+/// shared by many stops counts once per stop).
 pub const MAX_TOTAL_TEXT_BYTES: usize = 16 * 1024 * 1024;
 /// Most special objects in one file.
 pub const MAX_SPECIALS: usize = 10_000;

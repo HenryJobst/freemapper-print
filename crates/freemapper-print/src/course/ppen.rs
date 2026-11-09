@@ -43,11 +43,11 @@
 //! - Limits: those of the IOF reader (ADR 0019), `MAX_CODE_LEN` and `MAX_NAME_LEN` per code and name, at most
 //!   `MAX_COURSES` distinct course ids per special. Legs, controls and a special's course list are shared,
 //!   so every copy into the result is paid from two budgets for the whole read: `MAX_TOTAL_POINTS` (bends,
-//!   leg and circle gap ranges, special points) and `MAX_TOTAL_TEXT_BYTES` (codes and names). A variation
+//!   leg and circle gap ranges, special points) and `MAX_TOTAL_TEXT_BYTES` (codes, names, standards). A variation
 //!   course is skipped before anything is copied.
 //!
-//! Elements Purple Pen writes but the overprint does not need (punch patterns, print areas, labels, relay
-//! settings and the like) are skipped silently; any other element is noted once by name.
+//! Elements Purple Pen writes but the overprint does not need (punch patterns, print areas, relay settings
+//! and the like) are skipped silently (`labels` is read for the note above); any other element is noted once by name.
 
 use std::collections::{HashMap, HashSet};
 
@@ -502,7 +502,9 @@ impl State {
                 self.map_scale = float(e, "scale", "map")?;
             }
             ("event", "standards") => {
-                self.standard = attr(e, "description")?.map(|s| s.trim().to_string());
+                self.standard = attr(e, "description")?
+                    .map(|s| bounded(s.trim(), MAX_STANDARD_LEN, "description standard"))
+                    .transpose()?;
             }
             ("event", "course-appearance") => {
                 self.item_scaling = match attr(e, "scale-sizes")?.as_deref().map(str::trim) {
@@ -1114,8 +1116,7 @@ impl State {
                 PKind::Normal => ControlKind::Control,
                 PKind::Start => ControlKind::Start,
                 PKind::MapIssue => {
-                    self.notes
-                        .add(CourseNote::MapIssueAsStart(text.copy(&code)?));
+                    self.notes.add(CourseNote::MapIssueAsStart(code.clone()));
                     ControlKind::Start
                 }
                 PKind::Finish => ControlKind::Finish,
@@ -1128,11 +1129,15 @@ impl State {
                 kind,
                 position: c.position,
                 geo: None,
-                description: c.has_description.then(|| Description {
-                    columns: c.columns,
-                    standard: standard.clone(),
-                    column_f_text: c.column_f_text,
-                }),
+                description: if c.has_description {
+                    Some(Description {
+                        columns: c.columns,
+                        standard: text.copy(&standard)?,
+                        column_f_text: c.column_f_text,
+                    })
+                } else {
+                    None
+                },
             });
         }
 

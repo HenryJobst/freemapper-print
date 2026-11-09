@@ -3,8 +3,8 @@
 use freemapper_print::course::model::{
     ControlKind, CourseFilter, CourseKind, CourseNote, MAX_CODE_LEN, MAX_CONTROLS,
     MAX_COURSE_FILE_BYTES, MAX_COURSES, MAX_NAME_LEN, MAX_NOTES, MAX_POINTS_PER_PATH, MAX_SPECIALS,
-    MAX_STOPS_PER_COURSE, MAX_TOTAL_POINTS, MAX_TOTAL_TEXT_BYTES, MAX_XML_DEPTH, Offset, RawPoint,
-    SourceFormat, Special,
+    MAX_STANDARD_LEN, MAX_STOPS_PER_COURSE, MAX_TOTAL_POINTS, MAX_TOTAL_TEXT_BYTES, MAX_XML_DEPTH,
+    Offset, RawPoint, SourceFormat, Special,
 };
 use freemapper_print::course::{CourseError, RawEvent, read_ppen};
 
@@ -1010,6 +1010,28 @@ fn specials_with_long_names_are_bounded() {
     assert!(bytes <= MAX_TOTAL_TEXT_BYTES);
     assert!(matches!(
         read_ppen(&named_specials(m + 1)),
+        Err(CourseError::Limit(_))
+    ));
+}
+
+#[test]
+fn description_standard_length_limited() {
+    let with_standard = |std: &str| {
+        let body = TWO.replace(
+            "<code>31</code>",
+            "<code>31</code><description box=\"D\" iof-2004-ref=\"1.1\"/>",
+        );
+        format!(
+            "<course-scribe-event><event id=\"1\"><standards map=\"2017\" description=\"{std}\"/>\
+             </event>{body}</course-scribe-event>"
+        )
+        .into_bytes()
+    };
+    let at = "2".repeat(MAX_STANDARD_LEN);
+    let ev = read_ppen(&with_standard(&at)).unwrap();
+    assert_eq!(ev.controls[1].description.as_ref().unwrap().standard, at);
+    assert!(matches!(
+        read_ppen(&with_standard(&"2".repeat(MAX_STANDARD_LEN + 1))),
         Err(CourseError::Limit(_))
     ));
 }

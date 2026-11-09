@@ -141,7 +141,7 @@ impl TextBudget {
     pub(super) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
         self.left = self.left.checked_sub(s.len()).ok_or_else(|| {
             CourseError::Limit(format!(
-                "more than {} MiB of codes and names in the result",
+                "more than {} MiB of codes, names and description standards in the result",
                 MAX_TOTAL_TEXT_BYTES / (1024 * 1024)
             ))
         })?;
