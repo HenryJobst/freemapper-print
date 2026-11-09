@@ -87,6 +87,7 @@ ihre `id` ab.
 | `description_box` | `cell_mm` | Kästchengröße der Postenbeschreibung auf der Karte |
 | `course_colour` | `cyan_percent`, `magenta_percent`, `yellow_percent`, `black_percent` | Farbe des Bahnaufdrucks |
 | `placement_weights` | `black_factor`, `brown_factor`, `blue_factor`, `other_factor` | wie stark Kartendetails je Farbe unter einer Postennummer zählen |
+| `number_gap` | `min_gap_mm`, `max_gap_mm` | kleinster und größter Abstand zwischen Postenkreis und Nummer (ADR 0038) |
 
 Eine Regel mit einem anderen Schlüssel oder einem Wert, den ihr Schlüssel nicht liest, lehnt das Programm
 ab. Ein neuer Schlüssel braucht Code und einen Eintrag in `KNOWN_KEYS` in `src/rules.rs`.
@@ -111,8 +112,9 @@ Jeder Wert gilt im Basismaßstab seiner Kartenart: Sprintkarte 1:4000, Waldkarte
 Hat ein Wert für verschiedene Kartenarten verschiedene Größen, steht er in einer Regel je Kartenart, jede mit
 eigener `id` und eigenem Filter. Beim Laden prüft das Programm, dass jede Kartenart jeden Wert genau einmal
 bekommt. Fehlt einer, oder geben zwei Regeln denselben Wert, ist der Regelsatz unbrauchbar und das Programm
-sagt, welcher Wert und welche Regeln es sind. `course_colour` und `placement_weights` gelten für alle
-Kartenarten und nehmen keinen Filter.
+sagt, welcher Wert und welche Regeln es sind. `course_colour`, `placement_weights` und `number_gap` gelten für
+alle Kartenarten und nehmen keinen Filter. Bei `number_gap` dürfen mehrere Regeln gelten: Dann gilt der größte
+Mindestabstand und der kleinste Höchstabstand. Ohne Regel setzt das Programm Nummern mit 0,5 mm Abstand.
 
 ### Werte und Einheiten
 
@@ -217,6 +219,7 @@ hyphens (`iofprint.scale.sprint`). An overlay replaces or switches off a rule by
 | `description_box` | `cell_mm` | cell size of control descriptions on the map |
 | `course_colour` | `cyan_percent`, `magenta_percent`, `yellow_percent`, `black_percent` | colour of the course overprint |
 | `placement_weights` | `black_factor`, `brown_factor`, `blue_factor`, `other_factor` | how much map detail of each colour under a control number counts |
+| `number_gap` | `min_gap_mm`, `max_gap_mm` | smallest and largest gap between control circle and number (ADR 0038) |
 
 A rule with another key, or with a value its key does not read, is rejected. A new key needs code and an entry
 in `KNOWN_KEYS` in `src/rules.rs`.
@@ -240,7 +243,9 @@ the base scale.
 When a value differs between map kinds, it goes into one rule per map kind, each with its own `id` and filter.
 On loading, the program checks that each map kind gets each value exactly once. If a value is missing, or two
 rules give the same value, the rule set cannot be used, and the program names the value and the rules.
-`course_colour` and `placement_weights` hold for every map kind and take no filter.
+`course_colour`, `placement_weights` and `number_gap` hold for every map kind and take no filter. Several
+`number_gap` rules may apply; then the largest minimum and the smallest maximum count. Without a rule the program
+places numbers at a gap of 0.5 mm.
 
 ### Values and units
 

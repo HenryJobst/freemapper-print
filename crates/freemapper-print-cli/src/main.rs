@@ -1138,6 +1138,22 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             Some(&args!("id" => printable(element), "name" => format!("{{{name}}}"))),
         ),
         SheetNote::NumberConflict(c) => number_conflict_line(texts, c),
+        SheetNote::NumberGapOutOfRange {
+            course,
+            control,
+            gap_mm,
+            min,
+            max,
+        } => texts.get(
+            "note-number-gap-out-of-range",
+            Some(&args!(
+                "course" => printable(course),
+                "control" => printable(control),
+                "gap" => short_decimal(texts, *gap_mm, 2),
+                "min" => short_decimal(texts, *min, 2),
+                "max" => short_decimal(texts, *max, 2),
+            )),
+        ),
         SheetNote::Course(note) => course_note_line(texts, note),
         SheetNote::Fit(note) => fit_note_line(texts, note),
         SheetNote::Stale(stale) => stale_line(texts, stale),
@@ -2004,6 +2020,16 @@ mod tests {
                 vec![
                     "Kurz", "31", "32", "S1", "33", "title", "112", "5°", "0", "8 mm", "2 ",
                 ],
+            ),
+            (
+                SheetNote::NumberGapOutOfRange {
+                    course: s("Kurz"),
+                    control: s("31"),
+                    gap_mm: 0.25,
+                    min: 0.5,
+                    max: 5.0,
+                },
+                vec!["Kurz", "31", "25 mm", "5 mm"],
             ),
         ];
         for lang in text::available() {

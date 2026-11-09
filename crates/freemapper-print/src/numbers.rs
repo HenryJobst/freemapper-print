@@ -14,20 +14,30 @@ use crate::course::{Course, FittedEvent, NumberPlacement, Stale, Stop, base_chan
 use crate::omap::MapCoord;
 use crate::overprint::{FullStrength, full_strength, labels, leg_lines, number_size, stop_symbols};
 use crate::placement::{
-    self, Legs, OUTSIDE, Obstacle, ObstacleShape, Placement, Rect, Score, Target, Tier,
+    self, GapRange, Legs, OUTSIDE, Obstacle, ObstacleShape, Placement, Rect, Score, Target, Tier,
 };
 use crate::project::LoadedProject;
 use crate::render::bounds::shape_bounds;
 use crate::render::page::{PaperBox, Pt, RenderedPage, Shape, SymbolClass};
-use crate::rules::{CourseSymbolSizes, PlacementWeights};
+use crate::rules::{CourseSymbolSizes, PlacementWeights, RuleSet};
+
+/// The gaps numbers may have under `rules` (ruling R29): the `number_gap` rule's range, else the fixed
+/// [`placement::DEFAULT_GAP_MM`].
+pub fn gap_range(rules: &RuleSet) -> GapRange {
+    rules
+        .number_gap()
+        .map_or(GapRange::DEFAULT, |(min, max)| GapRange { min, max })
+}
 
 /// What automatic placement starts from: the outer side of a control without legs (as freemapper-courseplan),
-/// and the smallest gap of the search. A correction over an automatic number without a gap of its own takes
-/// this gap.
-pub const AUTOMATIC_START: Placement = Placement {
-    direction: 45.0,
-    gap_mm: placement::GAPS_MM[0],
-};
+/// and the smallest gap of `gaps`. A correction over an automatic number without a gap of its own takes this
+/// gap.
+pub fn automatic_start(gaps: GapRange) -> Placement {
+    Placement {
+        direction: 45.0,
+        gap_mm: gaps.min,
+    }
+}
 
 /// Where a number position comes from (spec §5.7), the more specific winning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,7 +60,7 @@ pub struct ResolvedNumber {
     pub control: String,
     /// The number as printed: the running number, or the code on a score course.
     pub text: String,
-    /// Direction and gap (print mm at the base scale). For [`Level::Automatic`], [`AUTOMATIC_START`] until
+    /// Direction and gap (print mm at the base scale). For [`Level::Automatic`], [`automatic_start`] until
     /// [`place_on_sheet`] places it.
     pub placement: Placement,
     pub level: Level,
@@ -120,7 +130,7 @@ fn r_outer(sizes: &CourseSymbolSizes, factor: f64) -> f64 {
 }
 
 /// The numbers of `course` printed with the layout `layout_id`, with their positions resolved on levels 2 to 4
-/// (spec §5.7); level 1 numbers keep [`AUTOMATIC_START`] until [`place_on_sheet`]. `map_scale` is the map's
+/// (spec §5.7); level 1 numbers keep [`automatic_start`] until [`place_on_sheet`]. `map_scale` is the map's
 /// scale denominator.
 pub fn resolve(
     course: &Course<MapCoord>,
@@ -144,7 +154,7 @@ pub fn resolve(
             );
             let (mut placement, mut level) = match base {
                 Some(b) => (b, Level::CourseFile),
-                None => (AUTOMATIC_START, Level::Automatic),
+                None => (automatic_start(gap_range(&project.rules)), Level::Automatic),
             };
             let layout = corrections.iter().find(|n| {
                 &n.control == code && n.course.is_none() && n.layout.as_deref() == Some(layout_id)
@@ -259,6 +269,18 @@ pub struct SheetNumbers {
     /// In the order of [`resolve`].
     pub numbers: Vec<PlacedNumber>,
     pub conflicts: Vec<NumberConflict>,
+    pub gaps_out_of_range: Vec<GapOutOfRange>,
+}
+
+/// A number whose gap, from the course file or a correction, lies outside the range of the `number_gap` rule
+/// (ruling R29). A warning; the number is drawn with its gap.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GapOutOfRange {
+    pub course: String,
+    pub control: String,
+    pub gap_mm: f64,
+    pub min: f64,
+    pub max: f64,
 }
 
 /// The course drawn on a sheet, as the obstacles of its numbers: stop symbols (stop index, centre, outer
@@ -478,6 +500,7 @@ fn target(
         size: number_size(text, sizes.number_height_mm * sf),
         unit: sf,
         legs,
+        gaps: GapRange::DEFAULT,
     })
 }
 
@@ -485,8 +508,11 @@ fn target(
 /// [`placement::best`] in course order, each placed box an obstacle for the next; the others stay where their
 /// level puts them. Then every number is scored among the course, the sheet `elements`, the map and the other
 /// numbers, within the map frame (`page.clip`), and gets a proposal. A number with an overprint conflict, or
-/// covering map symbols where the proposal covers fewer, gives a [`NumberConflict`]. `to_page` maps map
-/// coordinates to the page; `sf` is the symbol factor. Numbered stops without a map position are left out.
+/// covering map symbols where the proposal covers fewer, gives a [`NumberConflict`]. `gap_rule` is the gap range
+/// of the rule set, `None` without a `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone,
+/// and with a rule every number the file or a correction places outside the range gives a [`GapOutOfRange`].
+/// `to_page` maps map coordinates to the page; `sf` is the symbol factor. Numbered stops without a map position
+/// are left out.
 #[allow(clippy::too_many_arguments)]
 pub fn place_on_sheet(
     course: &Course<MapCoord>,
@@ -498,11 +524,14 @@ pub fn place_on_sheet(
     sizes: &CourseSymbolSizes,
     sf: f64,
     weights: &PlacementWeights,
+    gap_rule: Option<GapRange>,
 ) -> SheetNumbers {
+    let gaps = gap_rule.unwrap_or(GapRange::DEFAULT);
     let numbers: Vec<(ResolvedNumber, Target)> = resolved
         .into_iter()
         .filter_map(|r| {
-            let t = target(course, event, r.stop, &r.text, &to_page, sizes, sf)?;
+            let mut t = target(course, event, r.stop, &r.text, &to_page, sizes, sf)?;
+            t.gaps = gaps;
             Some((r, t))
         })
         .collect();
@@ -556,7 +585,7 @@ pub fn place_on_sheet(
                 &numbers[i].1,
                 bounds,
                 &for_number(i, &boxes),
-                AUTOMATIC_START,
+                automatic_start(gaps),
             );
             placements[i] = p;
             boxes[i] = Some(numbers[i].1.box_at(p));
@@ -566,8 +595,21 @@ pub fn place_on_sheet(
     let mut out = SheetNumbers {
         numbers: Vec::new(),
         conflicts: Vec::new(),
+        gaps_out_of_range: Vec::new(),
     };
     for (i, (r, t)) in numbers.iter().enumerate() {
+        if let Some(range) = gap_rule
+            && r.level != Level::Automatic
+            && !range.contains(r.placement.gap_mm)
+        {
+            out.gaps_out_of_range.push(GapOutOfRange {
+                course: course.name.clone(),
+                control: r.control.clone(),
+                gap_mm: r.placement.gap_mm,
+                min: range.min,
+                max: range.max,
+            });
+        }
         let obstacles = for_number(i, &boxes);
         let placed = t.box_at(placements[i]);
         let score = placement::score(placed, bounds, &obstacles);
@@ -597,8 +639,8 @@ pub fn place_on_sheet(
 
 /// How far a number box can reach from its circle centre at any candidate gap or at `gap`.
 fn reach(t: &Target, gap: f64) -> f64 {
-    let largest = placement::GAPS_MM.iter().copied().fold(gap, f64::max);
-    t.circle_outer_r + largest * t.unit + t.size.0.hypot(t.size.1)
+    t.reach()
+        .max(t.circle_outer_r + gap * t.unit + t.size.0.hypot(t.size.1))
 }
 
 /// The conflicts of `score` in the course's terms.

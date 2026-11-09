@@ -27,6 +27,8 @@
 #   course_colour      cyan_percent, magenta_percent, yellow_percent, black_percent
 #   placement_weights  black_factor, brown_factor, blue_factor, other_factor: how much a mm²
 #                      of map detail under a control number counts, by colour class
+#   number_gap         min_gap_mm, max_gap_mm: the gap between control circle and number; with
+#                      several rules the strictest wins, without one placement uses 0.5 mm
 #
 # Course symbol sizes were read from the ISSprOM and ISOM texts (pdftotext) and checked against
 # Purple Pen's NormalCourseAppearance (petergolde/PurplePen, src/PurplePenCore/Appearance.cs and
@@ -353,3 +355,11 @@ severity = "hint"
 values = { black_factor = 10.0, brown_factor = 4.0, blue_factor = 4.0, other_factor = 1.0 }
 source = { doc = "fmp", section = "ADR 0031" }
 note = { de = "Eigene Wahl: Eine Nummer über schwarzen Kartendetails stört am meisten, über braunen und blauen weniger, über den übrigen Farben am wenigsten.", en = "Our own choice: a number over black map detail hurts legibility most, over brown and blue less, over the other colours least." }
+
+[[rules]]
+id = "iofprint.number.gap"
+key = "number_gap"
+severity = "warning"
+values = { min_gap_mm = 0.5, max_gap_mm = 5.0 }
+source = { doc = "fmp", section = "ADR 0038" }
+note = { de = "Entscheidung des Nutzers vom 2026-11-09, gemeinsam mit freemapper-courseplan (dessen ADR 0032): Zwischen Postenkreis und Nummer liegen mindestens 0,5 und höchstens 5 mm.", en = "User decision 2026-11-09, shared with freemapper-courseplan ADR 0032: at least 0.5 and at most 5 mm between control circle and number." }

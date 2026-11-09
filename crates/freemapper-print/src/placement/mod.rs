@@ -14,13 +14,16 @@
 //!    outer bisector, the middle of the larger sector between the two legs.
 //! 4. If the preferred place is blocked, the free place that deviates least from it wins.
 //!
-//! [`best`] ranks the candidates lexicographically (courseplan ADR 0031): overprint conflicts (own circles,
-//! legs, other numbers, sheet elements, leaving the bounds), then covered map symbols, then the angle to the
-//! preferred direction, the angle to the outer bisector, the distance to the current gap, the soft cost of
-//! covered areas, the direction and the gap.
+//! [`best`] tries the gaps of a [`GapRange`] (ruling R29, courseplan ADR 0032) and ranks the candidates
+//! lexicographically (courseplan ADR 0031 and 0032): overprint conflicts (own circles, legs, other numbers, sheet
+//! elements, leaving the bounds), then covered map symbols, the angle to the preferred direction, the gap (so a
+//! number first moves further out, then turns), the angle to the outer bisector and the direction. The soft cost
+//! of covered areas only breaks ties before the direction.
 
-/// Gaps (mm, before the caller's unit) that [`best`] tries.
-pub const GAPS_MM: [f64; 3] = [0.3, 0.8, 1.5];
+/// The gap (mm) when no rule gives a range: placement tries this gap alone (ruling R29).
+pub const DEFAULT_GAP_MM: f64 = 0.5;
+/// Step (mm) between the gaps [`best`] tries.
+pub const GAP_STEP_MM: f64 = 0.5;
 /// Step (degrees) between the candidate directions.
 pub const CANDIDATE_STEP_DEG: f64 = 15.0;
 /// Number of candidate directions: steps of 15 degrees once around.
@@ -475,6 +478,38 @@ pub struct Legs {
     pub half_line: f64,
 }
 
+/// The smallest and the largest gap (mm, before the caller's unit) a number may have.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GapRange {
+    pub min: f64,
+    pub max: f64,
+}
+
+impl GapRange {
+    /// [`DEFAULT_GAP_MM`] alone.
+    pub const DEFAULT: GapRange = GapRange {
+        min: DEFAULT_GAP_MM,
+        max: DEFAULT_GAP_MM,
+    };
+
+    /// The gaps [`best`] tries: from `min` in steps of [`GAP_STEP_MM`], the last one exactly `max`.
+    pub fn steps(&self) -> Vec<f64> {
+        let mut out = Vec::new();
+        let mut gap = self.min;
+        while gap < self.max - EPS && out.len() < 1000 {
+            out.push(gap);
+            gap += GAP_STEP_MM;
+        }
+        out.push(self.max.max(self.min));
+        out
+    }
+
+    /// Whether `gap` lies in the range (within 1 µm).
+    pub fn contains(&self, gap: f64) -> bool {
+        gap >= self.min - 1e-6 && gap <= self.max + 1e-6
+    }
+}
+
 /// A number to place.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Target {
@@ -487,6 +522,8 @@ pub struct Target {
     /// factor when placements hold print mm at the base scale and coordinates are page mm.
     pub unit: f64,
     pub legs: Legs,
+    /// The gaps the search tries; the "behind is blocked" test uses the smallest.
+    pub gaps: GapRange,
 }
 
 impl Target {
@@ -504,9 +541,10 @@ impl Target {
     }
 
     /// The box reaches at most this far from the centre at any candidate gap.
-    fn reach(&self) -> f64 {
-        let largest = GAPS_MM.iter().copied().fold(0.0, f64::max);
-        self.circle_outer_r + largest * self.unit + self.size.0.hypot(self.size.1)
+    pub fn reach(&self) -> f64 {
+        self.circle_outer_r
+            + self.gaps.max.max(self.gaps.min) * self.unit
+            + self.size.0.hypot(self.size.1)
     }
 
     /// The outgoing leg without the part inside the circle.
@@ -514,9 +552,10 @@ impl Target {
         trim_start(&self.legs.outgoing, self.circle_outer_r)
     }
 
-    /// The preferred direction and the outer bisector for a number at `gap`; `current` gives both when the
-    /// control has no legs (score courses).
-    pub fn directions(&self, gap: f64, current: Placement) -> (f64, f64) {
+    /// The preferred direction and the outer bisector; `current` gives both when the control has no legs (score
+    /// courses). Behind counts as blocked when the box there, at the smallest gap, comes within half a line
+    /// width of the outgoing leg.
+    pub fn directions(&self, current: Placement) -> (f64, f64) {
         let incoming = self.legs.incoming;
         let outgoing = match self.legs.outgoing.as_slice() {
             [a, b, ..] => direction_to(*a, *b),
@@ -528,7 +567,7 @@ impl Target {
         let blocked = incoming.is_some_and(|a| {
             let behind = self.box_at(Placement {
                 direction: normalize_direction(a + 180.0),
-                gap_mm: gap,
+                gap_mm: self.gaps.min,
             });
             self.outgoing_outside()
                 .windows(2)
@@ -591,11 +630,10 @@ struct Rank {
     hard: usize,
     covered: usize,
     off_preferred: f64,
+    gap: f64,
     off_outer: f64,
-    off_gap: f64,
     cost: f64,
     direction: f64,
-    gap: f64,
 }
 
 impl Rank {
@@ -614,19 +652,18 @@ impl Rank {
             .cmp(&other.hard)
             .then(self.covered.cmp(&other.covered))
             .then(near(self.off_preferred, other.off_preferred))
+            .then(near(self.gap, other.gap))
             .then(near(self.off_outer, other.off_outer))
-            .then(near(self.off_gap, other.off_gap))
             .then(near(self.cost, other.cost))
             .then(near(self.direction, other.direction))
-            .then(near(self.gap, other.gap))
             == Ordering::Less
     }
 }
 
 /// The best placement for `target` within `bounds` among `obstacles`, and its score. Tries the
-/// [`CANDIDATES`] directions around the preferred one ([`Target::directions`]) at each of [`GAPS_MM`], and ranks
-/// them by overprint conflicts, covered map symbols, angle to the preferred direction, angle to the outer
-/// bisector, distance to the gap of `current`, soft cost, direction and gap. Never fails: when every candidate
+/// [`CANDIDATES`] directions around the preferred one ([`Target::directions`]) at each gap of
+/// [`GapRange::steps`], and ranks them by overprint conflicts, covered map symbols, angle to the preferred
+/// direction, gap, angle to the outer bisector, soft cost and direction. Never fails: when every candidate
 /// conflicts, the least bad one comes back with its conflicts.
 pub fn best(
     target: &Target,
@@ -641,8 +678,8 @@ pub fn best(
         .cloned()
         .collect();
     let mut found: Option<(Rank, Placement, Score)> = None;
-    for gap in GAPS_MM {
-        let (preferred, outer) = target.directions(gap, current);
+    let (preferred, outer) = target.directions(current);
+    for gap in target.gaps.steps() {
         for k in 0..CANDIDATES {
             let direction = candidate(preferred, k);
             let p = Placement {
@@ -654,11 +691,10 @@ pub fn best(
                 hard: s.hard.len(),
                 covered: s.covered.len(),
                 off_preferred: angle_diff(direction, preferred),
+                gap,
                 off_outer: angle_diff(direction, outer),
-                off_gap: (gap - current.gap_mm).abs(),
                 cost: s.cost,
                 direction,
-                gap,
             };
             if found.as_ref().is_none_or(|(r, _, _)| rank.beats(r)) {
                 found = Some((rank, p, s));

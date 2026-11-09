@@ -164,6 +164,15 @@ pub enum SheetNote {
     /// A control number on a course sheet covers part of the course, a sheet element or map symbols, or reaches
     /// past the map frame. It is drawn there all the same; the note proposes a free position (spec §5.7).
     NumberConflict(crate::numbers::NumberConflict),
+    /// The gap of a control number, from the course file or a correction, lies outside the range the rule
+    /// profile's `number_gap` rule allows (ruling R29). The number is drawn with its gap all the same.
+    NumberGapOutOfRange {
+        course: String,
+        control: String,
+        gap_mm: f64,
+        min: f64,
+        max: f64,
+    },
     /// What the course reader found but does not support.
     Course(CourseNote),
     /// What fitting the course file to the map found out.

@@ -39,7 +39,8 @@ pub struct DescriptionSource<'a> {
 /// Notes beyond the layout sheet's: [`SheetNote::CourseOutsideFrame`], [`SheetNote::DefaultLayout`] when
 /// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`] (also
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
-/// [`SheetNote::OverprintCut`], [`SheetNote::CourseValueUnknown`] and [`SheetNote::NumberConflict`]. The notes of the course file as a whole
+/// [`SheetNote::OverprintCut`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`] and
+/// [`SheetNote::NumberGapOutOfRange`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
     project: &LoadedProject,
@@ -108,6 +109,10 @@ pub fn render_course_sheet(
         &sizes,
         sf,
         &project.rules.placement_weights(),
+        project
+            .rules
+            .number_gap()
+            .map(|(min, max)| crate::placement::GapRange { min, max }),
     );
     let centres: Vec<(String, Pt)> = placed
         .numbers
@@ -122,6 +127,18 @@ pub fn render_course_sheet(
 
     let notes = &mut report.notes;
     notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
+    notes.extend(
+        placed
+            .gaps_out_of_range
+            .into_iter()
+            .map(|g| SheetNote::NumberGapOutOfRange {
+                course: g.course,
+                control: g.control,
+                gap_mm: g.gap_mm,
+                min: g.min,
+                max: g.max,
+            }),
+    );
     let r = (sizes.circle_diameter_mm / 2.0 + sizes.line_width_mm / 2.0) * sf;
     let frame = page.clip;
     let mut outside: Vec<String> = Vec::new();

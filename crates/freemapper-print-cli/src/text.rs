@@ -345,6 +345,8 @@ mod tests {
             "gap",
             "from",
             "to",
+            "min",
+            "max",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

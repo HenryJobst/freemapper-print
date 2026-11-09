@@ -81,10 +81,14 @@ pub const KNOWN_KEYS: &[(&str, &[&str])] = &[
             "other_factor",
         ],
     ),
+    ("number_gap", &["min_gap_mm", "max_gap_mm"]),
 ];
 
 /// Keys whose values hold for every map kind: their rules take no filter.
-const KIND_INDEPENDENT_KEYS: &[&str] = &["course_colour", "placement_weights"];
+const KIND_INDEPENDENT_KEYS: &[&str] = &["course_colour", "placement_weights", "number_gap"];
+
+/// The largest gap a `number_gap` rule may allow (mm), as the project file's corrections.
+pub const MAX_RULE_NUMBER_GAP_MM: f64 = 10.0;
 
 /// Units a numeric value name ends in (`metres`, `spacing_metres`, `cyan_percent`).
 pub const UNITS: &[&str] = &["metres", "mm", "degrees", "percent", "factor"];
@@ -312,6 +316,7 @@ pub struct RuleSet {
     kinds: Vec<KindValues>,
     purple_cmyk: [f64; 4],
     placement_weights: PlacementWeights,
+    number_gap: Option<(f64, f64)>,
 }
 
 impl RuleSet {
@@ -362,6 +367,13 @@ impl RuleSet {
     /// Weights of map detail under a control number.
     pub fn placement_weights(&self) -> PlacementWeights {
         self.placement_weights
+    }
+
+    /// The smallest and the largest gap (print mm at the base scale) between a control circle and its number,
+    /// from the active `number_gap` rules (ruling R29). With several rules the strictest wins: the largest
+    /// minimum and the smallest maximum. `None` without such a rule; placement then uses a fixed gap.
+    pub fn number_gap(&self) -> Option<(f64, f64)> {
+        self.number_gap
     }
 
     /// The symbol size table of `kind`: scale denominator and symbol size relative to the base
@@ -536,6 +548,7 @@ fn load_from(
         blue: weight("blue_factor").map_err(incomplete)?,
         other: weight("other_factor").map_err(incomplete)?,
     };
+    let number_gap = number_gap(&merged.rules).map_err(incomplete)?;
     Ok(RuleSet {
         base: base.to_owned(),
         overlays: overlays.to_vec(),
@@ -545,7 +558,54 @@ fn load_from(
         kinds,
         purple_cmyk,
         placement_weights,
+        number_gap,
     })
+}
+
+/// The strictest range of the active `number_gap` rules: the largest `min_gap_mm` and the smallest
+/// `max_gap_mm`. A rule set without a minimum takes the smallest maximum as minimum, one without a maximum the
+/// largest minimum as maximum. An empty range or a maximum beyond [`MAX_RULE_NUMBER_GAP_MM`] is an error.
+fn number_gap(rules: &[SetRule]) -> Result<Option<(f64, f64)>, String> {
+    let gap_rules: Vec<&SetRule> = rules
+        .iter()
+        .filter(|r| r.rule.key == "number_gap")
+        .collect();
+    let values = |name: &str| -> Vec<f64> {
+        gap_rules
+            .iter()
+            .filter_map(|r| r.rule.values.get(name).and_then(number))
+            .collect()
+    };
+    let (mins, maxs) = (values("min_gap_mm"), values("max_gap_mm"));
+    let min = mins.iter().copied().reduce(f64::max);
+    let max = maxs.iter().copied().reduce(f64::min);
+    let (min, max) = match (min, max) {
+        (None, None) => return Ok(None),
+        (Some(min), None) => (min, min),
+        (None, Some(max)) => (max, max),
+        (Some(min), Some(max)) => (min, max),
+    };
+    let ids = || {
+        gap_rules
+            .iter()
+            .map(|r| r.rule.id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if min > max {
+        return Err(format!(
+            "the number_gap rules {} leave no gap: the largest min_gap_mm {min} is above the smallest \
+             max_gap_mm {max}",
+            ids()
+        ));
+    }
+    if max > MAX_RULE_NUMBER_GAP_MM {
+        return Err(format!(
+            "the number_gap rules {} allow a gap of {max} mm; at most {MAX_RULE_NUMBER_GAP_MM} mm",
+            ids()
+        ));
+    }
+    Ok(Some((min, max)))
 }
 
 #[derive(Default)]
@@ -1452,6 +1512,57 @@ mod tests {
                 refreshment_line_mm: 0.4,
             }
         );
+    }
+
+    /// An overlay with `rules` (TOML `[[rules]]` entries) for the embedded base.
+    fn overlay_with(rules: &str) -> String {
+        format!(
+            "format = 1\n[profile]\nid = \"test-gaps\"\nkind = \"overlay\"\nbase = \"iof-print\"\n\
+             name = {{ en = \"Gaps\" }}\n[sources.REG]\ntitle = \"Regional print rules\"\n{rules}"
+        )
+    }
+
+    fn gap_rule(id: &str, values: &str) -> String {
+        format!(
+            "[[rules]]\nid = \"{id}\"\nkey = \"number_gap\"\nseverity = \"warning\"\nvalues = {{ {values} }}\n\
+             source = {{ doc = \"REG\", section = \"§ 9\" }}\n"
+        )
+    }
+
+    fn gap_set(rules: &str) -> Result<RuleSet, RuleError> {
+        let overlay = overlay_with(rules);
+        let files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-gaps", overlay.as_str()),
+        ];
+        load_from(&files, "iof-print", &[s("test-gaps")])
+    }
+
+    #[test]
+    fn number_gap_from_the_profile_strictest_wins() {
+        // iof-print: 0.5 to 5 mm (ruling R29).
+        assert_eq!(base().number_gap(), Some((0.5, 5.0)));
+        let rule = base().rule("iofprint.number.gap").unwrap();
+        assert_eq!(rule.rule.severity, Severity::Warning);
+        // A second rule: the largest minimum and the smallest maximum.
+        let set = gap_set(&gap_rule(
+            "reg.number.gap",
+            "min_gap_mm = 0.8, max_gap_mm = 8.0",
+        ))
+        .unwrap();
+        assert_eq!(set.number_gap(), Some((0.8, 5.0)));
+        let set = gap_set(&gap_rule("reg.number.gap", "max_gap_mm = 2.0")).unwrap();
+        assert_eq!(set.number_gap(), Some((0.5, 2.0)));
+        // Switched off: no rule, placement takes its fixed gap.
+        let off = "[[rules]]\nid = \"iofprint.number.gap\"\nkey = \"number_gap\"\nseverity = \"warning\"\n\
+                   enabled = false\nvalues = { min_gap_mm = 0.5 }\nsource = { doc = \"REG\", section = \"§ 9\" }\n";
+        assert_eq!(gap_set(off).unwrap().number_gap(), None);
+        // Rules that leave no gap, or allow more than the project file does, make the set unusable.
+        let err = gap_set(&gap_rule("reg.number.gap", "min_gap_mm = 6.0")).unwrap_err();
+        assert!(err.to_string().contains("number_gap"), "{err}");
+        let off_and_wide = format!("{off}{}", gap_rule("reg.number.gap", "max_gap_mm = 12.0"));
+        let err = gap_set(&off_and_wide).unwrap_err();
+        assert!(err.to_string().contains("12"), "{err}");
     }
 
     #[test]

@@ -89,7 +89,7 @@ pub struct NumberCorrection {
 }
 
 /// The largest `gap_mm` of a number correction (print mm).
-pub const MAX_NUMBER_GAP_MM: f64 = 20.0;
+pub const MAX_NUMBER_GAP_MM: f64 = 10.0;
 
 /// Language of the printed sheet: number formats and fixed sheet words. Independent of the program language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -761,13 +761,13 @@ fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<
 }
 
 fn gap_in_range(file: &str, field: String, gap_mm: f64) -> Result<(), ProjectError> {
-    if gap_mm.is_finite() && (0.0..=MAX_NUMBER_GAP_MM).contains(&gap_mm) {
+    if gap_mm.is_finite() && gap_mm > 0.0 && gap_mm <= MAX_NUMBER_GAP_MM {
         Ok(())
     } else {
         Err(invalid(
             file,
             field,
-            &format!("must be between 0 and {MAX_NUMBER_GAP_MM} mm"),
+            &format!("must be more than 0 and at most {MAX_NUMBER_GAP_MM} mm"),
         ))
     }
 }

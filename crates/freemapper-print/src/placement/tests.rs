@@ -54,13 +54,29 @@ fn target(from: Option<Pt>, at: Pt, to: Option<Pt>) -> Target {
             outgoing: to.map(|t| vec![at, t]).unwrap_or_default(),
             half_line: HALF_LINE,
         },
+        gaps: PROFILE_GAPS,
     }
 }
 
+/// The range of `iof-print` (ruling R29).
+const PROFILE_GAPS: GapRange = GapRange { min: 0.5, max: 5.0 };
+
 const START: Placement = Placement {
     direction: 45.0,
-    gap_mm: 0.3,
+    gap_mm: 0.5,
 };
+
+#[test]
+fn gap_steps_run_from_min_to_exactly_max() {
+    let steps = PROFILE_GAPS.steps();
+    assert_eq!(steps.len(), 10);
+    assert_eq!((steps[0], steps[9]), (0.5, 5.0));
+    assert_eq!(GapRange { min: 0.5, max: 1.2 }.steps(), [0.5, 1.0, 1.2]);
+    assert_eq!(GapRange::DEFAULT.steps(), [DEFAULT_GAP_MM]);
+    assert!(
+        PROFILE_GAPS.contains(5.0) && !PROFILE_GAPS.contains(0.3) && !PROFILE_GAPS.contains(5.1)
+    );
+}
 
 #[test]
 fn number_box_gap_definition() {
@@ -162,8 +178,8 @@ fn preferred_is_behind_the_incoming_leg() {
     let (p, s) = best(&t, big_bounds(), &leg_obstacles(from, at, to), START);
     assert!(angle_diff(p.direction, 0.0) < 1e-9, "{p:?}");
     assert!(s.is_free());
-    // The smallest gap is closest to the current one.
-    assert_eq!(p.gap_mm, 0.3);
+    // The smallest gap wins among free places.
+    assert_eq!(p.gap_mm, 0.5);
 }
 
 #[test]
@@ -174,7 +190,7 @@ fn obtuse_angle_prefers_outer_bisector() {
     let rise = 30.0 * 5f64.to_radians().tan();
     let (from, at, to) = ((70.0, 100.0 + rise), (100.0, 100.0), (130.0, 100.0 + rise));
     let t = target(Some(from), at, Some(to));
-    let (preferred, outer) = t.directions(0.3, START);
+    let (preferred, outer) = t.directions(START);
     assert!(angle_diff(outer, 90.0) < 1e-9, "{outer}");
     assert!(angle_diff(preferred, 90.0) < 1e-9, "{preferred}");
     let (p, _) = best(&t, big_bounds(), &leg_obstacles(from, at, to), START);
@@ -183,31 +199,111 @@ fn obtuse_angle_prefers_outer_bisector() {
 
 #[test]
 fn blocked_preferred_takes_nearest_free_direction() {
-    // In from the west, out to the south: behind is east (0), the outer bisector 45. A strip east of the
-    // circle (another number, say) blocks 0 and 15 at every gap; 30 and 330 are free at 0.3 mm, and of the two
-    // the one nearer the outer bisector wins.
+    // In from the west, out to the south: behind is east (0). A strip east of the circle (another number, say)
+    // blocks straight behind at every gap. The result is free, deviates least from behind among all free
+    // candidates, and among those has the smallest gap.
     let (from, at, to) = ((70.0, 100.0), (100.0, 100.0), (100.0, 140.0));
     let t = target(Some(from), at, Some(to));
     let mut obstacles = leg_obstacles(from, at, to);
     obstacles.push(overprint(
         ObstacleShape::Rect(Rect {
-            min: (103.0, 99.5),
-            max: (114.0, 100.5),
+            min: (103.0, 99.0),
+            max: (114.0, 101.0),
         }),
         "number 3",
     ));
-    let (p, s) = best(&t, big_bounds(), &obstacles, START);
-    assert!(s.is_free(), "{s:?}");
-    assert!(angle_diff(p.direction, 30.0) < 1e-9, "{p:?}");
-    assert_eq!(p.gap_mm, 0.3);
-    // Straight behind really is blocked, at every gap.
-    for gap in GAPS_MM {
+    for gap in PROFILE_GAPS.steps() {
         let behind = t.box_at(Placement {
             direction: 0.0,
             gap_mm: gap,
         });
         assert!(!score(behind, big_bounds(), &obstacles).hard.is_empty());
     }
+    let (p, s) = best(&t, big_bounds(), &obstacles, START);
+    assert!(s.is_free(), "{s:?}");
+    let free: Vec<(f64, f64)> = PROFILE_GAPS
+        .steps()
+        .into_iter()
+        .flat_map(|gap| (0..CANDIDATES).map(move |k| (candidate(0.0, k), gap)))
+        .filter(|&(direction, gap_mm)| {
+            score(
+                t.box_at(Placement { direction, gap_mm }),
+                big_bounds(),
+                &obstacles,
+            )
+            .is_free()
+        })
+        .map(|(d, g)| (angle_diff(d, 0.0), g))
+        .collect();
+    let least = free.iter().map(|f| f.0).fold(f64::INFINITY, f64::min);
+    let gap = free
+        .iter()
+        .filter(|f| f.0 == least)
+        .map(|f| f.1)
+        .fold(f64::INFINITY, f64::min);
+    assert!(least > 0.0);
+    assert_eq!(
+        (angle_diff(p.direction, 0.0), p.gap_mm),
+        (least, gap),
+        "{p:?}"
+    );
+    // On the outer side (the outer bisector is 45), not the mirrored one.
+    assert!(p.direction < 90.0, "{p:?}");
+}
+
+#[test]
+fn moves_out_before_turning() {
+    // A boulder straight behind, small enough that a larger gap clears it: the number stays behind and moves
+    // further out (ruling R29: the gap ranks before the direction).
+    let (from, at, to) = ((70.0, 100.0), (100.0, 100.0), (100.0, 140.0));
+    let t = target(Some(from), at, Some(to));
+    let near = t.box_at(Placement {
+        direction: 0.0,
+        gap_mm: 0.5,
+    });
+    let boulder = Obstacle {
+        shape: ObstacleShape::Circle {
+            centre: near.centre(),
+            radius: 0.5,
+        },
+        weight: 0.0,
+        tier: Tier::MapSymbol,
+        label: "boulder".into(),
+    };
+    let (p, s) = best(&t, big_bounds(), std::slice::from_ref(&boulder), START);
+    assert!(s.is_free(), "{s:?}");
+    assert_eq!(p.direction, 0.0);
+    assert!(p.gap_mm > 0.5, "{p:?}");
+    // The smallest gap that clears it.
+    let cleared = |g: f64| {
+        score(
+            t.box_at(Placement {
+                direction: 0.0,
+                gap_mm: g,
+            }),
+            big_bounds(),
+            std::slice::from_ref(&boulder),
+        )
+        .is_free()
+    };
+    assert!(cleared(p.gap_mm) && !cleared(p.gap_mm - GAP_STEP_MM));
+}
+
+#[test]
+fn behind_blocked_is_tested_at_the_smallest_gap() {
+    // In from the west, out at 340 degrees (20 below east). At 0.5 mm the box behind touches the outgoing leg,
+    // at 5 mm it is clear of it: the test at the smallest gap decides.
+    let at = (100.0, 100.0);
+    let out = (
+        100.0 + 30.0 * 20f64.to_radians().cos(),
+        100.0 + 30.0 * 20f64.to_radians().sin(),
+    );
+    let mut t = target(Some((70.0, 100.0)), at, Some(out));
+    let (preferred, outer) = t.directions(START);
+    assert!(angle_diff(preferred, outer) < 1e-9, "{preferred} {outer}");
+    t.gaps = GapRange { min: 5.0, max: 5.0 };
+    let (preferred, _) = t.directions(START);
+    assert!(angle_diff(preferred, 0.0) < 1e-9, "{preferred}");
 }
 
 #[test]
@@ -265,7 +361,7 @@ fn point_and_line_symbols_are_hard_area_symbols_soft() {
     let t = target(Some(from), at, Some(to));
     let behind = t.box_at(Placement {
         direction: 0.0,
-        gap_mm: 0.3,
+        gap_mm: 0.5,
     });
     let area = Obstacle {
         shape: ObstacleShape::Rect(behind.grown(5.0)),
@@ -274,12 +370,14 @@ fn point_and_line_symbols_are_hard_area_symbols_soft() {
         label: "building".into(),
     };
     let (p, s) = best(&t, big_bounds(), std::slice::from_ref(&area), START);
-    assert_eq!((p.direction, p.gap_mm), (0.0, 0.3));
+    assert_eq!((p.direction, p.gap_mm), (0.0, 0.5));
     assert!(s.cost > 0.0 && s.is_free());
+    // A boulder that covers the place behind at every gap moves the number to another direction.
     let boulder = Obstacle {
-        shape: ObstacleShape::Circle {
-            centre: behind.centre(),
-            radius: 0.5,
+        shape: ObstacleShape::Segment {
+            a: behind.centre(),
+            b: (behind.centre().0 + 20.0, behind.centre().1),
+            half_width: 0.5,
         },
         weight: 0.0,
         tier: Tier::MapSymbol,

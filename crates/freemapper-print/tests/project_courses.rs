@@ -228,11 +228,21 @@ fn unknown_layout_and_bad_numbers_are_errors() {
     );
     let msg = error_of("[[numbers]]\ncontrol = \"31\"\nlayout = \"zz\"\ndirection = 1\n");
     assert!(msg.contains("numbers[0].layout"), "{msg}");
-    for gap in ["-1", "20.5", "nan"] {
+    // 0 < gap <= 10 mm, as freemapper-courseplan accepts (ruling R29).
+    for gap in ["-1", "0", "10.5", "nan"] {
         let msg = error_of(&format!(
             "[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = 1\ngap_mm = {gap}\n"
         ));
         assert!(msg.contains("numbers[0].gap_mm"), "{gap}: {msg}");
+    }
+    for gap in ["0.1", "10"] {
+        let (_d, path) = project_dir(
+            "c.xml",
+            &format!(
+                "{LAYOUTS}[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = 1\ngap_mm = {gap}\n"
+            ),
+        );
+        assert!(project::load(&path).is_ok(), "{gap}");
     }
     let msg = error_of("[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = inf\n");
     assert!(

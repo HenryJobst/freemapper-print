@@ -7,6 +7,11 @@ use crate::sheet::{LogoCache, SheetNote, SheetReport, render_course_sheet};
 
 const A4: &str = "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\n";
 
+/// A4 with the frame moved so that control 32 (map x 100 mm) lies 10 mm from the right edge of the frame
+/// (x 202 mm on the page): the frame centre (page x 105) shows map x 13.
+const A4_32_AT_EDGE: &str = "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\n\
+                             map_frame = { centre_map_mm = [13.0, -30.0] }\n";
+
 fn course<'a>(courses: &'a LoadedCourses, name: &str) -> &'a Course<MapCoord> {
     courses
         .event
@@ -139,7 +144,7 @@ fn levels_resolve_most_specific_wins() {
         kurz[1].placement,
         Placement {
             direction: 90.0,
-            gap_mm: AUTOMATIC_START.gap_mm
+            gap_mm: automatic_start(gap_range(&project.rules)).gap_mm
         }
     );
     // D/H 12 on the same layout: 31 takes the layout's correction only, 33 is automatic.
@@ -153,7 +158,7 @@ fn levels_resolve_most_specific_wins() {
     assert_eq!(dh[0].control, "33");
     assert_eq!(
         (dh[0].level, dh[0].placement),
-        (Level::Automatic, AUTOMATIC_START)
+        (Level::Automatic, automatic_start(gap_range(&project.rules)))
     );
     assert_eq!(dh[1].level, Level::Layout);
     assert_eq!(
@@ -240,10 +245,10 @@ fn text_centre(page: &RenderedPage, text: &str) -> Pt {
 
 #[test]
 fn check_reports_number_outside_frame() {
-    // 32 lies near the right edge of the frame; its number 20 mm east of the circle reaches past it.
+    // 32 lies 10 mm from the right edge of the frame; its number 5 mm east of the circle reaches past it.
     let body = format!(
-        "{A4}{}",
-        correction("32", "layout = \"a4\"", 0.0, Some(20.0))
+        "{A4_32_AT_EDGE}{}",
+        correction("32", "layout = \"a4\"", 0.0, Some(5.0))
     );
     let (_dir, project, map, courses) = course_project(&body);
     let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
@@ -252,8 +257,8 @@ fn check_reports_number_outside_frame() {
     let c = conflicts[0];
     assert_eq!((c.course.as_str(), c.control.as_str()), ("Kurz", "32"));
     assert_eq!(c.conflicts, [Conflict::OutsideFrame]);
-    // The proposal lies inside the frame.
-    assert!(c.proposal.gap_mm <= 1.5, "{:?}", c.proposal);
+    // The proposal lies inside the frame, within the profile's gaps.
+    assert!((0.5..=5.0).contains(&c.proposal.gap_mm), "{:?}", c.proposal);
     let note = SheetNote::NumberConflict(c.clone());
     assert!(!note.is_info() && report.needs_attention());
     assert!(text_centre(&page, "2").0 > page.clip.max.0 - 1.0);
@@ -291,8 +296,8 @@ fn check_reports_number_on_other_circle() {
 fn numbers_never_moved_silently() {
     // A correction that conflicts is drawn where it says; the note carries a different proposal.
     let body = format!(
-        "{A4}{}",
-        correction("32", "layout = \"a4\"", 0.0, Some(20.0))
+        "{A4_32_AT_EDGE}{}",
+        correction("32", "layout = \"a4\"", 0.0, Some(5.0))
     );
     let (_dir, project, map, courses) = course_project(&body);
     let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
@@ -311,7 +316,7 @@ fn numbers_never_moved_silently() {
         size,
         Placement {
             direction: 0.0,
-            gap_mm: 20.0 * sf,
+            gap_mm: 5.0 * sf,
         },
     );
     let centre = text_centre(&page, "2");
@@ -324,7 +329,7 @@ fn numbers_never_moved_silently() {
         Placement::from(proposal),
         Placement {
             direction: 0.0,
-            gap_mm: 20.0
+            gap_mm: 5.0
         }
     );
 }
@@ -557,4 +562,65 @@ fn obstacles_of_map_symbols_by_class() {
     );
     // "Black for buildings" is not canonical, but its CMYK is full black.
     assert_eq!(o[5].weight, 10.0);
+}
+
+#[test]
+fn gaps_outside_the_rule_are_reported_and_kept() {
+    // iof-print allows 0.5 to 5 mm (ruling R29). A correction of 0.3 mm and the file's position of 31 in Kurz
+    // (its box touches the circle: a gap just below 0) lie outside; 32's correction of 1 mm lies inside.
+    let body = format!(
+        "{A4}{}{}",
+        correction("32", "layout = \"a4\"", 300.0, Some(1.0)),
+        correction("33", "layout = \"a4\"", 180.0, Some(0.3)),
+    );
+    let (_dir, project, map, courses) = course_project(&body);
+    let gaps = |name: &str| -> Vec<(String, f64)> {
+        let (_, report) = sheet_of(&project, &map, &courses, name);
+        report
+            .notes
+            .iter()
+            .filter_map(|n| match n {
+                SheetNote::NumberGapOutOfRange {
+                    control,
+                    gap_mm,
+                    min,
+                    max,
+                    ..
+                } => {
+                    assert_eq!((*min, *max), (0.5, 5.0));
+                    assert!(!n.is_info());
+                    Some((control.clone(), *gap_mm))
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let kurz = gaps("Kurz");
+    assert_eq!(kurz.len(), 1, "{kurz:?}");
+    assert_eq!(kurz[0].0, "31");
+    assert!(kurz[0].1 < 0.5);
+    // D/H 12: 33's correction; 31 is automatic there and always within the range.
+    assert_eq!(gaps("D/H 12"), [("33".to_string(), 0.3)]);
+}
+
+#[test]
+fn automatic_gaps_stay_in_the_rule_range() {
+    let (_dir, project, map, courses) = course_project(A4);
+    let gaps = gap_range(&project.rules);
+    assert_eq!((gaps.min, gaps.max), (0.5, 5.0));
+    for name in ["Kurz", "D/H 12"] {
+        let c = course(&courses, name);
+        let resolved = resolve(
+            c,
+            &courses.event,
+            &project,
+            "a4",
+            map.georef.scale_denominator,
+        );
+        for r in resolved.iter().filter(|r| r.level == Level::Automatic) {
+            assert_eq!(r.placement, automatic_start(gaps));
+        }
+    }
+    // Without a rule the fixed gap of 0.5 mm.
+    assert_eq!(GapRange::DEFAULT.steps(), [placement::DEFAULT_GAP_MM]);
 }
