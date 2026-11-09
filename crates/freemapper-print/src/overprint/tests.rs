@@ -548,12 +548,21 @@ fn specials_go_to_their_layer() {
         courses: all.clone(),
     });
     assert_eq!(cross.len(), 2, "{cross:?}");
-    // Two or more points: the line with crosses along it.
+    // Two or more points: crosses along it 5 mm apart and no line, as ISOM 2017-2 draws 711 and OOM's ISOM
+    // set has it. Each arm is 3.0 mm long and 0.35 mm wide, so a cross spans 2.1 mm.
     let route = upper_only(Special::ForbiddenRoute {
         path: path(30.0),
         courses: all.clone(),
     });
-    assert!(route.len() >= 5, "{route:?}");
+    assert_eq!(route.len(), 12, "{route:?}");
+    for arm in cross.iter().chain(&route) {
+        let Shape::Stroke { path, width, .. } = arm else {
+            panic!("{arm:?}")
+        };
+        assert_eq!(path.len(), 2, "{arm:?}");
+        assert!((dist(path[0], path[1]) - 3.0).abs() < 1e-9, "{arm:?}");
+        assert!((width - 0.35).abs() < 1e-9);
+    }
     let marked = upper_only(Special::MarkedRoute {
         path: path(30.0),
         courses: all.clone(),

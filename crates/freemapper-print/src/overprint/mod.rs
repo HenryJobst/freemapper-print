@@ -274,11 +274,18 @@ struct Scaled {
     refreshment_line: f64,
     /// Distance between the crosses of a forbidden route.
     forbidden_spacing: f64,
+    /// Length of each arm of a forbidden-route cross.
+    forbidden_cross: f64,
 }
 
 /// Distance (mm) between the centres of the crosses along a forbidden route: the middle of the 4.0 to 6.0 mm
 /// that ISOM 2017-2 section 3.7, symbol 711, allows.
 const FORBIDDEN_CROSS_SPACING_MM: f64 = 5.0;
+
+/// Length (mm) of each of the two arms of a forbidden-route cross, ISOM 2017-2 section 3.7, symbol 711, as OOM's
+/// ISOM 2017-2 set draws it (arms from (-1.061, 1.061) to (1.061, -1.061) mm): the cross spans 2.1 mm. ISSprOM
+/// 2019-2 has no symbol 711; sprint maps take the same size.
+const FORBIDDEN_CROSS_MM: f64 = 3.0;
 
 impl Scaled {
     fn new(sizes: &CourseSymbolSizes, f: f64) -> Self {
@@ -304,6 +311,7 @@ impl Scaled {
             refreshment: sizes.refreshment_mm * f,
             refreshment_line: sizes.refreshment_line_mm * f,
             forbidden_spacing: FORBIDDEN_CROSS_SPACING_MM * f,
+            forbidden_cross: FORBIDDEN_CROSS_MM * f,
         }
     }
 }
@@ -534,17 +542,17 @@ fn special_shapes(
             match points[..] {
                 [] => {}
                 // Purple Pen's forbidden crossing: one cross.
-                [one] => o.upper.extend(symbols::cross(one, s.crossing, 0.0, s.line)),
-                _ => {
-                    o.upper.push(symbols::line(points.clone(), s.line));
-                    o.upper.extend(symbols::crosses_along(
-                        &points,
-                        s.crossing,
-                        s.forbidden_spacing,
-                        s.line,
-                        budget,
-                    ));
-                }
+                [one] => o
+                    .upper
+                    .extend(symbols::cross(one, s.forbidden_cross, 0.0, s.line)),
+                // Crosses along the route, without a line between them.
+                _ => o.upper.extend(symbols::crosses_along(
+                    &points,
+                    s.forbidden_cross,
+                    s.forbidden_spacing,
+                    s.line,
+                    budget,
+                )),
             }
         }
         Special::Boundary { path: p, courses } if applies(courses, course) && p.len() > 1 => {
