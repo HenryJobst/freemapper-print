@@ -22,12 +22,17 @@ when a map counts as having north lines.
   at map x = k times the spacing from x = 0. They span the frame of the page and nothing more. The program draws
   the map once to learn the frame (page size, orientation, which map point is at the page centre), then draws it
   again with the lines, orientation and centre fixed. So the lines change neither the page nor the overflow report.
-  They stop 0.5 mm inside the frame for that reason. At most 10 000 lines are made; a frame holds a few dozen.
-- **Symbol.** The map's 601, else 601.1, else the lowest 601.x by number. The lines are objects of that symbol in an
+  They stop short of the frame edge by half the painted width of the chosen symbol (at the symbol factor) plus
+  0.01 mm for that reason, so the gap is under 0.1 mm for a thin line. Positions that would saturate the `i32`
+  µm range of print coordinates are dropped, so a hostile `centre_map_mm` cannot stack lines on one x. At most 10 000 lines are made; a frame holds a few dozen.
+- **Symbol.** The map's 601, else 601.1, else the lowest 601.x by number. A candidate counts only if it is a
+  line symbol (type 2) or a combined symbol (type 16) and is not hidden in the file. In the Lübeck and forest
+  sample sets 601.1 is an area symbol (the "North lines pattern") that draws nothing along a two-point path, and
+  Lübeck's 601.4 and 601.9 are hidden, so the renderer skips them. The lines are objects of that symbol in an
   extra part "north lines (generated)", without the sheet tag, so they are drawn and sort by the colour priority of
   the symbol like the mapper's lines. They run unbroken. Breaking them at small features is the mapper's job in OOM;
   the note says so.
-- **Without any 601 symbol.** Plain black lines of 0.14 mm go on the sheet layer, within the frame, and a separate
+- **Without any usable 601 symbol.** Plain black lines of 0.14 mm go on the sheet layer, within the frame, and a separate
   note says the map has no north-line symbol. The sheet layer lies over the map, not under it. The width is
   multiplied by the symbol factor of ADR 0018, as every map line is, so an enlarged print keeps the proportion.
 - Maps that already have north lines print byte-identical to before.

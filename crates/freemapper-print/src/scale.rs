@@ -243,14 +243,6 @@ pub fn infer_kind(map: &MapDocument, map_path: &Path) -> Option<MapKind> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn north_line_spacing_per_kind() {
-        use super::{MapKind, north_line_spacing_m};
-        assert_eq!(north_line_spacing_m(MapKind::Sprint), 120.0);
-        assert_eq!(north_line_spacing_m(MapKind::Forest), 300.0);
-        assert_eq!(north_line_spacing_m(MapKind::Schoolyard), 37.5);
-    }
-
     use super::*;
     use crate::omap::read::read_map_file;
 
@@ -262,6 +254,13 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/fixtures/maps/forest-sample.omap"
     );
+
+    #[test]
+    fn north_line_spacing_per_kind() {
+        assert_eq!(north_line_spacing_m(MapKind::Sprint), 120.0);
+        assert_eq!(north_line_spacing_m(MapKind::Forest), 300.0);
+        assert_eq!(north_line_spacing_m(MapKind::Schoolyard), 37.5);
+    }
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9

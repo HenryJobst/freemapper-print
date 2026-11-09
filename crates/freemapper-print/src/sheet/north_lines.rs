@@ -4,9 +4,10 @@
 //! puts them together. All map positions here are millimetres of the map at its own scale; a
 //! north line is vertical there, because OOM draws the map oriented to magnetic north.
 
-use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, MapPart};
+use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, MapPart, SymbolSet};
 use crate::print::is_north_line;
 use crate::render::page::PaperBox;
+use crate::render::symbols::{Part as SymbolPart, RenderSymbols, Symbol};
 use crate::scale::{MapKind, north_line_spacing_m};
 
 /// The most lines generated for one sheet. A frame holds a few dozen; the cap is for hostile
@@ -19,10 +20,11 @@ pub(super) const FALLBACK_WIDTH_MM: f64 = 0.14;
 /// Name of the part that holds generated lines. It is added after the layout hid its parts.
 pub(super) const PART_NAME: &str = "north lines (generated)";
 
-/// The lines stop this far (page mm) inside the frame, so that the painted line, with its width
-/// and its round or square end caps, does not reach out of the frame and show up as overflow in
-/// the report. 0.5 mm covers a line up to 1 mm wide.
-pub(super) const INSET_MM: f64 = 0.5;
+/// The lines stop this far (page mm) before the frame edge on top of half their painted width, so
+/// that the painted line does not reach out of the frame and show up as overflow in the report
+/// (rounding to whole µm, which the drawing does, could otherwise do it). The inset follows the
+/// symbol, so a thin line leaves a gap of well under 0.1 mm.
+const INSET_MARGIN_MM: f64 = 0.01;
 
 /// Whether any object of `map`, in any part, is a north line (601 or 601.x). Asked of the whole
 /// map before the layout hides parts: a layout that hides the part with the north lines gets no
@@ -34,9 +36,19 @@ pub(super) fn has_north_lines(map: &MapDocument) -> bool {
         .any(|o| is_north_line(&map.symbol_set, o))
 }
 
-/// The symbol to draw generated lines with, from the `(code, id)` pairs of the symbol set: 601,
-/// else 601.1, else the lowest 601.x by its number. `None` without any.
-pub(super) fn symbol_id<'a>(codes: impl Iterator<Item = (&'a str, u32)>) -> Option<u32> {
+/// Whether `id` can draw a line along a two-point path: a line symbol (type 2) or a combined
+/// one (type 16), and not hidden in the file. An area symbol such as the "North lines pattern"
+/// 601.1 draws nothing along a path, and a hidden one is skipped by the renderer.
+pub(super) fn draws_a_line(set: &SymbolSet, id: u32) -> bool {
+    !set.is_hidden(id) && matches!(set.symbol_type(id), Some(2 | 16))
+}
+
+/// The symbol to draw generated lines with, from the `(code, id)` pairs of the symbol set that
+/// pass `usable`: 601, else 601.1, else the lowest 601.x by its number. `None` without any.
+pub(super) fn symbol_id<'a>(
+    codes: impl Iterator<Item = (&'a str, u32)>,
+    usable: impl Fn(u32) -> bool,
+) -> Option<u32> {
     let mut best: Option<((u8, u32, &str), u32)> = None;
     for (code, id) in codes {
         let key = if code == "601" {
@@ -46,11 +58,44 @@ pub(super) fn symbol_id<'a>(codes: impl Iterator<Item = (&'a str, u32)>) -> Opti
         } else {
             continue;
         };
-        if best.is_none_or(|(k, _)| key < k) {
+        if usable(id) && best.is_none_or(|(k, _)| key < k) {
             best = Some((key, id));
         }
     }
     best.map(|(_, id)| id)
+}
+
+/// Half the widest line `id` paints (mm), at symbol factor `factor`. A combined symbol takes
+/// its widest part; a symbol that cannot be read gives 0.
+pub(super) fn half_width_mm(set: &SymbolSet, id: u32, factor: f64) -> f64 {
+    fn widest(symbol: &Symbol, all: &RenderSymbols, depth: u8) -> f64 {
+        match symbol {
+            Symbol::Line(def) => {
+                let border = def.border.as_ref().map_or(0.0, |b| b.width + b.shift.abs());
+                def.width.max(border)
+            }
+            Symbol::Combined(parts) if depth < 4 => parts
+                .iter()
+                .filter_map(|p| match p {
+                    SymbolPart::Ref(id) => all.symbols.get(id),
+                    SymbolPart::Inline(s) => Some(&**s),
+                })
+                .map(|s| widest(s, all, depth + 1))
+                .fold(0.0, f64::max),
+            _ => 0.0,
+        }
+    }
+    let Ok(all) = RenderSymbols::from_set(set) else {
+        return 0.0;
+    };
+    let width_um = all.symbols.get(&id).map_or(0.0, |s| widest(s, &all, 0));
+    // Width in µm as the symbol file has it.
+    width_um / 1000.0 * factor / 2.0
+}
+
+/// The inset (page mm) for lines of a symbol whose half width is `half_width_mm`.
+pub(super) fn inset_mm(half_width_mm: f64) -> f64 {
+    half_width_mm + INSET_MARGIN_MM
 }
 
 /// Distance between two lines on the map (mm at the map scale): the ground spacing of the kind
@@ -60,12 +105,15 @@ pub(super) fn spacing_mm(kind: MapKind, map_scale: u32) -> f64 {
 }
 
 /// The map frame in map mm (at the map scale): the `clip` of a page whose page centre shows
-/// `centre_mm` (print mm), at geometry factor `gf`, with the line inset taken off.
+/// `centre_mm` (print mm), at geometry factor `gf`, with `inset` (page mm) taken off every side.
+/// The result is clamped to the range in which a coordinate survives scaling to print µm without
+/// saturating (`i32`), so lines never pile up at the end of that range.
 pub(super) fn frame_in_map_mm(
     clip: PaperBox,
     page_mm: (f64, f64),
     centre_mm: (f64, f64),
     gf: f64,
+    inset: f64,
 ) -> PaperBox {
     let to_map = |x: f64, y: f64| {
         (
@@ -73,9 +121,12 @@ pub(super) fn frame_in_map_mm(
             (y - page_mm.1 / 2.0 + centre_mm.1) / gf,
         )
     };
+    // Conservative: a geometry factor below 1 does not widen the range.
+    let limit = f64::from(i32::MAX) / 1000.0 / gf.max(1.0);
+    let clamp = |(x, y): (f64, f64)| (x.clamp(-limit, limit), y.clamp(-limit, limit));
     PaperBox {
-        min: to_map(clip.min.0 + INSET_MM, clip.min.1 + INSET_MM),
-        max: to_map(clip.max.0 - INSET_MM, clip.max.1 - INSET_MM),
+        min: clamp(to_map(clip.min.0 + inset, clip.min.1 + inset)),
+        max: clamp(to_map(clip.max.0 - inset, clip.max.1 - inset)),
     }
 }
 
@@ -132,6 +183,27 @@ mod tests {
         assert!(line_xs_mm(30.0, f64::NAN, 10.0).is_empty());
         assert!(line_xs_mm(30.0, 0.0, f64::INFINITY).is_empty());
         assert!(line_xs_mm(30.0, 10.0, 0.0).is_empty());
+    }
+
+    #[test]
+    fn frame_is_clamped_to_the_coordinate_range() {
+        let clip = PaperBox {
+            min: (8.0, 8.0),
+            max: (202.0, 289.0),
+        };
+        let f = frame_in_map_mm(clip, (210.0, 297.0), (1e15, -1e15), 1.0, 0.1);
+        assert!(f.max.0 <= 2_147_483.7 && f.min.1 >= -2_147_483.7, "{f:?}");
+        assert!(line_xs_mm(30.0, f.min.0, f.max.0).len() <= 1);
+    }
+
+    #[test]
+    fn half_width_follows_the_symbol_and_the_factor() {
+        let set = SymbolSet::issprom_2019();
+        let id = set.id_for_code("601").unwrap();
+        let w = half_width_mm(&set, id, 1.0);
+        assert!(w > 0.03 && w < 0.2, "{w}");
+        assert!((half_width_mm(&set, id, 2.0) - 2.0 * w).abs() < 1e-12);
+        assert!(draws_a_line(&set, id));
     }
 
     #[test]

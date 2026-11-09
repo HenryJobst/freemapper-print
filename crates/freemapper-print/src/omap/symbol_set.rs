@@ -235,11 +235,11 @@ impl SymbolSet {
         self.codes.iter().map(|(c, id)| (c.0.as_str(), *id))
     }
 
-    /// A copy that no longer finds symbols whose code starts with `prefix` by code (test aid).
+    /// A copy that no longer finds the symbols whose code satisfies `drop` by code (test aid).
     #[cfg(test)]
-    pub(crate) fn without_codes_starting(&self, prefix: &str) -> Self {
+    pub(crate) fn without_codes(&self, drop: impl Fn(&str) -> bool) -> Self {
         let mut set = self.clone();
-        set.codes.retain(|(c, _)| !c.0.starts_with(prefix));
+        set.codes.retain(|(c, _)| !drop(&c.0));
         set
     }
 

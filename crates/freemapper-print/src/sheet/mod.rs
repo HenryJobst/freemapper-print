@@ -261,19 +261,25 @@ fn add_north_lines(
     notes: &mut Vec<SheetNote>,
 ) -> Result<(), SheetError> {
     let gf = print.geometry_factor;
-    let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf);
+    // A symbol that paints a line (visible, type line or combined), else the plain fallback.
+    let symbol = north_lines::symbol_id(map.symbol_set.codes(), |id| {
+        north_lines::draws_a_line(&map.symbol_set, id)
+    });
+    let half_width = match symbol {
+        Some(id) => north_lines::half_width_mm(&map.symbol_set, id, print.symbol_factor),
+        None => north_lines::FALLBACK_WIDTH_MM * print.symbol_factor / 2.0,
+    };
+    let inset = north_lines::inset_mm(half_width);
+    let frame = north_lines::frame_in_map_mm(page.clip, page.page_mm, page.centre_mm, gf, inset);
     let spacing = north_lines::spacing_mm(kind, map.georef.scale_denominator);
     let xs = north_lines::line_xs_mm(spacing, frame.min.0, frame.max.0);
     if xs.is_empty() {
         return Ok(());
     }
-    let Some(symbol) = north_lines::symbol_id(map.symbol_set.codes()) else {
+    let Some(symbol) = symbol else {
         // Page x of map x: the page centre shows `centre_mm`.
         let page_x = |x: f64| page.page_mm.0 / 2.0 + x * gf - page.centre_mm.0;
-        let (top, bottom) = (
-            page.clip.min.1 + north_lines::INSET_MM,
-            page.clip.max.1 - north_lines::INSET_MM,
-        );
+        let (top, bottom) = (page.clip.min.1 + inset, page.clip.max.1 - inset);
         // Symbols scale by the symbol factor (ADR 0018), and so does the plain line.
         let width = north_lines::FALLBACK_WIDTH_MM * print.symbol_factor;
         let lines = xs.iter().map(|x| SheetItem::Shape {
@@ -1167,8 +1173,11 @@ mod tests {
         let mut layout = auto();
         layout.map_frame.centre_map_mm = Some([1e15, -1e15]);
         let (page, report) = sheet(&no_lines_map(), &layout);
-        assert!(added(&report).unwrap_or(0) < 100);
-        assert!(map_xs(&page).len() < 100);
+        // Coordinates saturate far out; only distinct, drawn lines are counted.
+        let xs = map_xs(&page);
+        assert_eq!(added(&report).unwrap_or(0), xs.len());
+        assert!(xs.len() < 100);
+        assert!(xs.windows(2).all(|w| w[1] > w[0]), "{xs:?}");
     }
 
     #[test]
@@ -1244,19 +1253,101 @@ mod tests {
 
     #[test]
     fn falls_back_to_601_1_then_the_lowest_variant() {
-        let pick = |codes: &[&str]| {
-            north_lines::symbol_id(codes.iter().enumerate().map(|(i, c)| (*c, i as u32)))
+        let pick = |codes: &[&str], usable: fn(u32) -> bool| {
+            north_lines::symbol_id(
+                codes.iter().enumerate().map(|(i, c)| (*c, i as u32)),
+                usable,
+            )
         };
-        assert_eq!(pick(&["601.4", "601", "601.1"]), Some(1));
-        assert_eq!(pick(&["601.4", "601.1"]), Some(1));
-        assert_eq!(pick(&["601.10", "601.4", "601.9"]), Some(1));
-        assert_eq!(pick(&["501", "602"]), None);
+        let all = |_: u32| true;
+        assert_eq!(pick(&["601.4", "601", "601.1"], all), Some(1));
+        assert_eq!(pick(&["601.4", "601.1"], all), Some(1));
+        assert_eq!(pick(&["601.10", "601.4", "601.9"], all), Some(1));
+        assert_eq!(pick(&["501", "602"], all), None);
+        // Unusable candidates are passed over, in the same order.
+        assert_eq!(pick(&["601", "601.1", "601.4"], |i| i != 0), Some(1));
+        assert_eq!(pick(&["601", "601.1", "601.4"], |i| i == 2), Some(2));
+        assert_eq!(pick(&["601", "601.1"], |_| false), None);
+    }
+
+    fn luebeck() -> MapDocument {
+        crate::omap::read::read_map_file(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/maps/luebeck.omap"
+        )))
+        .unwrap()
+    }
+
+    fn vertical_count(page: &RenderedPage) -> usize {
+        map_xs(page).len()
+    }
+
+    #[test]
+    fn luebeck_keeps_its_tagged_north_lines() {
+        // Its 601 objects carry the sheet tag (ADR 0023) and still count.
+        let map = luebeck();
+        assert!(map.parts.iter().flat_map(|p| &p.objects).any(|o| {
+            o.tags
+                .iter()
+                .any(|(k, v)| k == "freemapper:source" && v == "sheet")
+                && map.symbol_set.code_of(o.symbol_id) == Some("601")
+        }));
+        let (_, report) = sheet(&map, &auto());
+        assert_eq!(added(&report), None);
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::NorthLinesWithoutSymbol { .. }))
+        );
+    }
+
+    #[test]
+    fn luebeck_without_north_objects_gets_visible_lines() {
+        let mut map = luebeck();
+        let set = map.symbol_set.clone();
+        for part in &mut map.parts {
+            part.objects.retain(|o| {
+                !set.code_of(o.symbol_id)
+                    .is_some_and(|c| c.starts_with("601"))
+            });
+        }
+        let (never, _) = sheet(&map, &a4());
+        let (page, report) = sheet(&map, &auto());
+        let n = added(&report).expect("lines added");
+        assert!(n > 0);
+        // Each is drawn: the 601 line symbol of the set, not the area symbol 601.1.
+        assert_eq!(vertical_count(&page), vertical_count(&never) + n);
+    }
+
+    #[test]
+    fn area_and_hidden_variants_are_not_taken() {
+        // Luebeck: 601.1 and 601.6 are area symbols, 601.4 and 601.9 are hidden, 601.5 is a
+        // visible line. Without 601 the lowest qualifying variant is 601.5.
+        let mut map = luebeck();
+        map.parts.clear();
+        map.symbol_set = map.symbol_set.without_codes(|c| c == "601");
+        let (page, report) = sheet(&map, &auto());
+        assert!(added(&report).is_some_and(|n| n > 0));
+        assert!(vertical_count(&page) > 0);
+        // Without 601 and 601.5 only area and hidden symbols remain: the plain fallback.
+        map.symbol_set = map.symbol_set.without_codes(|c| c == "601.5");
+        let (page, report) = sheet(&map, &auto());
+        assert_eq!(added(&report), None);
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::NorthLinesWithoutSymbol { .. }))
+        );
+        assert_eq!(vertical_count(&page), 0);
+        assert!(!sheet_xs(&page).is_empty());
     }
 
     #[test]
     fn fallback_without_symbol_noted() {
         let mut map = no_lines_map();
-        map.symbol_set = map.symbol_set.without_codes_starting("601");
+        map.symbol_set = map.symbol_set.without_codes(|c| c.starts_with("601"));
         let (page, report) = sheet(&map, &auto());
         assert!(map_xs(&page).is_empty());
         let xs = sheet_xs(&page);
@@ -1288,7 +1379,7 @@ mod tests {
     #[test]
     fn fallback_width_follows_the_symbol_factor() {
         let mut map = no_lines_map();
-        map.symbol_set = map.symbol_set.without_codes_starting("601");
+        map.symbol_set = map.symbol_set.without_codes(|c| c.starts_with("601"));
         let mut layout = auto();
         layout.print_scale = Some(3000);
         let (page, _) = sheet(&map, &layout);
