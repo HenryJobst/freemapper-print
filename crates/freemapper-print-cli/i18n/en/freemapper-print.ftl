@@ -137,9 +137,12 @@ check-course-summary = Course "{ $course }" on layout { $layout }: { $paper } { 
 check-courses-clean = Checked { $count ->
         [one] 1 course
        *[other] { $count } courses
+    } and { $layouts ->
+        [one] 1 layout sheet
+       *[other] { $layouts } layout sheets
     }, no notes.
-check-courses-with-notes = Courses with notes: { $count } of { $total }.
-check-course-file-notes = The course file itself has notes. They are listed before the first course.
+check-courses-with-notes = With notes: { $count } of { $total } courses, { $layouts_with_notes } of { $layouts } layout sheets.
+check-course-file-notes = The course file itself has notes: see the lines above the first course.
 
 ## Sheet notes
 

@@ -355,6 +355,7 @@ mod tests {
         }
         args.set("count", FluentValue::from(3_i64));
         args.set("layouts", FluentValue::from(2_i64));
+        args.set("layouts_with_notes", FluentValue::from(1_i64));
         args.set("assignments", FluentValue::from(3_i64));
         args
     }

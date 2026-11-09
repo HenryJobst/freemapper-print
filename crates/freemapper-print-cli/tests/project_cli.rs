@@ -859,11 +859,16 @@ fn check_runs_per_course() {
     assert_eq!(o.status.code(), Some(1), "{err}");
     assert!(err.contains("Course \"Kurz\" on layout a4"), "{err}");
     assert!(err.contains("Course \"D/H 12\" on layout a3"), "{err}");
-    assert!(err.contains("Courses with notes: 2 of 2."), "{err}");
-    assert!(!err.contains("Layout a4:"), "{err}");
+    assert!(err.contains("With notes: 2 of 2 courses, "), "{err}");
+    assert!(err.contains("of 2 layout sheets."), "{err}");
+    // Then the layout sheets without a course, as `export --layout` writes them (ruling R40).
+    let course = err.find("Course \"D/H 12\" on layout a3").unwrap();
+    let a4 = err.find("Layout a4:").expect("the layout sheet a4");
+    let a3 = err.find("Layout a3:").expect("the layout sheet a3");
+    assert!(course < a4 && a4 < a3, "{err}");
     let o = run("de", &["check", path.to_str().unwrap()]);
     assert!(
-        stderr(&o).contains("Bahnen mit Hinweisen: 2 von 2."),
+        stderr(&o).contains("Mit Hinweisen: 2 von 2 Bahnen, "),
         "{}",
         stderr(&o)
     );

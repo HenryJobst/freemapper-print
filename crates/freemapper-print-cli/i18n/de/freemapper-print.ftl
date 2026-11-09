@@ -137,9 +137,12 @@ check-course-summary = Bahn „{ $course }“ auf Layout { $layout }: { $paper }
 check-courses-clean = { $count ->
         [one] 1 Bahn
        *[other] { $count } Bahnen
+    } und { $layouts ->
+        [one] 1 Layoutblatt
+       *[other] { $layouts } Layoutblätter
     } geprüft, keine Hinweise.
-check-courses-with-notes = Bahnen mit Hinweisen: { $count } von { $total }.
-check-course-file-notes = Die Bahndatei selbst hat Hinweise. Sie stehen vor der ersten Bahn.
+check-courses-with-notes = Mit Hinweisen: { $count } von { $total } Bahnen, { $layouts_with_notes } von { $layouts } Layoutblättern.
+check-course-file-notes = Die Bahndatei selbst hat Hinweise, siehe die Zeilen über der ersten Bahn.
 
 ## Blatthinweise
 

@@ -1017,8 +1017,9 @@ fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
     notes.iter().any(|n| !n.is_info())
 }
 
-/// `check` with a course file: the notes of the file once, then every course on its layout. Returns the exit
-/// code: 1 when the file or a course has notes that count.
+/// `check` with a course file: the notes of the file once, then every course on its layout, then every layout
+/// sheet without a course, as `export --layout` writes it. Returns the exit code: 1 when the file, a course or
+/// a layout sheet has notes that count.
 fn check_courses(
     texts: &Texts,
     loaded: &LoadedProject,
@@ -1059,13 +1060,26 @@ fn check_courses(
         }
         with_notes += usize::from(has_notes);
     }
+    // The layout sheets without a course, as `export --layout` writes them (ruling R40).
+    let layouts = loaded.project.layouts.len();
+    let mut layouts_with_notes = 0;
+    for layout in &loaded.project.layouts {
+        let (lines, has_notes) = check_lines(texts, loaded, map, layout, &logos);
+        for line in lines {
+            eprintln!("{line}");
+        }
+        layouts_with_notes += usize::from(has_notes);
+    }
     if file_notes {
         eprintln!("{}", texts.plain("check-course-file-notes"));
     }
-    if with_notes == 0 && !file_notes {
+    if with_notes == 0 && layouts_with_notes == 0 && !file_notes {
         eprintln!(
             "{}",
-            texts.get("check-courses-clean", Some(&args!("count" => total)))
+            texts.get(
+                "check-courses-clean",
+                Some(&args!("count" => total, "layouts" => layouts))
+            )
         );
         0
     } else {
@@ -1073,7 +1087,12 @@ fn check_courses(
             "{}",
             texts.get(
                 "check-courses-with-notes",
-                Some(&args!("count" => with_notes, "total" => total))
+                Some(&args!(
+                    "count" => with_notes,
+                    "total" => total,
+                    "layouts" => layouts,
+                    "layouts_with_notes" => layouts_with_notes,
+                ))
             )
         );
         1
