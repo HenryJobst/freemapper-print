@@ -1,0 +1,70 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Training Viktoriapark"
+date = 2027-04-14
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "berlin-viktoriapark.omap"
+courses = "training.ppen"
+# Purple Pen schreibt die y-Achse nach oben. Auf dem Blatt geprüft: Jeder Posten steht an der
+# Gebäudeecke oder Wegegabelung, die seine Beschreibung nennt.
+course_y_axis = "up"
+
+[map]
+kind = "sprint"
+# Vorschlag für Sprintkarten. An der Karte prüfen und bestätigen.
+contour_interval_m = 2.0
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Die Kartennotizen haben neun Zeilen. Hier stehen die Quellen in drei Zeilen, die sechs Datensätze
+# des Geoportals Berlin in einer.
+[print]
+copyright = """
+© OpenStreetMap contributors, ODbL · © GeoBasis-DE/LGB 2026, dl-de/by-2-0
+© Geoportal Berlin (ALKIS, K5, Baumbestand, Straßenbefahrung 2014, Zierbrunnen, Gebäudehöhen), dl-de/zero-2-0, Daten geändert
+Karte erstellt mit freemapper – https://github.com/HenryJobst/freemapper
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event}",
+    "{date} · {length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# A4 im Maßstab der Karte. Ein Bahnblatt schneidet die Karte mit Absicht auf die Bahn zu (crop).
+# 12 mm Passepartout, damit die vier Zeilen der Fußzeile unter den Kartenausschnitt passen.
+
+[[layouts]]
+id = "a4-4000"
+paper = "A4"
+orientation = "landscape"
+print_scale = 4000
+map_frame = { margin_mm = 12.0, crop = true }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+[[assignments]]
+course = "Training"
+layout = "a4-4000"

@@ -68,6 +68,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   Pen file, A and B on A4 at 1:4000 and C on A3 at 1:3000, with control descriptions, an out-of-bounds area, a
   forbidden crossing, a marked route to the finish and one number moved with `numbers accept`. The folder `iof/`
   prints the same courses from IOF XML 3.0, without descriptions.
+- Example `examples/berlin-viktoriapark-training`: a club training of 1.7 km on freemapper's Viktoriapark map
+  (version 0.6.0), one course from Purple Pen on A4 at 1:4000 with control descriptions.
 
 ### Fixed
 

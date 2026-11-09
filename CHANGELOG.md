@@ -75,6 +75,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   geschriebenen Purple-Pen-Datei, A und B auf A4 in 1:4000, C auf A3 in 1:3000, mit Postenbeschreibung,
   Sperrgebiet, verbotener Querung, markierter Strecke zum Ziel und einer mit `numbers accept` versetzten Nummer.
   Der Ordner `iof/` druckt dieselben Bahnen aus IOF-XML 3.0, ohne Beschreibung.
+- Beispiel `examples/berlin-viktoriapark-training`: ein Vereinstraining von 1,7 km auf der Viktoriapark-Karte von
+  freemapper (Version 0.6.0), eine Bahn aus Purple Pen auf A4 in 1:4000 mit Postenbeschreibung.
 
 ### Behoben
 
