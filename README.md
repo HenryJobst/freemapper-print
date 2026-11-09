@@ -60,8 +60,8 @@ Neu in 0.3.0 (Meilenstein M3):
 
 Geplant ist:
 
-- Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet; das White-out aus
-  Purple Pen wird schon gelesen, aber noch nicht gedruckt (M4);
+- Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet (M4). Von Hand
+  geschriebene Abdeckungen und das White-out aus Purple Pen werden schon gedruckt;
 - Bedienung über einen KI-Assistenten (MCP, M5) und einen Editor im Browser (M6);
 - später OCAD-Karten.
 

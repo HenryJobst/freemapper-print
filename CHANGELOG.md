@@ -7,6 +7,19 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Abdeckungen für Fenster- und Korridor-OL werden gedruckt (ADR 0045). Nennt die Zuordnung einer Bahn eine
+  Abdeckung aus `[[masks]]`, zeigt das Blatt die Karte nur außerhalb der abgedeckten Flächen und in ihren Fenstern.
+  Überlappende Fenster ergeben ein Fenster. Bahnaufdruck, Beschreibungskasten, Blattelemente und Fußzeile bleiben
+  ganz sichtbar. Ohne eigene Abdeckung gelten die Abdeckflächen (White-out) aus Purple Pen, jede für sich, auch
+  wenn sie sich überlappen. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
+
+### Geändert
+
+- Der Hinweis auf Abdeckflächen in der Bahndatei beginnt jetzt mit „Zur Information:“ und zählt nicht mehr für den
+  Exit-Code von `check`, denn die Abdeckflächen werden gedruckt.
+
 ## [0.4.0] - 2026-11-10
 
 ### Geändert

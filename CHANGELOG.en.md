@@ -7,6 +7,19 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- Masks for window and corridor orienteering print (ADR 0045). When a course's assignment names a mask from
+  `[[masks]]`, the sheet shows the map only outside the masked areas and in their windows. Overlapping windows
+  make one window. The course overprint, the description box, the sheet elements and the footer stay visible.
+  Without a mask of its own, a course gets Purple Pen's white-out areas, each on its own, also where they overlap.
+  Sheets without a mask stay the same byte for byte.
+
+### Changed
+
+- The note on white-out areas in the course file now starts with "Info:" and no longer counts toward the exit
+  code of `check`, because white-outs print.
+
 ## [0.4.0] - 2026-11-10
 
 ### Changed

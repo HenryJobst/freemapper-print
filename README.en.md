@@ -57,8 +57,8 @@ New in 0.3.0 (milestone M3):
 
 Planned:
 
-- masks for window and corridor orienteering, in variants assigned to single courses; Purple Pen's white-out is
-  read already but not printed (M4);
+- masks for window and corridor orienteering, in variants assigned to single courses (M4). Hand-written masks
+  and Purple Pen's white-out print already;
 - use through an AI assistant (MCP, M5) and an editor in the browser (M6);
 - OCAD maps, later.
 
