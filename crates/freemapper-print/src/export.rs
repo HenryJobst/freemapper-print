@@ -22,15 +22,28 @@ pub struct UnknownLayout {
     pub known: Vec<String>,
 }
 
-/// Why a layout could not be exported. Layouts before it are written already.
+/// Why a layout could not be exported. Layouts before it are written already. The message names
+/// the layout; the cause is the `source`, so that a chain of messages names it once.
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
-    #[error("layout `{layout}`: {error}")]
-    Sheet { layout: String, error: SheetError },
-    #[error("layout `{layout}`: {error}")]
-    Pdf { layout: String, error: PdfError },
-    #[error("layout `{layout}`: {error}")]
-    Write { layout: String, error: OutputError },
+    #[error("could not draw layout `{layout}`")]
+    Sheet {
+        layout: String,
+        #[source]
+        error: SheetError,
+    },
+    #[error("could not write the PDF of layout `{layout}`")]
+    Pdf {
+        layout: String,
+        #[source]
+        error: PdfError,
+    },
+    #[error("could not write the PDF of layout `{layout}`")]
+    Write {
+        layout: String,
+        #[source]
+        error: OutputError,
+    },
 }
 
 /// One layout written by [`export_layouts`].

@@ -106,7 +106,7 @@ pub enum SheetNote {
 pub enum SheetError {
     #[error(transparent)]
     Print(#[from] PrintError),
-    #[error("could not prepare the map for the sheet: {0}")]
+    #[error("could not prepare the map for the sheet")]
     Map(#[from] OmapError),
 }
 

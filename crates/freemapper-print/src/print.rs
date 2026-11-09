@@ -151,7 +151,7 @@ impl PrintReport {
 pub enum PrintError {
     #[error(transparent)]
     Scale(#[from] ScaleError),
-    #[error("could not resize the map symbols for the print scale: {0}")]
+    #[error("could not resize the map symbols for the print scale")]
     Symbols(#[from] OmapError),
     #[error(transparent)]
     Pdf(#[from] PdfError),

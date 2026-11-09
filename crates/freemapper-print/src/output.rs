@@ -29,8 +29,9 @@ pub enum OutputError {
         /// The file that was to be written.
         path: PathBuf,
     },
-    /// Any other I/O error.
-    #[error("could not write {}: {source}", path.display())]
+    /// Any other I/O error. The operating system's error is the `source`, not part of the
+    /// message.
+    #[error("could not write {}", path.display())]
     Io {
         /// The file that was to be written.
         path: PathBuf,

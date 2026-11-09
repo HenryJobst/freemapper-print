@@ -655,3 +655,61 @@ fn export_needs_an_existing_out_dir() {
     assert!(stderr(&o).contains("does not exist"), "{}", stderr(&o));
     assert!(!missing.exists());
 }
+
+#[test]
+fn missing_project_file_names_the_os_error_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("nothere.toml");
+    for lang in ["en", "de"] {
+        let o = run(lang, &["check", missing.to_str().unwrap()]);
+        assert_eq!(o.status.code(), Some(1));
+        let err = stderr(&o);
+        assert!(err.contains("nothere.toml"), "{err}");
+        assert_eq!(err.matches("os error 2").count(), 1, "{err}");
+    }
+}
+
+#[test]
+fn unwritable_output_names_the_os_error_once() {
+    let ws = Workspace::new(LUEBECK);
+    let o = run(
+        "en",
+        &[
+            "init",
+            ws.event().to_str().unwrap(),
+            "--map",
+            ws.map.to_str().unwrap(),
+        ],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    // A folder where the PDF should go: renaming the finished file onto it fails.
+    for id in ["a4", "a3"] {
+        let blocked = ws.event().join("out").join(format!("{id}.pdf"));
+        std::fs::create_dir_all(&blocked).unwrap();
+        std::fs::write(blocked.join("x"), "x").unwrap();
+    }
+    let o = run("en", &["export", ws.event().to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(1));
+    let err = stderr(&o);
+    assert!(err.contains(".pdf"), "{err}");
+    assert_eq!(err.matches("os error").count(), 1, "{err}");
+}
+
+#[test]
+fn render_into_a_folder_names_the_os_error_once() {
+    let ws = Workspace::new(LUEBECK);
+    let blocked = ws.event().join("map.pdf");
+    std::fs::create_dir_all(&blocked).unwrap();
+    std::fs::write(blocked.join("x"), "x").unwrap();
+    let args = [
+        "render",
+        ws.map.to_str().unwrap(),
+        "--out",
+        blocked.to_str().unwrap(),
+    ];
+    let o = run("en", &args);
+    assert_eq!(o.status.code(), Some(1));
+    let err = stderr(&o);
+    assert!(err.contains("map.pdf"), "{err}");
+    assert_eq!(err.matches("os error").count(), 1, "{err}");
+}

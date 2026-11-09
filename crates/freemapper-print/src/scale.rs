@@ -194,7 +194,8 @@ struct Sidecar {
 /// `freemapper.toml` next to a map could not be used.
 #[derive(Debug, thiserror::Error)]
 pub enum SidecarError {
-    #[error("could not read {path}: {source}")]
+    /// The operating system's error is the `source`, not part of the message.
+    #[error("could not read {path}")]
     Read {
         path: std::path::PathBuf,
         source: std::io::Error,

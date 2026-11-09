@@ -285,7 +285,8 @@ fn detect_kind(
             "{}",
             texts.get(
                 "note-sidecar",
-                Some(&args!("error" => printable(&err.to_string())))
+                // The whole chain: the operating system's error is the source.
+                Some(&args!("error" => printable(&format!("{:#}", anyhow::Error::new(err)))))
             )
         );
     }

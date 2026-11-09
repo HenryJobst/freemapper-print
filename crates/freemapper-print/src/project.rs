@@ -259,8 +259,15 @@ impl LoadedProject {
 /// line, column and field.
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
-    #[error("cannot read project file {file}: {source}")]
+    /// The operating system's error is the `source`, not part of the message, so that a chain of
+    /// messages names it once.
+    #[error("cannot read project file {file}")]
     Io {
+        file: String,
+        source: std::io::Error,
+    },
+    #[error("cannot write project file {file}")]
+    Write {
         file: String,
         source: std::io::Error,
     },
@@ -716,14 +723,14 @@ pub fn save_new_with_comments(
             if source.kind() == std::io::ErrorKind::AlreadyExists {
                 ProjectError::Exists { file: file.clone() }
             } else {
-                ProjectError::Io {
+                ProjectError::Write {
                     file: file.clone(),
                     source,
                 }
             }
         })?;
     f.write_all(text.as_bytes())
-        .map_err(|source| ProjectError::Io { file, source })
+        .map_err(|source| ProjectError::Write { file, source })
 }
 
 /// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
