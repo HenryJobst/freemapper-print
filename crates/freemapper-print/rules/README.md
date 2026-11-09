@@ -106,8 +106,8 @@ noch nicht; er steht da, weil das Format von freemapper-courseplan ihn verlangt.
 ein, wo eine Regel gilt. Ein leerer oder fehlender Filter heißt: überall.
 
 Jeder Wert gilt im Basismaßstab seiner Kartenart: Sprintkarte 1:4000, Waldkarte 1:15000, Schulhofkarte
-1:1000. Das Programm rechnet die Bahnsymbole mit dem Symbolfaktor auf den Druckmaßstab um. Ein Filter
-`print_scales` wird deshalb im Basismaßstab gelesen.
+1:1000. Das Programm vergrößert die Bahnsymbole mit dem Größenfaktor des Druckmaßstabs aus der Tabelle der
+Symbolgrößen, dem Bahnfaktor. Ein Filter `print_scales` wird deshalb im Basismaßstab gelesen.
 
 Hat ein Wert für verschiedene Kartenarten verschiedene Größen, steht er in einer Regel je Kartenart, jede mit
 eigener `id` und eigenem Filter. Beim Laden prüft das Programm, dass jede Kartenart jeden Wert genau einmal
@@ -237,8 +237,8 @@ Please write `note` in German and English; the English text is required.
 where a rule applies. An empty or missing filter means everywhere.
 
 Every value holds at the base scale of its map kind: sprint 1:4000, forest 1:15000, schoolyard 1:1000. The
-program scales course symbols to the print scale with the symbol factor, so a `print_scales` filter is read at
-the base scale.
+program enlarges course symbols with the size factor of the print scale from the symbol size table, the course
+factor, so a `print_scales` filter is read at the base scale.
 
 When a value differs between map kinds, it goes into one rule per map kind, each with its own `id` and filter.
 On loading, the program checks that each map kind gets each value exactly once. If a value is missing, or two

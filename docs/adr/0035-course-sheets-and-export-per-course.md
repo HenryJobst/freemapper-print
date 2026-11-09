@@ -50,8 +50,11 @@ in memory at a time.
 - The single file goes through `MultiPagePdf`: each page becomes PDF objects at once and is dropped, so one page
   is held at a time and only the PDF bytes grow. Each page embeds its own font subsets and images. `write_pdf`
   keeps its object order, so one-page PDFs stay as they were.
-- `check` with a course file prints the course file notes, then every course on its layout, and exits with 1 when
-  the file or a course has a note that counts.
+- `check` with a course file prints the course file notes, then every course on its layout, then every layout
+  sheet without a course, as `export --layout` writes it (ruling R40). It exits with 1 when the file, a course or
+  a layout sheet has a note that counts. The last line counts courses and layout sheets.
+- Number searches have a budget (ruling R38, ADR 0038), so one course file cannot keep `check` or `export`
+  busy for hours.
 
 ## Consequences
 

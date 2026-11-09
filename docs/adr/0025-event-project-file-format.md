@@ -104,7 +104,9 @@ source, shared sheet elements and layouts.
   `FitError` prints and writes nothing. `sources.courses` is written relative to the project file with `/` as
   separator. For a `.ppen`, `init` makes one layout per distinct `print_scale_hint` (a course without one takes the
   map scale), fits each with `fit_starter` as for a map alone, and assigns every course to the layout with its
-  print scale. With more than one layout the ids get the scale (`a3-4000`), because two layouts can both be A3.
+  print scale. With a course file every layout id gets the scale (`a3-4000`), because two layouts can both be A3
+  and an id should not change when a second scale appears. `init` names the course file as the project does,
+  relative to the project folder.
   Every layout gets a `control_descriptions` element in the top-right corner of the map frame, which the starter's
   title block (top left) and scale check bar (bottom right) leave free; its cell size is the rule profile's.
   IOF XML has no print scales and no descriptions, so it gets one layout at the map scale and no element. The
@@ -114,10 +116,18 @@ source, shared sheet elements and layouts.
   appends one `[[numbers]]` table. Without `D` and `G` it takes the proposal of the same sheet computation `check`
   uses, and exits 2 when the number has no conflict. `--layout-wide` writes `layout` with the course's layout id,
   `--sheet` writes `course`. `base_seen` is the course file's placement (level 2), left out when the file gives
-  none. Direction is rounded to 0.1 degrees and gap to 0.01 mm, as the placement rounds.
+  none. Direction is rounded to 0.1 degrees and gap to 0.01 mm, as the placement rounds, and written in
+  [0, 360), as the loader reads it back.
+- `--layout-wide` without `--direction` and `--gap` writes only when the proposal, which was searched on the
+  sheet of `--course`, leaves every course on that layout that prints the control's number free of conflicts
+  there (ruling R39). The command draws those sheets with the correction added; a course with a correction of its
+  own for the control is left out, since that one wins. Otherwise it exits 2 and names the courses, with a hint
+  to use `--sheet` or to give the values. With explicit values the choice is the user's.
 - Append-only writing. The command does not parse and re-serialise the file, because that would drop comments
   and reorder keys. It adds the new table after the old bytes, which stay as they were, writes the result through a
-  `.part` file and a rename, loads the file again and runs the usual validation. If that fails (an inline
+  `.part` file and a rename, loads the file again and runs the usual validation. A symbolic link is followed:
+  the file it points to is replaced, keeps its permissions, and the link stays. When the file's lines end in
+  CRLF, so do the new ones. If that fails (an inline
   `numbers = [...]` array, say), the old content is written back and the command exits 1. A correction with the
   same control and scope that exists already is refused with exit 2 and a hint to edit the file; the command only
   adds.
@@ -127,4 +137,5 @@ source, shared sheet elements and layouts.
 - Older programs refuse newer formats instead of misreading them.
 - A new optional key is compatible with `format = 1`. A change that old programs would misread bumps `format`.
 
-Source: M2 plan, task 3.
+Source: M2 plan, task 3; the addendum M3 plan Task 11, amended in the final fix wave of M3 (ruling R39 and
+the Task 11 review).

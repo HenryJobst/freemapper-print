@@ -42,7 +42,7 @@ element rules (ADR 0028).
 - On a course sheet, any element (the box, a title block, logo, text, scale check bar, credit or copyright
   line, or the default footer) whose box intersects a control circle, the start triangle or the finish circles
   gives the warning `ElementCoversCourse` with the codes (ruling R27). A symbol counts as the circle out to the
-  outer edge of its line at the symbol factor; for a triangle that is the circle through its corners, which
+  outer edge of its line at the course factor (ADR 0034); for a triangle that is the circle through its corners, which
   may warn a little before the box touches a side.
 - `NoDescriptionBox` informs only when the course comes from IOF XML or the layout has no box element. It warns
   when the box would leave the page or no control of the course has descriptions (ruling R25).

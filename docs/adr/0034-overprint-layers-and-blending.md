@@ -22,8 +22,13 @@ highest number first; it does not say which colour is black, brown or blue.
     upper purple in ISOM 2017-2 section 3.7, one point or several), marked routes (legs and specials) and
     texts.
   - White-out is left for masks (M4).
-- Sizes are the rule profile's course symbol sizes times the symbol factor (ADR 0018, ADR 0031). Leg gaps and
-  number offsets are map mm and scale with the geometry. A leg starts and ends where its path first leaves a
+- Sizes are the rule profile's course symbol sizes times the course factor (ruling R35): the size factor of the
+  print scale's row in the symbol size table (ADR 0018, ADR 0031), `RuleSet::course_factor`. The profile gives
+  course symbols at the base scale, and ISOM 2017-2 section 3.7 and ISSprOM 2019-2 section 4.7 enlarge them with
+  the print scale, as the map's own symbols. The symbol factor (print scale's size over map scale's) is only
+  right for the map's symbols, which the `.omap` holds already enlarged for its own scale: with it, a forest map
+  drawn at 1:10000 printed 5.0 mm circles at 1:10000 instead of 7.5 mm. Leg gaps and number offsets are map mm
+  and scale with the geometry. A leg starts and ends where its path first leaves a
   circle, so a bend inside a circle is not drawn.
 - Text specials scale with the geometry factor, not the symbol factor. Purple Pen treats them as map
   objects: the text box is placed and sized on the map, and the text has to stay in its box when the map
@@ -35,8 +40,10 @@ highest number first; it does not say which colour is black, brown or blue.
     cross hatch with the same spacing and width, as Purple Pen draws it.
   - First aid (ISOM 2017-2 712: bars 4.0 mm long, 1.33 mm wide) and refreshment point (713: 3.5 mm outside
     measure, 0.4 mm line). Sprint maps take these paper sizes too, noted as an assumption.
-  - The shapes of crossing point and cup come from OOM's ISSprOM 2019 and forest sets. Crosses along a
-    forbidden route lie about 5 mm apart, the middle of ISOM's 4.0 to 6.0 mm.
+  - The shapes of crossing point and cup come from OOM's ISSprOM 2019 and forest sets. A forbidden route (711)
+    is a row of crosses about 5 mm apart, the middle of ISOM's 4.0 to 6.0 mm, with no line between them, as
+    ISOM 2017-2 draws it and OOM's ISOM 2017-2 set has it. Each cross has two arms 3.0 mm long and 0.35 mm wide,
+    so it spans 2.1 mm, as OOM draws the 3.0 of the standard. One point is Purple Pen's single cross.
 - A colour name is canonical when it is "black", "brown" or "blue", alone or with " 100%" or " 100 %",
   ignoring case and surrounding spaces. A colour matches by CMYK when it lies within 0.02 of black
   0/0/0/100, blue 100/0/0/0, or brown 25/75/100/0 (Rev. 4) or 0/56/100/18 (Rev. 3).
@@ -71,3 +78,5 @@ highest number first; it does not say which colour is black, brown or blue.
 - On the forest sample the painted canonical colours are Black (1) and Brown (7). The lower purple lies
   under Brown and everything painted after it, Brown 50 % (2) included, and over the greens and yellows.
 - Cost if wrong: one function chooses the place of the lower layer, and the writer only reads `below_priority`.
+
+Amended in the final fix wave of M3: the course factor (ruling R35) and the crosses of a forbidden route.

@@ -2,7 +2,8 @@
 # ADR 0025, adapted in ADR 0031 and rules/README.md; src/rules.rs reads it.
 #
 # Every value is given at the base scale of its map kind (sprint 1:4000, forest 1:15000,
-# schoolyard 1:1000). The program scales course symbols with the symbol factor (ADR 0018).
+# schoolyard 1:1000). The program enlarges course symbols with the size factor of the print scale,
+# the course factor (ADR 0018, ADR 0034).
 #
 # Rule keys and the values they read:
 #   scale_table        rows: documented table (rules::TABLE_VALUES):

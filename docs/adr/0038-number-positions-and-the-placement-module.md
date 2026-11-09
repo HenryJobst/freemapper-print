@@ -22,17 +22,20 @@ control, so they need turning into a direction and a gap.
 - **Gap.** `gap_mm` is the shortest distance between the outer edge of the circle line (radius plus half the
   line width) and the number box, with the box centred on the ray in the number's direction (ruling R4,
   courseplan ADR 0030). The forward form has a corner case and an edge case; the inverse is the distance from
-  the circle centre to the box minus the outer radius. Gaps are print mm at the base scale and grow with the
-  symbol factor, like the circle, so a number keeps its look at every print scale. The box is the number's width
+  the circle centre to the box minus the outer radius. Gaps are mm at the base scale and grow with the course
+  factor of the print scale (ADR 0034, ruling R35), like the circle and the digits, so a number keeps its look
+  at every print scale. The box is the number's width
   in Arimo by its digit height.
 - **Offsets from the course file** (ruling R12). Purple Pen adds `number-location` to the control's position in
-  map coordinates and, with its default item scaling, draws course symbols at their nominal print size at the
-  course's print scale (`CourseFormatter.CreateControlNumber` and `CourseView.CourseObjRatio`, commit
-  `201417f9`). So the offset is scaled by map scale ÷ print scale (the course's `print-scale`, else the map
-  scale), and the box and circle take the nominal sizes of the profile. Direction and gap are then exact, not
-  rounded, so the number lands where Purple Pen prints it when both use the same scale. Purple Pen's other item
-  scalings (relative to the map, relative to 1:15000) are not read. A number that touches its circle in the file
-  has a negative gap; it is drawn so, and `base_seen` takes any finite gap for that reason.
+  map coordinates and draws course symbols at their nominal size times `CourseView.CourseObjRatio` map mm
+  (`CourseFormatter.CreateControlNumber`, commit `201417f9`). That ratio follows
+  `course-appearance/@scale-sizes`: without item scaling it is the course's print scale over the map scale (the
+  symbols keep their size on paper; a course without `print-scale` has Purple Pen's 1:15000), relative to the
+  map it is 1, relative to 1:15000 it is 15000 over the map scale. The reader stores it per course
+  (`Course::course_obj_ratio`); the offset divided by it lies among the nominal sizes, and the box and circle
+  take the profile's base sizes. Direction and gap are then exact, not rounded. IOF XML offsets are taken at
+  ratio 1. A number that touches its circle in the file has a negative gap; it is drawn so, and `base_seen`
+  takes any finite gap for that reason.
 - **Placement rules** (ruling R14, the user's rules of 2026-11-09, courseplan ADR 0031): the number covers no
   point or line symbol; it goes "behind", in line with the incoming leg (for the first control, from the start);
   if the box behind, at the smallest gap, comes within half a line width of the outgoing leg, the outer bisector
@@ -40,11 +43,13 @@ control, so they need turning into a direction and a gap.
   without legs keep their current direction as preferred, and automatic placement starts at 45°.
 - **Gap range** (rulings R29 and R30, courseplan ADR 0032). The rule `iofprint.number.gap` (key `number_gap`)
   allows 0.5 to 5 mm. With several rules the largest minimum and the smallest maximum count; without one, or with
-  it switched off, the search uses 0.5 mm alone. A rule with neither value is skipped. A missing minimum is 0.5
-  mm, a missing maximum stays open. Both limits are held to 0.01 to 10 mm, the minimum rounded up and the
-  maximum down to 0.01 mm, and a maximum below the minimum is raised to it. Values that are not finite or not
-  above 0 still stop the profile from loading. The search tries gaps from the minimum in 0.5 mm steps, each
-  rounded to 0.01 mm, the last exactly at the maximum. `check` and placement use the same normalised range.
+  it switched off, the search uses 0.5 mm alone. A rule with neither value is skipped. For placement a missing
+  minimum is 0.5 mm and a missing maximum equals the minimum, as courseplan's `gap_range` does; the check keeps a
+  missing side open, down to 0.01 or up to 10 mm (`GapRange::allowed`), as courseplan's check does. Both limits
+  are held to 0.01 to 10 mm, the minimum rounded up and the maximum down to 0.01 mm, and a maximum below the
+  minimum is raised to it. Values that are not finite or not above 0 still stop the profile from loading; the
+  placement module treats them as missing. The search tries gaps from the minimum in 0.5 mm steps, each rounded
+  to 0.01 mm, the last exactly at the maximum.
 - **Ranking** (rulings R20 and R29, courseplan ADR 0031 and 0032). 24 directions,
   `normalize(round((preferred + 15·k)·10)/10)`, the rounded value evaluated and stored, at every gap of the
   range. Candidates rank lexicographically by overprint conflicts, covered map symbols, angle to the preferred
@@ -64,9 +69,20 @@ control, so they need turning into a direction and a gap.
   index of its map object and its symbol id, set where the renderer draws. A combined symbol counts by its path,
   as courseplan's map reader does: closed is an area (a building with its outline), open a line. The PDF writer
   ignores these fields; the M1 and M2 outputs stay byte-identical (`cmp` on the examples).
-- **Check.** Every number on a course sheet is scored and gets a proposal: the best placement among the same
-  obstacles. Proposals are made in stop order, and a proposal for a number in conflict becomes an obstacle for
-  the stops after it in place of that number's box, so two numbers are not sent to the same spot (ruling R32). A
+- **Search budget** (ruling R38). The searches of one course sheet take at most 2 000 000 candidate evaluations,
+  and the sheets of one course file 200 000 000 together, each an equal share: a sheet's budget depends only on
+  the course file, so `check`, `export` and `numbers accept` draw it alike. A search is never cut short. One that
+  no longer fits is not started: an automatic number keeps its start (45°, the smallest gap), a conflict is still
+  reported but has no proposal, and the sheet gets the warning `NumberSearchLimited`. One course of 500 controls
+  within 10 mm took 9.9 s before and needs no cut now; the budget bounds what a file of 1000 such courses could
+  cost. The search itself gives up on a candidate as soon as it is sure to rank below the best so far (more
+  overprint conflicts, or as many and more covered map symbols, or a worse rank even with no obstacle), and it
+  finds the obstacles near a candidate through grids over the sheet and over the number's surroundings. Neither
+  changes a result.
+- **Check.** Every number on a course sheet is scored, and a number in conflict gets a proposal: the best
+  placement among the same obstacles. Proposals are made in stop order, and a proposal for a number in conflict
+  becomes an obstacle for the stops after it in place of that number's box, so two numbers are not sent to the
+  same spot (ruling R32). A
   warning `NumberConflict` names what the number covers and the proposal when it has an overprint conflict or
   covers any point or line symbol of the map; rule 1 is hard (ruling R31). Map symbols are named by their code
   and counted per symbol. Without a free candidate the note says so and proposes the least covered one. A
@@ -86,9 +102,8 @@ control, so they need turning into a direction and a gap.
 ## Consequences
 
 Numbers from Purple Pen print where Purple Pen puts them, numbers without a position are placed by the shared
-rules, and every conflict reaches `check` with a proposal to copy into `[[numbers]]`. Task 11 adds a command to
-accept proposals. A Purple Pen file with another item scaling places numbers a little off, and leg gaps and
-special objects do not free or block space for numbers yet.
+rules, and every conflict reaches `check` with a proposal to copy into `[[numbers]]` with `numbers accept` (ADR
+0025, addendum). Leg gaps and special objects do not free or block space for numbers yet.
 
-Source: M3 plan Task 10, controller rulings R4, R12, R14, R20 and R29 to R32, freemapper-courseplan ADR 0030,
-0031 and 0032.
+Source: M3 plan Task 10, controller rulings R4, R12, R14, R20, R29 to R32, R35 and R38, freemapper-courseplan
+ADR 0030, 0031 and 0032, and the final fix wave of M3.
