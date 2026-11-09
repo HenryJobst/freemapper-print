@@ -42,6 +42,17 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   out), when no control of the course has descriptions, and when the course file uses a symbol the
   description standard does not have (its cell stays empty). On every course sheet `check` also warns when a
   sheet element covers a control, the start or the finish (ADR 0037).
+- Control numbers on course sheets. A number sits where the course file puts it: for Purple Pen at the
+  position per course, converted at the course's print scale, for IOF XML at `MapTextPosition`. A correction in
+  `[[numbers]]` for the layout or the course comes first; its `gap_mm` is above 0 and at most 10 mm. Where the
+  file has no position, freemapper-print places the number itself: behind the control, in line with the
+  incoming leg, and off circles, legs, other numbers, sheet elements and the map's point and line symbols.
+  `check` checks every number. When one lies on the course overprint, on a sheet element, over the edge of
+  the map frame, or on map symbols where a freer place exists, the warning names what it covers and proposes a direction and gap. The number still prints in
+  its place; nothing moves on its own. The rule profile's `number_gap` rule sets a gap of 0.5 to 5 mm, and
+  `check` warns about gaps outside it. When the course file has changed a position that a correction with
+  `base_seen` overrides, `check` reports it. Scoring and search live in a module of their own, which
+  freemapper-courseplan will take over (ADR 0038).
 
 ### Fixed
 

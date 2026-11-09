@@ -46,6 +46,17 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   und wenn die Bahndatei ein Symbol nutzt, das der Beschreibungsstandard nicht kennt (sein Kästchen bleibt
   leer). Auf jedem Bahnblatt warnt `check` außerdem, wenn ein Blattelement einen Posten, den Start oder das
   Ziel verdeckt (ADR 0037).
+- Postennummern auf Bahnblättern. Eine Nummer steht, wo die Bahndatei sie hinsetzt: bei Purple Pen die Lage
+  je Bahn, umgerechnet im Druckmaßstab der Bahn, bei IOF-XML `MapTextPosition`. Eine Korrektur in `[[numbers]]`
+  für das Layout oder für die Bahn geht vor; ihr Abstand `gap_mm` liegt über 0 und höchstens bei 10 mm. Hat die
+  Datei keine Lage, setzt freemapper-print die Nummer selbst: hinter den Posten, in Verlängerung der
+  hereinführenden Strecke, und nicht auf Kreise, Strecken, andere Nummern, Blattelemente sowie Punkt- und
+  Liniensymbole der Karte. `check` prüft jede Nummer. Liegt sie auf dem Bahnaufdruck, einem Blattelement, über
+  dem Rand des Kartenausschnitts oder auf Kartensymbolen, wo es einen freieren Platz gibt, nennt die Warnung, was sie verdeckt, und schlägt Richtung und Abstand vor.
+  Gedruckt wird die Nummer trotzdem an ihrer Stelle, verschoben wird nichts. Das Regelprofil legt mit der Regel
+  `number_gap` 0,5 bis 5 mm Abstand fest; `check` warnt bei Abständen außerhalb. Hat die Bahndatei eine Lage
+  geändert, über der eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und Suche sitzen in
+  einem eigenen Modul, das freemapper-courseplan übernehmen wird (ADR 0038).
 
 ### Behoben
 
