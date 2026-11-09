@@ -1108,6 +1108,14 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             },
             Some(&args!("course" => printable(course))),
         ),
+        SheetNote::ElementCoversCourse { element, controls } => texts.get(
+            "note-element-covers-course",
+            Some(&args!(
+                "id" => printable(element),
+                "controls" => printable(&controls.join(", ")),
+                "count" => controls.len(),
+            )),
+        ),
         SheetNote::UnknownDescriptionSymbol { course, id } => texts.get(
             "note-unknown-description-symbol",
             Some(&args!("course" => printable(course), "id" => printable(id))),
@@ -1795,6 +1803,13 @@ mod tests {
                     reason: NoBoxReason::NoDescriptions,
                 },
                 vec!["Kurz", "Purple Pen"],
+            ),
+            (
+                SheetNote::ElementCoversCourse {
+                    element: s("descriptions"),
+                    controls: vec![s("S1"), s("31")],
+                },
+                vec!["descriptions", "S1, 31"],
             ),
             (
                 SheetNote::UnknownDescriptionSymbol {

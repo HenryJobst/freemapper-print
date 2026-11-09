@@ -1035,3 +1035,31 @@ fn description_standard_length_limited() {
         Err(CourseError::Limit(_))
     ));
 }
+
+#[test]
+fn map_flip_and_secondary_title_read() {
+    let ev = read("sampleevent8.ppen");
+    let course = &ev.courses[0];
+    // Control 75 is a map exchange that flips the map; 41 is a plain map exchange.
+    let flip = |code: &str| {
+        course
+            .stops
+            .iter()
+            .find(|s| s.control == code)
+            .unwrap()
+            .map_flip
+    };
+    assert!(flip("75"));
+    assert!(!flip("41"));
+    assert!(!flip("59"));
+    assert_eq!(course.secondary_title, None);
+    // A secondary title is kept as written, `|` and all.
+    let text = String::from_utf8(fixture("sampleevent8.ppen")).unwrap();
+    let with = text.replacen(
+        "<name>Exchanges</name>",
+        "<name>Exchanges</name>\n    <secondary-title>Damen|Lang</secondary-title>",
+        1,
+    );
+    let ev = read_ppen(with.as_bytes()).unwrap();
+    assert_eq!(ev.courses[0].secondary_title.as_deref(), Some("Damen|Lang"));
+}

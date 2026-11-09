@@ -1007,7 +1007,8 @@ fn parse_rule(profile: &str, entry: &Table, index: usize) -> Result<Rule, RuleEr
 }
 
 /// Checks one value of a rule: a documented table has its shape, a number its range by unit
-/// (`mm` and `metres` above 0, `factor` 0 or more, `percent` from 0 to 100, `degrees` any finite number).
+/// (`mm` and `metres` above 0, `factor` 0 or more, `percent` from 0 to 100, `degrees` any finite number;
+/// `description_box` `cell_mm` from 4 to 10, as the project file's `cell_mm`).
 fn value_problem(key: &str, name: &str, value: &Value) -> Result<(), String> {
     if key == "scale_table" && name == "rows" {
         return scale_rows(value).map(|_| ());
@@ -1015,6 +1016,17 @@ fn value_problem(key: &str, name: &str, value: &Value) -> Result<(), String> {
     let Some(n) = number(value).filter(|n| n.is_finite()) else {
         return Err("is not a number".to_owned());
     };
+    // The description cell has the range the project file allows for `cell_mm`.
+    if key == "description_box" && name == "cell_mm" {
+        use crate::project::{MAX_CELL_MM, MIN_CELL_MM};
+        return if (MIN_CELL_MM..=MAX_CELL_MM).contains(&n) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{n} is out of range; a description cell is {MIN_CELL_MM} to {MAX_CELL_MM} mm"
+            ))
+        };
+    }
     let unit = UNITS
         .iter()
         .find(|unit| name == **unit || name.ends_with(&format!("_{unit}")))
@@ -1364,6 +1376,17 @@ mod tests {
         assert!(check(angle, Value::Float(f64::INFINITY)).is_err());
         // Lengths stay above 0.
         assert!(check("first_aid_mm", Value::Integer(0)).is_err());
+    }
+
+    #[test]
+    fn description_cell_is_bounded() {
+        let check = |value: Value| value_problem("description_box", "cell_mm", &value);
+        assert!(check(Value::Integer(4)).is_ok());
+        assert!(check(Value::Float(6.0)).is_ok());
+        assert!(check(Value::Integer(10)).is_ok());
+        assert!(check(Value::Float(3.9)).is_err());
+        assert!(check(Value::Float(10.5)).is_err());
+        assert!(check(Value::Float(f64::NAN)).is_err());
     }
 
     #[test]

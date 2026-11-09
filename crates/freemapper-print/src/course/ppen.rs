@@ -21,7 +21,8 @@
 //! - Courses: `first` starts a chain of `course-control`s linked by `next`. A course-control with a
 //!   `variation` (fork or loop) makes the course a variation course; it is left out and noted. Courses are
 //!   sorted by `order`. `options/@print-scale` is the print scale hint, `@climb` and `@course-length` the
-//!   climb and length. `map-exchange="true"` at a normal control sets [`Stop::kind`].
+//!   climb and length, `secondary-title` [`Course::secondary_title`]. `map-exchange="true"` at a normal control
+//!   sets [`Stop::kind`], and `map-flip="true"` with it [`Stop::map_flip`].
 //!   `number-location` is the number text centre relative to the control, kept as an [`Offset`]. The
 //!   control's `all-controls-code-angle` places the code in the all-controls view only and is not read.
 //! - Circle gaps are stored per control and per scale (`circle-gaps scale` as `start:stop,...` in degrees,
@@ -227,6 +228,7 @@ struct PCourse {
     print_scale: Option<f64>,
     climb: Option<f64>,
     length: Option<f64>,
+    secondary_title: Option<String>,
 }
 
 struct PCc {
@@ -234,6 +236,7 @@ struct PCc {
     next: Option<i64>,
     variation: bool,
     map_exchange: bool,
+    map_flip: bool,
     number_at: Option<Offset>,
 }
 
@@ -593,6 +596,7 @@ impl State {
                     print_scale: None,
                     climb: None,
                     length: None,
+                    secondary_title: None,
                 });
             }
             ("course", "first") => {
@@ -652,6 +656,7 @@ impl State {
                         next: None,
                         variation,
                         map_exchange: boolean(e, "map-exchange", "course-control")?,
+                        map_flip: boolean(e, "map-flip", "course-control")?,
                         number_at: None,
                     },
                 ));
@@ -841,6 +846,11 @@ impl State {
             ("course", "name") => {
                 if let Some(c) = self.course.as_mut() {
                     c.name = bounded(text, MAX_NAME_LEN, "course name")?;
+                }
+            }
+            ("course", "secondary-title") => {
+                if let Some(c) = self.course.as_mut() {
+                    c.secondary_title = Some(bounded(text, MAX_NAME_LEN, "secondary title")?);
                 }
             }
             (ROOT, "course") => {
@@ -1064,9 +1074,11 @@ impl State {
                     control: text.copy(&codes[i])?,
                     kind: (cc.map_exchange && c.kind == PKind::Normal)
                         .then_some(ControlKind::MapExchange),
+                    // Purple Pen honours the flip only at a map exchange.
                     number: None,
                     number_text_at: cc.number_at,
                     circle_gaps: gaps.to_vec(),
+                    map_flip: cc.map_flip && cc.map_exchange,
                 });
                 ids.push(i);
             }
@@ -1105,6 +1117,11 @@ impl State {
                 climb_m: pc.climb,
                 length_m: pc.length,
                 print_scale_hint: pc.print_scale.and_then(scale),
+                secondary_title: pc
+                    .secondary_title
+                    .as_deref()
+                    .map(|t| text.copy(t))
+                    .transpose()?,
             });
         }
 

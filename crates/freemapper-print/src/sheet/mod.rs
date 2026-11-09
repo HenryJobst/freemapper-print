@@ -137,6 +137,12 @@ pub enum SheetNote {
     },
     /// The course has no assignment in the project file and prints on the first layout. Informs only.
     DefaultLayout { course: String, layout: String },
+    /// The element `element` (an id, or `footer`) covers the circle, start triangle or finish circles of these
+    /// controls (codes, each once, in course order) on a course sheet (ruling R27).
+    ElementCoversCourse {
+        element: String,
+        controls: Vec<String>,
+    },
     /// The course sheet has no control description box, and why.
     NoDescriptionBox { course: String, reason: NoBoxReason },
     /// The course's descriptions use the symbol `id`, which the description standard of the course file does not
@@ -260,11 +266,16 @@ pub fn render_sheet(
     logos: &LogoCache,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
     render_body(project, map, layout, logos, None, None, None)
+        .map(|(page, report, _)| (page, report))
 }
+
+/// Where the drawn elements of a sheet lie on the page, by id.
+type ElementBoxes = Vec<(String, PaperBox)>;
 
 /// The sheet of [`render_sheet`], also for a course sheet: `course` fills the course placeholders, `descriptions`
 /// feeds the description box, and `centre` (map coordinates) goes to the centre of the map frame when the layout
-/// sets no `centre_map_mm`.
+/// sets no `centre_map_mm`. Also returns where each drawn element lies on the page, by id, the default footer
+/// as [`FOOTER_ID`].
 fn render_body(
     project: &LoadedProject,
     map: &MapDocument,
@@ -273,7 +284,7 @@ fn render_body(
     course: Option<&placeholders::CourseValues>,
     descriptions: Option<&course_sheet::DescriptionSource<'_>>,
     centre: Option<MapCoord>,
-) -> Result<(RenderedPage, SheetReport), SheetError> {
+) -> Result<(RenderedPage, SheetReport, ElementBoxes), SheetError> {
     let mut notes = Vec::new();
     if layout::larger_than_a3(layout.paper) {
         notes.push(SheetNote::LargerThanA3);
@@ -389,6 +400,7 @@ fn render_body(
                 });
             }
         }
+        placed_rects.push((text::FOOTER_ID, footer.rect));
         page.sheet.extend(footer.items);
     }
     for (spec, credit) in credit_lines {
@@ -415,7 +427,11 @@ fn render_body(
         });
     }
 
-    Ok((page, SheetReport { print, notes }))
+    let rects = placed_rects
+        .into_iter()
+        .map(|(id, rect)| (id.to_string(), rect))
+        .collect();
+    Ok((page, SheetReport { print, notes }, rects))
 }
 
 /// Adds the default footer to `page`, a page drawn without a project (the `render` command): the

@@ -5,15 +5,17 @@
 //! are drawn), GitHub `petergolde/PurplePen`, commit `201417f97bb69302e3e0db123f428870e0914515` (2026-11-07),
 //! the commit ADR 0036 takes the symbols from:
 //!
-//! - Rows: the event title, the course row (name, length, climb; for a score course name and number of
-//!   controls), then per stop a control row (A to H) or an instruction row, eight cells wide. A start and a map
+//! - Rows: the event title and the course's secondary title, each split at `|` into several rows (an empty
+//!   event title still gives one empty row), the course row (name, length, climb; for a score course name
+//!   and number of controls), then per stop a control row (A to H) or an instruction row, eight cells wide. A start and a map
 //!   exchange control show the start triangle in A; a control shows its number in A (not on score courses)
 //!   and its code in B. A finish and a crossing point are instruction rows with their own symbol (14.3 and
 //!   13.3 when the file gives none); the finish row shows the length of the leg into it, and a marked leg
 //!   into the finish turns its symbol into 14.1. A marked leg elsewhere adds a 13.2 row with its length after
 //!   its first control, a leg into a map exchange control a 13.5 row, and a map exchange at a control a
-//!   13.5control row with "0 m". Score courses show only the start and the controls. A crossing point right
-//!   after another and a map exchange control at the end are left out.
+//!   13.5control row with "0 m", or a 15.6 row for a map flip (not in 2004). Score courses show only the start
+//!   and the controls, sorted as Purple Pen sorts them ([`compare_codes`]). A crossing point right after
+//!   another and a map exchange control at the end are left out.
 //! - Distances are the leg through its bends, map mm × map scale ÷ 1000, rounded to 10 m (ties to even, as
 //!   .NET's `Math.Round`).
 //! - Lines (`DescriptionAppearance` in `Appearance.cs`): thick 5 % and thin 2.5 % of a cell, flat ends. Every
@@ -76,7 +78,10 @@ pub enum Cell {
 /// One row of the description box.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Row {
+    /// A line of the event title; `|` in the title starts a new one.
     Title(String),
+    /// A line of the course's secondary title.
+    SecondaryTitle(String),
     /// Course name, length and climb (normal course), or course name and number of controls (score course).
     Header(Vec<String>),
     /// Columns A to H of a start, control or map exchange control.
@@ -241,6 +246,56 @@ fn distance_text(metres: f64) -> String {
     format!("{} m", ((metres / 10.0).round_ties_even() * 10.0) as i64)
 }
 
+/// The stops of `course` in the order of their rows: file order, and for a score course the order of Purple
+/// Pen's `CourseView.CreateScoreCourseView`: by control kind (start, map exchange, control; the enum order of
+/// `ControlPointKind`, map issue points read as starts), then by points (not read, so equal), then controls by
+/// code ([`compare_codes`]), then file order.
+fn order(course: &Course<MapCoord>, event: &FittedEvent, score: bool) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..course.stops.len()).collect();
+    if !score {
+        return order;
+    }
+    let control = |i: usize| {
+        let code = &course.stops[i].control;
+        event.controls.iter().find(|c| &c.code == code)
+    };
+    let rank = |i: usize| match control(i).map(|c| c.kind) {
+        Some(ControlKind::Start) => 0,
+        Some(ControlKind::MapExchange) => 1,
+        Some(ControlKind::Control) => 2,
+        _ => 3,
+    };
+    order.sort_by(|&a, &b| {
+        rank(a).cmp(&rank(b)).then_with(|| {
+            if rank(a) == 2 && rank(b) == 2 {
+                compare_codes(&course.stops[a].control, &course.stops[b].control)
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+    });
+    order
+}
+
+/// Purple Pen's `Util.CompareCodes`: codes that are whole numbers (digits only, within `i32`) come first in
+/// numeric order, then the others in text order. Purple Pen compares those by the current culture; this
+/// compares them by Unicode code points.
+pub fn compare_codes(a: &str, b: &str) -> std::cmp::Ordering {
+    let int = |s: &str| {
+        if !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit()) {
+            s.parse::<i32>().ok()
+        } else {
+            None
+        }
+    };
+    match (int(a), int(b)) {
+        (Some(x), Some(y)) => x.cmp(&y),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
+    }
+}
+
 fn rows(
     course: &Course<MapCoord>,
     event: &FittedEvent,
@@ -250,9 +305,18 @@ fn rows(
     standard: Standard,
     unknown: &mut Vec<String>,
 ) -> Vec<Row> {
-    let mut rows = Vec::new();
-    if !header.event.is_empty() {
-        rows.push(Row::Title(header.event.clone()));
+    // Purple Pen splits both titles at `|` and draws an empty event title as an empty row.
+    let mut rows: Vec<Row> = header
+        .event
+        .split('|')
+        .map(|t| Row::Title(t.to_string()))
+        .collect();
+    if let Some(secondary) = &course.secondary_title {
+        rows.extend(
+            secondary
+                .split('|')
+                .map(|t| Row::SecondaryTitle(t.to_string())),
+        );
     }
     let score = course.kind == CourseKind::Score;
     rows.push(Row::Header(if score {
@@ -306,7 +370,7 @@ fn rows(
     };
     let mut number = 0;
     let n = course.stops.len();
-    for i in 0..n {
+    for i in order(course, event, score) {
         let (Some(control), Some(kind)) = (control_of(i), kind_of(i)) else {
             continue;
         };
@@ -384,10 +448,20 @@ fn rows(
             && kind == ControlKind::Control
             && i > 0
         {
-            rows.push(Row::Instruction {
-                symbol: known("13.5control", standard, unknown),
-                text: "0 m".into(),
-            });
+            // A map flip has its own symbol from 2018 on (Purple Pen's `exchangeIsFlip`).
+            rows.push(
+                if course.stops[i].map_flip && standard != Standard::Iof2004 {
+                    Row::Instruction {
+                        symbol: known("15.6", standard, unknown),
+                        text: String::new(),
+                    }
+                } else {
+                    Row::Instruction {
+                        symbol: known("13.5control", standard, unknown),
+                        text: "0 m".into(),
+                    }
+                },
+            );
         }
         // A marked route that does not end at the finish or a map exchange.
         if course.legs.get(i).is_some_and(|l| l.marked_route)
@@ -445,8 +519,11 @@ fn draw(rows: &[Row], cell: f64, standard: Standard) -> PlacedElement {
     for (r, row) in rows.iter().enumerate() {
         let y0 = oy + r as f64 * cell;
         let x = |cells: f64| ox + cells * cell;
-        let title_after_title =
-            matches!(row, Row::Title(_)) && r > 0 && matches!(rows[r - 1], Row::Title(_));
+        let title_after_title = r > 0
+            && matches!(
+                (&rows[r - 1], row),
+                (Row::Title(_), Row::Title(_)) | (Row::SecondaryTitle(_), Row::SecondaryTitle(_))
+            );
         if !title_after_title {
             let w = if !matches!(row, Row::Control(_)) || counter == 0 {
                 thick
@@ -495,7 +572,9 @@ fn draw(rows: &[Row], cell: f64, standard: Standard) -> PlacedElement {
         let x = |cells: f64| ox + cells * cell;
         let span = |from: f64, to: f64| (x(from), y0, x(to), y0 + cell);
         match row {
-            Row::Title(t) => items.extend(text(t, span(0.0, WIDTH), TITLE_EM * cell, true)),
+            Row::Title(t) | Row::SecondaryTitle(t) => {
+                items.extend(text(t, span(0.0, WIDTH), TITLE_EM * cell, true));
+            }
             Row::Header(boxes) => {
                 let edges: &[f64] = if boxes.len() == 3 {
                     &[0.0, 3.0, 6.0, 8.0]
@@ -701,6 +780,7 @@ pub(crate) mod tests {
             number: None,
             number_text_at: None,
             circle_gaps: Vec::new(),
+            map_flip: false,
         }
     }
 
@@ -725,6 +805,7 @@ pub(crate) mod tests {
                 climb_m: Some(25.0),
                 length_m: None,
                 print_scale_hint: None,
+                secondary_title: None,
             }],
             specials: Vec::new(),
             source: CourseSource {
@@ -1047,6 +1128,141 @@ pub(crate) mod tests {
         assert_eq!(cells[0], Cell::Empty);
         assert_eq!(cells[1], Cell::Text("31".into()));
         assert!(matches!(b.rows[9], Row::Control(_)));
+    }
+
+    /// `sampleevent8.ppen` read and its points taken as map mm (y flipped), without the fit.
+    fn sample_event() -> FittedEvent {
+        let path = format!(
+            "{}/tests/fixtures/courses/ppen/sampleevent8.ppen",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let raw = crate::course::read_ppen(&std::fs::read(path).unwrap()).unwrap();
+        raw.map_points(
+            |p| MapCoord::new((p.x_mm * 1000.0) as i32, (-p.y_mm * 1000.0) as i32),
+            |o| o,
+        )
+    }
+
+    /// The row after the control row with code `code`.
+    fn after(b: &DescriptionBox, code: &str) -> Row {
+        let i = b
+            .rows
+            .iter()
+            .position(|r| matches!(r, Row::Control(c) if c[1] == Cell::Text(code.into())))
+            .unwrap();
+        b.rows[i + 1].clone()
+    }
+
+    #[test]
+    fn titles_split_and_secondary_title() {
+        let mut ev = seven();
+        ev.courses[0].secondary_title = Some("Damen|Lang".into());
+        let mut h = header();
+        h.event = "Lübeck|Training".into();
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &h, 4000);
+        assert_eq!(
+            b.rows[..4],
+            [
+                Row::Title("Lübeck".into()),
+                Row::Title("Training".into()),
+                Row::SecondaryTitle("Damen".into()),
+                Row::SecondaryTitle("Lang".into()),
+            ]
+        );
+        // No line between lines of one title, a thick one between the two titles.
+        let (lines_h, _) = lines(&b);
+        let at = |row: usize| {
+            lines_h
+                .iter()
+                .any(|(y, _)| close(*y, 0.15 + 6.0 * row as f64))
+        };
+        assert!(at(0) && !at(1) && at(2) && !at(3) && at(4));
+        // An empty event title still takes its row.
+        h.event = String::new();
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &h, 4000);
+        assert_eq!(b.rows[0], Row::Title(String::new()));
+    }
+
+    #[test]
+    fn score_rows_sorted_like_purple_pen() {
+        use std::cmp::Ordering::*;
+        assert_eq!(compare_codes("9", "31"), Less);
+        assert_eq!(compare_codes("101", "31"), Greater);
+        assert_eq!(compare_codes("101", "A1"), Less);
+        assert_eq!(compare_codes("A1", "B"), Less);
+        assert_eq!(compare_codes("+5", "4"), Greater);
+        assert_eq!(compare_codes("99999999999", "1"), Greater);
+        let mut ev = seven();
+        let codes = ["101", "31", "A1", "9", "32", "B2", "40"];
+        for (c, code) in ev.controls[1..8].iter_mut().zip(codes) {
+            c.code = code.into();
+        }
+        let course = &mut ev.courses[0];
+        course.kind = CourseKind::Score;
+        for (s, code) in course.stops[1..8].iter_mut().zip(codes) {
+            s.control = code.into();
+        }
+        // The start last in the file still comes first.
+        course.stops.rotate_left(1);
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &header(), 4000);
+        let order: Vec<Cell> = b.rows[2..]
+            .iter()
+            .map(|r| match r {
+                Row::Control(c) => c[1].clone(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        let text = |t: &str| Cell::Text(t.into());
+        assert_eq!(
+            order,
+            [
+                Cell::Empty,
+                text("9"),
+                text("31"),
+                text("32"),
+                text("40"),
+                text("101"),
+                text("A1"),
+                text("B2")
+            ]
+        );
+    }
+
+    #[test]
+    fn map_flip_has_its_own_row() {
+        // sampleevent8: 41 is a map exchange at the control, 75 a map exchange that flips the map (2018).
+        let ev = sample_event();
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &header(), 10000);
+        assert!(b.unknown_symbols.is_empty(), "{:?}", b.unknown_symbols);
+        assert_eq!(
+            after(&b, "75"),
+            Row::Instruction {
+                symbol: Some("15.6".into()),
+                text: String::new()
+            }
+        );
+        assert_eq!(
+            after(&b, "41"),
+            Row::Instruction {
+                symbol: Some("13.5control".into()),
+                text: "0 m".into()
+            }
+        );
+        // 2004 has no 15.6: the flip is an ordinary exchange there.
+        let mut ev = ev;
+        for c in &mut ev.controls {
+            if let Some(d) = &mut c.description {
+                d.standard = "2004".into();
+            }
+        }
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &header(), 10000);
+        assert_eq!(
+            after(&b, "75"),
+            Row::Instruction {
+                symbol: Some("13.5control".into()),
+                text: "0 m".into()
+            }
+        );
     }
 
     #[test]

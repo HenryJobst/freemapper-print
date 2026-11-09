@@ -75,6 +75,7 @@ fn event(controls: Vec<Control<RawPoint>>) -> RawEvent {
         number: None,
         number_text_at: at,
         circle_gaps: Vec::new(),
+        map_flip: false,
     };
     CourseEvent {
         courses: vec![Course {
@@ -102,6 +103,7 @@ fn event(controls: Vec<Control<RawPoint>>) -> RawEvent {
             climb_m: None,
             length_m: None,
             print_scale_hint: None,
+            secondary_title: None,
         }],
         controls,
         specials: Vec::new(),

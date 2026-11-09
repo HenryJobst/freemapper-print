@@ -221,6 +221,7 @@ impl State {
                         climb_m: None,
                         length_m: None,
                         print_scale_hint: None,
+                        secondary_title: None,
                     },
                     alternatives: false,
                 });
@@ -365,6 +366,7 @@ impl State {
                         number: None,
                         number_text_at: cc.text_at,
                         circle_gaps: Vec::new(),
+                        map_flip: false,
                     });
                 }
             }

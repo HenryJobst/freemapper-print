@@ -74,7 +74,7 @@ pub fn render_course_sheet(
                 .unwrap_or_default(),
         },
     };
-    let (mut page, mut report) = render_body(
+    let (mut page, mut report, rects) = render_body(
         project,
         map,
         layout,
@@ -131,6 +131,9 @@ pub fn render_course_sheet(
             controls: outside,
         });
     }
+    notes.extend(elements_over_course(
+        &rects, course, event, &to_page, &sizes, sf,
+    ));
     if page.overprint.cut {
         notes.push(SheetNote::OverprintCut {
             course: course.name.clone(),
@@ -216,6 +219,60 @@ pub(super) fn place_descriptions(
         return None;
     }
     Some(placed)
+}
+
+/// [`SheetNote::ElementCoversCourse`] for each element in `rects` (id and page box) that intersects the control
+/// circle, start triangle or finish circles of a stop of `course` (ruling R27). A symbol counts as the circle
+/// around it out to the outer edge of its line at the symbol factor `sf`: the control circle, the outer finish
+/// circle, and the circle through the corners of the start (or map exchange) triangle, so a box may count just
+/// before it touches a triangle's side. Crossing points and ends of marked routes do not count.
+fn elements_over_course(
+    rects: &[(String, crate::render::page::PaperBox)],
+    course: &Course<MapCoord>,
+    event: &FittedEvent,
+    to_page: &impl Fn(MapCoord) -> Pt,
+    sizes: &crate::rules::CourseSymbolSizes,
+    sf: f64,
+) -> Vec<SheetNote> {
+    use crate::course::ControlKind;
+    let half_line = sizes.line_width_mm / 2.0;
+    let symbols: Vec<(&str, Pt, f64)> = course
+        .stops
+        .iter()
+        .filter_map(|stop| {
+            let control = event.controls.iter().find(|c| c.code == stop.control)?;
+            let at = to_page(control.position?);
+            let kind = match stop.kind {
+                None | Some(ControlKind::MapExchange) => control.kind,
+                Some(k) => k,
+            };
+            let r = match kind {
+                ControlKind::Control => sizes.circle_diameter_mm / 2.0,
+                ControlKind::Finish => sizes.finish_outer_mm / 2.0,
+                ControlKind::Start | ControlKind::MapExchange => sizes.start_side_mm / 3f64.sqrt(),
+                ControlKind::CrossingPoint | ControlKind::EndOfMarkedRoute => return None,
+            };
+            Some((stop.control.as_str(), at, (r + half_line) * sf))
+        })
+        .collect();
+    let mut notes = Vec::new();
+    for (id, rect) in rects {
+        let mut controls: Vec<String> = Vec::new();
+        for (code, (x, y), r) in &symbols {
+            let dx = x - x.clamp(rect.min.0, rect.max.0);
+            let dy = y - y.clamp(rect.min.1, rect.max.1);
+            if dx.hypot(dy) < *r && !controls.iter().any(|c| c == code) {
+                controls.push((*code).to_string());
+            }
+        }
+        if !controls.is_empty() {
+            notes.push(SheetNote::ElementCoversCourse {
+                element: id.clone(),
+                controls,
+            });
+        }
+    }
+    notes
 }
 
 /// The notes of the course file as a whole, once per run: what the reader left out or found, what the fit
@@ -1082,5 +1139,43 @@ mod tests {
         assert!(!note.is_info());
         // The box is drawn all the same.
         assert!(sheet_texts(&page).contains(&"31".to_string()));
+    }
+
+    #[test]
+    fn element_over_the_course_is_noted() {
+        // In the frame's top-right corner the box covers no part of Kurz.
+        let (_, report) = ppen_sheet(&with_box(TOP_RIGHT, ""), "Kurz", as_ppen);
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementCoversCourse { .. })),
+            "{:?}",
+            report.notes
+        );
+        // In the middle of the frame it lies over control 31, which sits at the frame centre.
+        let centre = "{ to = \"map_frame\", corner = \"centre\" }";
+        let (_, report) = ppen_sheet(&with_box(centre, ""), "Kurz", as_ppen);
+        let note = SheetNote::ElementCoversCourse {
+            element: "descriptions".into(),
+            controls: vec!["31".into()],
+        };
+        assert!(report.notes.contains(&note), "{:?}", report.notes);
+        assert!(!note.is_info() && report.needs_attention());
+        // A text block over the start triangle counts as well: S1 is at (30, 58.5) mm on the page, and the
+        // circle through the triangle's corners reaches 7 / √3 + 0.175 = 4.22 mm from it.
+        let body = format!(
+            "{A4}[[layouts.elements]]\nid = \"t\"\nkind = \"text\"\nlines = [\"X\"]\n\
+             anchor = {{ to = \"page\", corner = \"top_left\", offset_mm = [32.0, 50.0] }}\n"
+        );
+        let (_, report, _) = sheet(&body, "Kurz");
+        assert!(
+            report.notes.contains(&SheetNote::ElementCoversCourse {
+                element: "t".into(),
+                controls: vec!["S1".into()],
+            }),
+            "{:?}",
+            report.notes
+        );
     }
 }

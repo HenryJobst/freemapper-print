@@ -36,13 +36,16 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Die Postenbeschreibung auf Bahnblättern. Ein Layout-Element vom Typ `control_descriptions` zeichnet die
   IOF-Postenbeschreibung der Bahn aus einer `.ppen`-Datei: Veranstaltung, Bahn mit Länge und Steigung, Start,
   je Posten eine Zeile mit Nummer, Code und Symbolen, Zeilen für ausgeflaggte Strecken und Kartenwechsel mit
-  ihrer Länge, und das Ziel. Symbole und Linienstärken folgen Purple Pen. Ein Kästchen ist 6 mm groß,
+  ihrer Länge, und das Ziel. Der Zweittitel einer Bahn aus Purple Pen bekommt eine eigene Zeile, das Wenden
+  der Karte seine Zeile 15.6, und Score-Bahnen listen ihre Posten wie Purple Pen nach Code. Symbole und
+  Linienstärken folgen Purple Pen. Ein Kästchen ist 6 mm groß,
   `cell_mm` stellt 4 bis 10 mm ein, und die Größe bleibt bei jedem Druckmaßstab gleich. Die Beschreibung hängt
   wie jedes Element an ihrem Anker und liegt auf weißem Grund. Bahnen aus IOF-XML haben keine Beschreibungen,
   ihre Blätter bleiben ohne, und `check` sagt das zur Information. `check` warnt, wenn die Beschreibung über
   den Blattrand reichen würde (das Blatt lässt sie dann weg), wenn kein Posten der Bahn eine Beschreibung hat
   und wenn die Bahndatei ein Symbol nutzt, das der Beschreibungsstandard nicht kennt (sein Kästchen bleibt
-  leer) (ADR 0037).
+  leer). Auf jedem Bahnblatt warnt `check` außerdem, wenn ein Blattelement einen Posten, den Start oder das
+  Ziel verdeckt (ADR 0037).
 
 ### Behoben
 

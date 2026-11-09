@@ -230,6 +230,10 @@ note-no-description-box-iof-xml = Info: course "{ $course }" comes from IOF XML,
 note-no-description-box-no-element = Info: the layout of course "{ $course }" has no control_descriptions element, so its sheet has no description box.
 note-no-description-box-outside-page = Note: the description box of course "{ $course }" would reach past the page edge, so the sheet leaves it out. Move it with its anchor or make it smaller with cell_mm.
 note-no-description-box-no-descriptions = Note: no control of course "{ $course }" has descriptions in the course file, so its sheet has no description box. Enter them in Purple Pen.
+note-element-covers-course = Note: the element { $id } covers { $count ->
+        [one] control { $controls }
+       *[other] controls { $controls }
+    } of the course. Move the element with its anchor so that runners can see the course.
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.

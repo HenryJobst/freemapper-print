@@ -33,6 +33,7 @@ fn stop(code: &str) -> Stop {
         number: None,
         number_text_at: None,
         circle_gaps: Vec::new(),
+        map_flip: false,
     }
 }
 
@@ -55,6 +56,7 @@ fn course(kind: CourseKind, stops: Vec<Stop>) -> Course<MapCoord> {
         climb_m: None,
         length_m: None,
         print_scale_hint: None,
+        secondary_title: None,
     }
 }
 

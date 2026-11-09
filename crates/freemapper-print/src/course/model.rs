@@ -107,11 +107,13 @@ impl<P> CourseEvent<P> {
                             number: s.number,
                             number_text_at: s.number_text_at.map(&fo),
                             circle_gaps: s.circle_gaps,
+                            map_flip: s.map_flip,
                         })
                         .collect(),
                     climb_m: c.climb_m,
                     length_m: c.length_m,
                     print_scale_hint: c.print_scale_hint,
+                    secondary_title: c.secondary_title,
                 })
                 .collect(),
             specials: self
@@ -181,6 +183,8 @@ pub struct Course<P> {
     pub climb_m: Option<f64>,
     pub length_m: Option<f64>,
     pub print_scale_hint: Option<u32>,
+    /// A second title line for the description box (Purple Pen `secondary-title`); `|` separates lines.
+    pub secondary_title: Option<String>,
 }
 
 /// One visit of a control in a course.
@@ -202,6 +206,8 @@ pub struct Stop {
     /// touch them; `fit` turns `(a, b)` into `(-b, -a)` when it flips y, so a fitted event is entirely in
     /// the map frame.
     pub circle_gaps: Vec<(f64, f64)>,
+    /// The map exchange at this stop is a map flip (Purple Pen `map-flip`): the description shows 15.6.
+    pub map_flip: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
