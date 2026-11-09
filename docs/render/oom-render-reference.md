@@ -132,8 +132,8 @@ Colour Definitions Rev. 4, freemapper ADR 0044), top to bottom:
 | 22 | Green 50%/Yellow 100% | 0.38 | 0.27 | 1 | 0 |
 | 30 | Yellow 100% | 0 | 0.27 | 0.79 | 0 |
 
-Older values. OOM's bundled `ISSprOM 2019_4000.omap` (also `assets/symbol-sets/` here, used only by tests) and
-freemapper maps before v0.5.0 carry the IOF colours before Rev. 4: Green 100% 0.76/0/0.91/0, Brown 100%
+Older values. OOM's bundled `ISSprOM 2019_4000.omap` (also in freemapper-omap's `assets/symbol-sets/`, used
+only by tests) and freemapper maps before v0.5.0 carry the IOF colours before Rev. 4: Green 100% 0.76/0/0.91/0, Brown 100%
 0/0.56/1/0.18, Lower brown 50% 0/0.28/0.5/0.09, Lower brown 30% 0/0.168/0.3/0.054, Green 50%/Yellow 100%
 0.38/0.27/0.886/0, and they fill buildings with Black 60% at priority 9. Rev. 4 (valid from 2024-12-01) prints
 CMYK only and drops spot-colour printing; ISSprOM 2019-2 moved 521 to black 50 %. In freemapper v0.5.0 the six

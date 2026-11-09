@@ -14,7 +14,9 @@ rust-version.workspace = true
 test-hooks = []
 
 [dependencies]
+freemapper-course.workspace = true
 freemapper-fs.workspace = true
+freemapper-omap.workspace = true
 freemapper-rules.workspace = true
 fs4.workspace = true
 image.workspace = true

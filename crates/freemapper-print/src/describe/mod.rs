@@ -766,6 +766,7 @@ pub(crate) mod tests {
     ) -> Control<MapCoord> {
         let any = cols.iter().any(Option::is_some);
         Control {
+            id: None,
             code: code.into(),
             kind,
             position: Some(MapCoord::new(at.0 * 1000, at.1 * 1000)),
@@ -802,6 +803,7 @@ pub(crate) mod tests {
         FittedEvent {
             controls,
             courses: vec![Course {
+                id: None,
                 name: "Lang".into(),
                 family: None,
                 kind: CourseKind::Normal,

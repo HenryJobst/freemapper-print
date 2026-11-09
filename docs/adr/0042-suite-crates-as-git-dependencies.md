@@ -25,4 +25,7 @@ Shared suite code lives in freemapper-core, not on crates.io. Core ADR 0006 says
 - A fault in a fresh core release reaches us at once; our tests and the byte-identical PDFs are the guard.
 - Cost if wrong: a pinned tag lags behind a fix on core's `main`; we patch locally and wait for the tag.
 
+Amended by ADR 0043: `freemapper-omap` and `freemapper-course` are in use since core v0.3.0; `render` still
+follows.
+
 Source: core ADRs 0004, 0005, 0006; core-switch plan Task 4; number assigned by ruling R2 of the switch plan.

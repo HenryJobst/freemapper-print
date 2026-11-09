@@ -1,6 +1,7 @@
 //! The course symbols as shapes in page mm (y down). Sizes come in already multiplied by the symbol
 //! factor. The point symbols (crossing point, first aid, water) and the area hatches follow the course
-//! symbols of OOM's ISSprOM 2019 and ISOM 2017 sets (`assets/symbol-sets/`, the forest test map).
+//! symbols of OOM's ISSprOM 2019 and ISOM 2017 sets (freemapper-omap's `assets/symbol-sets/`, the forest
+//! test map).
 
 use std::f64::consts::{FRAC_PI_4, PI};
 use std::sync::Arc;

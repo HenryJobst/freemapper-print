@@ -6,14 +6,15 @@ this repository.
 
 The IOF datastandard-v3 examples were not copied: their licence could not be confirmed.
 
-The Purple Pen fixtures in `ppen/` come from Purple Pen's repository under its BSD licence; `ppen/README.md`
+The Purple Pen fixture in `ppen/` comes from Purple Pen's repository under its BSD licence; `ppen/README.md`
 names source, commit and licence.
+
+The reader and fit tests moved to freemapper-core's `freemapper-course` (ADR 0043) together with `y-up.xml`,
+`text-position.xml`, `forked.xml` and two of the Purple Pen files. `luebeck-georef.xml` is there too and stays
+here for `tests/project_courses.rs`.
 
 | File | Purpose |
 |---|---|
-| `y-up.xml` | Two courses; `MapPosition` values with y pointing up, as Purple Pen, Condes and OCAD write them. The reader keeps the values; detection happens later. Also `Position` (lat/lng), length and climb, a crossing point. |
-| `text-position.xml` | A score course with a `MapTextPosition` (an offset from the circle centre) on a control. |
-| `forked.xml` | Two courses of one `CourseFamily` (a fork), a plain course, and a course with alternative controls (a `CourseControl` with two `Control` children). |
 | `luebeck-sheets.xml` | Two courses on `tests/fixtures/maps/luebeck.omap` for course sheets (M3 Task 7), written by hand on 2026-11-09: the controls of `luebeck-georef.xml` without lat/lng (y up, so projects confirm `course_y_axis = "up"`). `Kurz` has no length in the file: its legs measure √13000 + √14500 + √21200 = 380.04 mm, 1520.1 m at 1:4000. `D/H 12` gives `Length` 2100 and `Climb` 25 and has a name that is no file name. |
 | `luebeck-numbers.xml` | One course `Eng` on `tests/fixtures/maps/luebeck.omap` (M3 Task 11, hand-written 2026-11-09): control 31 has a `MapTextPosition` of (4, 3) mm, and control 32 sits where that number goes, so `check` reports a number conflict with a proposal (direction 307.9°, gap 0.5 mm at 1:4000). y up, so projects set `course_y_axis = "up"`. |
 | `luebeck-sheets.ppen` | The controls of `luebeck-sheets.xml` as a Purple Pen file (M3 Task 11, hand-written 2026-11-09, Purple Pen's file layout): courses `Kurz` (print scale 4000), `Lang` (5000, a reduction of the 1:4000 map) and `Ohne Maßstab` (no print scale option, so the event's 4000 applies; used for `init --courses`). |
@@ -47,11 +48,12 @@ lng, lat = inv.transform(E, N)   # printed with 9 decimals
 | 33 | 610592.5871 | 5969590.5142 | 53.863003863 | 10.681717122 |
 | F1 | 611176.0588 | 5969998.5683 | 53.866545281 | 10.690733243 |
 
-The test `lat_lng_near_the_x_axis_decides_nothing` (`tests/fit_courses.rs`) uses one more point computed the
-same way: map (20000, −1000), E 611012.1184, N 5969931.6063, lat 53.865978767, lng 10.688217049.
+freemapper-course's test `lat_lng_near_the_x_axis_decides_nothing` (`tests/fit_courses.rs` there) uses one
+more point computed the same way: map (20000, −1000), E 611012.1184, N 5969931.6063, lat 53.865978767, lng
+10.688217049.
 
 This step uses the same formula as `course::fit`, so the fixture cannot catch an error in it; the unit test
-`grivation_turns_map_up_east_of_grid_north` in `course/fit.rs` checks its direction on its own. The
-grid-to-lat/lng step is independent (PROJ).
+`grivation_turns_map_up_east_of_grid_north` in freemapper-course's `fit.rs` checks its direction on its own.
+The grid-to-lat/lng step is independent (PROJ).
 
 IOF XML gives WGS84; ETRS89 differs from it by under a metre in Germany, far below the 20 m tolerance.

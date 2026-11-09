@@ -60,12 +60,13 @@ Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 
 ## Teil der freemapper-Suite
 
-freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Den Code, den sie gemeinsam brauchen,
+freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Der Code, den sie gemeinsam brauchen,
 liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer Bibliothek aus kleinen
 Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren.
-freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile) und
-`freemapper-fs` (sicheres Schreiben von Dateien). Kartenleser (`omap`), Renderer (`render`) und Bahncode
-(`course`) folgen und ziehen dorthin um. Bis dahin liegen sie noch in diesem Repository.
+freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile),
+`freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap` (Kartenmodell und Kartenleser) und
+`freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der Renderer (`render`) zieht später
+um und liegt bis dahin noch in diesem Repository.
 
 ## Beispiele
 

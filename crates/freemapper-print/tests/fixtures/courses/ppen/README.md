@@ -1,25 +1,23 @@
 # Purple Pen fixtures
 
-Three test events from Purple Pen's repository, copied unchanged on 2026-11-09 (M3 Task 4).
+A test event from Purple Pen's repository, copied unchanged on 2026-11-09 (M3 Task 4). The control
+description tests use it. Two more files from the same commit, `lincoln-park.ppen` and `overlapper.ppen`,
+moved to freemapper-core with the reader tests (ADR 0043).
 
 Source: https://github.com/petergolde/PurplePen, commit `201417f97bb69302e3e0db123f428870e0914515`
 (2026-11-07).
 
 | File here | Path in the Purple Pen repository | SHA-256 | What it covers |
 |---|---|---|---|
-| `lincoln-park.ppen` | `src/TestFiles/controller/Lincoln Park.ppen` | `686e07e7…c324e8` | One course; a leg with a bend and a gap; circle gaps in the old (bit string) and the new (angle) form; descriptions; no `<standards>` element, so the description standard is the default 2004. |
-| `overlapper.ppen` | `src/TestFiles/courserenderer/Overlapper.ppen` | `9f8cd545…4c2f78` | Two normal courses at print scales 7500 and 10000, a score course, a crossing point, a `number-location`, circle gaps in the old form only, water and forbidden-route specials. |
 | `sampleevent8.ppen` | `src/TestFiles/descriptions/sampleevent8.ppen` | `d8d4872f…f1fb` | Description standard 2018, full description rows including column F text (`5x5\|3`), a map-exchange control, map exchanges at normal controls (`map-exchange="true"`), a water special and a descriptions special. |
 
-Full hashes: `686e07e774a94a650d5169a268661201ec3dff3186d1dc2c79c2247743c324e8`,
-`9f8cd5455c3957f492e2169eef5085933e00bb2de60ff1c9cff77740c4162f78`,
-`d8d4872f040f56dc9ec2c8728e70e530d63331ee5cb19cb399e2abbec288f1fb`.
+Full hash: `d8d4872f040f56dc9ec2c8728e70e530d63331ee5cb19cb399e2abbec288f1fb`.
 
 The files carry no licence header of their own. Purple Pen as a whole is published under the BSD licence below:
 every source file in the repository carries it (for example `src/PurplePenCore/EventDB.cs`, "Copyright (c)
 2006-2008, Peter Golde"), and the user documentation states it as the Purple Pen licence
 (`doc/userdocs/WebSite/license.htm`, "Copyright © 2006-2007, Peter Golde"). The repository has no top-level
-licence file. The tests change the files only in memory (for example to add unknown elements).
+licence file. The tests read the file as it is.
 
 ## Licence
 

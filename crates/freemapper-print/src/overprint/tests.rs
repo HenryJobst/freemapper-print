@@ -18,6 +18,7 @@ fn um(mm: f64) -> i32 {
 
 fn control(code: &str, kind: ControlKind, x_mm: f64, y_mm: f64) -> Control<MapCoord> {
     Control {
+        id: None,
         code: code.into(),
         kind,
         position: Some(MapCoord::new(um(x_mm), um(y_mm))),
@@ -48,6 +49,7 @@ fn leg() -> Leg<MapCoord> {
 fn course(kind: CourseKind, stops: Vec<Stop>) -> Course<MapCoord> {
     let legs = (1..stops.len()).map(|_| leg()).collect();
     Course {
+        id: None,
         name: "A".into(),
         family: None,
         kind,
