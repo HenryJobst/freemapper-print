@@ -47,11 +47,11 @@ source, shared sheet elements and layouts.
   narrow, while an element hung on the page cannot and would cover the map. A comment in the file says how to move
   them with elements.
 - `fit_starter` picks paper and passe-partout through the same drawing as `check`, with auto orientation: A4 with
-  8 mm, A4 with a wider passe-partout in 1 mm steps up to 25 mm (tried only while the footer is the one problem),
+  8 mm, A4 with a wider passe-partout (see the addendum below; tried only while the footer is the one problem),
   A3 with 8 mm, A3 the same way. It keeps the first candidate whose only notes are added north lines and, for
   schoolyard maps, the missing contour interval. So the starter passes `check` whenever an A4 or A3 starter can
   (Lübeck: A3 with 14 mm). Otherwise the file keeps A4 with 8 mm, and `init` prints the notes `check` will report.
-- The proposed contour interval (sprint 2.5 m, forest 5 m, schoolyard none) gets a comment in the file, in the
+- The proposed contour interval (sprint 2 m, forest 5 m, schoolyard none) gets a comment in the file, in the
   program language, telling the user to confirm it; `init` prints the same hint. An empty `[print]` table is left
   out.
 - The case check on layout ids compares lower-case forms without Unicode normalisation (no extra dependency). Ids
@@ -60,6 +60,21 @@ source, shared sheet elements and layouts.
 - The test hooks (a fake free-space value from `FREEMAPPER_PRINT_TEST_FREE_SPACE`, the live-page counter of the
   export loop) exist only with the library feature `test-hooks`, which only the CLI's dev-dependencies enable.
   Release binaries do not contain them.
+
+## Addendum: final review of M2 (2026-11-09)
+
+- Keys that do not belong to an element's kind are errors, never ignored. Numbers are checked after parsing: sizes
+  and widths larger than 0, and upper bounds that keep absurd values out of the PDF: `size_pt` at most 200 (a
+  `credit_line` at least 5, so it stays readable), `width_mm` and each `offset_mm` within ±2000, `border_mm` at
+  most 20, `margin_mm` below half the shorter paper side, `contour_interval_m` at most 100, `centre_map_mm`
+  within ±2 000 000. A missing logo file is a sheet note, not a load error, so the rest of the sheet prints.
+- An error about a value names the line and column of its field, or of the table above it when the field is
+  missing. Errors without a field (no layout) name the file alone.
+- `init` proposes 2 m for sprint maps (ISSprOM 2019 and freemapper both use 2 m), 5 m for forest maps, none for
+  schoolyard maps. It prints where the map kind came from, which equals `render`'s chain.
+- `fit_starter` widens the passe-partout in 2 mm steps up to 24 mm. It tries 24 mm right after 8 mm; when the
+  footer is still in the way there, no width helps and the next paper follows. At most ten sheets per paper.
+- `map_frame.crop = true` marks an intended crop (ADR 0028).
 
 ## Consequences
 

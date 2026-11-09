@@ -5,30 +5,26 @@ Status: Accepted
 
 ## Context
 
-Every sheet carries the credit line, and it cannot be switched off (ADR 0025). Above it come the copyright
-lines, one source per line, from `print.copyright` or the map notes. The first rule placed this footer below the
-map frame when the bottom passe-partout was at least 6.5 mm wide. With two or more source lines the block then
-grew upward into the frame line and the map.
+Every PDF carries a visible credit line that cannot be switched off (ADR 0025), with the copyright lines from
+`print.copyright` or the map notes above it. Placed by margin width alone, a tall block grew into the map.
 
 ## Decision
 
-- The footer is one block of 5 pt black lines at the bottom left. Its last baseline lies 4 mm above the paper
-  edge, its left edge on the frame edge.
-- The block goes below the frame only when the whole block fits between the frame and that baseline, and the
-  bottom margin is at least 6.5 mm. Otherwise it moves inside the frame to the bottom-left corner, on a white box
-  with 0.8 mm padding that stays off the inner half of the frame line, and the sheet gets a note saying it covers
-  part of the map.
-- At most six copyright lines are shown: five sources and a sixth that counts the rest. A line wider than the
-  frame is cut with "…". The program notes both.
-- A `copyright_line` or `credit_line` element moves that part out of the footer to its own anchor. Neither
-  element can remove the credit line.
+- The footer is one block of 5 pt lines at the bottom left, last baseline 4 mm above the paper edge. It goes below
+  the frame when the whole block fits and the margin is at least 6.5 mm; else into the frame's bottom-left corner
+  on a white box (0.8 mm padding, off the frame line), noted as covering the map, and `FooterCoversElement` names
+  any element the box overlaps.
+- At most six copyright lines: five and one counting the rest (`CopyrightTruncated`). A line wider than the white
+  box is cut with "…" (`CopyrightLineCut`); widths sum glyph advances without kerning, as the PDF sets them.
+- A `copyright_line` element moves the copyright lines; a `credit_line` element (at least 5 pt) the credit line,
+  if wholly on the page, else it stays (`CreditLineMoved`). The credit line is painted after every other item.
+- `render` gets the same footer from the same helper, sourced from the map notes, against its 5 mm frame, so it
+  sits on the white box. The map does not move; a note says when the box covers map content.
 
 ## Consequences
 
-- With the default 8 mm passe-partout, a map with one source keeps the footer below the frame. A map whose notes
-  name four sources needs about 14 mm (Lübeck); `init` widens the passe-partout until the starter fits.
-- Cost if wrong: on A4 with a narrow margin and two or more sources, the white box covers about 12 mm of the map's
-  bottom-left corner.
+- With 8 mm one source fits below the frame; Lübeck's four need about 14 mm, which `init` finds. `render` PDFs
+  of OSM-based maps carry the attribution ODbL and CC BY require.
+- Cost if wrong: on A4 with a narrow margin and two or more sources the box covers about 12 mm of the map.
 
-Source: M2 plan, Task 6 and its fix round; ledger ruling of Task 6 (footer block inside the frame when it does
-not fit below); user ruling 2026-11-08 (credit line on every sheet).
+Source: M2 Task 6 and its ruling; user ruling 2026-11-08; final review I1, I2, M5; Task 11 review.

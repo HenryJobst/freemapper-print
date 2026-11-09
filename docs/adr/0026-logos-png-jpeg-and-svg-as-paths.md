@@ -137,6 +137,24 @@ times through nested `use`, or a 1 MB dash array or transform used 1000 times, r
   `SheetNote::LogoSkipped` naming the file and the reason. The sheet still renders.
 - PDF logos are not read.
 
+## Addendum: cost per export (M2 final review, 2026-11-09)
+
+The limits above bound one file. The final review used one 25 MP PNG in 30 logo elements on two layouts: every
+element read and decoded the file again, and the PDF embedded it 30 times (14.3 s, 2.86 GB).
+
+- A `LogoCache` lives for one `export` or `check` run and is passed into `render_sheet`. It reads and decodes
+  each distinct resolved path once and keeps the image as `Arc<RasterImage>` and the SVG as a parsed tree, so all
+  placements share one image and the PDF embeds it once. It remembers failures too. When keeping another logo
+  would hold more than two sheets' worth, it drops the decoded logos first; a page keeps alive what it uses.
+- A sheet has a budget: 50 megapixels of raster logos and 1 000 000 units of SVG work, each logo counted as often
+  as it is placed. SVG work is the size `check_svg` counts plus the points the curves flatten into. The size of a
+  PNG or JPEG is read from its header, so a logo past the budget is left out (`LogoSkipped`, budget reason)
+  before it is decoded. The probe now takes 0.29 s and 128 MB.
+- Time margin: the slowest hostile or legal SVG measured takes about 0.55 to 0.65 s on an idle machine and up to
+  1.47 s under a load of 14. The limits stay, with that margin.
+- The lists of names `usvg` reads (`READ_IN_ANY_NAMESPACE`, `read_namespace`, `ALLOWED`) are written by hand from
+  usvg 0.49. Every `usvg` upgrade re-checks them against its parser.
+
 ## Consequences
 
 - `image` and `usvg` add 33 crates to `Cargo.lock`, all pure Rust. The lock file holds `crc32fast`, `flate2`,

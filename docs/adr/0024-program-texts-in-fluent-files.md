@@ -20,6 +20,13 @@ module. freemapper-print had English-only messages in `main.rs`.
   unknown `--lang` is a usage error (exit code 2); an unknown environment value passes to the next source.
 - `--lang` is a global option. The help texts are set on the derived clap command after the language is known.
 - Tool, parameter, JSON and identifier names stay English.
+- `fluent-langneg` is not a direct dependency: the program matches language codes itself and needs no
+  negotiation (`fluent-bundle` still brings 0.13.1).
+- German texts follow Duden on capitals after a colon: a capital when a complete sentence follows, lower case
+  otherwise. This replaces the blanket lower case of an earlier review note.
+- What the library reports to the user comes as values, not English sentences: sheet notes and their reasons are
+  enums (`LogoSkipReason`, `LogoSimplification`, `MissingItem`), and the CLI gives each variant a message. Only
+  details from the operating system, a decoder or the SVG check (an element name, a limit) stay as they come.
 
 ## Consequences
 
