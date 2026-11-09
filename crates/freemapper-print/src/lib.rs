@@ -4,6 +4,7 @@
 //! All domain logic lives in this library. The binary crate `freemapper-print-cli` holds the CLI, the MCP
 //! server and the layout editor (ADR 0001). Terms follow `docs/glossary.md`.
 
+pub mod course;
 pub mod export;
 pub mod omap;
 pub mod output;

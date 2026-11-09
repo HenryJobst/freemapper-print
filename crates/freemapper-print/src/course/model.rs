@@ -1,0 +1,310 @@
+//! The course model, independent of the input format. Readers return a [`RawEvent`] (points in file
+//! coordinates); fitting to the map turns it into a [`FittedEvent`] with [`CourseEvent::map_points`].
+
+use crate::omap::coord::MapCoord;
+
+/// Largest course file a reader accepts (ADR 0019).
+pub const MAX_COURSE_FILE_BYTES: usize = 50 * 1024 * 1024;
+/// Most controls in one file.
+pub const MAX_CONTROLS: usize = 10_000;
+/// Most courses in one file.
+pub const MAX_COURSES: usize = 1_000;
+/// Most stops in one course.
+pub const MAX_STOPS_PER_COURSE: usize = 500;
+/// Most points in one path or ring of a special object or leg.
+pub const MAX_POINTS_PER_PATH: usize = 10_000;
+/// Most special objects in one file.
+pub const MAX_SPECIALS: usize = 10_000;
+/// Deepest XML nesting a course reader accepts.
+pub const MAX_XML_DEPTH: usize = 64;
+
+/// A point in millimetres in file coordinates, before fitting to the map. The axis direction is whatever
+/// the writer used.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct RawPoint {
+    pub x_mm: f64,
+    pub y_mm: f64,
+}
+
+/// An event as a reader returns it.
+pub type RawEvent = CourseEvent<RawPoint>;
+/// An event with its points in map coordinates.
+pub type FittedEvent = CourseEvent<MapCoord>;
+
+/// Everything read from a course file, generic over the point type `P`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseEvent<P> {
+    pub controls: Vec<Control<P>>,
+    pub courses: Vec<Course<P>>,
+    pub specials: Vec<Special<P>>,
+    pub source: CourseSource,
+    pub notes: Vec<CourseNote>,
+}
+
+impl<P> CourseEvent<P> {
+    /// Converts every point with `f`, keeping the rest unchanged.
+    pub fn map_points<Q>(self, f: impl Fn(P) -> Q) -> CourseEvent<Q> {
+        CourseEvent {
+            controls: self
+                .controls
+                .into_iter()
+                .map(|c| Control {
+                    code: c.code,
+                    kind: c.kind,
+                    position: f(c.position),
+                    geo: c.geo,
+                    description: c.description,
+                })
+                .collect(),
+            courses: self
+                .courses
+                .into_iter()
+                .map(|c| Course {
+                    name: c.name,
+                    kind: c.kind,
+                    legs: c
+                        .legs
+                        .into_iter()
+                        .map(|l| Leg {
+                            bends: l.bends.into_iter().map(&f).collect(),
+                            gaps: l.gaps,
+                            marked_route: l.marked_route,
+                        })
+                        .collect(),
+                    stops: c
+                        .stops
+                        .into_iter()
+                        .map(|s| Stop {
+                            control: s.control,
+                            number: s.number,
+                            number_text_at: s.number_text_at.map(&f),
+                            circle_gaps: s.circle_gaps,
+                        })
+                        .collect(),
+                    climb_m: c.climb_m,
+                    length_m: c.length_m,
+                    print_scale_hint: c.print_scale_hint,
+                })
+                .collect(),
+            specials: self
+                .specials
+                .into_iter()
+                .map(|s| s.map_points(&f))
+                .collect(),
+            source: self.source,
+            notes: self.notes,
+        }
+    }
+}
+
+/// Where the data came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseSource {
+    pub format: SourceFormat,
+    pub event_name: Option<String>,
+    /// The map scale denominator the file states, if any.
+    pub map_scale: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceFormat {
+    IofXml,
+    PurplePen,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Start,
+    Control,
+    Finish,
+    CrossingPoint,
+    MapExchange,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Control<P> {
+    pub code: String,
+    pub kind: ControlKind,
+    pub position: P,
+    /// Latitude and longitude in degrees, if the file gives them (IOF XML `Position`).
+    pub geo: Option<(f64, f64)>,
+    pub description: Option<Description>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CourseKind {
+    Normal,
+    Score,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Course<P> {
+    pub name: String,
+    pub kind: CourseKind,
+    /// One leg between each two consecutive stops.
+    pub legs: Vec<Leg<P>>,
+    pub stops: Vec<Stop<P>>,
+    pub climb_m: Option<f64>,
+    pub length_m: Option<f64>,
+    pub print_scale_hint: Option<u32>,
+}
+
+/// One visit of a control in a course.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stop<P> {
+    /// The control code.
+    pub control: String,
+    pub number: Option<NumberPlacement>,
+    /// Where the file puts the number text, in file coordinates. Set by readers that give a text position
+    /// instead of a direction (IOF XML `MapTextPosition`); converted to `number` once circle and box sizes
+    /// are known.
+    pub number_text_at: Option<P>,
+    /// Angle ranges in degrees where the circle is not drawn.
+    pub circle_gaps: Vec<(f64, f64)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Leg<P> {
+    pub bends: Vec<P>,
+    /// Distance ranges along the leg in map mm where the line is not drawn.
+    pub gaps: Vec<(f64, f64)>,
+    pub marked_route: bool,
+}
+
+/// Where a control number sits relative to its circle. Agreed with freemapper-courseplan.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NumberPlacement {
+    /// Degrees; 0 is east, counter-clockwise.
+    pub direction: f64,
+    /// Print mm: the shortest distance between the outer edge of the circle line and the number box, with
+    /// the box centred on the direction ray.
+    pub gap_mm: f64,
+}
+
+/// Which courses a special object belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CourseFilter {
+    All,
+    Only(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Special<P> {
+    OutOfBounds {
+        rings: Vec<Vec<P>>,
+        courses: CourseFilter,
+    },
+    Dangerous {
+        rings: Vec<Vec<P>>,
+        courses: CourseFilter,
+    },
+    ForbiddenRoute {
+        path: Vec<P>,
+        courses: CourseFilter,
+    },
+    Boundary {
+        path: Vec<P>,
+        courses: CourseFilter,
+    },
+    MarkedRoute {
+        path: Vec<P>,
+        courses: CourseFilter,
+    },
+    FirstAid {
+        pt: P,
+        courses: CourseFilter,
+    },
+    Water {
+        pt: P,
+        courses: CourseFilter,
+    },
+    Text {
+        pt: P,
+        text: String,
+        size_mm: f64,
+        courses: CourseFilter,
+    },
+    Line {
+        path: Vec<P>,
+        courses: CourseFilter,
+    },
+    WhiteOut {
+        rings: Vec<Vec<P>>,
+        courses: CourseFilter,
+    },
+}
+
+impl<P> Special<P> {
+    pub fn map_points<Q>(self, f: impl Fn(P) -> Q) -> Special<Q> {
+        let rings = |r: Vec<Vec<P>>| -> Vec<Vec<Q>> {
+            r.into_iter()
+                .map(|v| v.into_iter().map(&f).collect())
+                .collect()
+        };
+        let path = |v: Vec<P>| -> Vec<Q> { v.into_iter().map(&f).collect() };
+        match self {
+            Special::OutOfBounds { rings: r, courses } => Special::OutOfBounds {
+                rings: rings(r),
+                courses,
+            },
+            Special::Dangerous { rings: r, courses } => Special::Dangerous {
+                rings: rings(r),
+                courses,
+            },
+            Special::ForbiddenRoute { path: p, courses } => Special::ForbiddenRoute {
+                path: path(p),
+                courses,
+            },
+            Special::Boundary { path: p, courses } => Special::Boundary {
+                path: path(p),
+                courses,
+            },
+            Special::MarkedRoute { path: p, courses } => Special::MarkedRoute {
+                path: path(p),
+                courses,
+            },
+            Special::FirstAid { pt, courses } => Special::FirstAid { pt: f(pt), courses },
+            Special::Water { pt, courses } => Special::Water { pt: f(pt), courses },
+            Special::Text {
+                pt,
+                text,
+                size_mm,
+                courses,
+            } => Special::Text {
+                pt: f(pt),
+                text,
+                size_mm,
+                courses,
+            },
+            Special::Line { path: p, courses } => Special::Line {
+                path: path(p),
+                courses,
+            },
+            Special::WhiteOut { rings: r, courses } => Special::WhiteOut {
+                rings: rings(r),
+                courses,
+            },
+        }
+    }
+}
+
+/// Control descriptions of one control.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Description {
+    /// Index 0 is column C and index 5 is column H. Symbol ids as the file stores them.
+    pub columns: [Option<String>; 6],
+    /// The description standard, e.g. "2018".
+    pub standard: String,
+}
+
+/// Things read but not supported.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CourseNote {
+    UnknownElement(String),
+    /// The named course is forked and is not drawn.
+    Forked(String),
+    WhiteOutLaterInM4,
+    NoDescriptions,
+    /// The map issue point of this control code is used as the start.
+    MapIssueAsStart(String),
+}

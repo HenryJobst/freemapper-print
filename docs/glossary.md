@@ -125,6 +125,10 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Nummernkorrektur | number correction | Abweichende Nummernlage je Layout oder je Blatt in der Projektdatei; ändert die Bahndatei nicht. | `NumberCorrection` |
 | Bahnaufdruck | course overprint | Die violetten Bahnsymbole über der Karte. | `CourseOverprint` |
 | Postenbeschreibung | control descriptions | Tabelle der Posten nach IOF-Postenbeschreibung (Spalten A bis H). | `ControlDescriptions` |
+| Bahndatei | course file | Datei einer Bahnlegung: IOF-XML 3.0 `CourseData` oder `.ppen`; liest `CourseEvent`. Die Bahnquelle ist die Datei, aus der ein Projekt seine Bahnen nimmt. | `CourseEvent` |
+| Stopp | stop | Ein Besuch eines Postens in einer Bahn (Start, Posten, Ziel, Querungsstelle); derselbe Posten kann mehrfach vorkommen. Trägt die Nummernlage und die Kreislücken. | `Stop` |
+| Sonderobjekt | special object | Bahnlegungs-Element außer Posten und Strecken: Sperrgebiet, Gefahrenstelle, Verbotene Strecke, Grenze, Erste Hilfe, Wasser, Text, Linie, Abdeckung. | `Special` |
+| Bahnhinweis | course note | Meldung, dass beim Lesen etwas gefunden, aber nicht unterstützt wurde (unbekanntes Element, Gabelung, fehlende Beschreibungen). | `CourseNote` |
 | Gabelung | forking | Varianten einer Bahn, z. B. in Staffeln. | `Forking` |
 | Purple-Pen-Projekt | Purple Pen project | Native XML-Datei von Purple Pen (`.ppen`). | `PurplePenProject` |
 
