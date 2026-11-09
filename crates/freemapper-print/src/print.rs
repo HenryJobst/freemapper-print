@@ -488,6 +488,8 @@ mod tests {
                 grivation_deg: 0.0,
                 ref_projected: None,
                 crs_spec: None,
+                combined_scale_factor: 1.0,
+                map_ref_mm: (0.0, 0.0),
             },
             symbol_set: set,
             parts: vec![MapPart {

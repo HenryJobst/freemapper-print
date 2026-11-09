@@ -131,6 +131,8 @@ impl Default for State {
                 grivation_deg: 0.0,
                 ref_projected: None,
                 crs_spec: None,
+                combined_scale_factor: 1.0,
+                map_ref_mm: (0.0, 0.0),
             },
             parts: Vec::new(),
             object: None,
@@ -243,6 +245,16 @@ impl State {
             ("georeferencing", Some("map")) => {
                 self.georef.declination_deg = float_attr(e, "declination")?;
                 self.georef.grivation_deg = float_attr(e, "grivation")?;
+                if attribute(e, "grid_scale_factor")?.is_some() {
+                    let f = float_attr(e, "grid_scale_factor")?;
+                    if f <= 0.0 {
+                        return Err(invalid_number(e, "grid_scale_factor", f));
+                    }
+                    self.georef.combined_scale_factor = f;
+                }
+            }
+            ("ref_point", Some("georeferencing")) => {
+                self.georef.map_ref_mm = (float_attr(e, "x")?, float_attr(e, "y")?);
             }
             ("spec", Some("projected_crs")) if self.georef.crs_spec.is_none() => {
                 self.start_collect(Collect::CrsSpec);
@@ -561,8 +573,23 @@ mod tests {
         assert_eq!(geo.grivation_deg, 1.1);
         assert_eq!(geo.ref_projected, Some((610932.5, 5969932.25)));
         assert_eq!(geo.crs_spec.as_deref(), Some("+init=epsg:25832"));
+        assert_eq!(geo.combined_scale_factor, 1.0);
+        assert_eq!(geo.map_ref_mm, (0.0, 0.0));
         assert!(doc.symbol_set.is_hidden(0));
         assert!(!doc.symbol_set.is_hidden(1));
+    }
+
+    #[test]
+    fn reads_scale_factor_and_map_reference_point() {
+        let g = r#"<georeferencing scale="4000" grid_scale_factor="0.999751" auxiliary_scale_factor="1"><ref_point x="12.5" y="-3.25"/><projected_crs id="EPSG"><ref_point x="1" y="2"/></projected_crs></georeferencing>"#;
+        let geo = read_map(&map_with("", g)).unwrap().georef;
+        assert_eq!(geo.combined_scale_factor, 0.999751);
+        assert_eq!(geo.map_ref_mm, (12.5, -3.25));
+        assert_eq!(geo.ref_projected, Some((1.0, 2.0)));
+        for bad in ["0", "-1", "nan"] {
+            let g = format!(r#"<georeferencing scale="4000" grid_scale_factor="{bad}"/>"#);
+            assert!(read_map(&map_with("", &g)).is_err(), "{bad}");
+        }
     }
 
     #[test]

@@ -1,9 +1,12 @@
 //! Courses from a course-setting program: the model that does not depend on the file format, and the
 //! readers. Terms follow `docs/glossary.md`.
 
+pub mod fit;
 pub mod iof_xml;
 pub mod model;
+mod tm;
 
+pub use fit::{Fit, FitError, FitNote, SkipReason, fit};
 pub use iof_xml::read_iof_xml;
 pub use model::{
     Control, ControlKind, Course, CourseEvent, CourseFilter, CourseKind, CourseNote, CourseSource,
