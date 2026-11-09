@@ -22,6 +22,7 @@ New since 0.1.0, not yet released (M2, on `main`):
   place, a title block and texts with placeholders, club and sponsor logos (PNG, JPEG, SVG) and a scale check bar
   to measure against;
 - north lines added when the map has none;
+- `render` prints the copyright lines from the map notes and the credit line too;
 - messages and help in German and English;
 - a full disk leaves no half-written PDF.
 

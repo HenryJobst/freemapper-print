@@ -22,6 +22,7 @@ Neu seit 0.1.0, noch nicht veröffentlicht (M2, auf `main`):
   Elemente, die man selbst platziert, Titelblock und Texte mit Platzhaltern, Vereins- und Sponsorenlogos (PNG,
   JPEG, SVG) und eine Kontrollstrecke zum Nachmessen;
 - Nordlinien ergänzt das Programm, wenn die Karte keine hat;
+- auch `render` druckt die Quellenangaben aus den Kartennotizen und die Namensnennung;
 - Meldungen und Hilfe auf Deutsch und Englisch;
 - ein volles Laufwerk hinterlässt kein halbes PDF.
 
