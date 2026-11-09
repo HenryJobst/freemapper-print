@@ -64,6 +64,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   into the project file. Without `--direction` and `--gap` it takes the proposal that `check` shows. It appends a
   `[[numbers]]` table and leaves everything before it unchanged, comments included, then loads the file again;
   if that fails, it restores the old content. A correction for the same control and scope is refused (ADR 0025).
+- Example `examples/luebeck-competition-courses`: the Lübeck sprint with three courses from a hand-written Purple
+  Pen file, A and B on A4 at 1:4000 and C on A3 at 1:3000, with control descriptions, an out-of-bounds area, a
+  forbidden crossing, a marked route to the finish and one number moved with `numbers accept`. The folder `iof/`
+  prints the same courses from IOF XML 3.0, without descriptions.
 
 ### Fixed
 

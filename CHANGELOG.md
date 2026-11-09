@@ -71,6 +71,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   zeigt. Es hängt eine Tabelle `[[numbers]]` an und lässt alles davor unverändert, auch die Kommentare, und lädt
   die Datei danach neu; schlägt das fehl, stellt es den alten Inhalt wieder her. Eine Korrektur für denselben
   Posten und Geltungsbereich lehnt es ab (ADR 0025).
+- Beispiel `examples/luebeck-competition-courses`: der Lübecker Sprint mit drei Bahnen aus einer von Hand
+  geschriebenen Purple-Pen-Datei, A und B auf A4 in 1:4000, C auf A3 in 1:3000, mit Postenbeschreibung,
+  Sperrgebiet, verbotener Querung, markierter Strecke zum Ziel und einer mit `numbers accept` versetzten Nummer.
+  Der Ordner `iof/` druckt dieselben Bahnen aus IOF-XML 3.0, ohne Beschreibung.
 
 ### Behoben
 

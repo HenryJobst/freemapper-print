@@ -1,0 +1,74 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Stadtsprint Lübeck"
+lang = "de"
+
+[sources]
+map = "../luebeck.omap"
+courses = "../courses.xml"
+# Dieselben Bahnen wie in courses.ppen, also ebenfalls mit der y-Achse nach oben.
+course_y_axis = "up"
+
+[map]
+kind = "sprint"
+# Vorschlag für Sprintkarten. An der Karte prüfen und bestätigen.
+contour_interval_m = 2.0
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event} · {course}",
+    "1:{print_scale} · {contour_interval}",
+]
+
+[shared.anchor]
+to = "map_frame"
+corner = "top_left"
+offset_mm = [
+    2.0,
+    2.0,
+]
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+
+[shared.anchor]
+to = "map_frame"
+corner = "bottom_right"
+offset_mm = [
+    2.0,
+    2.0,
+]
+
+[[layouts]]
+id = "a3"
+paper = "A3"
+orientation = "auto"
+print_scale = 4000
+north_lines = "auto"
+
+[layouts.map_frame]
+margin_mm = 14.0
+border_mm = 0.25
+crop = true
+
+[[assignments]]
+course = "A"
+layout = "a3"
+
+[[assignments]]
+course = "B"
+layout = "a3"
+
+[[assignments]]
+course = "C"
+layout = "a3"
