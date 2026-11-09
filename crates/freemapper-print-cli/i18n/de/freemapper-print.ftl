@@ -28,12 +28,14 @@ help-init-folder = Ordner für die neue freemapper-print.toml. Fehlt er, wird er
 help-init-map = Die OOM-Kartendatei (.omap). Die Projektdatei speichert ihren Pfad relativ zu sich selbst.
 help-init-title = Titel der Veranstaltung auf den Blättern. Ohne Angabe gilt der Dateiname der Karte.
 help-init-kind = Kartenart. Nur nötig, wenn keine freemapper.toml neben der Karte sie nennt.
-check-about = Zeichnet jedes Layout eines Projekts, ohne eine Datei zu schreiben, und listet die Hinweise auf.
-check-after-exit-codes = Exit-Codes: 0, wenn kein Layout Hinweise hat (ergänzte Nordlinien und ein gewollter Beschnitt zählen nicht), 1, wenn das Projekt nicht geladen werden kann oder ein Layout Hinweise hat, 2, wenn die Befehlszeile falsch ist.
+check-about = Zeichnet jedes Layout eines Projekts, mit Bahndatei jede Bahn, ohne eine Datei zu schreiben, und listet die Hinweise auf.
+check-after-exit-codes = Exit-Codes: 0, wenn kein Layout und keine Bahn Hinweise hat (Hinweise „Zur Information“ zählen nicht), 1, wenn das Projekt oder seine Bahndatei nicht geladen werden kann oder ein Layout, eine Bahn oder die Bahndatei Hinweise hat, 2, wenn die Befehlszeile falsch ist.
 help-project = Die Projektdatei freemapper-print.toml oder der Ordner, in dem sie liegt.
-export-about = Schreibt je Layout ein PDF, benannt nach der Layout-ID.
-export-after-exit-codes = Exit-Codes: 0, wenn alle PDFs geschrieben sind, auch mit Hinweisen, 1, wenn das Projekt nicht geladen oder ein PDF nicht gezeichnet oder geschrieben werden kann, 2, wenn die Befehlszeile falsch ist oder ein unbekanntes Layout nennt.
-help-layout = Nur dieses Layout exportieren. Für mehrere wiederholen. Ohne Angabe werden alle Layouts exportiert.
+export-about = Schreibt je Layout ein PDF, benannt nach der Layout-ID. Mit Bahndatei schreibt es je Bahn ein PDF, benannt nach der Bahn, auf dem Layout, das ihre Zuordnung nennt.
+export-after-exit-codes = Exit-Codes: 0, wenn alle PDFs geschrieben sind, auch mit Hinweisen, 1, wenn das Projekt oder seine Bahndatei nicht geladen oder ein PDF nicht gezeichnet oder geschrieben werden kann, 2, wenn die Befehlszeile falsch ist oder ein unbekanntes Layout oder eine unbekannte Bahn nennt.
+help-layout = Nur dieses Layout exportieren, ohne Bahnen. Für mehrere wiederholen. Ohne Angabe werden alle Layouts exportiert, bei einem Projekt mit Bahndatei alle Bahnen.
+help-course = Nur diese Bahn exportieren. Für mehrere wiederholen. Ohne Angabe werden alle Bahnen der Bahndatei exportiert.
+help-single-file = Alle Bahnen in ein PDF schreiben, eine Seite je Bahn, benannt nach dem Titel der Veranstaltung.
 help-out-dir = Ordner für die PDFs. Er muss existieren. Ohne Angabe gilt der Ordner out neben der Projektdatei, der bei Bedarf angelegt wird. Ein PDF gleichen Namens wird überschrieben.
 
 ## Fehler
@@ -52,6 +54,10 @@ error-title-control = --title darf keine Zeilenumbrüche, Tabulatoren oder ander
 error-unknown-layout = Das Projekt hat kein Layout { $id }; vorhanden sind { $known }
 error-out-dir-missing = Der Ordner { $path } für die PDFs existiert nicht; zuerst anlegen
 error-sheet = Layout { $layout } konnte nicht gezeichnet werden
+error-course-sheet = Bahn { $course } konnte nicht gezeichnet werden
+error-courses = Die Bahndatei lässt sich nicht verwenden
+error-unknown-course = Die Bahndatei hat keine Bahn { $name }; vorhanden sind { $known }
+error-no-course-file = --course und --single-file brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
 error-disk-full = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, frei sind { $available } MB
 error-write-file = { $path } konnte nicht geschrieben werden
 
@@ -121,6 +127,19 @@ check-clean = { $count ->
        *[other] { $count } Layouts
     } geprüft, keine Hinweise.
 check-with-notes = Layouts mit Hinweisen: { $count } von { $total }.
+report-course-summary = { $out } für Bahn { $course } auf Layout { $layout } geschrieben: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+report-course-page = Seite { $page }, Bahn { $course } auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+report-single-file = { $out } mit { $count ->
+        [one] 1 Seite
+       *[other] { $count } Seiten
+    } geschrieben.
+check-course-summary = Bahn { $course } auf Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
+check-courses-clean = { $count ->
+        [one] 1 Bahn
+       *[other] { $count } Bahnen
+    } geprüft, keine Hinweise.
+check-courses-with-notes = Bahnen mit Hinweisen: { $count } von { $total }.
+check-course-file-notes = Die Bahndatei selbst hat Hinweise. Sie stehen vor der ersten Bahn.
 
 ## Blatthinweise
 
@@ -202,3 +221,47 @@ error-disk-full-unknown = nicht genug Speicherplatz für { $path }: Nötig sind 
 note-copyright-line-cut = Hinweis: Die Quellenangabe „{ $line }“ ist breiter als der Kartenausschnitt und wird mit „…“ gekürzt. Kürzen Sie sie in den Kartennotizen oder in print.copyright.
 hint-crop = Für ein Blatt, das nur einen Teil der Karte zeigt, wählt map_frame.centre_map_mm den Teil, und map_frame.crop = true kennzeichnet den Schnitt als gewollt.
 note-map-cropped = Zur Information: Die Karte ist { $cut } für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+
+## Bahnblätter
+
+note-course-outside-frame = Hinweis: Auf dem Blatt der Bahn { $course } { $count ->
+        [one] liegt Posten { $controls }
+       *[other] liegen die Posten { $controls }
+    } außerhalb des Kartenausschnitts oder auf seinem Rand. Ohne map_frame.centre_map_mm wird der Ausschnitt auf die Bahn zentriert; größeres Papier oder ein Druckmaßstab mit größerer Zahl zeigt mehr.
+note-default-layout = Zur Information: Die Bahn { $course } hat keine Zuordnung und wird auf dem ersten Layout gedruckt, { $layout }.
+note-no-description-box = Hinweis: Das Blatt der Bahn { $course } hat keine Postenbeschreibung.
+note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn { $course } verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
+note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn { $course } aber keinen Wert. Der Platzhalter bleibt leer.
+
+## Hinweise zur Bahndatei
+
+note-course-unknown-element = Hinweis: Die Bahndatei enthält das Element { $name }, das diese Version nicht liest. Es fehlt auf den Blättern.
+note-course-forked = Zur Information: Die Bahnen { $variants } sind die Varianten der Gabelung { $family }. Jede wird als eigenes Blatt gedruckt.
+note-course-alternative-controls = Hinweis: Die Bahn { $course } bietet an einer Stelle alternative Posten an. Das kann diese Version nicht drucken, die Bahn fehlt deshalb.
+note-course-notes-truncated = Zur Information: Die Bahndatei hat mehr Hinweise ergeben, als hier stehen.
+note-course-white-out = Hinweis: Die Bahndatei hat Abdeckflächen (White-out). Diese Version lässt sie weg; spätere Versionen machen Masken daraus.
+note-course-no-descriptions = Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
+note-course-map-issue-as-start = Zur Information: Die Kartenausgabe { $code } dient als Start.
+note-course-variations = Hinweis: Die Bahn { $course } hat Gabelungen oder Schleifen (Varianten in Purple Pen). Diese Version kann sie nicht drucken, die Bahn fehlt deshalb. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene Bahn.
+note-fit-y-up = Zur Information: Die y-Achse der Bahndatei zeigt nach oben; das Programm hat sie zur Karte passend gedreht.
+note-fit-orientation-assumed = Hinweis: Die Bahn passt mit der y-Achse nach oben und nach unten auf die Karte, und nichts in der Datei entscheidet. Das Programm hat „oben“ genommen. Prüfen Sie ein Blatt und tragen Sie dann in der Projektdatei unter [sources] course_y_axis = "up" oder "down" ein.
+note-fit-scale-unchecked = Zur Information: Die Bahndatei nennt keinen Kartenmaßstab, deshalb wurde er nicht mit dem der Karte verglichen.
+note-fit-georef-checked = Zur Information: { $count ->
+        [one] 1 Posten hat
+       *[other] { $count } Posten haben
+    } eine Kartenposition und geografische Koordinaten. Beide weichen höchstens { $metres } m voneinander ab.
+note-fit-georef-skipped = Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn { $reason }.
+fit-skip-not-georeferenced = die Karte ist nicht georeferenziert
+fit-skip-unsupported-crs = die Karte nutzt das Koordinatensystem { $crs }, das Programm unterstützt aber nur UTM
+fit-skip-no-lat-lng = kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten
+fit-skip-check-off = die Projektdatei schaltet die Prüfung ab
+note-fit-georef-check-off = Zur Information: Die Projektdatei schaltet die Prüfung mit geografischen Koordinaten ab (course_georef_check = false), das Programm hat sie deshalb nicht beachtet.
+note-fit-placed-by-georef = Zur Information: { $count ->
+        [one] Posten { $controls } hat
+       *[other] Die Posten { $controls } haben
+    } nur geografische Koordinaten. Die Georeferenzierung der Karte hat sie platziert.
+note-stale-assignment = Hinweis: Die Projektdatei ordnet die Bahn { $course } einem Layout zu, die Bahndatei hat aber keine solche Bahn. Die Zuordnung bleibt in der Projektdatei.
+note-stale-correction = Hinweis: Die Projektdatei korrigiert die Nummer von Posten { $control } für { $scope }, die Bahndatei hat dort aber keinen solchen Posten. Die Korrektur bleibt in der Projektdatei.
+stale-scope-layout = Layout { $name }
+stale-scope-course = Bahn { $name }
+note-stale-changed-base = Hinweis: Die Bahndatei hat die Nummer von Posten { $control } verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.

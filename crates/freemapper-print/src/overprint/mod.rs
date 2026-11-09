@@ -186,6 +186,12 @@ fn labels<'a>(
     out
 }
 
+/// How many controls `course` has: its numbered stops, so start, finish, crossing points and ends of marked
+/// routes do not count.
+pub fn control_count(course: &Course<MapCoord>, event: &FittedEvent) -> usize {
+    labels(course, event).len()
+}
+
 /// The number positions the course file gives, as [`overprint`] takes them: per numbered stop the control
 /// code and the centre of its number text in page mm. A stop with a position in the file
 /// ([`crate::course::Stop::number_text_at`], an offset from the circle centre) keeps it; the others go due
@@ -306,7 +312,8 @@ impl Placed<'_> {
     }
 }
 
-fn applies(filter: &CourseFilter, course: &str) -> bool {
+/// Whether a special object with `filter` belongs to the course named `course`.
+pub(crate) fn applies(filter: &CourseFilter, course: &str) -> bool {
     match filter {
         CourseFilter::All => true,
         CourseFilter::Only(names) => names.iter().any(|n| n == course),

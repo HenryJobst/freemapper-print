@@ -23,6 +23,15 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   `[[numbers]]` korrigiert die Lage einer Postennummer je Layout oder je Bahn. Gibt es eine Bahn oder einen
   Posten der Projektdatei in der Bahndatei nicht mehr, bleibt der Eintrag stehen und `check` meldet ihn; die
   übrigen Bahnen werden trotzdem gelesen.
+- Ein Blatt je Bahn. Hat das Projekt eine Bahndatei, schreibt `export` je Bahn ein PDF auf dem Layout, das ihre
+  Zuordnung nennt, mit dem Bahnaufdruck in Violett. Die Datei heißt wie die Bahn; Zeichen, die in keinem
+  Dateinamen stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung
+  unterscheiden, bekommen ` (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert.
+  `--course <NAME>` (mehrfach möglich) exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein
+  PDF, benannt nach der Veranstaltung, eine Seite je Bahn in ihrem Papierformat. `--layout` exportiert weiter
+  ein Layout ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und `{controls}` nutzen. `check`
+  prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Bis die Postenbeschreibung kommt, meldet
+  es auch, dass sie auf dem Blatt fehlt. Projekte ohne Bahndatei exportieren wie bisher (ADR 0035).
 
 ### Behoben
 

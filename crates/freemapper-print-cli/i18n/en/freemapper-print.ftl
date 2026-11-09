@@ -28,12 +28,14 @@ help-init-folder = Folder for the new freemapper-print.toml. Created if missing.
 help-init-map = The OOM map file (.omap). The project file stores its path relative to itself.
 help-init-title = Event title on the sheets. The default is the map's file name.
 help-init-kind = Map kind. Needed when no freemapper.toml next to the map names it.
-check-about = Draw every layout of a project without writing a file and list the notes.
-check-after-exit-codes = Exit codes: 0 when no layout has notes (added north lines and an intended crop do not count), 1 when the project cannot be loaded or a layout has notes, 2 when the command line is wrong.
+check-about = Draw every layout of a project, or every course when it has a course file, without writing a file, and list the notes.
+check-after-exit-codes = Exit codes: 0 when no layout or course has notes (notes marked Info do not count), 1 when the project or its course file cannot be loaded or a layout, a course or the course file has notes, 2 when the command line is wrong.
 help-project = The project file freemapper-print.toml, or the folder that holds it.
-export-about = Write one PDF per layout, named after the layout id.
-export-after-exit-codes = Exit codes: 0 when every PDF is written, even with notes, 1 when the project cannot be loaded or a PDF cannot be drawn or written, 2 when the command line is wrong or names an unknown layout.
-help-layout = Export only this layout. Repeat it for more. Without it, export writes every layout.
+export-about = Write one PDF per layout, named after the layout id. With a course file, write one PDF per course, named after the course, on the layout its assignment names.
+export-after-exit-codes = Exit codes: 0 when every PDF is written, even with notes, 1 when the project or its course file cannot be loaded or a PDF cannot be drawn or written, 2 when the command line is wrong or names an unknown layout or course.
+help-layout = Export only this layout, without courses. Repeat it for more. Without it, export writes every layout, or every course when the project has a course file.
+help-course = Export only this course. Repeat it for more. Without it, export writes every course of the course file.
+help-single-file = Write all courses into one PDF, one page each, named after the event title.
 help-out-dir = Folder for the PDFs. It must exist. The default is the folder out next to the project file, created if missing. Export overwrites a PDF of the same name.
 
 ## Errors
@@ -52,6 +54,10 @@ error-title-control = --title must not contain line breaks, tabs or other contro
 error-unknown-layout = the project has no layout { $id }; its layouts are { $known }
 error-out-dir-missing = the folder { $path } for the PDFs does not exist; create it first
 error-sheet = could not draw layout { $layout }
+error-course-sheet = could not draw course { $course }
+error-courses = could not use the course file
+error-unknown-course = the course file has no course { $name }; its courses are { $known }
+error-no-course-file = --course and --single-file need a course file, and the project names none under [sources] courses
 error-disk-full = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and { $available } MB are free
 error-write-file = could not write { $path }
 
@@ -121,6 +127,19 @@ check-clean = Checked { $count ->
        *[other] { $count } layouts
     }, no notes.
 check-with-notes = Layouts with notes: { $count } of { $total }.
+report-course-summary = Wrote { $out } for course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+report-course-page = Page { $page }, course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+report-single-file = Wrote { $out } with { $count ->
+        [one] 1 page
+       *[other] { $count } pages
+    }.
+check-course-summary = Course { $course } on layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+check-courses-clean = Checked { $count ->
+        [one] 1 course
+       *[other] { $count } courses
+    }, no notes.
+check-courses-with-notes = Courses with notes: { $count } of { $total }.
+check-course-file-notes = The course file itself has notes. They are listed before the first course.
 
 ## Sheet notes
 
@@ -199,3 +218,47 @@ error-disk-full-unknown = not enough disk space for { $path }: it needs { $neede
 note-copyright-line-cut = Note: the copyright line "{ $line }" is wider than the map frame and is cut short, ending in "…". Shorten it in the map notes or in print.copyright.
 hint-crop = For a sheet that shows only part of the map, map_frame.centre_map_mm picks the part and map_frame.crop = true marks the cut as intended.
 note-map-cropped = Info: the map is { $cut } for the map frame and is cut there on purpose (map_frame.crop = true).
+
+## Course sheets
+
+note-course-outside-frame = Note: on the sheet of course { $course }, { $count ->
+        [one] control { $controls } lies
+       *[other] controls { $controls } lie
+    } outside the map frame or across its edge. Without map_frame.centre_map_mm the frame centres on the course; larger paper or a print scale with a larger number shows more.
+note-default-layout = Info: course { $course } has no assignment and prints on the first layout, { $layout }.
+note-no-description-box = Note: the sheet of course { $course } has no control description box.
+note-overprint-cut = Note: the course overprint of course { $course } asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
+note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course { $course }, so it prints empty.
+
+## Notes on the course file
+
+note-course-unknown-element = Note: the course file contains the element { $name }, which this version does not read. It is left out.
+note-course-forked = Info: courses { $variants } are the variants of fork { $family }. Each prints as a sheet of its own.
+note-course-alternative-controls = Note: course { $course } offers alternative controls at one stop. This version cannot print that, so the course is left out.
+note-course-notes-truncated = Info: the course file gave more notes than are listed here.
+note-course-white-out = Note: the course file has white-out areas. This version leaves them out; later versions turn them into masks.
+note-course-no-descriptions = Info: the course file has no control descriptions.
+note-course-map-issue-as-start = Info: the map issue point { $code } is used as the start.
+note-course-variations = Note: course { $course } has forks or loops (Purple Pen variations). This version cannot print them, so the course is left out. Purple Pen's IOF XML export writes each variation as a course of its own.
+note-fit-y-up = Info: the course file's y axis points up; the program turned it to match the map.
+note-fit-orientation-assumed = Note: the course fits the map with its y axis pointing up and pointing down, and nothing in the file decides, so the program assumes it points up. Check a sheet, then set course_y_axis = "up" or "down" under [sources] in the project file.
+note-fit-scale-unchecked = Info: the course file states no map scale, so it was not compared with the map's scale.
+note-fit-georef-checked = Info: { $count ->
+        [one] 1 control has
+       *[other] { $count } controls have
+    } a map position and latitude and longitude. They differ by { $metres } m at most.
+note-fit-georef-skipped = Info: latitude and longitude were not checked, because { $reason }.
+fit-skip-not-georeferenced = the map is not georeferenced
+fit-skip-unsupported-crs = the map's coordinate system { $crs } is not UTM, the only one the program supports
+fit-skip-no-lat-lng = no control has both a map position and latitude and longitude
+fit-skip-check-off = the project file switches the check off
+note-fit-georef-check-off = Info: the project file switches the check against latitude and longitude off (course_georef_check = false), so the program ignored them.
+note-fit-placed-by-georef = Info: { $count ->
+        [one] control { $controls } has
+       *[other] controls { $controls } have
+    } only latitude and longitude. The map's georeferencing placed them.
+note-stale-assignment = Note: the project file assigns course { $course } to a layout, but the course file has no such course. The assignment stays in the project file.
+note-stale-correction = Note: the project file corrects the number of control { $control } for { $scope }, but the course file has no such control there. The correction stays in the project file.
+stale-scope-layout = layout { $name }
+stale-scope-course = course { $name }
+note-stale-changed-base = Note: the course file has moved the number of control { $control } since the project file corrected it. Check whether the correction still fits.

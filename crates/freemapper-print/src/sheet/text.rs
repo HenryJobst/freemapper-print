@@ -5,7 +5,7 @@ use crate::project::{Anchor, AnchorTarget, Corner, ElementKind, ElementSpec, She
 use crate::render::fonts::{ASCENT, LINE_SPACING, char_width, face, text_width};
 use crate::render::page::{DirectColour, FillRule, PaperBox, Pt, Shape, SheetItem};
 
-use super::placeholders::{PlaceholderValues, fill};
+use super::placeholders::{PlaceholderValues, fill, mentions};
 use super::{
     FooterContent, MissingItem, PlacedElement, SheetContext, SheetNote, layout, layout_elements,
 };
@@ -141,6 +141,25 @@ pub(super) fn place_text_element(
                 .iter()
                 .map(|template| {
                     let (text, unknown) = fill(template, &values);
+                    if let Some(course) = &values.course {
+                        let empty = [
+                            ("climb_m", &course.climb_m),
+                            ("length_km", &course.length_km),
+                        ];
+                        for (name, value) in empty {
+                            let note = SheetNote::CourseValueUnknown {
+                                course: course.name.clone(),
+                                id: spec.id.clone(),
+                                name: name.to_string(),
+                            };
+                            if value.is_empty()
+                                && mentions(template, name)
+                                && !notes.contains(&note)
+                            {
+                                notes.push(note);
+                            }
+                        }
+                    }
                     for name in unknown {
                         let note = SheetNote::UnknownPlaceholder {
                             id: spec.id.clone(),
@@ -320,12 +339,15 @@ pub(crate) fn map_footer(
 }
 
 fn values(ctx: &SheetContext<'_>) -> PlaceholderValues {
-    PlaceholderValues::new(
-        ctx.project,
-        &ctx.layout.id,
-        ctx.print.print_scale,
-        ctx.map.georef.scale_denominator,
-    )
+    PlaceholderValues {
+        course: ctx.course.cloned(),
+        ..PlaceholderValues::new(
+            ctx.project,
+            &ctx.layout.id,
+            ctx.print.print_scale,
+            ctx.map.georef.scale_denominator,
+        )
+    }
 }
 
 fn credit_text(ctx: &SheetContext<'_>) -> String {

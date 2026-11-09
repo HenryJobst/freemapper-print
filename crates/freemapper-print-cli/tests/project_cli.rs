@@ -766,3 +766,111 @@ fn init_without_fit_warns_and_says_check_will_complain() {
         assert!(err.contains(warning) && err.contains(next), "{lang}: {err}");
     }
 }
+
+// ---- courses ----
+
+const LUEBECK_COURSES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../freemapper-print/tests/fixtures/courses/luebeck-sheets.xml"
+);
+
+/// A project on the Lübeck map with the two courses of `luebeck-sheets.xml`: `Kurz` on the first layout (no
+/// assignment), `D/H 12` assigned to an A3 layout.
+fn course_workspace() -> (Workspace, PathBuf) {
+    let ws = Workspace::new(LUEBECK);
+    std::fs::copy(LUEBECK_COURSES, ws.event().join("c.xml")).unwrap();
+    let text = format!(
+        "format = 1\n[event]\ntitle = \"Lübeck: Training\"\n[sources]\nmap = \"../maps/luebeck.omap\"\n\
+         courses = \"c.xml\"\ncourse_y_axis = \"up\"\n[map]\nkind = \"sprint\"\ncontour_interval_m = 2.0\n{}\
+         {}[[assignments]]\ncourse = \"D/H 12\"\nlayout = \"a3\"\n",
+        BAR,
+        layouts(&[("a4", "A4", "portrait"), ("a3", "A3", "landscape")])
+    );
+    std::fs::write(ws.project_file(), text).unwrap();
+    let path = ws.project_file();
+    (ws, path)
+}
+
+#[test]
+fn export_course_filter_and_single_file() {
+    let (ws, path) = course_workspace();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["export", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let out = ws.event().join("out");
+    assert_eq!(files_in(&out), ["D-H 12.pdf", "Kurz.pdf"]);
+    assert_page_mm(&out.join("Kurz.pdf"), 210.0, 297.0);
+    assert_page_mm(&out.join("D-H 12.pdf"), 420.0, 297.0);
+    assert!(err.contains("for course Kurz on layout a4"), "{err}");
+    assert!(err.contains("course Kurz has no assignment"), "{err}");
+    // The notes of the course file come once, before the courses.
+    assert_eq!(err.matches("not checked").count(), 1, "{err}");
+    // --course picks courses; the rest stays as written.
+    std::fs::remove_dir_all(&out).unwrap();
+    let o = run("de", &["export", p, "--course", "D/H 12"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(files_in(&out), ["D-H 12.pdf"]);
+    assert!(
+        stderr(&o).contains("für Bahn D/H 12 auf Layout a3"),
+        "{}",
+        stderr(&o)
+    );
+    // One PDF with a page per course, named after the event title.
+    let o = run("en", &["export", p, "--single-file"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert_eq!(files_in(&out), ["D-H 12.pdf", "Lübeck- Training.pdf"]);
+    let pdf = std::fs::read(out.join("Lübeck- Training.pdf")).unwrap();
+    assert_eq!(pdf.windows(9).filter(|w| w == b"/MediaBox").count(), 2);
+    assert!(pdf.windows(8).any(|w| w == b"/Count 2"));
+    assert!(
+        err.contains("Page 2, course D/H 12") && err.contains("with 2 pages"),
+        "{err}"
+    );
+    // An unknown course is a usage error that lists the known ones.
+    let o = run("en", &["export", p, "--course", "Lang"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains("Lang") && err.contains("Kurz, D/H 12"),
+        "{err}"
+    );
+    // --layout exports the layout sheets without courses and cannot be combined with --course.
+    std::fs::remove_dir_all(&out).unwrap();
+    let o = run("en", &["export", p, "--layout", "a3"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(files_in(&out), ["a3.pdf"]);
+    let o = run("en", &["export", p, "--layout", "a3", "--course", "Kurz"]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+}
+
+#[test]
+fn check_runs_per_course() {
+    let (ws, path) = course_workspace();
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    // No description box yet: every course has a note.
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("Course Kurz on layout a4"), "{err}");
+    assert!(err.contains("Course D/H 12 on layout a3"), "{err}");
+    assert!(err.contains("Courses with notes: 2 of 2."), "{err}");
+    assert!(!err.contains("Layout a4:"), "{err}");
+    let o = run("de", &["check", path.to_str().unwrap()]);
+    assert!(
+        stderr(&o).contains("Bahnen mit Hinweisen: 2 von 2."),
+        "{}",
+        stderr(&o)
+    );
+    assert_eq!(files_in(&ws.event()), ["c.xml", FILE_NAME]);
+}
+
+#[test]
+fn course_flags_need_a_course_file() {
+    let ws = Workspace::new(LUEBECK);
+    let path = ws.write_project("sprint", "", &layouts(&[("a4", "A4", "portrait")]));
+    let o = run("en", &["export", path.to_str().unwrap(), "--single-file"]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(err.contains("[sources] courses"), "{err}");
+}

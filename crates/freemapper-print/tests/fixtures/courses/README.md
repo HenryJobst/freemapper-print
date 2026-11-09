@@ -1,6 +1,6 @@
 # Course fixtures
 
-All files here are written by hand for freemapper-print on 2026-11-09 (M3 Tasks 2 and 3), following the public IOF
+All files here are written by hand for freemapper-print on 2026-11-09 (M3 Tasks 2, 3 and 7), following the public IOF
 data standard 3.0 `CourseData` structure. They contain made-up data and are released under the same licence as
 this repository.
 
@@ -14,6 +14,7 @@ names source, commit and licence.
 | `y-up.xml` | Two courses; `MapPosition` values with y pointing up, as Purple Pen, Condes and OCAD write them. The reader keeps the values; detection happens later. Also `Position` (lat/lng), length and climb, a crossing point. |
 | `text-position.xml` | A score course with a `MapTextPosition` (an offset from the circle centre) on a control. |
 | `forked.xml` | Two courses of one `CourseFamily` (a fork), a plain course, and a course with alternative controls (a `CourseControl` with two `Control` children). |
+| `luebeck-sheets.xml` | Two courses on `tests/fixtures/maps/luebeck.omap` for course sheets (M3 Task 7), written by hand on 2026-11-09: the controls of `luebeck-georef.xml` without lat/lng (y up, so projects confirm `course_y_axis = "up"`). `Kurz` has no length in the file: its legs measure √13000 + √14500 + √21200 = 380.04 mm, 1520.1 m at 1:4000. `D/H 12` gives `Length` 2100 and `Climb` 25 and has a name that is no file name. |
 | `luebeck-georef.xml` | Course on `tests/fixtures/maps/luebeck.omap` (EPSG:25832) with y-up `MapPosition` and `Position` (lat/lng) on every control; control 33 has only `Position`. See below for how the lat/lng were computed. |
 
 ## How the lat/lng of `luebeck-georef.xml` were computed

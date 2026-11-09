@@ -1,17 +1,22 @@
-//! Export: the layouts of a project as PDFs, one file `<layout id>.pdf` per layout (design §5).
+//! Export: the layouts of a project as PDFs, one file `<layout id>.pdf` per layout (design §5), or, with a
+//! course file, the courses: one PDF `<course>.pdf` per course, or all of them as the pages of one PDF.
 //!
-//! The layouts are drawn and written one after the other. Each page is dropped once its PDF bytes
-//! exist, and the bytes once they are on disk, so memory does not grow with the number of layouts.
-//! The CLI, the MCP server and the editor share this loop.
+//! The sheets are drawn and written one after the other. Each page is dropped once its PDF bytes
+//! exist, and the bytes once they are on disk, so memory does not grow with the number of sheets; a PDF of
+//! several pages keeps only its bytes. The CLI, the MCP server and the editor share these loops.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::omap::MapDocument;
+use crate::course::{Course, LoadedCourses, layout_for};
+use crate::omap::{MapCoord, MapDocument};
 use crate::output::{OutputError, write_pdf_file};
 use crate::project::{LayoutSpec, LoadedProject};
 use crate::render::page::RenderedPage;
-use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
-use crate::sheet::{LogoCache, SheetError, SheetReport, render_sheet};
+use crate::render::pdf::{MultiPagePdf, PdfError, PdfMeta, write_pdf};
+use crate::sheet::{
+    LogoCache, SheetError, SheetReport, course_file_stem, render_course_sheet, render_sheet,
+};
 
 /// A layout id asked for that the project does not have.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -22,8 +27,17 @@ pub struct UnknownLayout {
     pub known: Vec<String>,
 }
 
-/// Why a layout could not be exported. Layouts before it are written already. The message names
-/// the layout; the cause is the `source`, so that a chain of messages names it once.
+/// A course asked for that the course file does not have.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("the course file has no course `{name}`; its courses are {}", known.join(", "))]
+pub struct UnknownCourse {
+    pub name: String,
+    /// The names of the courses, in file order.
+    pub known: Vec<String>,
+}
+
+/// Why a layout or course could not be exported. Sheets before it are written already. The message names
+/// the layout or course; the cause is the `source`, so that a chain of messages names it once.
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
     #[error("could not draw layout `{layout}`")]
@@ -44,6 +58,38 @@ pub enum ExportError {
         #[source]
         error: OutputError,
     },
+    #[error("could not draw course `{course}`")]
+    CourseSheet {
+        course: String,
+        #[source]
+        error: SheetError,
+    },
+    #[error("could not write the PDF page of course `{course}`")]
+    CoursePdf {
+        course: String,
+        #[source]
+        error: PdfError,
+    },
+    /// The course PDF `file` (one course's, or the single file of all) could not be written.
+    #[error("could not write {}", file.display())]
+    CourseWrite {
+        file: PathBuf,
+        #[source]
+        error: OutputError,
+    },
+}
+
+/// One course drawn by [`export_courses`] or [`export_courses_single_file`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportedCourse<'a> {
+    pub course: &'a Course<MapCoord>,
+    /// The layout the course is printed on.
+    pub layout: &'a LayoutSpec,
+    /// The PDF file of the course; for the single file, the file the page goes into.
+    pub path: PathBuf,
+    /// The page number in that file, from 1.
+    pub page: usize,
+    pub report: SheetReport,
 }
 
 /// One layout written by [`export_layouts`].
@@ -140,6 +186,170 @@ pub fn export_layouts<'a>(
         });
     }
     Ok(())
+}
+
+/// The courses named in `names`, in that order and each once; every course in file order when `names` is
+/// empty. Names match exactly.
+pub fn select_courses<'a>(
+    courses: &'a LoadedCourses,
+    names: &[String],
+) -> Result<Vec<&'a Course<MapCoord>>, UnknownCourse> {
+    let all = &courses.event.courses;
+    if names.is_empty() {
+        return Ok(all.iter().collect());
+    }
+    let mut selected: Vec<&Course<MapCoord>> = Vec::new();
+    for name in names {
+        let course = all
+            .iter()
+            .find(|c| &c.name == name)
+            .ok_or_else(|| UnknownCourse {
+                name: name.clone(),
+                known: all.iter().map(|c| c.name.clone()).collect(),
+            })?;
+        if !selected.iter().any(|c| std::ptr::eq(*c, course)) {
+            selected.push(course);
+        }
+    }
+    Ok(selected)
+}
+
+/// The PDF file of each course of the course file, in file order: `<out_dir>/<stem>.pdf` with
+/// [`course_file_stem`]. Stems are made unique over all courses, so a course keeps its file name when
+/// `--course` picks only some.
+pub fn course_pdf_paths(courses: &LoadedCourses, out_dir: &Path) -> Vec<PathBuf> {
+    let mut taken = HashSet::new();
+    courses
+        .event
+        .courses
+        .iter()
+        .map(|c| out_dir.join(format!("{}.pdf", course_file_stem(&c.name, &mut taken))))
+        .collect()
+}
+
+/// The single PDF of all courses: `<out_dir>/<stem>.pdf`, the stem made from the event title as course file
+/// stems are.
+pub fn single_file_path(project: &LoadedProject, out_dir: &Path) -> PathBuf {
+    let stem = course_file_stem(&project.project.event.title, &mut HashSet::new());
+    out_dir.join(format!("{stem}.pdf"))
+}
+
+/// Draws `course` on its layout ([`layout_for`]), counted by [`live_pages`] while it exists.
+fn course_page<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    course: &Course<MapCoord>,
+    logos: &LogoCache,
+) -> Result<(TrackedPage, &'a LayoutSpec, SheetReport), ExportError> {
+    let (layout, _) = layout_for(&project.project, &course.name);
+    let (page, report) = render_course_sheet(project, map, courses, course, layout, logos)
+        .map_err(|error| ExportError::CourseSheet {
+            course: course.name.clone(),
+            error,
+        })?;
+    Ok((TrackedPage::new(page), layout, report))
+}
+
+/// The PDF of one course sheet, in memory, with its layout and its report with the characters the font lacks.
+/// The page is dropped before this returns. `check` uses it without writing anything.
+pub fn course_sheet_pdf<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    course: &Course<MapCoord>,
+    logos: &LogoCache,
+) -> Result<(Vec<u8>, &'a LayoutSpec, SheetReport), ExportError> {
+    let (page, layout, mut report) = course_page(project, map, courses, course, logos)?;
+    let title = format!("{} ({})", project.project.event.title, course.name);
+    let (pdf, info) =
+        write_pdf(&page.page, &PdfMeta::new(&title)).map_err(|error| ExportError::CoursePdf {
+            course: course.name.clone(),
+            error,
+        })?;
+    drop(page);
+    report.print.missing_glyphs = info.missing_glyphs.into_iter().collect();
+    Ok((pdf, layout, report))
+}
+
+/// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist),
+/// each to its file of [`course_pdf_paths`], and hands each written course to `on_course` before the next is
+/// drawn. Stops at the first course that fails; the ones before it stay written.
+pub fn export_courses<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &'a LoadedCourses,
+    selected: &[&'a Course<MapCoord>],
+    out_dir: &Path,
+    mut on_course: impl FnMut(ExportedCourse<'a>),
+) -> Result<(), ExportError> {
+    let logos = LogoCache::new();
+    let paths = course_pdf_paths(courses, out_dir);
+    for &course in selected {
+        let (pdf, layout, report) = course_sheet_pdf(project, map, courses, course, &logos)?;
+        let index = courses
+            .event
+            .courses
+            .iter()
+            .position(|c| std::ptr::eq(c, course))
+            .expect("a selected course is a course of the course file");
+        let path = paths[index].clone();
+        write_pdf_file(&path, &pdf).map_err(|error| ExportError::CourseWrite {
+            file: path.clone(),
+            error,
+        })?;
+        drop(pdf);
+        on_course(ExportedCourse {
+            course,
+            layout,
+            path,
+            page: 1,
+            report,
+        });
+    }
+    Ok(())
+}
+
+/// Draws `selected` one after the other as the pages of one PDF, [`single_file_path`] in `out_dir` (which must
+/// exist), each page on its course's layout and paper. Each page is dropped once it is in the PDF, so only one
+/// is held at a time; the PDF bytes grow until the file is written at the end. `on_course` gets each course
+/// once its page is in the PDF, before the file is written. Returns the file written; nothing is written when
+/// a course fails.
+pub fn export_courses_single_file<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &'a LoadedCourses,
+    selected: &[&'a Course<MapCoord>],
+    out_dir: &Path,
+    mut on_course: impl FnMut(ExportedCourse<'a>),
+) -> Result<PathBuf, ExportError> {
+    let logos = LogoCache::new();
+    let path = single_file_path(project, out_dir);
+    let mut pdf = MultiPagePdf::new();
+    for &course in selected {
+        let (page, layout, mut report) = course_page(project, map, courses, course, &logos)?;
+        let info = pdf
+            .add_page(&page.page)
+            .map_err(|error| ExportError::CoursePdf {
+                course: course.name.clone(),
+                error,
+            })?;
+        drop(page);
+        report.print.missing_glyphs = info.missing_glyphs.into_iter().collect();
+        on_course(ExportedCourse {
+            course,
+            layout,
+            path: path.clone(),
+            page: pdf.len(),
+            report,
+        });
+    }
+    let bytes = pdf.finish(&PdfMeta::new(&project.project.event.title));
+    write_pdf_file(&path, &bytes).map_err(|error| ExportError::CourseWrite {
+        file: path.clone(),
+        error,
+    })?;
+    Ok(path)
 }
 
 /// A rendered page counted by [`live_pages`] while it exists.
@@ -285,6 +495,164 @@ mod tests {
         .unwrap();
         assert_eq!(written, ["a4", "b"]);
         assert_eq!(live_pages::stats().peak_live, 1);
+    }
+
+    const TWO_PAPERS: &str = "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\n\
+        [[layouts]]\nid = \"a3\"\npaper = \"A3\"\norientation = \"landscape\"\nnorth_lines = \"never\"\n\
+        [[assignments]]\ncourse = \"D/H 12\"\nlayout = \"a3\"\n";
+
+    /// The MediaBoxes of a PDF in page order (as written: one per page object).
+    fn media_boxes(pdf: &[u8]) -> Vec<String> {
+        let text = String::from_utf8_lossy(pdf);
+        text.match_indices("/MediaBox [")
+            .map(|(i, _)| {
+                let rest = &text[i + 11..];
+                rest[..rest.find(']').unwrap()].to_string()
+            })
+            .collect()
+    }
+
+    fn page_count(pdf: &[u8]) -> usize {
+        let text = String::from_utf8_lossy(pdf);
+        let i = text.find("/Count ").unwrap() + 7;
+        text[i..]
+            .split(|c: char| !c.is_ascii_digit())
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    const A4_BOX: &str = "0 0 595.2756 841.8898";
+    const A3_LANDSCAPE_BOX: &str = "0 0 1190.5511 841.8898";
+
+    #[test]
+    fn selects_courses_in_the_given_order_once() {
+        let (_d, _p, _m, courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let names =
+            |sel: Vec<&Course<MapCoord>>| sel.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            names(select_courses(&courses, &[]).unwrap()),
+            ["Kurz", "D/H 12"]
+        );
+        let ask = [
+            "D/H 12".to_string(),
+            "Kurz".to_string(),
+            "D/H 12".to_string(),
+        ];
+        assert_eq!(
+            names(select_courses(&courses, &ask).unwrap()),
+            ["D/H 12", "Kurz"]
+        );
+        let err = select_courses(&courses, &["kurz".to_string()]).unwrap_err();
+        assert_eq!(err.known, ["Kurz", "D/H 12"]);
+        assert!(err.to_string().contains("`kurz`"), "{err}");
+    }
+
+    #[test]
+    fn export_per_course() {
+        let (dir, p, map, courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let out = dir.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        let selected = select_courses(&courses, &[]).unwrap();
+        let mut done = Vec::new();
+        export_courses(&p, &map, &courses, &selected, &out, |c| {
+            assert_eq!(c.page, 1);
+            done.push((c.course.name.clone(), c.layout.id.clone(), c.path.clone()));
+        })
+        .unwrap();
+        assert_eq!(
+            done,
+            [
+                ("Kurz".to_string(), "a4".to_string(), out.join("Kurz.pdf")),
+                (
+                    "D/H 12".to_string(),
+                    "a3".to_string(),
+                    out.join("D-H 12.pdf")
+                ),
+            ]
+        );
+        let kurz = std::fs::read(out.join("Kurz.pdf")).unwrap();
+        assert_eq!(page_count(&kurz), 1);
+        assert_eq!(media_boxes(&kurz), [A4_BOX]);
+        assert!(
+            kurz.windows(4).any(|w| w == b"/Mul"),
+            "overprint with Multiply"
+        );
+        let dh = std::fs::read(out.join("D-H 12.pdf")).unwrap();
+        assert_eq!(media_boxes(&dh), [A3_LANDSCAPE_BOX]);
+        // A filtered export keeps the file names.
+        let only = select_courses(&courses, &["D/H 12".to_string()]).unwrap();
+        let mut paths = Vec::new();
+        export_courses(&p, &map, &courses, &only, &out, |c| paths.push(c.path)).unwrap();
+        assert_eq!(paths, [out.join("D-H 12.pdf")]);
+    }
+
+    #[test]
+    fn export_single_file_has_one_page_per_course() {
+        let (dir, p, map, courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let selected = select_courses(&courses, &[]).unwrap();
+        let mut pages = Vec::new();
+        let path = export_courses_single_file(&p, &map, &courses, &selected, dir.path(), |c| {
+            pages.push((c.page, c.course.name.clone(), c.path.clone()));
+        })
+        .unwrap();
+        assert_eq!(path, dir.path().join("Lübeck Training.pdf"));
+        assert_eq!(
+            pages,
+            [
+                (1, "Kurz".to_string(), path.clone()),
+                (2, "D/H 12".to_string(), path.clone())
+            ]
+        );
+        let pdf = std::fs::read(&path).unwrap();
+        assert_eq!(page_count(&pdf), 2);
+        assert_eq!(media_boxes(&pdf), [A4_BOX, A3_LANDSCAPE_BOX]);
+        assert!(!dir.path().join("Kurz.pdf").exists());
+    }
+
+    #[test]
+    fn single_file_holds_one_page_at_a_time() {
+        let (dir, p, map, courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let selected = select_courses(&courses, &[]).unwrap();
+        live_pages::reset();
+        let mut seen = 0;
+        export_courses_single_file(&p, &map, &courses, &selected, dir.path(), |_| {
+            assert_eq!(live_pages::stats().live, 0);
+            seen += 1;
+        })
+        .unwrap();
+        assert_eq!(seen, 2);
+        assert_eq!(live_pages::stats().peak_live, 1);
+        live_pages::reset();
+        export_courses(&p, &map, &courses, &selected, dir.path(), |_| {
+            assert_eq!(live_pages::stats().live, 0);
+        })
+        .unwrap();
+        assert_eq!(live_pages::stats().peak_live, 1);
+    }
+
+    #[test]
+    fn no_course_file_exports_layouts_as_before() {
+        // The minimal project has no course file: the layouts export as in M2, byte for byte as `sheet_pdf`.
+        let p = minimal();
+        let map = crate::omap::read::read_map_file(&p.map_path()).unwrap();
+        assert!(crate::course::load_courses(&p, &map).unwrap().is_none());
+        let dir = tempfile::tempdir().unwrap();
+        let layouts = select_layouts(&p, &[]).unwrap();
+        export_layouts(&p, &map, &layouts, dir.path(), |_| {}).unwrap();
+        let logos = LogoCache::new();
+        for layout in &layouts {
+            let written = std::fs::read(pdf_path(dir.path(), layout)).unwrap();
+            let (pdf, report) = sheet_pdf(&p, &map, layout, &logos).unwrap();
+            assert!(written == pdf, "{}", layout.id);
+            assert!(
+                !report
+                    .notes
+                    .iter()
+                    .any(|n| matches!(n, crate::sheet::SheetNote::NoDescriptionBox { .. }))
+            );
+        }
     }
 
     #[test]

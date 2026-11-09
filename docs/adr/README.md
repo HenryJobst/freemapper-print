@@ -75,3 +75,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0032](0032-course-coordinates-and-the-map.md) | Course coordinates and the map | Accepted | 2026-11-09 |
 | [0033](0033-reading-purple-pen-files.md) | Reading Purple Pen files | Accepted | 2026-11-09 |
 | [0034](0034-overprint-layers-and-blending.md) | Overprint layers and blending | Accepted | 2026-11-09 |
+| [0035](0035-course-sheets-and-export-per-course.md) | Course sheets and export per course | Accepted | 2026-11-09 |

@@ -8,7 +8,14 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
-use freemapper_print::export::{ExportError, export_layouts, select_layouts, sheet_pdf};
+use freemapper_print::course::fit::SkipReason;
+use freemapper_print::course::{
+    CorrectionScope, CourseNote, FitNote, LoadedCourses, Stale, load_courses,
+};
+use freemapper_print::export::{
+    ExportError, course_sheet_pdf, export_courses, export_courses_single_file, export_layouts,
+    select_courses, select_layouts, sheet_pdf,
+};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::output::OutputError;
@@ -17,7 +24,7 @@ use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, She
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
     FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, SheetNote,
-    SheetReport,
+    SheetReport, course_event_notes,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -76,8 +83,12 @@ struct CheckArgs {
 #[derive(Args)]
 struct ExportArgs {
     project: PathBuf,
-    #[arg(long = "layout", value_name = "ID")]
+    #[arg(long = "layout", value_name = "ID", conflicts_with_all = ["course", "single_file"])]
     layout: Vec<String>,
+    #[arg(long = "course", value_name = "NAME")]
+    course: Vec<String>,
+    #[arg(long)]
+    single_file: bool,
     #[arg(long, value_name = "DIR")]
     out_dir: Option<PathBuf>,
 }
@@ -474,7 +485,7 @@ fn check_lines(
             let head = summary_line(
                 texts,
                 "check-summary",
-                ("layout", printable(&layout.id)),
+                &[("layout", printable(&layout.id))],
                 layout.paper,
                 &report.print,
                 map.georef.scale_denominator,
@@ -494,6 +505,9 @@ fn check_lines(
 fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     let loaded = load_project(texts, &args.project)?;
     let map = read_map(texts, &loaded.map_path())?;
+    if let Some(courses) = read_courses(texts, &loaded, &map)? {
+        return Ok(check_courses(texts, &loaded, &map, &courses));
+    }
     let total = loaded.project.layouts.len();
     let mut with_notes = 0;
     // One logo cache for all layouts: each logo file is decoded once.
@@ -524,6 +538,87 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     }
 }
 
+/// The course file of the project, read and fitted to `map`; `None` when the project names none.
+fn read_courses(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    map: &MapDocument,
+) -> anyhow::Result<Option<LoadedCourses>> {
+    load_courses(loaded, map).context(texts.plain("error-courses"))
+}
+
+/// Prints the notes of the course file as a whole and returns whether one of them is a warning.
+fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
+    let notes = course_event_notes(courses);
+    for note in &notes {
+        eprintln!("{}", sheet_note_line(texts, note));
+    }
+    notes.iter().any(|n| !n.is_info())
+}
+
+/// `check` with a course file: the notes of the file once, then every course on its layout. Returns the exit
+/// code: 1 when the file or a course has notes that count.
+fn check_courses(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+) -> u8 {
+    let file_notes = print_course_file_notes(texts, courses);
+    let logos = LogoCache::new();
+    let total = courses.event.courses.len();
+    let mut with_notes = 0;
+    // Every course is checked, also after one that cannot be drawn.
+    for course in &courses.event.courses {
+        let (lines, has_notes) = match course_sheet_pdf(loaded, map, courses, course, &logos) {
+            Ok((_, layout, report)) => {
+                let head = summary_line(
+                    texts,
+                    "check-course-summary",
+                    &[
+                        ("course", printable(&course.name)),
+                        ("layout", printable(&layout.id)),
+                    ],
+                    layout.paper,
+                    &report.print,
+                    map.georef.scale_denominator,
+                );
+                layout_lines(texts, head, layout, &report, loaded.project.map.kind)
+            }
+            Err(err) => {
+                let message = printable(&format!("{:#}", export_error(texts, err)));
+                (
+                    vec![texts.get("error-line", Some(&args!("message" => message)))],
+                    true,
+                )
+            }
+        };
+        for line in lines {
+            eprintln!("{line}");
+        }
+        with_notes += usize::from(has_notes);
+    }
+    if file_notes {
+        eprintln!("{}", texts.plain("check-course-file-notes"));
+    }
+    if with_notes == 0 && !file_notes {
+        eprintln!(
+            "{}",
+            texts.get("check-courses-clean", Some(&args!("count" => total)))
+        );
+        0
+    } else {
+        eprintln!(
+            "{}",
+            texts.get(
+                "check-courses-with-notes",
+                Some(&args!("count" => with_notes, "total" => total))
+            )
+        );
+        1
+    }
+}
+
 fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
     let loaded = load_project(texts, &args.project)?;
     let layouts = select_layouts(&loaded, &args.layout).map_err(|unknown| {
@@ -534,7 +629,105 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
         ))
     })?;
     let map = read_map(texts, &loaded.map_path())?;
-    let out_dir = match &args.out_dir {
+    // `--layout` exports the layouts as such, without courses, also when the project has a course file.
+    let courses = if args.layout.is_empty() {
+        read_courses(texts, &loaded, &map)?
+    } else {
+        None
+    };
+    if courses.is_none() && (!args.course.is_empty() || args.single_file) {
+        return Err(UsageError(texts.plain("error-no-course-file")).into());
+    }
+    let selected = match &courses {
+        Some(courses) => Some(select_courses(courses, &args.course).map_err(|unknown| {
+            let known: Vec<String> = unknown.known.iter().map(|n| printable(n)).collect();
+            UsageError(texts.get(
+                "error-unknown-course",
+                Some(&args!("name" => printable(&unknown.name), "known" => known.join(", "))),
+            ))
+        })?),
+        None => None,
+    };
+    let out_dir = out_dir(texts, args, &loaded)?;
+    let map_scale = map.georef.scale_denominator;
+    let kind = loaded.project.map.kind;
+    match (&courses, selected) {
+        (Some(courses), Some(selected)) => {
+            print_course_file_notes(texts, courses);
+            let print = |id: &str, out: String, done: &freemapper_print::export::ExportedCourse| {
+                let head = summary_line(
+                    texts,
+                    id,
+                    &[
+                        ("out", out),
+                        ("course", printable(&done.course.name)),
+                        ("layout", printable(&done.layout.id)),
+                        ("page", done.page.to_string()),
+                    ],
+                    done.layout.paper,
+                    &done.report.print,
+                    map_scale,
+                );
+                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
+                    eprintln!("{line}");
+                }
+            };
+            if args.single_file {
+                let mut count = 0;
+                let path = export_courses_single_file(
+                    &loaded,
+                    &map,
+                    courses,
+                    &selected,
+                    &out_dir,
+                    |done| {
+                        count += 1;
+                        print("report-course-page", String::new(), &done);
+                    },
+                )
+                .map_err(|err| export_error(texts, err))?;
+                eprintln!(
+                    "{}",
+                    texts.get(
+                        "report-single-file",
+                        Some(&args!("out" => path.display().to_string(), "count" => count))
+                    )
+                );
+            } else {
+                export_courses(&loaded, &map, courses, &selected, &out_dir, |done| {
+                    print(
+                        "report-course-summary",
+                        done.path.display().to_string(),
+                        &done,
+                    );
+                })
+                .map_err(|err| export_error(texts, err))?;
+            }
+        }
+        _ => {
+            export_layouts(&loaded, &map, &layouts, &out_dir, |done| {
+                let head = summary_line(
+                    texts,
+                    "report-summary",
+                    &[("out", done.path.display().to_string())],
+                    done.layout.paper,
+                    &done.report.print,
+                    map_scale,
+                );
+                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
+                    eprintln!("{line}");
+                }
+            })
+            .map_err(|err| export_error(texts, err))?;
+        }
+    }
+    eprintln!("{}", texts.plain("reminder-actual-size"));
+    Ok(0)
+}
+
+/// The output folder: `--out-dir`, which must exist, else `out` next to the project file, created if missing.
+fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::Result<PathBuf> {
+    match &args.out_dir {
         Some(dir) => {
             if !dir.is_dir() {
                 bail!(texts.get(
@@ -542,7 +735,7 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                     Some(&args!("path" => dir.display().to_string()))
                 ));
             }
-            dir.clone()
+            Ok(dir.clone())
         }
         None => {
             let dir = loaded.dir.join("out");
@@ -552,27 +745,9 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                     Some(&args!("path" => dir.display().to_string())),
                 )
             })?;
-            dir
+            Ok(dir)
         }
-    };
-    let map_scale = map.georef.scale_denominator;
-    let kind = loaded.project.map.kind;
-    export_layouts(&loaded, &map, &layouts, &out_dir, |done| {
-        let head = summary_line(
-            texts,
-            "report-summary",
-            ("out", done.path.display().to_string()),
-            done.layout.paper,
-            &done.report.print,
-            map_scale,
-        );
-        for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
-            eprintln!("{line}");
-        }
-    })
-    .map_err(|err| export_error(texts, err))?;
-    eprintln!("{}", texts.plain("reminder-actual-size"));
-    Ok(0)
+    }
 }
 
 /// The message for a full disk, translated whole. `available` is `None` when the volume did not
@@ -615,6 +790,15 @@ fn export_error(texts: &Texts, err: ExportError) -> anyhow::Error {
         ExportError::Sheet { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
         ExportError::Pdf { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
         ExportError::Write { error, .. } => output_error(texts, error),
+        ExportError::CourseSheet { course, error } => anyhow::Error::new(error).context(texts.get(
+            "error-course-sheet",
+            Some(&args!("course" => printable(&course))),
+        )),
+        ExportError::CoursePdf { course, error } => anyhow::Error::new(error).context(texts.get(
+            "error-course-sheet",
+            Some(&args!("course" => printable(&course))),
+        )),
+        ExportError::CourseWrite { error, .. } => output_error(texts, error),
     }
 }
 
@@ -701,12 +885,12 @@ fn join_and(texts: &Texts, mut items: Vec<String>) -> String {
     }
 }
 
-/// The first line about a printed page: message `id` with `key` (the PDF path or the layout id)
+/// The first line about a printed page: message `id` with `keys` (the PDF path, the layout id, the course)
 /// and the page size, scales and factors.
 fn summary_line(
     texts: &Texts,
     id: &str,
-    key: (&'static str, String),
+    keys: &[(&'static str, String)],
     paper: Paper,
     report: &PrintReport,
     map_scale: u32,
@@ -725,7 +909,9 @@ fn summary_line(
         "geometry" => texts.decimal(&format!("{:.3}", report.geometry_factor)),
         "symbol" => texts.decimal(&format!("{:.3}", report.symbol_factor)),
     );
-    a.set(key.0, key.1);
+    for (key, value) in keys {
+        a.set(*key, value.clone());
+    }
     texts.get(id, Some(&a))
 }
 
@@ -742,7 +928,7 @@ fn report_lines(
     let mut lines = vec![summary_line(
         texts,
         "report-summary",
-        ("out", out.display().to_string()),
+        &[("out", out.display().to_string())],
         paper.into(),
         report,
         map_scale,
@@ -885,6 +1071,133 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
         SheetNote::CreditLineMoved { id } => texts.get(
             "note-credit-line-moved",
             Some(&args!("id" => printable(id))),
+        ),
+        SheetNote::CourseOutsideFrame { course, controls } => texts.get(
+            "note-course-outside-frame",
+            Some(&args!(
+                "course" => printable(course),
+                "controls" => printable(&controls.join(", ")),
+                "count" => controls.len(),
+            )),
+        ),
+        SheetNote::DefaultLayout { course, layout } => texts.get(
+            "note-default-layout",
+            Some(&args!("course" => printable(course), "layout" => printable(layout))),
+        ),
+        SheetNote::NoDescriptionBox { course } => texts.get(
+            "note-no-description-box",
+            Some(&args!("course" => printable(course))),
+        ),
+        SheetNote::OverprintCut { course } => texts.get(
+            "note-overprint-cut",
+            Some(&args!("course" => printable(course))),
+        ),
+        SheetNote::CourseValueUnknown { course, id, name } => texts.get(
+            "note-course-value-unknown",
+            Some(&args!(
+                "course" => printable(course),
+                "id" => printable(id),
+                "name" => format!("{{{name}}}"),
+            )),
+        ),
+        SheetNote::Course(note) => course_note_line(texts, note),
+        SheetNote::Fit(note) => fit_note_line(texts, note),
+        SheetNote::Stale(stale) => stale_line(texts, stale),
+    }
+}
+
+/// The message for a note of the course reader. No wildcard arm, as for sheet notes.
+fn course_note_line(texts: &Texts, note: &CourseNote) -> String {
+    match note {
+        CourseNote::UnknownElement(name) => texts.get(
+            "note-course-unknown-element",
+            Some(&args!("name" => printable(name))),
+        ),
+        CourseNote::Forked { family, variants } => texts.get(
+            "note-course-forked",
+            Some(&args!(
+                "family" => printable(family),
+                "variants" => printable(&variants.join(", ")),
+            )),
+        ),
+        CourseNote::AlternativeControls(course) => texts.get(
+            "note-course-alternative-controls",
+            Some(&args!("course" => printable(course))),
+        ),
+        CourseNote::NotesTruncated => texts.plain("note-course-notes-truncated"),
+        CourseNote::WhiteOutLaterInM4 => texts.plain("note-course-white-out"),
+        CourseNote::NoDescriptions => texts.plain("note-course-no-descriptions"),
+        CourseNote::MapIssueAsStart(code) => texts.get(
+            "note-course-map-issue-as-start",
+            Some(&args!("code" => printable(code))),
+        ),
+        CourseNote::Variations(course) => texts.get(
+            "note-course-variations",
+            Some(&args!("course" => printable(course))),
+        ),
+    }
+}
+
+/// The message for a note of fitting the course file to the map. No wildcard arm.
+fn fit_note_line(texts: &Texts, note: &FitNote) -> String {
+    match note {
+        FitNote::YUpDetected => texts.plain("note-fit-y-up"),
+        FitNote::OrientationAssumed => texts.plain("note-fit-orientation-assumed"),
+        FitNote::ScaleUnchecked => texts.plain("note-fit-scale-unchecked"),
+        FitNote::GeorefChecked { controls, metres } => texts.get(
+            "note-fit-georef-checked",
+            Some(&args!(
+                "count" => *controls,
+                "metres" => texts.decimal(&format!("{metres:.1}")),
+            )),
+        ),
+        FitNote::GeorefSkipped(reason) => {
+            let reason = match reason {
+                SkipReason::NotGeoreferenced => texts.plain("fit-skip-not-georeferenced"),
+                SkipReason::UnsupportedCrs(crs) => texts.get(
+                    "fit-skip-unsupported-crs",
+                    Some(&args!("crs" => printable(crs))),
+                ),
+                SkipReason::NoLatLng => texts.plain("fit-skip-no-lat-lng"),
+                SkipReason::CheckOff => texts.plain("fit-skip-check-off"),
+            };
+            texts.get("note-fit-georef-skipped", Some(&args!("reason" => reason)))
+        }
+        FitNote::GeorefCheckOff => texts.plain("note-fit-georef-check-off"),
+        FitNote::PlacedByGeoref(controls) => texts.get(
+            "note-fit-placed-by-georef",
+            Some(&args!(
+                "controls" => printable(&controls.join(", ")),
+                "count" => controls.len(),
+            )),
+        ),
+    }
+}
+
+/// The message for an entry of the project file that no longer matches the course file. No wildcard arm.
+fn stale_line(texts: &Texts, stale: &Stale) -> String {
+    match stale {
+        Stale::Assignment { course } => texts.get(
+            "note-stale-assignment",
+            Some(&args!("course" => printable(course))),
+        ),
+        Stale::Correction { control, scope } => {
+            let scope = match scope {
+                CorrectionScope::Layout(l) => {
+                    texts.get("stale-scope-layout", Some(&args!("name" => printable(l))))
+                }
+                CorrectionScope::Course(c) => {
+                    texts.get("stale-scope-course", Some(&args!("name" => printable(c))))
+                }
+            };
+            texts.get(
+                "note-stale-correction",
+                Some(&args!("control" => printable(control), "scope" => scope)),
+            )
+        }
+        Stale::CorrectionOverridesChangedBase { control } => texts.get(
+            "note-stale-changed-base",
+            Some(&args!("control" => printable(control))),
         ),
     }
 }
@@ -1142,6 +1455,8 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 ))
                 .mut_arg("project", |a| a.help(texts.plain("help-project")))
                 .mut_arg("layout", |a| a.help(texts.plain("help-layout")))
+                .mut_arg("course", |a| a.help(texts.plain("help-course")))
+                .mut_arg("single_file", |a| a.help(texts.plain("help-single-file")))
                 .mut_arg("out_dir", |a| a.help(texts.plain("help-out-dir")))
         })
 }
@@ -1401,6 +1716,120 @@ mod tests {
             (
                 SheetNote::MissingScaleCheckBar { layout: s("L1") },
                 vec!["L1", "scale_check_bar"],
+            ),
+            (
+                SheetNote::CourseOutsideFrame {
+                    course: s("D/H 12"),
+                    controls: vec![s("31"), s("47")],
+                },
+                vec!["D/H 12", "31, 47", "map_frame.centre_map_mm"],
+            ),
+            (
+                SheetNote::DefaultLayout {
+                    course: s("Kurz"),
+                    layout: s("a4"),
+                },
+                vec!["Kurz", "a4"],
+            ),
+            (
+                SheetNote::NoDescriptionBox { course: s("Kurz") },
+                vec!["Kurz"],
+            ),
+            (SheetNote::OverprintCut { course: s("Kurz") }, vec!["Kurz"]),
+            (
+                SheetNote::CourseValueUnknown {
+                    course: s("Kurz"),
+                    id: s("t1"),
+                    name: s("climb_m"),
+                },
+                vec!["Kurz", "t1", "{climb_m}"],
+            ),
+            (
+                SheetNote::Course(CourseNote::UnknownElement(s("Gizmo"))),
+                vec!["Gizmo"],
+            ),
+            (
+                SheetNote::Course(CourseNote::Forked {
+                    family: s("Staffel"),
+                    variants: vec![s("A1"), s("A2")],
+                }),
+                vec!["Staffel", "A1, A2"],
+            ),
+            (
+                SheetNote::Course(CourseNote::AlternativeControls(s("Lang"))),
+                vec!["Lang"],
+            ),
+            (SheetNote::Course(CourseNote::NotesTruncated), vec![]),
+            (SheetNote::Course(CourseNote::WhiteOutLaterInM4), vec![]),
+            (SheetNote::Course(CourseNote::NoDescriptions), vec![]),
+            (
+                SheetNote::Course(CourseNote::MapIssueAsStart(s("ISSUE1"))),
+                vec!["ISSUE1"],
+            ),
+            (
+                SheetNote::Course(CourseNote::Variations(s("Schleife"))),
+                vec!["Schleife"],
+            ),
+            (SheetNote::Fit(FitNote::YUpDetected), vec![]),
+            (
+                SheetNote::Fit(FitNote::OrientationAssumed),
+                vec!["course_y_axis", "[sources]"],
+            ),
+            (SheetNote::Fit(FitNote::ScaleUnchecked), vec![]),
+            (
+                SheetNote::Fit(FitNote::GeorefChecked {
+                    controls: 4,
+                    metres: 3.25,
+                }),
+                vec!["4", "3"],
+            ),
+            (
+                SheetNote::Fit(FitNote::GeorefSkipped(SkipReason::NotGeoreferenced)),
+                vec![],
+            ),
+            (
+                SheetNote::Fit(FitNote::GeorefSkipped(SkipReason::UnsupportedCrs(s(
+                    "EPSG:31467",
+                )))),
+                vec!["EPSG:31467", "UTM"],
+            ),
+            (
+                SheetNote::Fit(FitNote::GeorefSkipped(SkipReason::NoLatLng)),
+                vec![],
+            ),
+            (
+                SheetNote::Fit(FitNote::GeorefSkipped(SkipReason::CheckOff)),
+                vec![],
+            ),
+            (
+                SheetNote::Fit(FitNote::GeorefCheckOff),
+                vec!["course_georef_check"],
+            ),
+            (
+                SheetNote::Fit(FitNote::PlacedByGeoref(vec![s("33")])),
+                vec!["33"],
+            ),
+            (
+                SheetNote::Stale(Stale::Assignment { course: s("Alt") }),
+                vec!["Alt"],
+            ),
+            (
+                SheetNote::Stale(Stale::Correction {
+                    control: s("47"),
+                    scope: CorrectionScope::Layout(s("a3")),
+                }),
+                vec!["47", "a3"],
+            ),
+            (
+                SheetNote::Stale(Stale::Correction {
+                    control: s("48"),
+                    scope: CorrectionScope::Course(s("Kurz")),
+                }),
+                vec!["48", "Kurz"],
+            ),
+            (
+                SheetNote::Stale(Stale::CorrectionOverridesChangedBase { control: s("49") }),
+                vec!["49"],
             ),
         ];
         for lang in text::available() {

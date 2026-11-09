@@ -1,6 +1,7 @@
 //! Placeholders in sheet texts: `{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`,
-//! `{contour_interval}` and `{layout}`. A name that is none of these stays as written and is
-//! reported; the placeholders of the courses (`{course}`, M3) are unknown until then.
+//! `{contour_interval}` and `{layout}`, and on a course sheet also `{course}`, `{length_km}`, `{climb_m}` and
+//! `{controls}`. A name that is none of these stays as written and is reported; so do the course placeholders
+//! on a sheet without a course.
 
 use toml::value::Date;
 
@@ -22,6 +23,55 @@ pub struct PlaceholderValues {
     pub map_scale: String,
     pub contour_interval: String,
     pub layout: String,
+    /// The course of a course sheet; `None` on a layout sheet, where the course placeholders are unknown.
+    pub course: Option<CourseValues>,
+}
+
+/// What the course placeholders stand for on one course sheet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseValues {
+    /// `{course}`: the course name.
+    pub name: String,
+    /// `{length_km}`: the length in km with one decimal (`3,4` on German sheets); empty when unknown.
+    pub length_km: String,
+    /// `{climb_m}`: the climb in whole metres; empty when the course file gives none.
+    pub climb_m: String,
+    /// `{controls}`: the number of controls, start and finish not counted.
+    pub controls: String,
+}
+
+impl CourseValues {
+    /// The values of a course: `length_m` and `climb_m` in metres when known, `controls` counted without start
+    /// and finish.
+    pub fn new(
+        name: &str,
+        length_m: Option<f64>,
+        climb_m: Option<f64>,
+        controls: usize,
+        lang: SheetLang,
+    ) -> Self {
+        CourseValues {
+            name: name.to_string(),
+            length_km: length_m
+                .filter(|m| m.is_finite())
+                .map(|m| format_km(m, lang))
+                .unwrap_or_default(),
+            climb_m: climb_m
+                .filter(|m| m.is_finite())
+                .map(|m| format!("{}", m.round().max(0.0) as u64))
+                .unwrap_or_default(),
+            controls: controls.to_string(),
+        }
+    }
+}
+
+/// `3400` m as `3,4` on German sheets and `3.4` on English ones: km with one decimal.
+pub fn format_km(metres: f64, lang: SheetLang) -> String {
+    let number = format!("{:.1}", metres / 1000.0);
+    match lang {
+        SheetLang::De => number.replace('.', ","),
+        SheetLang::En => number,
+    }
 }
 
 impl PlaceholderValues {
@@ -44,6 +94,7 @@ impl PlaceholderValues {
                 .map(|m| format_contour_interval(m, lang))
                 .unwrap_or_default(),
             layout: layout_id.to_string(),
+            course: None,
         }
     }
 
@@ -56,6 +107,10 @@ impl PlaceholderValues {
             "map_scale" => &self.map_scale,
             "contour_interval" => &self.contour_interval,
             "layout" => &self.layout,
+            "course" => &self.course.as_ref()?.name,
+            "length_km" => &self.course.as_ref()?.length_km,
+            "climb_m" => &self.course.as_ref()?.climb_m,
+            "controls" => &self.course.as_ref()?.controls,
             _ => return None,
         })
     }
@@ -159,7 +214,38 @@ mod tests {
             map_scale: "15\u{202f}000".into(),
             contour_interval: "2,5 m".into(),
             layout: "a4".into(),
+            course: None,
         }
+    }
+
+    #[test]
+    fn course_placeholders_only_on_course_sheets() {
+        let mut v = values();
+        let (_, unknown) = fill("{course} {length_km} {climb_m} {controls}", &v);
+        assert_eq!(unknown, ["course", "length_km", "climb_m", "controls"]);
+        v.course = Some(CourseValues::new(
+            "Lang",
+            Some(3449.0),
+            Some(85.4),
+            12,
+            SheetLang::De,
+        ));
+        let (text, unknown) = fill(
+            "{course}: {length_km} km, {climb_m} m, {controls} Posten",
+            &v,
+        );
+        assert_eq!(text, "Lang: 3,4 km, 85 m, 12 Posten");
+        assert!(unknown.is_empty());
+        v.course = Some(CourseValues::new(
+            "Long",
+            Some(3450.1),
+            None,
+            3,
+            SheetLang::En,
+        ));
+        assert_eq!(fill("{length_km}|{climb_m}", &v).0, "3.5|");
+        v.course = Some(CourseValues::new("Score", None, None, 0, SheetLang::En));
+        assert_eq!(fill("{length_km}|{controls}", &v).0, "|0");
     }
 
     #[test]

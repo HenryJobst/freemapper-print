@@ -21,6 +21,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   `[[assignments]]` gives a course a layout; a course without one takes the first layout. `[[numbers]]` corrects
   the position of a control number per layout or per course. If the course file no longer has a course or
   control that the project file names, the entry stays and `check` reports it; the other courses still load.
+- One sheet per course. When the project has a course file, `export` writes one PDF per course, on the layout
+  its assignment names, with the course overprint in purple. The file is named after the course; characters a
+  file name cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm`
+  the map frame centres on the course. `--course <NAME>` (repeatable) exports only those courses.
+  `--single-file` writes all courses into one PDF named after the event, one page per course on its own
+  paper. `--layout` still exports a layout without courses. Texts can use `{course}`, `{length_km}`,
+  `{climb_m}` and `{controls}`. `check` checks every course and reports controls outside the map frame. Until
+  the control description box arrives it also notes that the sheet has none. Projects without a course file
+  export as before (ADR 0035).
 
 ### Fixed
 

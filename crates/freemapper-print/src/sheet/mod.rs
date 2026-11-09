@@ -4,6 +4,7 @@
 //! the page minus the passe-partout. The sheet layer on top holds the frame line and the sheet
 //! elements, each hung on an [`Anchor`](crate::project::Anchor) of the page or of the map frame.
 
+pub(crate) mod course_sheet;
 pub mod layout;
 mod logo;
 mod north_lines;
@@ -15,6 +16,7 @@ mod text;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use crate::course::{CourseNote, FitNote, Stale};
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
@@ -24,6 +26,9 @@ use crate::project::{
 use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem};
 use crate::render::symbols::{Cap, Join};
 
+pub use course_sheet::{
+    course_centre, course_event_notes, course_file_stem, course_length_m, render_course_sheet,
+};
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
 pub use reasons::{LogoSimplification, LogoSkipReason, MissingItem};
@@ -39,8 +44,7 @@ pub struct SheetReport {
 
 impl SheetReport {
     /// Whether the user should look at the sheet: any note of the print report, or any sheet
-    /// note but [`SheetNote::NorthLinesAdded`] and [`SheetNote::MapCropped`], which only inform.
-    /// `check` fails on this.
+    /// note that is not [`SheetNote::is_info`]. `check` fails on this.
     pub fn needs_attention(&self) -> bool {
         self.print.has_notes() || self.notes.iter().any(|n| !n.is_info())
     }
@@ -121,16 +125,55 @@ pub enum SheetNote {
     /// The `credit_line` element would not lie wholly on the page, so the credit line stays in
     /// the default footer (ADR 0029).
     CreditLineMoved { id: String },
+    /// These controls of the course (codes, each once, in course order) lie outside the map frame, wholly or in
+    /// part: their circles are cut off or missing.
+    CourseOutsideFrame {
+        course: String,
+        controls: Vec<String>,
+    },
+    /// The course has no assignment in the project file and prints on the first layout. Informs only.
+    DefaultLayout { course: String, layout: String },
+    /// The course sheet has no control description box.
+    NoDescriptionBox { course: String },
+    /// A limit ([`crate::overprint::MAX_REPEATS`]) left out hatch lines, dashes or crosses of the course
+    /// overprint.
+    OverprintCut { course: String },
+    /// The text `id` uses the placeholder `name` (`climb_m` or `length_km`), but the course file gives no value
+    /// for the course, so it prints empty. Informs only.
+    CourseValueUnknown {
+        course: String,
+        id: String,
+        name: String,
+    },
+    /// What the course reader found but does not support.
+    Course(CourseNote),
+    /// What fitting the course file to the map found out.
+    Fit(FitNote),
+    /// An entry of the project file that no longer matches the course file.
+    Stale(Stale),
 }
 
 impl SheetNote {
     /// Whether the note only informs: it does not count toward `check`'s exit code, and the CLI
     /// marks it "Info:" instead of "Note:".
     pub fn is_info(&self) -> bool {
-        matches!(
-            self,
-            SheetNote::NorthLinesAdded { .. } | SheetNote::MapCropped { .. }
-        )
+        match self {
+            SheetNote::NorthLinesAdded { .. }
+            | SheetNote::MapCropped { .. }
+            | SheetNote::DefaultLayout { .. }
+            | SheetNote::CourseValueUnknown { .. } => true,
+            // A course note informs unless something of the course file is left out of the print.
+            SheetNote::Course(note) => !matches!(
+                note,
+                CourseNote::WhiteOutLaterInM4
+                    | CourseNote::AlternativeControls(_)
+                    | CourseNote::Variations(_)
+                    | CourseNote::UnknownElement(_)
+            ),
+            SheetNote::Fit(note) => !note.is_warning(),
+            SheetNote::Stale(stale) => !stale.is_warning(),
+            _ => false,
+        }
     }
 }
 
@@ -159,6 +202,8 @@ pub struct SheetContext<'a> {
     pub logos: &'a LogoCache,
     /// What the logos of this sheet have used of its budget.
     pub logo_budget: &'a LogoBudget,
+    /// The course placeholders of a course sheet; `None` on a layout sheet.
+    pub course: Option<&'a placeholders::CourseValues>,
 }
 
 /// An element as drawn: its sheet items in paint order and the box they cover on the page.
@@ -182,6 +227,19 @@ pub fn render_sheet(
     layout: &LayoutSpec,
     logos: &LogoCache,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
+    render_body(project, map, layout, logos, None, None)
+}
+
+/// The sheet of [`render_sheet`], also for a course sheet: `course` fills the course placeholders, and `centre`
+/// (map coordinates) goes to the centre of the map frame when the layout sets no `centre_map_mm`.
+fn render_body(
+    project: &LoadedProject,
+    map: &MapDocument,
+    layout: &LayoutSpec,
+    logos: &LogoCache,
+    course: Option<&placeholders::CourseValues>,
+    centre: Option<MapCoord>,
+) -> Result<(RenderedPage, SheetReport), SheetError> {
     let mut notes = Vec::new();
     if layout::larger_than_a3(layout.paper) {
         notes.push(SheetNote::LargerThanA3);
@@ -194,7 +252,11 @@ pub fn render_sheet(
         kind: project.project.map.kind,
         paper: layout.paper,
         orientation: layout.orientation,
-        centre: layout.map_frame.centre_map_mm.map(oom_display_to_map),
+        centre: layout
+            .map_frame
+            .centre_map_mm
+            .map(oom_display_to_map)
+            .or(centre),
         show_sheet_objects: false,
         frame_margin_mm: Some(layout.map_frame.margin_mm),
     };
@@ -233,6 +295,7 @@ pub fn render_sheet(
         frame,
         logos,
         logo_budget: &logo_budget,
+        course,
     };
     // The credit line goes on top of everything else, so no element can hide it.
     let mut credit_lines = Vec::new();

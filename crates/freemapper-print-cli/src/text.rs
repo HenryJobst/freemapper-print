@@ -328,6 +328,17 @@ mod tests {
             "content",
             "width",
             "height",
+            "course",
+            "controls",
+            "variants",
+            "family",
+            "code",
+            "metres",
+            "reason",
+            "crs",
+            "control",
+            "scope",
+            "page",
         ] {
             args.set(name, FluentValue::from("sample"));
         }
