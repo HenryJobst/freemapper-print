@@ -820,12 +820,16 @@ fn luebeck_lower_purple_under_black_over_every_fill() {
             (29, "Black for open land".to_string()),
         ]
     );
-    // Only painted colours count: 2 (Black 100%), 10 (Black 50%, buildings), 14 (Lower brown 30%, roads),
-    // 15 and 16. Of these only Black 100% has a canonical name, so the lower purple goes right under it,
-    // over every fill. Blue 100% (7) and Brown 100% (8) are in the colour table but paint nothing here.
+    // Only painted colours count: 2 (Black 100%), 10 (Black 50%, buildings), 11 (Black 20%, canopies
+    // 522), 14 (Lower brown 30%, roads), 15, 16, 30 (Yellow 100%, open land 401) and 32 (the base area
+    // 990, ADR 0044). Of these only Black 100% has a canonical name, so the lower purple goes right under
+    // it, over every fill. Blue 100% (7) and Brown 100% (8) are in the colour table but paint nothing here.
     let painted: std::collections::BTreeSet<i32> =
         page.primitives.iter().map(|p| p.priority).collect();
-    assert_eq!(painted.into_iter().collect::<Vec<_>>(), [2, 10, 14, 15, 16]);
+    assert_eq!(
+        painted.into_iter().collect::<Vec<_>>(),
+        [2, 10, 11, 14, 15, 16, 30, 32]
+    );
     let o = on_map(
         Overprint::default(),
         IOF_PURPLE,
@@ -836,9 +840,12 @@ fn luebeck_lower_purple_under_black_over_every_fill() {
     let below = o.below_priority.unwrap();
     for (priority, what) in [
         (10, "Black 50%"),
+        (11, "Black 20%"),
         (14, "Lower brown 30%"),
         (15, "Black below lower light brown"),
         (16, "Blue 100% for area features"),
+        (30, "Yellow 100%"),
+        (32, "Lower brown 30% for walkable area"),
     ] {
         assert!(priority > below, "{what} lies under the lower purple");
     }

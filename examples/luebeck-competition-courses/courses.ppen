@@ -72,9 +72,9 @@
   </control>
   <control id="12" kind="normal">
     <code>36</code>
-    <location x="116.97" y="-63.06" />
-    <description box="D" iof-2004-ref="5.2" />
-    <description box="F" iof-2004-ref="10.2" />
+    <location x="103.834" y="-60.592" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5E" />
   </control>
   <control id="13" kind="normal">
     <code>44</code>

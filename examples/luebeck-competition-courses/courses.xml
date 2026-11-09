@@ -49,7 +49,7 @@
     </Control>
     <Control type="Control">
       <Id>36</Id>
-      <MapPosition x="116.97" y="-63.06" unit="mm"/>
+      <MapPosition x="103.834" y="-60.592" unit="mm"/>
     </Control>
     <Control type="Control">
       <Id>44</Id>
@@ -101,7 +101,7 @@
     </Control>
     <Course>
       <Name>A</Name>
-      <Length>2549</Length>
+      <Length>2500</Length>
       <CourseControl type="Start">
         <Control>STA1</Control>
       </CourseControl>

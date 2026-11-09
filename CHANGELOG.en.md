@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-10
+
 ### Changed
 
 - Program texts, rule profiles and file writes now come from freemapper-core (`freemapper-text`,
@@ -26,6 +28,13 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   `<name>.pdf.part`. Two runs into one folder no longer share a partial file. `export` removes partial files older
   than an hour from the project's `out` folder.
 - A missing `--out-dir` is still reported as before (the folder must exist).
+- The maps in the tests and in all four examples now come from freemapper 0.8.0 (commit `a2b41b4`). They lie on the
+  base area of the sprint map, and parks are yellow. The examples' PDFs and previews are rebuilt and show both.
+  freemapper no longer draws paths of compacted gravel as paths of the map, so six controls moved: control 36 of
+  the Lübeck course A to a building corner (the course is now 2.5 km instead of 2.6 km), and five controls of the
+  Viktoriapark training to building corners and a corner of the open land. freemapper's candidates, among them
+  control sites and unreachable passages, lie in a template of their own and never reach the sheet. A new test
+  checks this.
 
 ### Added
 
