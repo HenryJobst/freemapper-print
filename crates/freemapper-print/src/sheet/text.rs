@@ -20,8 +20,9 @@ const FOOTER_PT: f64 = 5.0;
 const BOX_PADDING_MM: f64 = 1.0;
 /// Footer on a white box inside the map frame: padding (mm).
 const FOOTER_BOX_PADDING_MM: f64 = 0.8;
-/// The id the default footer goes by in notes.
-pub(super) const FOOTER_ID: &str = "footer";
+/// The id the default footer goes by in notes. Elements cannot take it (the project loader
+/// refuses it), so a note with this id is always about the footer.
+pub const FOOTER_ID: &str = "footer";
 /// Most copyright lines shown, the line about the rest included.
 const MAX_COPYRIGHT_LINES: usize = 6;
 /// Footer below the map frame: baseline of the last line above the paper edge (mm).

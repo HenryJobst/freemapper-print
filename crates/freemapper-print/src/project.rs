@@ -24,7 +24,7 @@ pub struct Project {
     pub event: Event,
     pub sources: Sources,
     pub map: MapSettings,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "PrintSettings::is_empty")]
     pub print: PrintSettings,
     /// Sheet elements that every layout shows unless it hides them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -74,6 +74,13 @@ pub struct MapSettings {
 pub struct PrintSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copyright: Option<String>,
+}
+
+impl PrintSettings {
+    /// Nothing set: the table is left out of a written file.
+    pub fn is_empty(&self) -> bool {
+        *self == PrintSettings::default()
+    }
 }
 
 /// Whether north lines are added when the map has none (ADR 0023).
@@ -365,6 +372,9 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
         positive(file, "map.contour_interval_m".to_string(), c)?;
     }
     let mut layout_ids = HashSet::new();
+    // Lower-case id -> the id as written: the PDFs `<id>.pdf` of `A4` and `a4` are one file on
+    // macOS and Windows.
+    let mut folded: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
     for (i, l) in p.layouts.iter().enumerate() {
         check_layout(file, i, l)?;
         if !layout_ids.insert(l.id.as_str()) {
@@ -373,6 +383,17 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
                 field: format!("layouts[{i}].id"),
                 id: l.id.clone(),
             });
+        }
+        if let Some(other) = folded.insert(l.id.to_lowercase(), &l.id) {
+            return Err(invalid(
+                file,
+                format!("layouts[{i}].id"),
+                &format!(
+                    "`{}` differs from the layout id `{other}` only in upper and lower case; \
+                     their PDFs would be the same file on macOS and Windows",
+                    l.id
+                ),
+            ));
         }
     }
     let mut shared_ids = HashSet::new();
@@ -436,6 +457,13 @@ fn non_empty(file: &str, field: String, v: &str) -> Result<(), ProjectError> {
 
 fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectError> {
     non_empty(file, format!("{at}.id"), &e.id)?;
+    if e.id == crate::sheet::FOOTER_ID {
+        return Err(invalid(
+            file,
+            format!("{at}.id"),
+            "`footer` is the name of the default footer in notes; choose another id",
+        ));
+    }
     for (i, v) in e.anchor.offset_mm.iter().enumerate() {
         if !v.is_finite() {
             return Err(invalid(
@@ -497,8 +525,38 @@ fn serde_json_name(k: ElementKind) -> &'static str {
     }
 }
 
+/// Why `id` cannot be the name of a PDF file `<id>.pdf` on Linux, macOS and Windows; `None` when
+/// it can.
+fn file_name_problem(id: &str) -> Option<&'static str> {
+    const RESERVED: [&str; 22] = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    if id
+        .chars()
+        .any(|c| c.is_control() || "/\\:*?\"<>|".contains(c))
+    {
+        Some(
+            "must not contain / \\ : * ? \" < > | or control characters, because it names the PDF file",
+        )
+    } else if id.starts_with('.') || id.ends_with('.') || id.trim() != id {
+        Some(
+            "must not start with a dot, end with a dot or start or end with a space, because it names the PDF file",
+        )
+    } else if RESERVED.contains(&id.to_lowercase().as_str()) {
+        Some("is a device name on Windows and cannot name the PDF file")
+    } else if id.len() > 200 {
+        Some("is longer than 200 bytes, too long for the name of the PDF file")
+    } else {
+        None
+    }
+}
+
 fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError> {
     non_empty(file, format!("layouts[{i}].id"), &l.id)?;
+    if let Some(problem) = file_name_problem(&l.id) {
+        return Err(invalid(file, format!("layouts[{i}].id"), problem));
+    }
     let f = &l.map_frame;
     positive(
         file,
@@ -526,8 +584,98 @@ fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError
     Ok(())
 }
 
+/// A comment for the file [`save_new_with_comments`] writes: `# text` lines in the table `table`
+/// (`map`, or `shared` for the first `[[shared]]`), above the line of `key` when the table has
+/// it, else at the end of the table, or above the table header when `key` is `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyComment<'a> {
+    pub table: &'a str,
+    pub key: Option<&'a str>,
+    pub text: &'a str,
+}
+
 /// Writes a new project file. Refuses to replace an existing file.
 pub fn save_new(path: &Path, project: &Project) -> Result<(), ProjectError> {
+    save_new_with_comments(path, project, &[])
+}
+
+/// `text` as TOML comment lines, one `# ` per line of the text.
+fn comment_lines(text: &str) -> String {
+    text.lines()
+        .map(|l| {
+            let l = l.trim_end();
+            if l.is_empty() {
+                "#\n".to_string()
+            } else {
+                format!("# {l}\n")
+            }
+        })
+        .collect()
+}
+
+/// The table a header line opens: `map` for `[map]`, `shared` for `[[shared]]`, `shared.anchor`
+/// for `[shared.anchor]`; `None` for any other line.
+fn header_name(line: &str) -> Option<&str> {
+    let t = line.trim();
+    let inner = t
+        .strip_prefix("[[")
+        .and_then(|r| r.strip_suffix("]]"))
+        .or_else(|| t.strip_prefix('[').and_then(|r| r.strip_suffix(']')))?;
+    Some(inner.trim())
+}
+
+/// `body` (TOML from the serializer: one key per line, tables in order) with `comments` added.
+fn add_comments(body: &str, comments: &[KeyComment<'_>]) -> String {
+    let mut placed = vec![false; comments.len()];
+    let mut out = String::new();
+    let mut table = "";
+    let flush_table_end = |table: &str, placed: &mut Vec<bool>, out: &mut String| {
+        for (c, done) in comments.iter().zip(placed.iter_mut()) {
+            if !*done && c.table == table && c.key.is_some() {
+                out.push_str(&comment_lines(c.text));
+                *done = true;
+            }
+        }
+    };
+    for line in body.lines() {
+        if let Some(name) = header_name(line) {
+            // A blank line separates tables; the end-of-table comment goes before it.
+            let trailing_blank = out.ends_with("\n\n");
+            if trailing_blank {
+                out.pop();
+            }
+            flush_table_end(table, &mut placed, &mut out);
+            if trailing_blank {
+                out.push('\n');
+            }
+            table = name;
+            for (c, done) in comments.iter().zip(placed.iter_mut()) {
+                if !*done && c.table == name && c.key.is_none() {
+                    out.push_str(&comment_lines(c.text));
+                    *done = true;
+                }
+            }
+        } else if let Some((key, _)) = line.split_once('=') {
+            for (c, done) in comments.iter().zip(placed.iter_mut()) {
+                if !*done && c.table == table && c.key == Some(key.trim()) {
+                    out.push_str(&comment_lines(c.text));
+                    *done = true;
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    flush_table_end(table, &mut placed, &mut out);
+    out
+}
+
+/// [`save_new`] with comments for the reader of the file, for example a value to confirm.
+pub fn save_new_with_comments(
+    path: &Path,
+    project: &Project,
+    comments: &[KeyComment<'_>],
+) -> Result<(), ProjectError> {
     let file = path.display().to_string();
     let body =
         toml::to_string_pretty(project).map_err(|e| ProjectError::Serialize(e.to_string()))?;
@@ -537,7 +685,7 @@ pub fn save_new(path: &Path, project: &Project) -> Result<(), ProjectError> {
         "# freemapper-print event project file, format {FORMAT}"
     );
     let _ = writeln!(text, "# Paths are relative to this file.\n");
-    text.push_str(&body);
+    text.push_str(&add_comments(&body, comments));
     use std::io::Write as _;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
@@ -555,6 +703,101 @@ pub fn save_new(path: &Path, project: &Project) -> Result<(), ProjectError> {
         })?;
     f.write_all(text.as_bytes())
         .map_err(|source| ProjectError::Io { file, source })
+}
+
+/// `to` relative to the directory `from`, both absolute: `../maps/m.omap`. `to` itself when the
+/// two share no root (another drive on Windows).
+pub fn relative_path(from: &Path, to: &Path) -> PathBuf {
+    let from: Vec<_> = from.components().collect();
+    let to_parts: Vec<_> = to.components().collect();
+    let common = from
+        .iter()
+        .zip(&to_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
+    if common == 0 {
+        return to.to_path_buf();
+    }
+    let mut rel = PathBuf::new();
+    for _ in common..from.len() {
+        rel.push("..");
+    }
+    for part in &to_parts[common..] {
+        rel.push(part);
+    }
+    rel
+}
+
+/// The id of the layout [`starter`] writes.
+pub const STARTER_LAYOUT_ID: &str = "a4";
+
+/// The project `init` writes: `title`, the map at `map` (relative to the project file) of `kind`,
+/// the contour interval [`MapKind::proposed_contour_interval_m`] proposes, and one A4 layout at
+/// the map scale `map_scale` with two shared elements. The title block, with a white box in the
+/// top-left corner of the map frame, shows the event and `1:{print_scale} · {contour_interval}`.
+/// The scale check bar sits in the bottom-right corner of the frame. The copyright and credit
+/// lines are left to the default footer, which moves inside the frame when the passe-partout is
+/// too narrow for them; an element hung on the page could only stay put and cover the map.
+pub fn starter(
+    title: &str,
+    map: PathBuf,
+    kind: MapKind,
+    map_scale: u32,
+    lang: SheetLang,
+) -> Project {
+    let element = |id: &str, kind, corner| ElementSpec {
+        id: id.into(),
+        kind,
+        anchor: Anchor {
+            to: AnchorTarget::MapFrame,
+            corner,
+            offset_mm: [2.0, 2.0],
+        },
+        lines: vec![],
+        size_pt: None,
+        box_white: None,
+        file: None,
+        width_mm: None,
+    };
+    let mut title_block = element("title", ElementKind::TitleBlock, Corner::TopLeft);
+    title_block.lines = vec![
+        "{event}".into(),
+        "1:{print_scale} \u{b7} {contour_interval}".into(),
+    ];
+    Project {
+        format: FORMAT,
+        event: Event {
+            title: title.into(),
+            date: None,
+            organiser: None,
+            lang,
+        },
+        sources: Sources { map },
+        map: MapSettings {
+            kind,
+            contour_interval_m: kind.proposed_contour_interval_m(),
+        },
+        print: PrintSettings::default(),
+        shared: vec![
+            title_block,
+            element(
+                "scale_check_bar",
+                ElementKind::ScaleCheckBar,
+                Corner::BottomRight,
+            ),
+        ],
+        layouts: vec![LayoutSpec {
+            id: STARTER_LAYOUT_ID.into(),
+            paper: Paper::A4,
+            orientation: Orientation::Auto,
+            print_scale: Some(map_scale),
+            map_frame: MapFrameSpec::default(),
+            north_lines: NorthLines::Auto,
+            hide_parts: vec![],
+            elements: vec![],
+            hide_shared: vec![],
+        }],
+    }
 }
 
 #[cfg(test)]
@@ -897,6 +1140,113 @@ mod tests {
             "{text}"
         );
         assert_eq!(load(&path).unwrap().project, project);
+    }
+
+    #[test]
+    fn layout_id_must_name_a_file() {
+        for id in [
+            "a/b", "a\\\\b", "..", ".hidden", "end.", " a", "a:b", "x*", "CON", "lpt1", "a\\u0001",
+        ] {
+            let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"{id}\"\n"));
+            let msg = load(&path).unwrap_err().to_string();
+            assert!(msg.contains("layouts[0].id"), "{id}: {msg}");
+        }
+        let long = "x".repeat(201);
+        let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"{long}\"\n"));
+        assert!(load(&path).is_err());
+        for id in ["A4 Sprint", "kurz-1", "Läufer_2", "con1"] {
+            let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"{id}\"\n"));
+            assert!(load(&path).is_ok(), "{id}");
+        }
+    }
+
+    #[test]
+    fn layout_ids_differ_in_more_than_case() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a4\"\n[[layouts]]\nid = \"A4\"\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains("layouts[1].id") && msg.contains("`a4`") && msg.contains("case"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn footer_is_no_element_id() {
+        let msg = err_for(
+            "",
+            &shared("text", "").replace("id=\"x\"", "id=\"footer\""),
+            "",
+        );
+        assert!(
+            msg.contains("shared[0].id") && msg.contains("footer"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn relative_paths() {
+        let rel = |a: &str, b: &str| relative_path(Path::new(a), Path::new(b));
+        assert_eq!(
+            rel("/x/event", "/x/maps/m.omap"),
+            Path::new("../maps/m.omap")
+        );
+        assert_eq!(rel("/x/event", "/x/event/m.omap"), Path::new("m.omap"));
+        assert_eq!(rel("/x/a/b", "/y/m.omap"), Path::new("../../../y/m.omap"));
+    }
+
+    #[test]
+    fn comments_go_above_their_key_or_table() {
+        let body = "a = 1\n\n[map]\nkind = \"x\"\nv = 2\n\n[[shared]]\nid = \"t\"\n";
+        let c = |table, key, text| KeyComment { table, key, text };
+        let out = add_comments(
+            body,
+            &[
+                c("map", Some("v"), "about v\nsecond line"),
+                c("shared", None, "about shared"),
+                c("map", Some("missing"), "at the end of map"),
+            ],
+        );
+        assert_eq!(
+            out,
+            "a = 1\n\n[map]\nkind = \"x\"\n# about v\n# second line\nv = 2\n\
+             # at the end of map\n\n# about shared\n[[shared]]\nid = \"t\"\n"
+        );
+        let toml_ok: toml::Table = toml::from_str(&out).unwrap();
+        assert!(toml_ok.contains_key("map"));
+    }
+
+    #[test]
+    fn starter_project_loads_and_omits_empty_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("m.omap"), "x").unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let p = starter(
+            "Event",
+            "m.omap".into(),
+            MapKind::Schoolyard,
+            1000,
+            SheetLang::En,
+        );
+        assert_eq!(p.map.contour_interval_m, None);
+        save_new_with_comments(
+            &path,
+            &p,
+            &[KeyComment {
+                table: "map",
+                key: Some("contour_interval_m"),
+                text: "set it",
+            }],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("[print]"), "{text}");
+        assert!(text.contains("kind = \"schoolyard\"\n# set it\n"), "{text}");
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.project, p);
+        assert_eq!(loaded.project.layouts[0].id, STARTER_LAYOUT_ID);
+        assert_eq!(loaded.project.layouts[0].print_scale, Some(1000));
     }
 
     #[test]

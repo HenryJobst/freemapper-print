@@ -23,6 +23,7 @@ use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem
 use crate::render::symbols::{Cap, Join};
 
 pub use layout::anchor_point;
+pub use text::FOOTER_ID;
 
 /// What a sheet shows and what the user should know about it.
 #[derive(Debug, Clone, PartialEq)]

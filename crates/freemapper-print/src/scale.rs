@@ -83,6 +83,16 @@ impl MapKind {
         }
     }
 
+    /// The contour interval (m) `init` proposes for a new project, for the user to confirm: 2.5 m
+    /// for sprint maps, 5 m for forest maps, none for schoolyard maps.
+    pub fn proposed_contour_interval_m(self) -> Option<f64> {
+        match self {
+            MapKind::Sprint => Some(2.5),
+            MapKind::Forest => Some(5.0),
+            MapKind::Schoolyard => None,
+        }
+    }
+
     /// The scales (denominators) a map of this kind may be printed at and drawn at, ascending.
     pub fn allowed_scales(self) -> Vec<u32> {
         SCALE_TABLE
