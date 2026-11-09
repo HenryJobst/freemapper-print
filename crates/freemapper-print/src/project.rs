@@ -1142,8 +1142,9 @@ pub fn save_new_with_comments(
     let commented = add_comments(&body, comments);
     let same = toml::from_str::<Project>(&commented).is_ok_and(|back| &back == project);
     text.push_str(if same { &commented } else { &body });
-    use std::io::Write as _;
-    let mut f = std::fs::OpenOptions::new()
+    // The name is claimed first, so an existing file or link of that name is refused, as
+    // `create_new` refuses it. The text then replaces the empty claim through a partial file.
+    std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)
@@ -1157,37 +1158,40 @@ pub fn save_new_with_comments(
                 }
             }
         })?;
-    f.write_all(text.as_bytes())
-        .map_err(|source| ProjectError::Write { file, source })
+    write_project_file(path, text.as_bytes()).map_err(|source| {
+        // Best effort: the write error is the one to report.
+        let _ = std::fs::remove_file(path);
+        ProjectError::Write { file, source }
+    })
 }
 
-/// Writes `bytes` to `path` through a temporary file next to it and a rename, so that a failed write leaves the
-/// old file whole. The temporary file is removed again on failure. A link is followed: the file it points to is
-/// replaced and the link stays. The new file keeps the old one's permissions.
+/// Writes the project file `path` through `freemapper-fs` (ADR 0041): a new partial file next to
+/// it, renamed over it, so a failed write leaves the old file whole and no partial file. The
+/// project folder is the folder of `path`. A link at `path` is replaced by a regular file and the
+/// file it pointed to stays as it was (ruling R1, core ADR 0009).
+fn write_project_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let path = std::path::absolute(path)?;
+    let root = path.parent().unwrap_or(&path);
+    freemapper_fs::write_inside(root, &path, bytes).map_err(|(_, source)| source)
+}
+
+/// Replaces the project file `path` with `bytes` ([`write_project_file`]). The new file gets the
+/// permissions of the old one, or of the file a link at `path` pointed to.
 fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     let file = path.display().to_string();
     let error = |source| ProjectError::Write {
         file: file.clone(),
         source,
     };
-    let target = std::fs::canonicalize(path).map_err(error)?;
-    let permissions = std::fs::metadata(&target).map_err(error)?.permissions();
-    let mut tmp = target.as_os_str().to_owned();
-    tmp.push(".part");
-    let tmp = PathBuf::from(tmp);
-    let written = std::fs::write(&tmp, bytes)
-        .and_then(|()| std::fs::set_permissions(&tmp, permissions))
-        .and_then(|()| std::fs::rename(&tmp, &target));
-    written.map_err(|source| {
-        let _ = std::fs::remove_file(&tmp);
-        error(source)
-    })
+    let permissions = std::fs::metadata(path).map_err(error)?.permissions();
+    write_project_file(path, bytes).map_err(error)?;
+    std::fs::set_permissions(path, permissions).map_err(error)
 }
 
 /// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
 /// addendum). Everything before the new table stays byte for byte as it was, comments included; the new lines
 /// end as the file's do (CRLF or LF), and directions are written in [0, 360). The file is replaced through a
-/// temporary file ([`replace_file`]). When the result does not load (for example because `numbers` is written
+/// partial file ([`replace_file`]); a link at `path` is replaced too, not written through. When the result does not load (for example because `numbers` is written
 /// as an inline array), the old content is put back and the load error is returned.
 pub fn append_correction(
     path: &Path,
@@ -2408,11 +2412,15 @@ mod tests {
         assert!(String::from_utf8_lossy(&new).contains("direction = 330.0"));
     }
 
+    /// A project file reached through a link is replaced by a regular file with the link
+    /// target's permissions; the target stays as it was (ruling R1, ADR 0041). This reverses the
+    /// behaviour up to 0.3.0, which wrote through the link.
     #[cfg(unix)]
     #[test]
-    fn appended_correction_keeps_permissions_and_the_link() {
+    fn appended_correction_replaces_the_link_and_keeps_permissions() {
         use std::os::unix::fs::PermissionsExt;
-        let (dir, real) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        let old = format!("{HEAD}{WITH_LAYOUT}");
+        let (dir, real) = temp_project(&old);
         std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
         // The project file is reached through a link from another folder.
         let other = tempfile::tempdir().unwrap();
@@ -2421,20 +2429,16 @@ mod tests {
         // The map is found next to the path the project is opened by.
         std::fs::write(other.path().join("m.omap"), "x").unwrap();
         append_correction(&link, &layout_correction(10.0)).unwrap();
+        let meta = std::fs::symlink_metadata(&link).unwrap();
+        assert!(meta.file_type().is_file(), "{meta:?}");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o640);
         assert!(
-            std::fs::symlink_metadata(&link)
-                .unwrap()
-                .file_type()
-                .is_symlink()
-        );
-        let mode = std::fs::metadata(&real).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o640);
-        assert!(
-            std::fs::read_to_string(&real)
+            std::fs::read_to_string(&link)
                 .unwrap()
                 .contains("[[numbers]]")
         );
-        // No temporary file is left next to either.
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), old);
+        // No partial file is left next to either.
         for d in [dir.path(), other.path()] {
             let names: Vec<_> = std::fs::read_dir(d)
                 .unwrap()
@@ -2447,5 +2451,41 @@ mod tests {
                 "{names:?}"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn appended_correction_keeps_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, path) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        append_correction(&path, &layout_correction(10.0)).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn save_new_leaves_no_partial_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        save_new(&path, &full_project()).unwrap();
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, [FILE_NAME]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_new_refuses_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let target = elsewhere.path().join("target.toml");
+        let path = dir.path().join(FILE_NAME);
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        let err = save_new(&path, &full_project()).unwrap_err();
+        assert!(matches!(err, ProjectError::Exists { .. }), "{err}");
+        assert!(!target.exists());
     }
 }

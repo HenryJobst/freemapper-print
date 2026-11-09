@@ -653,6 +653,127 @@ fn export_disk_full() {
     }
 }
 
+/// Names in `dir` that end in `.part`.
+fn part_files_in(dir: &Path) -> Vec<String> {
+    files_in(dir)
+        .into_iter()
+        .filter(|n| n.ends_with(".part"))
+        .collect()
+}
+
+/// A link at the PDF's name is replaced by the new PDF; the file it pointed to stays as it was
+/// (core ADR 0009, ADR 0041).
+#[cfg(unix)]
+#[test]
+fn export_does_not_follow_a_link_at_the_target() {
+    let ws = Workspace::new(FOREST);
+    let path = ws.write_project(
+        "forest",
+        "contour_interval_m = 5.0",
+        &layouts(&[("a4", "A4", "auto")]),
+    );
+    let outside = tempfile::tempdir().unwrap();
+    let victim = outside.path().join("victim.txt");
+    std::fs::write(&victim, "precious").unwrap();
+    let out = ws.event().join("out");
+    std::fs::create_dir(&out).unwrap();
+    std::os::unix::fs::symlink(&victim, out.join("a4.pdf")).unwrap();
+    // The name the partial file had up to 0.3.0, planted as a link too.
+    std::os::unix::fs::symlink(&victim, out.join("a4.pdf.part")).unwrap();
+    let o = run("en", &["export", path.to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "precious");
+    let written = std::fs::symlink_metadata(out.join("a4.pdf")).unwrap();
+    assert!(written.file_type().is_file(), "{written:?}");
+    assert!(
+        std::fs::read(out.join("a4.pdf"))
+            .unwrap()
+            .starts_with(b"%PDF")
+    );
+}
+
+/// Two exports in a row: no partial file is left, and a file at the old fixed partial-file name
+/// (`a4.pdf.part`) is neither used nor removed.
+#[test]
+fn part_file_name_is_not_predictable() {
+    let ws = Workspace::new(FOREST);
+    let path = ws.write_project(
+        "forest",
+        "contour_interval_m = 5.0",
+        &layouts(&[("a4", "A4", "auto")]),
+    );
+    let out = ws.event().join("out");
+    std::fs::create_dir(&out).unwrap();
+    let old_name = out.join("a4.pdf.part");
+    std::fs::write(&old_name, "another run").unwrap();
+    for _ in 0..2 {
+        let o = run("en", &["export", path.to_str().unwrap()]);
+        assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+        assert_eq!(std::fs::read_to_string(&old_name).unwrap(), "another run");
+        assert_eq!(part_files_in(&out), ["a4.pdf.part"]);
+        assert!(
+            std::fs::read(out.join("a4.pdf"))
+                .unwrap()
+                .starts_with(b"%PDF")
+        );
+    }
+}
+
+/// An `out` folder that is a link leading out of the project folder stops `init` and `export`
+/// before anything is written, with a message that names the folder.
+#[cfg(unix)]
+#[test]
+fn init_refuses_a_linked_out_folder() {
+    let ws = Workspace::new(LUEBECK);
+    let outside = tempfile::tempdir().unwrap();
+    let out = ws.event().join("out");
+    std::os::unix::fs::symlink(outside.path(), &out).unwrap();
+    for (lang, word) in [
+        ("en", "a link leads out of the project folder"),
+        ("de", "Ein Link führt aus dem Projektordner hinaus"),
+    ] {
+        let o = run(
+            lang,
+            &[
+                "init",
+                ws.event().to_str().unwrap(),
+                "--map",
+                ws.map.to_str().unwrap(),
+                "--kind",
+                "sprint",
+            ],
+        );
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{lang}: {err}");
+        assert!(
+            err.contains(word) && err.contains(&out.display().to_string()),
+            "{lang}: {err}"
+        );
+        assert!(!ws.project_file().exists(), "{lang}: no project file");
+    }
+    let path = ws.write_project(
+        "sprint",
+        "contour_interval_m = 2.0",
+        &layouts(&[("a4", "A4", "auto")]),
+    );
+    for (lang, word) in [
+        ("en", "a link leads out of the project folder"),
+        ("de", "Ein Link führt aus dem Projektordner hinaus"),
+    ] {
+        let o = run(lang, &["export", path.to_str().unwrap()]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{lang}: {err}");
+        assert!(
+            err.contains(word) && err.contains(&out.display().to_string()),
+            "{lang}: {err}"
+        );
+        assert!(
+            files_in(outside.path()).is_empty(),
+            "{lang}: nothing written"
+        );
+    }
+}
+
 #[test]
 fn export_needs_an_existing_out_dir() {
     let ws = Workspace::new(FOREST);
@@ -1173,6 +1294,46 @@ fn numbers_accept_appends_and_keeps_comments() {
     assert_eq!(n.gap_mm, Some(1.24));
     assert_eq!(n.base_seen, None);
     assert!(stderr(&o).contains("Layout a3"), "{}", stderr(&o));
+}
+
+/// The project file is a link to a file elsewhere: `numbers accept` writes a regular file at the
+/// project path, with the permissions of the file the link pointed to, and leaves that file as
+/// it was (ruling R1, ADR 0041).
+#[cfg(unix)]
+#[test]
+fn numbers_accept_replaces_a_link_instead_of_writing_through_it() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (_ws, path, old) = numbers_workspace();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let real = elsewhere.path().join("real.toml");
+    std::fs::rename(&path, &real).unwrap();
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
+    std::os::unix::fs::symlink(&real, &path).unwrap();
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            path.to_str().unwrap(),
+            "--course",
+            "Eng",
+            "--control",
+            "31",
+            "--sheet",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(std::fs::read_to_string(&real).unwrap(), old);
+    let meta = std::fs::symlink_metadata(&path).unwrap();
+    assert!(meta.file_type().is_file(), "{meta:?}");
+    assert_eq!(meta.permissions().mode() & 0o777, 0o640);
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        new.starts_with(&old) && new.contains("[[numbers]]"),
+        "{new}"
+    );
+    assert!(part_files_in(path.parent().unwrap()).is_empty());
+    assert!(part_files_in(elsewhere.path()).is_empty());
 }
 
 #[test]

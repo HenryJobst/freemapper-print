@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::course::Course;
 use crate::courses::{LoadedCourses, layout_for};
 use crate::omap::{MapCoord, MapDocument};
-use crate::output::{OutputError, write_pdf_file};
+use crate::output::{OutputError, write_project_pdf};
 use crate::project::{LayoutSpec, LoadedProject, SheetLang};
 use crate::render::page::RenderedPage;
 use crate::render::pdf::{MultiPagePdf, PdfError, PdfMeta, write_pdf};
@@ -182,7 +182,7 @@ fn sheet_pdf_at(
 }
 
 /// Draws and writes `layouts` one after the other into `out_dir` (which must exist), each through
-/// [`write_pdf_file`], and hands each written layout to `on_layout` before the next is drawn.
+/// [`write_project_pdf`], and hands each written layout to `on_layout` before the next is drawn.
 /// Stops at the first layout that fails; the ones before it stay written. Each logo file is
 /// decoded once for all layouts ([`LogoCache`]).
 pub fn export_layouts<'a>(
@@ -196,7 +196,7 @@ pub fn export_layouts<'a>(
     for &layout in layouts {
         let (pdf, report) = sheet_pdf(project, map, layout, &logos)?;
         let path = pdf_path(out_dir, layout);
-        write_pdf_file(&path, &pdf).map_err(|error| ExportError::Write {
+        write_project_pdf(&project.dir, &path, &pdf).map_err(|error| ExportError::Write {
             layout: layout.id.clone(),
             error,
         })?;
@@ -362,7 +362,7 @@ pub fn export_courses<'a>(
             .position(|c| std::ptr::eq(c, course))
             .expect("a selected course is a course of the course file");
         let path = paths[index].clone();
-        write_pdf_file(&path, &pdf).map_err(|error| ExportError::CourseWrite {
+        write_project_pdf(&project.dir, &path, &pdf).map_err(|error| ExportError::CourseWrite {
             file: path.clone(),
             error,
         })?;
@@ -416,7 +416,7 @@ pub fn export_courses_single_file<'a>(
         });
     }
     let bytes = pdf.finish(&PdfMeta::new(&project.project.event.title));
-    write_pdf_file(&path, &bytes).map_err(|error| ExportError::CourseWrite {
+    write_project_pdf(&project.dir, &path, &bytes).map_err(|error| ExportError::CourseWrite {
         file: path.clone(),
         error,
     })?;
@@ -773,9 +773,11 @@ mod tests {
         let p = minimal();
         let map = crate::omap::read::read_map_file(&p.map_path()).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let missing = dir.path().join("nope");
+        // A file where the output folder should be: `freemapper-fs` cannot create the folder.
+        let blocked = dir.path().join("nope");
+        std::fs::write(&blocked, "").unwrap();
         let layouts = select_layouts(&p, &[]).unwrap();
-        let err = export_layouts(&p, &map, &layouts, &missing, |_| {}).unwrap_err();
+        let err = export_layouts(&p, &map, &layouts, &blocked, |_| {}).unwrap_err();
         assert!(
             matches!(&err, ExportError::Write { layout, .. } if layout == "a4"),
             "{err}"

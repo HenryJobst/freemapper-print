@@ -19,7 +19,7 @@ use freemapper_print::export::{
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
-use freemapper_print::output::OutputError;
+use freemapper_print::output::{self, OutputError};
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
@@ -356,6 +356,12 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
     {
         return Err(UsageError(texts.plain("error-title-control")).into());
     }
+    // `export` writes into `out` later; a link there that leads out of the project stops `init`
+    // already (ADR 0041). A folder that does not exist yet holds no link.
+    if args.folder.is_dir() {
+        output::check_out_folder(&args.folder, &args.folder.join("out"))
+            .map_err(|e| output_error(texts, e))?;
+    }
     let map = read_map(texts, &args.map)?;
     let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
     let shown = args.folder.join(project::FILE_NAME);
@@ -493,6 +499,9 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             "error-project-exists",
             Some(&args!("path" => shown.display().to_string()))
         )),
+        Err(project::ProjectError::Write { source, .. }) if output::is_outside_project(&source) => {
+            return Err(outside_project(texts, &shown));
+        }
         Err(err) => {
             return Err(anyhow::Error::new(err).context(texts.get(
                 "error-write-file",
@@ -868,6 +877,11 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         }
     }
     project::append_correction(&loaded.path, &correction).map_err(|err| {
+        if let project::ProjectError::Write { source, .. } = &err
+            && output::is_outside_project(source)
+        {
+            return outside_project(texts, &loaded.path);
+        }
         // A file that no longer loads has been put back as it was.
         let lead_in = match err {
             project::ProjectError::Write { .. } => "error-write-file",
@@ -1217,8 +1231,10 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
 }
 
 /// The output folder: `--out-dir`, which must exist, else `out` next to the project file, created if missing.
+/// A folder inside the project by name that a link leads out of the project stops the command before anything
+/// is written (ADR 0041). Partial files older than an hour that interrupted runs left there are removed.
 fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::Result<PathBuf> {
-    match &args.out_dir {
+    let dir = match &args.out_dir {
         Some(dir) => {
             if !dir.is_dir() {
                 bail!(texts.get(
@@ -1226,19 +1242,23 @@ fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::
                     Some(&args!("path" => dir.display().to_string()))
                 ));
             }
-            Ok(dir.clone())
+            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, e))?;
+            dir.clone()
         }
         None => {
             let dir = loaded.dir.join("out");
+            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, e))?;
             std::fs::create_dir_all(&dir).with_context(|| {
                 texts.get(
                     "error-create-folder",
                     Some(&args!("path" => dir.display().to_string())),
                 )
             })?;
-            Ok(dir)
+            dir
         }
-    }
+    };
+    output::remove_stale_parts(&loaded.dir, &dir);
+    Ok(dir)
 }
 
 /// The message for a full disk, translated whole. `available` is `None` when the volume did not
@@ -1266,11 +1286,22 @@ fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
             available,
             path,
         } => anyhow!(disk_full_message(texts, needed, available, &path)),
+        OutputError::Io { path, source } if output::is_outside_project(&source) => {
+            outside_project(texts, &path)
+        }
         OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
         )),
     }
+}
+
+/// A write refused because a link leads its folder out of the project folder, translated whole.
+fn outside_project(texts: &Texts, path: &Path) -> anyhow::Error {
+    anyhow!(texts.get(
+        "error-outside-project",
+        Some(&args!("path" => path.display().to_string()))
+    ))
 }
 
 /// An export error with a translated lead-in; a full disk is translated whole.
