@@ -14,7 +14,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   hat), einen Titelblock, eine Kontrollstrecke und einen Vorschlag für die Äquidistanz zum Bestätigen (2 m für
   Sprint-, 5 m für Waldkarten); es sagt, woher die Kartenart kommt. `check`
   zeichnet jedes Layout, ohne etwas zu schreiben, listet die Hinweise und endet mit Exit-Code 1, wenn es welche
-  gibt. `export` schreibt je Layout ein PDF, benannt nach der Layout-ID, in den Ordner `out` oder nach
+  gibt. Zeilen, die nur informieren (ergänzte Nordlinien, gewollter Beschnitt), beginnen mit „Zur Information:“
+  und zählen nicht. `export` schreibt je Layout ein PDF, benannt nach der Layout-ID, in den Ordner `out` oder nach
   `--out-dir`; `--layout` wählt einzelne Layouts. Ein Tippfehler in der Projektdatei ist ein Fehler mit Zeile
   und Spalte und wird nicht still übergangen, ebenso ein Wert außerhalb seines Bereichs (etwa eine Schrift über
   200 pt oder ein Passepartout von halber Papierbreite).
@@ -31,9 +32,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Fußzeile auf jedem Blatt: die Quellenangaben der Karte (oder aus `print.copyright`), eine je Zeile, und
   darunter die Namensnennung „Erstellt mit freemapper-print“ mit der Adresse des Projekts. Die Namensnennung
   lässt sich nicht abschalten: Ein Element `credit_line` verschiebt sie nur, wenn es mindestens 5 pt groß ist und
-  ganz auf dem Blatt liegt, und sie liegt über allem anderen. Die Fußzeile steht unter dem Kartenausschnitt,
-  wenn sie dort ganz Platz hat, sonst auf weißem Kasten in der Karte, und `check` meldet das und jedes Element,
-  das der Kasten abdeckt. Höchstens sechs Quellenzeilen erscheinen, eine zu lange wird gekürzt und gemeldet.
+  ganz auf dem Blatt liegt, und sie liegt auf weißem Kasten über allem anderen. Auch die ganze Fußzeile steht
+  auf weißem Kasten, ein dunkles Element darunter kann sie nicht verdecken. Sie steht unter dem
+  Kartenausschnitt, wenn sie dort ganz Platz hat, sonst in der Karte, und `check` meldet das und jedes Element,
+  das sie abdeckt, und nennt, was die Fußzeile enthält. Höchstens sechs Quellenzeilen erscheinen, eine zu lange wird gekürzt und gemeldet.
 - Logos als PNG, JPEG oder SVG, so breit wie `width_mm`. PNG und JPEG behalten ihre Transparenz. Ein SVG wird
   in CMYK gedruckt und bleibt in jeder Größe scharf; Verläufe erscheinen in ihrer ersten Farbe, Transparenz
   deckend, und das Programm meldet jede Vereinfachung. Zum Schutz vor Dateien, die Minuten rechnen oder

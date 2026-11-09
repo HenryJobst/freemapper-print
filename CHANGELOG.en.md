@@ -13,7 +13,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   layout at the map's scale on A4 or A3 (the first on which the map fits without notes), a title block, a scale
   check bar and a proposed contour interval to confirm (2 m for sprint, 5 m for forest maps); it says where the
   map kind came from. `check` draws every layout without writing anything,
-  lists the notes and exits with code 1 if there are any. `export` writes one PDF per layout, named after the
+  lists the notes and exits with code 1 if there are any. Lines that only inform (added north lines, an intended
+  crop) start with "Info:" and do not count. `export` writes one PDF per layout, named after the
   layout id, into the folder `out` or into `--out-dir`; `--layout` picks single layouts. A typo in the project
   file is an error with line and column and is never ignored silently, and so is a value out of range (for
   example a text over 200 pt or a passe-partout of half the paper).
@@ -28,8 +29,9 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 - A footer on every sheet: the copyright lines of the map (or from `print.copyright`), one per line, and below
   them the credit line "Created with freemapper-print" with the project address. The credit line cannot be
   switched off: a `credit_line` element moves it only when it is at least 5 pt and lies wholly on the page, and
-  the line is drawn over everything else. The footer goes below the map frame when all of it fits there,
-  otherwise on a white box inside the map, and `check` reports that and any element the box covers. At most six
+  the line is drawn over everything else, on a white box. The whole footer lies on a white box too, so a dark
+  element under it cannot hide it. The footer goes below the map frame when all of it fits there, otherwise
+  inside the map, and `check` reports that and any element it covers, naming what the footer holds. At most six
   copyright lines appear, and a line that is too long is cut and named in a note.
 - Logos as PNG, JPEG or SVG, `width_mm` wide. PNG and JPEG keep their transparency. An SVG prints in CMYK and
   stays sharp at any size; gradients print in their first colour, transparency prints opaque, and the program
