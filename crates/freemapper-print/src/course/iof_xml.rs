@@ -5,9 +5,15 @@
 //! writers differ and the fitting step detects the axis direction.
 //!
 //! What it reads: `Event/Name`, `Map/Scale`, `Control` (`Id`, `Position`, `MapPosition`), `Course` (`Name`,
-//! `Length`, `Climb`, `CourseControl` with `Control`, `Score`, `MapTextPosition`). IOF XML carries no
-//! descriptions, bends, gaps or special objects. A course with a fork (a `CourseControl` with several
-//! `Control` children, or a `CourseVariation` element) is left out and noted.
+//! `CourseFamily`, `Length`, `Climb`, `CourseControl` with its `type`, `Control`, `Score` and
+//! `MapTextPosition`). `MapText` is not read. IOF XML carries no descriptions, bends, gaps or special
+//! objects.
+//!
+//! Courses of one `CourseFamily` are the variants of a fork; each stays its own course and the event gets a
+//! `Forked` note. A `CourseControl` with several `Control` children means alternative controls (the runner
+//! punches one of them); such a course is left out and noted `AlternativeControls`. `MapTextPosition` is the
+//! text centre relative to the circle centre and is kept as an [`Offset`]. `RaceCourseData` is read only
+//! directly under the root `CourseData`.
 
 use std::collections::HashSet;
 
@@ -115,13 +121,34 @@ struct ControlB {
 
 struct CcB {
     codes: Vec<String>,
-    text_at: Option<RawPoint>,
+    kind: Option<ControlKind>,
+    text_at: Option<Offset>,
     score: bool,
 }
 
 struct CourseB {
     course: Course<RawPoint>,
-    forked: bool,
+    alternatives: bool,
+    overrides: Vec<(String, ControlKind)>,
+}
+
+fn kind_of(s: &str) -> Option<ControlKind> {
+    Some(match s {
+        "Control" => ControlKind::Control,
+        "Start" => ControlKind::Start,
+        "Finish" => ControlKind::Finish,
+        "CrossingPoint" => ControlKind::CrossingPoint,
+        "EndOfMarkedRoute" => ControlKind::EndOfMarkedRoute,
+        _ => return None,
+    })
+}
+
+fn non_negative(text: &str, what: &str) -> Result<f64, CourseError> {
+    let v = number(text, what)?;
+    if v < 0.0 {
+        return Err(CourseError::Xml(format!("{what} is negative: {text:?}")));
+    }
+    Ok(v)
 }
 
 #[derive(Default)]
@@ -129,8 +156,14 @@ struct State {
     stack: Vec<String>,
     text: String,
     controls: Vec<Control<RawPoint>>,
+    codes: HashSet<String>,
     courses: Vec<Course<RawPoint>>,
+    overrides: Vec<(String, ControlKind)>,
+    /// Courses seen so far, including those left out.
+    course_count: usize,
     notes: Vec<CourseNote>,
+    note_set: HashSet<CourseNote>,
+    notes_truncated: bool,
     event_name: Option<String>,
     map_scale: Option<u32>,
     control: Option<ControlB>,
@@ -140,14 +173,25 @@ struct State {
 
 impl State {
     fn note(&mut self, n: CourseNote) {
-        if !self.notes.contains(&n) {
-            self.notes.push(n);
+        if self.notes_truncated || self.note_set.contains(&n) {
+            return;
         }
+        if self.notes.len() >= MAX_NOTES {
+            self.notes_truncated = true;
+            self.notes.push(CourseNote::NotesTruncated);
+            return;
+        }
+        self.note_set.insert(n.clone());
+        self.notes.push(n);
     }
 
-    fn parent(&self, up: usize) -> &str {
-        let n = self.stack.len();
-        if n > up { &self.stack[n - 1 - up] } else { "" }
+    fn parent(&self) -> &str {
+        self.stack.last().map_or("", String::as_str)
+    }
+
+    /// The open element is a direct child of the `RaceCourseData` under the root.
+    fn in_race(&self) -> bool {
+        self.stack.len() == 2 && self.stack[0] == "CourseData" && self.stack[1] == "RaceCourseData"
     }
 
     fn begin(&mut self, e: &BytesStart<'_>) -> Result<(), CourseError> {
@@ -158,32 +202,41 @@ impl State {
             )));
         }
         self.text.clear();
-        let parent = self.parent(0).to_string();
-        match (parent.as_str(), name.as_str()) {
-            ("CourseData", "Event" | "RaceCourseData") => {}
-            ("CourseData", other) | ("RaceCourseData", other)
-                if !matches!(other, "Map" | "Control" | "Course") =>
-            {
-                self.note(CourseNote::UnknownElement(other.to_string()));
+        let parent = self.parent().to_string();
+        let in_race = self.in_race();
+        if self.stack.is_empty() {
+            if name != "CourseData" {
+                return Err(CourseError::Xml(format!(
+                    "root element is <{name}>, expected <CourseData>"
+                )));
             }
-            _ => {}
+        } else if self.stack.len() == 1 {
+            if !matches!(name.as_str(), "Event" | "RaceCourseData") {
+                self.note(CourseNote::UnknownElement(name.clone()));
+            }
+        } else if (in_race && !matches!(name.as_str(), "Map" | "Control" | "Course"))
+            || name == "RaceCourseData"
+        {
+            self.note(CourseNote::UnknownElement(name.clone()));
         }
+        let open_twice =
+            |what: &str| CourseError::Xml(format!("<{what}> opened inside another <{what}>"));
         match (parent.as_str(), name.as_str()) {
-            ("RaceCourseData", "Control") => {
+            ("RaceCourseData", "Control") if in_race => {
+                if self.control.is_some() {
+                    return Err(open_twice("Control"));
+                }
                 if self.controls.len() >= MAX_CONTROLS {
                     return Err(CourseError::Limit(format!(
                         "more than {MAX_CONTROLS} controls"
                     )));
                 }
                 let kind = match attr(e, "type")?.as_deref() {
-                    None | Some("Control") => ControlKind::Control,
-                    Some("Start") => ControlKind::Start,
-                    Some("Finish") => ControlKind::Finish,
-                    Some("CrossingPoint") => ControlKind::CrossingPoint,
-                    Some(other) => {
-                        self.note(CourseNote::UnknownElement(format!("Control type {other}")));
+                    None => ControlKind::Control,
+                    Some(t) => kind_of(t).unwrap_or_else(|| {
+                        self.note(CourseNote::UnknownElement(format!("Control type {t}")));
                         ControlKind::Control
-                    }
+                    }),
                 };
                 self.control = Some(ControlB {
                     code: String::new(),
@@ -210,15 +263,20 @@ impl State {
                     c.position = Some(point(e, "MapPosition")?);
                 }
             }
-            ("RaceCourseData", "Course") => {
-                if self.courses.len() >= MAX_COURSES {
+            ("RaceCourseData", "Course") if in_race => {
+                if self.course.is_some() {
+                    return Err(open_twice("Course"));
+                }
+                if self.course_count >= MAX_COURSES {
                     return Err(CourseError::Limit(format!(
                         "more than {MAX_COURSES} courses"
                     )));
                 }
+                self.course_count += 1;
                 self.course = Some(CourseB {
                     course: Course {
                         name: String::new(),
+                        family: None,
                         kind: CourseKind::Normal,
                         legs: Vec::new(),
                         stops: Vec::new(),
@@ -226,10 +284,14 @@ impl State {
                         length_m: None,
                         print_scale_hint: None,
                     },
-                    forked: false,
+                    alternatives: false,
+                    overrides: Vec::new(),
                 });
             }
-            ("Course", "CourseControl") => {
+            ("Course", "CourseControl") if self.course.is_some() => {
+                if self.cc.is_some() {
+                    return Err(open_twice("CourseControl"));
+                }
                 if let Some(c) = self.course.as_ref()
                     && c.course.stops.len() >= MAX_STOPS_PER_COURSE
                 {
@@ -237,20 +299,24 @@ impl State {
                         "more than {MAX_STOPS_PER_COURSE} stops in a course"
                     )));
                 }
+                let kind = match attr(e, "type")?.as_deref() {
+                    None => None,
+                    Some(t) => kind_of(t),
+                };
                 self.cc = Some(CcB {
                     codes: Vec::new(),
+                    kind,
                     text_at: None,
                     score: false,
                 });
             }
-            ("Course", "CourseVariation") => {
-                if let Some(c) = self.course.as_mut() {
-                    c.forked = true;
-                }
-            }
             ("CourseControl", "MapTextPosition") => {
                 if let Some(c) = self.cc.as_mut() {
-                    c.text_at = Some(point(e, "MapTextPosition")?);
+                    let p = point(e, "MapTextPosition")?;
+                    c.text_at = Some(Offset {
+                        dx_mm: p.x_mm,
+                        dy_mm: p.y_mm,
+                    });
                 }
             }
             _ => {}
@@ -260,12 +326,16 @@ impl State {
     }
 
     fn end(&mut self) -> Result<(), CourseError> {
+        let in_race_after = self.stack.len() == 3
+            && self.stack[0] == "CourseData"
+            && self.stack[1] == "RaceCourseData";
         let Some(name) = self.stack.pop() else {
             return Err(CourseError::Xml("unbalanced end tag".into()));
         };
-        let parent = self.parent(0).to_string();
+        let parent = self.parent().to_string();
         let text = std::mem::take(&mut self.text);
         let text = text.trim();
+        let missing = |what: &str| CourseError::Xml(format!("<{what}> closed but not open"));
         match (parent.as_str(), name.as_str()) {
             ("Event", "Name") => self.event_name = Some(text.to_string()),
             ("Map", "Scale") => {
@@ -279,18 +349,21 @@ impl State {
                     c.code = text.to_string();
                 }
             }
-            ("RaceCourseData", "Control") => {
-                let c = self.control.take().expect("control is open");
+            ("RaceCourseData", "Control") if in_race_after => {
+                let c = self.control.take().ok_or_else(|| missing("Control"))?;
                 if c.code.is_empty() {
                     return Err(CourseError::Xml("a Control has no Id".into()));
                 }
-                let position = c.position.ok_or_else(|| {
-                    CourseError::Xml(format!("control {} has no MapPosition", c.code))
-                })?;
+                if !self.codes.insert(c.code.clone()) {
+                    return Err(CourseError::Xml(format!(
+                        "control code {} is defined twice",
+                        c.code
+                    )));
+                }
                 self.controls.push(Control {
                     code: c.code,
                     kind: c.kind,
-                    position,
+                    position: c.position,
                     geo: c.geo,
                     description: None,
                 });
@@ -300,18 +373,27 @@ impl State {
                     c.course.name = text.to_string();
                 }
             }
+            ("Course", "CourseFamily") => {
+                if let Some(c) = self.course.as_mut()
+                    && !text.is_empty()
+                {
+                    c.course.family = Some(text.to_string());
+                }
+            }
             ("Course", "Length") => {
                 if let Some(c) = self.course.as_mut() {
-                    c.course.length_m = Some(number(text, "Length")?);
+                    c.course.length_m = Some(non_negative(text, "Length")?);
                 }
             }
             ("Course", "Climb") => {
                 if let Some(c) = self.course.as_mut() {
-                    c.course.climb_m = Some(number(text, "Climb")?);
+                    c.course.climb_m = Some(non_negative(text, "Climb")?);
                 }
             }
             ("CourseControl", "Control") => {
-                if let Some(c) = self.cc.as_mut() {
+                if let Some(c) = self.cc.as_mut()
+                    && c.codes.len() < 2
+                {
                     c.codes.push(text.to_string());
                 }
             }
@@ -321,42 +403,42 @@ impl State {
                 }
             }
             ("Course", "CourseControl") => {
-                let cc = self.cc.take().expect("course control is open");
-                if let Some(c) = self.course.as_mut() {
-                    if cc.codes.len() > 1 {
-                        c.forked = true;
-                    }
-                    if cc.score {
-                        c.course.kind = CourseKind::Score;
-                    }
-                    if !c.forked {
-                        let Some(code) = cc.codes.into_iter().next().filter(|s| !s.is_empty())
-                        else {
-                            return Err(CourseError::Xml(
-                                "a CourseControl names no Control".into(),
-                            ));
-                        };
-                        if !c.course.stops.is_empty() {
-                            c.course.legs.push(Leg {
-                                bends: Vec::new(),
-                                gaps: Vec::new(),
-                                marked_route: false,
-                            });
-                        }
-                        c.course.stops.push(Stop {
-                            control: code,
-                            number: None,
-                            number_text_at: cc.text_at,
-                            circle_gaps: Vec::new(),
+                let cc = self.cc.take().ok_or_else(|| missing("CourseControl"))?;
+                let c = self.course.as_mut().ok_or_else(|| missing("Course"))?;
+                if cc.codes.len() > 1 {
+                    c.alternatives = true;
+                }
+                if cc.score {
+                    c.course.kind = CourseKind::Score;
+                }
+                if !c.alternatives {
+                    let Some(code) = cc.codes.into_iter().next().filter(|s| !s.is_empty()) else {
+                        return Err(CourseError::Xml("a CourseControl names no Control".into()));
+                    };
+                    if !c.course.stops.is_empty() {
+                        c.course.legs.push(Leg {
+                            bends: Vec::new(),
+                            gaps: Vec::new(),
+                            marked_route: false,
                         });
                     }
+                    if let Some(k) = cc.kind {
+                        c.overrides.push((code.clone(), k));
+                    }
+                    c.course.stops.push(Stop {
+                        control: code,
+                        number: None,
+                        number_text_at: cc.text_at,
+                        circle_gaps: Vec::new(),
+                    });
                 }
             }
-            ("RaceCourseData", "Course") => {
-                let c = self.course.take().expect("course is open");
-                if c.forked {
-                    self.note(CourseNote::Forked(c.course.name));
+            ("RaceCourseData", "Course") if in_race_after => {
+                let c = self.course.take().ok_or_else(|| missing("Course"))?;
+                if c.alternatives {
+                    self.note(CourseNote::AlternativeControls(c.course.name));
                 } else {
+                    self.overrides.extend(c.overrides);
                     self.courses.push(c.course);
                 }
             }
@@ -369,15 +451,46 @@ impl State {
         if !self.stack.is_empty() {
             return Err(CourseError::Xml("unexpected end of file".into()));
         }
-        let codes: HashSet<&str> = self.controls.iter().map(|c| c.code.as_str()).collect();
+        let index: std::collections::HashMap<String, usize> = self
+            .controls
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.code.clone(), i))
+            .collect();
         for course in &self.courses {
             for stop in &course.stops {
-                if !codes.contains(stop.control.as_str()) {
+                let Some(&i) = index.get(stop.control.as_str()) else {
                     return Err(CourseError::Xml(format!(
                         "course {} uses control {}, which is not defined",
                         course.name, stop.control
                     )));
+                };
+                let c = &self.controls[i];
+                if c.position.is_none() && c.geo.is_none() {
+                    return Err(CourseError::Xml(format!(
+                        "control {} has neither MapPosition nor Position",
+                        c.code
+                    )));
                 }
+            }
+        }
+        let overrides = std::mem::take(&mut self.overrides);
+        for (code, kind) in overrides {
+            let i = index[code.as_str()];
+            self.controls[i].kind = kind;
+        }
+        let mut families: Vec<(String, Vec<String>)> = Vec::new();
+        for c in &self.courses {
+            if let Some(f) = &c.family {
+                match families.iter_mut().find(|(n, _)| n == f) {
+                    Some((_, v)) => v.push(c.name.clone()),
+                    None => families.push((f.clone(), vec![c.name.clone()])),
+                }
+            }
+        }
+        for (family, variants) in families {
+            if variants.len() > 1 {
+                self.note(CourseNote::Forked { family, variants });
             }
         }
         self.note(CourseNote::NoDescriptions);

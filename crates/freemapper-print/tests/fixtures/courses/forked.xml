@@ -6,14 +6,28 @@
     <Control type="Control"><Id>32</Id><MapPosition x="70" y="80" unit="mm"/></Control>
     <Control type="Finish"><Id>F1</Id><MapPosition x="100" y="20" unit="mm"/></Control>
     <Course>
-      <Name>Relay</Name>
+      <Name>Relay 1</Name>
+      <CourseFamily>Relay</CourseFamily>
       <CourseControl type="Start"><Control>S1</Control></CourseControl>
-      <CourseControl type="Control"><Control>31</Control><Control>32</Control></CourseControl>
+      <CourseControl type="Control"><Control>31</Control></CourseControl>
+      <CourseControl type="Finish"><Control>F1</Control></CourseControl>
+    </Course>
+    <Course>
+      <Name>Relay 2</Name>
+      <CourseFamily>Relay</CourseFamily>
+      <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Control"><Control>32</Control></CourseControl>
       <CourseControl type="Finish"><Control>F1</Control></CourseControl>
     </Course>
     <Course>
       <Name>Plain</Name>
       <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Finish"><Control>F1</Control></CourseControl>
+    </Course>
+    <Course>
+      <Name>Alternatives</Name>
+      <CourseControl type="Start"><Control>S1</Control></CourseControl>
+      <CourseControl type="Control"><Control>31</Control><Control>32</Control></CourseControl>
       <CourseControl type="Finish"><Control>F1</Control></CourseControl>
     </Course>
   </RaceCourseData>

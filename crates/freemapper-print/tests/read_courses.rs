@@ -2,7 +2,7 @@
 
 use freemapper_print::course::model::{
     ControlKind, CourseKind, CourseNote, MAX_CONTROLS, MAX_COURSE_FILE_BYTES, MAX_COURSES,
-    MAX_STOPS_PER_COURSE, MAX_XML_DEPTH,
+    MAX_NOTES, MAX_STOPS_PER_COURSE, MAX_XML_DEPTH,
 };
 use freemapper_print::course::{CourseError, read_iof_xml};
 
@@ -53,7 +53,8 @@ fn reads_controls_courses_and_order() {
 fn reads_map_position_mm_and_text_position() {
     let ev = read_iof_xml(&fixture("y-up.xml")).unwrap();
     let c = &ev.controls[0];
-    assert_eq!((c.position.x_mm, c.position.y_mm), (50.5, 40.25));
+    let p = c.position.unwrap();
+    assert_eq!((p.x_mm, p.y_mm), (50.5, 40.25));
     assert_eq!(c.geo, Some((53.8655, 10.6866)));
     assert_eq!(ev.controls[2].geo, None);
 
@@ -61,7 +62,7 @@ fn reads_map_position_mm_and_text_position() {
     let course = &ev.courses[0];
     assert_eq!(course.kind, CourseKind::Score);
     let p = course.stops[1].number_text_at.unwrap();
-    assert_eq!((p.x_mm, p.y_mm), (66.5, 43.0));
+    assert_eq!((p.dx_mm, p.dy_mm), (6.5, 3.0));
     assert!(course.stops[1].number.is_none());
     assert!(course.stops[0].number_text_at.is_none());
 }
@@ -76,11 +77,107 @@ fn length_and_climb_taken_when_present() {
 }
 
 #[test]
-fn forked_course_noted_not_drawn() {
+fn forked_family_kept_and_alternatives_skipped() {
     let ev = read_iof_xml(&fixture("forked.xml")).unwrap();
-    assert!(ev.notes.contains(&CourseNote::Forked("Relay".into())));
-    assert_eq!(ev.courses.len(), 1);
-    assert_eq!(ev.courses[0].name, "Plain");
+    let names: Vec<_> = ev.courses.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["Relay 1", "Relay 2", "Plain"]);
+    assert_eq!(ev.courses[0].family.as_deref(), Some("Relay"));
+    assert_eq!(ev.courses[2].family, None);
+    assert!(ev.notes.contains(&CourseNote::Forked {
+        family: "Relay".into(),
+        variants: vec!["Relay 1".into(), "Relay 2".into()]
+    }));
+    assert!(
+        ev.notes
+            .contains(&CourseNote::AlternativeControls("Alternatives".into()))
+    );
+}
+
+#[test]
+fn duplicate_control_id_refused() {
+    let c = "<Control type=\"Control\"><Id>31</Id><MapPosition x=\"1\" y=\"1\"/></Control>";
+    let err = read_iof_xml(&wrap(&format!("{c}{c}"))).unwrap_err();
+    assert!(err.to_string().contains("31"), "{err}");
+}
+
+#[test]
+fn geo_only_control_ok_when_used_missing_position_error() {
+    let geo = "<Control type=\"Start\"><Id>S</Id><Position lat=\"53.1\" lng=\"10.2\"/></Control>";
+    let course = "<Course><Name>A</Name><CourseControl type=\"Start\"><Control>S</Control></CourseControl></Course>";
+    let ev = read_iof_xml(&wrap(&format!("{geo}{course}"))).unwrap();
+    assert_eq!(ev.controls[0].position, None);
+    assert_eq!(ev.controls[0].geo, Some((53.1, 10.2)));
+    // Unused control with neither: fine. Used: error.
+    let bare = "<Control type=\"Control\"><Id>Z</Id></Control>";
+    assert!(read_iof_xml(&wrap(bare)).is_ok());
+    let used = "<Course><Name>A</Name><CourseControl><Control>Z</Control></CourseControl></Course>";
+    assert!(read_iof_xml(&wrap(&format!("{bare}{used}"))).is_err());
+}
+
+#[test]
+fn malformed_nesting_is_an_error_not_a_panic() {
+    let ctl = "<Control type=\"Start\"><Id>S</Id><MapPosition x=\"1\" y=\"1\"/></Control>";
+    // RaceCourseData inside RaceCourseData is ignored and noted.
+    let xml = format!(
+        "<CourseData><RaceCourseData><RaceCourseData>{ctl}</RaceCourseData></RaceCourseData></CourseData>"
+    );
+    let ev = read_iof_xml(xml.as_bytes()).unwrap();
+    assert!(ev.controls.is_empty());
+    // Course inside Course, CourseControl inside CourseControl, Control inside Control.
+    for body in [
+        "<Course><Course><Name>x</Name></Course></Course>",
+        "<Course><CourseControl><CourseControl/></CourseControl></Course>",
+        "<Control><Control/></Control>",
+    ] {
+        let _ = read_iof_xml(&wrap(body));
+    }
+    // Wrong root and RaceCourseData outside the root.
+    assert!(read_iof_xml(b"<Other/>").is_err());
+    let _ = read_iof_xml(b"<CourseData><X><RaceCourseData/></X></CourseData>");
+}
+
+#[test]
+fn notes_are_deduplicated_and_capped() {
+    let one = wrap(&"<Gadget/>".repeat(5000));
+    assert_eq!(read_iof_xml(&one).unwrap().notes.len(), 2);
+    let mut body = String::new();
+    for i in 0..(MAX_NOTES + 500) {
+        body.push_str(&format!("<Gadget{i}/>"));
+    }
+    let ev = read_iof_xml(&wrap(&body)).unwrap();
+    assert_eq!(ev.notes.len(), MAX_NOTES + 1);
+    assert_eq!(ev.notes.last(), Some(&CourseNote::NotesTruncated));
+}
+
+#[test]
+fn course_control_type_overrides_and_end_of_marked_route() {
+    let xml = wrap(
+        "<Control type=\"Control\"><Id>A</Id><MapPosition x=\"1\" y=\"1\"/></Control>\
+         <Control type=\"EndOfMarkedRoute\"><Id>E</Id><MapPosition x=\"2\" y=\"2\"/></Control>\
+         <Course><Name>c</Name><CourseControl type=\"Finish\"><Control>A</Control></CourseControl></Course>",
+    );
+    let ev = read_iof_xml(&xml).unwrap();
+    assert_eq!(ev.controls[0].kind, ControlKind::Finish);
+    assert_eq!(ev.controls[1].kind, ControlKind::EndOfMarkedRoute);
+}
+
+#[test]
+fn negative_length_and_climb_refused() {
+    assert!(read_iof_xml(&wrap("<Course><Name>x</Name><Length>-1</Length></Course>")).is_err());
+    assert!(read_iof_xml(&wrap("<Course><Name>x</Name><Climb>-5</Climb></Course>")).is_err());
+}
+
+#[test]
+fn bom_and_namespace_prefix() {
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(
+        b"<iof:CourseData xmlns:iof=\"http://www.orienteering.org/datastandard/3.0\"><iof:RaceCourseData>\
+          <iof:Control type=\"Start\"><iof:Id>S</iof:Id><iof:MapPosition x=\"1\" y=\"2\"/></iof:Control>\
+          </iof:RaceCourseData></iof:CourseData>",
+    );
+    let ev = read_iof_xml(&bytes).unwrap();
+    assert_eq!(ev.controls[0].code, "S");
+    assert_eq!(ev.controls[0].position.unwrap().y_mm, 2.0);
 }
 
 #[test]

@@ -15,6 +15,8 @@ pub const MAX_STOPS_PER_COURSE: usize = 500;
 pub const MAX_POINTS_PER_PATH: usize = 10_000;
 /// Most special objects in one file.
 pub const MAX_SPECIALS: usize = 10_000;
+/// Most notes kept; further ones are dropped and one `NotesTruncated` is added.
+pub const MAX_NOTES: usize = 1_000;
 /// Deepest XML nesting a course reader accepts.
 pub const MAX_XML_DEPTH: usize = 64;
 
@@ -24,6 +26,14 @@ pub const MAX_XML_DEPTH: usize = 64;
 pub struct RawPoint {
     pub x_mm: f64,
     pub y_mm: f64,
+}
+
+/// A text position relative to the centre of its control circle, in print-independent file mm: x to the
+/// right, y in the file's axis direction (the fit flips it like y of a point, and does not translate it).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Offset {
+    pub dx_mm: f64,
+    pub dy_mm: f64,
 }
 
 /// An event as a reader returns it.
@@ -42,8 +52,12 @@ pub struct CourseEvent<P> {
 }
 
 impl<P> CourseEvent<P> {
-    /// Converts every point with `f`, keeping the rest unchanged.
-    pub fn map_points<Q>(self, f: impl Fn(P) -> Q) -> CourseEvent<Q> {
+    /// Converts every point with `f` and every number offset with `fo`, keeping the rest unchanged.
+    pub fn map_points<Q>(
+        self,
+        f: impl Fn(P) -> Q,
+        fo: impl Fn(Offset) -> Offset,
+    ) -> CourseEvent<Q> {
         CourseEvent {
             controls: self
                 .controls
@@ -51,7 +65,7 @@ impl<P> CourseEvent<P> {
                 .map(|c| Control {
                     code: c.code,
                     kind: c.kind,
-                    position: f(c.position),
+                    position: c.position.map(&f),
                     geo: c.geo,
                     description: c.description,
                 })
@@ -61,6 +75,7 @@ impl<P> CourseEvent<P> {
                 .into_iter()
                 .map(|c| Course {
                     name: c.name,
+                    family: c.family,
                     kind: c.kind,
                     legs: c
                         .legs
@@ -77,7 +92,7 @@ impl<P> CourseEvent<P> {
                         .map(|s| Stop {
                             control: s.control,
                             number: s.number,
-                            number_text_at: s.number_text_at.map(&f),
+                            number_text_at: s.number_text_at.map(&fo),
                             circle_gaps: s.circle_gaps,
                         })
                         .collect(),
@@ -118,6 +133,9 @@ pub enum ControlKind {
     Control,
     Finish,
     CrossingPoint,
+    /// End of a marked route (IOF XML `EndOfMarkedRoute`).
+    EndOfMarkedRoute,
+    /// A map exchange; no IOF XML value produces it, the Purple Pen reader does.
     MapExchange,
 }
 
@@ -125,7 +143,8 @@ pub enum ControlKind {
 pub struct Control<P> {
     pub code: String,
     pub kind: ControlKind,
-    pub position: P,
+    /// `None` for a control the file places only by `geo`; the fit computes it.
+    pub position: Option<P>,
     /// Latitude and longitude in degrees, if the file gives them (IOF XML `Position`).
     pub geo: Option<(f64, f64)>,
     pub description: Option<Description>,
@@ -140,10 +159,12 @@ pub enum CourseKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Course<P> {
     pub name: String,
+    /// The course family: courses with the same family are the variants of one fork.
+    pub family: Option<String>,
     pub kind: CourseKind,
     /// One leg between each two consecutive stops.
     pub legs: Vec<Leg<P>>,
-    pub stops: Vec<Stop<P>>,
+    pub stops: Vec<Stop>,
     pub climb_m: Option<f64>,
     pub length_m: Option<f64>,
     pub print_scale_hint: Option<u32>,
@@ -151,14 +172,13 @@ pub struct Course<P> {
 
 /// One visit of a control in a course.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Stop<P> {
+pub struct Stop {
     /// The control code.
     pub control: String,
     pub number: Option<NumberPlacement>,
-    /// Where the file puts the number text, in file coordinates. Set by readers that give a text position
-    /// instead of a direction (IOF XML `MapTextPosition`); converted to `number` once circle and box sizes
-    /// are known.
-    pub number_text_at: Option<P>,
+    /// Where the file puts the number text, relative to the circle centre (IOF XML `MapTextPosition`).
+    /// Converted to `number` once circle and box sizes are known.
+    pub number_text_at: Option<Offset>,
     /// Angle ranges in degrees where the circle is not drawn.
     pub circle_gaps: Vec<(f64, f64)>,
 }
@@ -298,11 +318,18 @@ pub struct Description {
 }
 
 /// Things read but not supported.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CourseNote {
     UnknownElement(String),
-    /// The named course is forked and is not drawn.
-    Forked(String),
+    /// Courses of one family are the variants of a fork; each prints as its own sheet.
+    Forked {
+        family: String,
+        variants: Vec<String>,
+    },
+    /// The named course has a `CourseControl` with alternative controls and is left out.
+    AlternativeControls(String),
+    /// More notes than `MAX_NOTES`; the rest were dropped.
+    NotesTruncated,
     WhiteOutLaterInM4,
     NoDescriptions,
     /// The map issue point of this control code is used as the start.

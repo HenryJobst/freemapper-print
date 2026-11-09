@@ -10,7 +10,7 @@
       <CourseControl type="Control">
         <Control>31</Control>
         <Score>10</Score>
-        <MapTextPosition x="66.5" y="43" unit="mm"/>
+        <MapTextPosition x="6.5" y="3" unit="mm"/>
       </CourseControl>
       <CourseControl type="Finish"><Control>F1</Control></CourseControl>
     </Course>
