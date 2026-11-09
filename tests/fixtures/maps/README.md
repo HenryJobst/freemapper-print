@@ -39,6 +39,10 @@ Tests that changed with it:
 | `luebeck_object_count` (`tests/read_maps.rs`) | 2173 objects | 2281; parts `base` 1, "default part" 2267, "peripheral information" 13 | +1 base area, +27 401, +93 522, −13 505.1 |
 | `luebeck_lower_purple_under_black_over_every_fill` (`src/overprint/tests.rs`) | painted priorities 2, 10, 14, 15, 16 | 2, 10, 11, 14, 15, 16, 30, 32 | 11 canopies, 30 open land, 32 base area; none has a canonical name, so the lower purple stays right under Black 100% (2) |
 
+New: `tests/candidates.rs` checks that the map names `templates/candidates.omap` and holds no candidate tag and
+no 531, and that two real candidates from freemapper's `candidates.omap` (a control site and an unreachable
+passage) are drawable on their own but leave the page of the map unchanged when they lie next to it.
+
 Unchanged: the overflow of 4.0 mm on A4 (the base area does not count, ADR 0044, and lies inside the map's
 extent anyway), the Probedruck distances in `tests/fixtures/oom/README.md` (the buildings P and Q are the same),
 and the OOM reference file name `luebeck-4000-a3-landscape.pdf` the ignored `oom_comparison` test asks for.
