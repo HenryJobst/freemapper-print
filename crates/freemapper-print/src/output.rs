@@ -39,16 +39,28 @@ pub enum OutputError {
     },
 }
 
+/// Test hook: when this environment variable holds a number, [`write_pdf_file`] takes it as the
+/// free space in bytes instead of asking the volume. The CLI tests use it to fake a full disk in
+/// the binary they run.
+#[doc(hidden)]
+pub const FAKE_FREE_SPACE_ENV: &str = "FREEMAPPER_PRINT_TEST_FREE_SPACE";
+
 /// Writes `bytes` to `path`, replacing an existing file only when the whole PDF is on disk.
 ///
 /// Fails with [`OutputError::DiskFull`] when the volume has less than `bytes.len()` plus
 /// [`DISK_RESERVE_BYTES`] free. If the free space cannot be determined, the check is skipped and a
 /// full disk is still caught while writing.
 pub fn write_pdf_file(path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
+    let fake = std::env::var(FAKE_FREE_SPACE_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok());
     write_checked(
         path,
         bytes,
-        |folder| fs4::available_space(folder),
+        |folder| match fake {
+            Some(bytes) => Ok(bytes),
+            None => fs4::available_space(folder),
+        },
         |file, bytes| file.write_all(bytes),
     )
 }
