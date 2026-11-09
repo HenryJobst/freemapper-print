@@ -184,3 +184,5 @@ note-missing-scale-check-bar = Hinweis: Layout { $layout } hat keine Kontrollstr
 note-footer-covers-element = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil des Elements { $id } ab. Ein breiteres margin_mm, ein anderer Platz für das Element oder ein Element copyright_line oder credit_line trennt sie.
 error-disk-full-unknown = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, wie viel frei ist, meldet der Datenträger nicht
 note-copyright-line-cut = Hinweis: Die Quellenangabe „{ $line }“ ist breiter als der Kartenausschnitt und wird mit „…“ gekürzt. Kürzen Sie sie in den Kartennotizen oder in print.copyright.
+hint-crop = Für ein Blatt, das nur einen Teil der Karte zeigt, wählt map_frame.centre_map_mm den Teil, und map_frame.crop = true kennzeichnet den Schnitt als gewollt.
+note-map-cropped = Hinweis: Die Karte ist { $cut } für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).

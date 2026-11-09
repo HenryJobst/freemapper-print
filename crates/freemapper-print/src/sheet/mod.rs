@@ -39,13 +39,16 @@ pub struct SheetReport {
 
 impl SheetReport {
     /// Whether the user should look at the sheet: any note of the print report, or any sheet
-    /// note but [`SheetNote::NorthLinesAdded`], which only informs. `check` fails on this.
+    /// note but [`SheetNote::NorthLinesAdded`] and [`SheetNote::MapCropped`], which only inform.
+    /// `check` fails on this.
     pub fn needs_attention(&self) -> bool {
         self.print.has_notes()
-            || self
-                .notes
-                .iter()
-                .any(|n| !matches!(n, SheetNote::NorthLinesAdded { .. }))
+            || self.notes.iter().any(|n| {
+                !matches!(
+                    n,
+                    SheetNote::NorthLinesAdded { .. } | SheetNote::MapCropped { .. }
+                )
+            })
     }
 }
 
@@ -70,6 +73,9 @@ pub enum SheetNote {
     /// The layout shows no `scale_check_bar` element. The design puts one on every sheet by
     /// default (§5.4); `init` adds it, and the note makes a missing one visible.
     MissingScaleCheckBar { layout: String },
+    /// The layout crops the map on purpose (`map_frame.crop`): the map reaches this far (mm, in x
+    /// and in y) past the map frame. Informs only; the print report then has no overflow.
+    MapCropped { overflow_mm: (f64, f64) },
     /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
     /// is the mapper's job in OOM, and the program cannot know where.
@@ -178,6 +184,11 @@ pub fn render_sheet(
     if layout.north_lines == NorthLines::Auto && !north_lines::has_north_lines(original) {
         let kind = project.project.map.kind;
         add_north_lines(&map, kind, &mut options, &mut page, &mut print, &mut notes)?;
+    }
+    if layout.map_frame.crop
+        && let Some(overflow_mm) = print.overflow_mm.take()
+    {
+        notes.push(SheetNote::MapCropped { overflow_mm });
     }
     let page_box = PaperBox {
         min: (0.0, 0.0),
@@ -586,6 +597,42 @@ mod tests {
                 .iter()
                 .all(|i| texts(std::slice::from_ref(i)).len() == 1)
         );
+    }
+
+    #[test]
+    fn intended_crop_turns_overflow_into_information() {
+        // 198 mm of line on a 194 mm frame: 4.1 mm too wide.
+        let map = doc(4000, vec![("default part", vec![line((198_000, 0))])]);
+        let mut layout = a4();
+        layout.elements = vec![element("bar")];
+        layout.map_frame.crop = true;
+        let mut lp = project(MapKind::Sprint, Vec::new(), &layout);
+        lp.project.map.contour_interval_m = Some(2.0);
+        lp.project.layouts[0].elements.push(text_element(
+            "t",
+            ElementKind::Text,
+            &["1:{print_scale} {contour_interval}"],
+            Corner::TopLeft,
+        ));
+        let (page, report) = sheet_of(&lp, &map);
+        assert_eq!(report.print.overflow_mm, None);
+        let Some(SheetNote::MapCropped {
+            overflow_mm: (dx, dy),
+        }) = report
+            .notes
+            .iter()
+            .find(|n| matches!(n, SheetNote::MapCropped { .. }))
+        else {
+            panic!("{:?}", report.notes)
+        };
+        assert!((dx - 4.1).abs() < 1e-9 && *dy == 0.0);
+        assert!(!report.needs_attention(), "{:?}", report.notes);
+        // The page is the same as without crop.
+        lp.project.layouts[0].map_frame.crop = false;
+        let (plain, uncropped) = sheet_of(&lp, &map);
+        assert_eq!(page.primitives, plain.primitives);
+        assert!(uncropped.needs_attention());
+        assert!(uncropped.print.overflow_mm.is_some());
     }
 
     #[test]

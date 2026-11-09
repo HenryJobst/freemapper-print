@@ -749,6 +749,7 @@ fn report_lines(
         paper.into(),
         orientation_arg != OrientationArg::Auto,
         kind,
+        false,
     ));
     lines.push(texts.plain("reminder-actual-size"));
     lines
@@ -769,6 +770,7 @@ fn layout_lines(
         layout.paper,
         layout.orientation != Orientation::Auto,
         kind,
+        true,
     );
     let has_notes = report.needs_attention();
     let mut lines = vec![head];
@@ -818,6 +820,12 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
                 )),
             )
         }
+        SheetNote::MapCropped {
+            overflow_mm: (x, y),
+        } => texts.get(
+            "note-map-cropped",
+            Some(&args!("cut" => cut_text(texts, *x, *y))),
+        ),
         SheetNote::NorthLinesAdded { count } => {
             texts.get("note-north-lines-added", Some(&args!("count" => *count)))
         }
@@ -933,14 +941,36 @@ fn logo_simplification(texts: &Texts, reason: LogoSimplification) -> String {
     })
 }
 
+/// "12.3 mm too wide and 0.1 mm too tall": how far the map reaches past the frame in `x` and `y`
+/// (mm), naming only the axes it does.
+fn cut_text(texts: &Texts, x: f64, y: f64) -> String {
+    let mut cut = Vec::new();
+    if x > 0.0 {
+        cut.push(texts.get("overflow-too-wide", Some(&args!("mm" => mm(texts, x)))));
+    }
+    if y > 0.0 {
+        cut.push(texts.get("overflow-too-tall", Some(&args!("mm" => mm(texts, y)))));
+    }
+    if cut.len() == 2 {
+        texts.get(
+            "overflow-and",
+            Some(&args!("first" => cut[0].clone(), "second" => cut[1].clone())),
+        )
+    } else {
+        cut.pop().unwrap_or_default()
+    }
+}
+
 /// The notes of a print report, without the summary and the reminder. `explicit_orientation`:
-/// the orientation was chosen, so trying the other one is worth a hint.
+/// the orientation was chosen, so trying the other one is worth a hint. `in_layout`: the page is
+/// a layout's sheet, so the overflow warning also points at `centre_map_mm` and `crop`.
 fn print_notes(
     texts: &Texts,
     report: &PrintReport,
     paper: Paper,
     explicit_orientation: bool,
     kind: MapKind,
+    in_layout: bool,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     if report.non_standard_scale {
@@ -956,21 +986,7 @@ fn print_notes(
     if let Some((x, y)) = report.overflow_mm
         && (x > 0.0 || y > 0.0)
     {
-        let mut cut = Vec::new();
-        if x > 0.0 {
-            cut.push(texts.get("overflow-too-wide", Some(&args!("mm" => mm(texts, x)))));
-        }
-        if y > 0.0 {
-            cut.push(texts.get("overflow-too-tall", Some(&args!("mm" => mm(texts, y)))));
-        }
-        let cut = if cut.len() == 2 {
-            texts.get(
-                "overflow-and",
-                Some(&args!("first" => cut[0].clone(), "second" => cut[1].clone())),
-            )
-        } else {
-            cut.remove(0)
-        };
+        let cut = cut_text(texts, x, y);
         let mut hints = Vec::new();
         if paper == Paper::A4 {
             hints.push(texts.plain("hint-paper-a3"));
@@ -996,7 +1012,7 @@ fn print_notes(
             None => hints.push(texts.plain("hint-scale-larger")),
         }
         let last = hints.pop().unwrap_or_default();
-        lines.push(if hints.is_empty() {
+        let mut warning = if hints.is_empty() {
             texts.get(
                 "warning-overflow-single",
                 Some(&args!("cut" => cut, "last" => last)),
@@ -1006,7 +1022,12 @@ fn print_notes(
                 "warning-overflow",
                 Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
             )
-        });
+        };
+        if in_layout {
+            warning.push(' ');
+            warning.push_str(&texts.plain("hint-crop"));
+        }
+        lines.push(warning);
     }
     let counted = [
         ("note-skipped", report.skipped_objects),
@@ -1289,6 +1310,12 @@ mod tests {
                 ],
             ),
             (SheetNote::NorthLinesAdded { count: 7 }, vec!["7", "OOM"]),
+            (
+                SheetNote::MapCropped {
+                    overflow_mm: (0.0, 14.0),
+                },
+                vec!["14", "map_frame.crop"],
+            ),
             (
                 SheetNote::NorthLinesWithoutSymbol { count: 3 },
                 vec!["3", "601"],
@@ -1614,5 +1641,38 @@ mod tests {
             "{all:?}"
         );
         assert!(all.contains("Evil\\u{1b}[2J"), "{all:?}");
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn layout_overflow_points_at_centre_and_crop() {
+        let texts = Texts::new(&Lang::english());
+        let report = PrintReport {
+            page_mm: (297.0, 210.0),
+            print_scale: 4000,
+            geometry_factor: 1.0,
+            symbol_factor: 1.0,
+            non_standard_scale: false,
+            overflow_mm: Some((0.0, 14.0)),
+            skipped_objects: 0,
+            unknown_type_objects: 0,
+            truncated_objects: 0,
+            objects_not_drawn_page_limit: 0,
+            dropped_pattern_objects: 0,
+            substituted_fonts: vec![],
+            missing_glyphs: vec![],
+        };
+        let sheet = print_notes(&texts, &report, Paper::A4, false, MapKind::Sprint, true);
+        assert!(
+            sheet[0].contains("map_frame.centre_map_mm") && sheet[0].contains("map_frame.crop"),
+            "{sheet:?}"
+        );
+        // `render` has neither.
+        let render = print_notes(&texts, &report, Paper::A4, false, MapKind::Sprint, false);
+        assert!(!render[0].contains("map_frame"), "{render:?}");
     }
 }

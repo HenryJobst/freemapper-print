@@ -181,3 +181,5 @@ note-missing-scale-check-bar = Note: layout { $layout } has no scale check bar. 
 note-footer-covers-element = Note: the footer with the copyright and credit lines sits on a white box inside the map frame and covers part of the element { $id }. A wider margin_mm, another place for the element, or a copyright_line or credit_line element keeps them apart.
 error-disk-full-unknown = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and the disk does not say how much is free
 note-copyright-line-cut = Note: the copyright line "{ $line }" is wider than the map frame and is cut short, ending in "…". Shorten it in the map notes or in print.copyright.
+hint-crop = For a sheet that shows only part of the map, map_frame.centre_map_mm picks the part and map_frame.crop = true marks the cut as intended.
+note-map-cropped = Note: the map is { $cut } for the map frame and is cut there on purpose (map_frame.crop = true).

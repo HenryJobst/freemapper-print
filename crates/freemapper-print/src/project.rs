@@ -142,6 +142,10 @@ pub struct MapFrameSpec {
     /// Frame line width in mm; 0 draws no frame.
     #[serde(default = "default_border_mm")]
     pub border_mm: f64,
+    /// The frame cuts the map on purpose: overflow is information, not a warning, and does not
+    /// make `check` fail.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub crop: bool,
 }
 
 impl Default for MapFrameSpec {
@@ -150,6 +154,7 @@ impl Default for MapFrameSpec {
             centre_map_mm: None,
             margin_mm: 8.0,
             border_mm: 0.25,
+            crop: false,
         }
     }
 }
@@ -1555,6 +1560,7 @@ mod tests {
                         centre_map_mm: Some([10.0, 20.0]),
                         margin_mm: 6.0,
                         border_mm: 0.0,
+                        crop: true,
                     },
                     north_lines: NorthLines::Never,
                     hide_parts: vec!["north".into()],
