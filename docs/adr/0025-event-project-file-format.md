@@ -98,6 +98,30 @@ source, shared sheet elements and layouts.
   or 0.05 mm is `CorrectionOverridesChangedBase`; `base_changed` makes the comparison, and the overprint calls
   it once it has converted the file's raw number offsets to a placement.
 
+## Addendum: `init --courses` and `numbers accept` (M3 Task 11)
+
+- `init --courses <FILE>` reads and fits the course file with the real loader before it creates anything, so a
+  `FitError` prints and writes nothing. `sources.courses` is written relative to the project file with `/` as
+  separator. For a `.ppen`, `init` makes one layout per distinct `print_scale_hint` (a course without one takes the
+  map scale), fits each with `fit_starter` as for a map alone, and assigns every course to the layout with its
+  print scale. With more than one layout the ids get the scale (`a3-4000`), because two layouts can both be A3.
+  Every layout gets a `control_descriptions` element in the top-right corner of the map frame, which the starter's
+  title block (top left) and scale check bar (bottom right) leave free; its cell size is the rule profile's.
+  IOF XML has no print scales and no descriptions, so it gets one layout at the map scale and no element. The
+  courses are assigned in both cases. Every starter layout has `map_frame.crop = true`, because a course sheet
+  cuts the map to the course on purpose.
+- `numbers accept <PROJECT> --course <NAME> --control <CODE> (--layout-wide | --sheet) [--direction D --gap G]`
+  appends one `[[numbers]]` table. Without `D` and `G` it takes the proposal of the same sheet computation `check`
+  uses, and exits 2 when the number has no conflict. `--layout-wide` writes `layout` with the course's layout id,
+  `--sheet` writes `course`. `base_seen` is the course file's placement (level 2), left out when the file gives
+  none. Direction is rounded to 0.1 degrees and gap to 0.01 mm, as the placement rounds.
+- Append-only writing. The command does not parse and re-serialise the file, because that would drop comments
+  and reorder keys. It adds the new table after the old bytes, which stay as they were, writes the result through a
+  `.part` file and a rename, loads the file again and runs the usual validation. If that fails (an inline
+  `numbers = [...]` array, say), the old content is written back and the command exits 1. A correction with the
+  same control and scope that exists already is refused with exit 2 and a hint to edit the file; the command only
+  adds.
+
 ## Consequences
 
 - Older programs refuse newer formats instead of misreading them.

@@ -54,6 +54,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   to 0.01 mm as in freemapper-courseplan, and `check` warns about gaps outside it. When the course file has
   changed a position that a correction with `base_seen` overrides, `check` reports it. Scoring and search live in
   a module of their own, which freemapper-courseplan will take over (ADR 0038).
+- `init --courses <FILE>` builds a project from a course file. It reads and fits the file first, so a file that
+  does not fit the map stops `init` before it writes anything. A `.ppen` gets one layout per print scale in the
+  file, an assignment for every course, a control description box in the top-right corner of the map frame and
+  `map_frame.crop = true`; a course without a print scale takes the map scale. IOF XML gets one layout at the map
+  scale and no description box. `init` says where each value came from.
+- `numbers accept <PROJECT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` writes a number correction
+  into the project file. Without `--direction` and `--gap` it takes the proposal that `check` shows. It appends a
+  `[[numbers]]` table and leaves everything before it unchanged, comments included, then loads the file again;
+  if that fails, it restores the old content. A correction for the same control and scope is refused (ADR 0025).
 
 ### Fixed
 

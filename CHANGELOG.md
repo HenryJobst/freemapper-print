@@ -59,6 +59,17 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   auf 0,01 mm gerundet; `check` warnt bei Abständen außerhalb. Hat die Bahndatei eine Lage geändert, über der
   eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und Suche sitzen in einem eigenen Modul,
   das freemapper-courseplan übernehmen wird (ADR 0038).
+- `init --courses <DATEI>` legt ein Projekt aus einer Bahndatei an. Es liest die Datei zuerst und passt sie an die
+  Karte an, eine Datei, die nicht zur Karte passt, stoppt `init` also vor dem Schreiben. Aus einer `.ppen`
+  entstehen ein Layout je Druckmaßstab der Datei, eine Zuordnung für jede Bahn, ein Beschreibungskasten in der
+  oberen rechten Ecke des Kartenausschnitts und `map_frame.crop = true`; eine Bahn ohne Druckmaßstab bekommt den
+  Kartenmaßstab. Aus IOF-XML entsteht ein Layout im Kartenmaßstab ohne Beschreibungskasten. `init` sagt, woher
+  jeder Wert stammt.
+- `numbers accept <PROJEKT> --course <NAME> --control <CODE> (--layout-wide | --sheet)` trägt eine
+  Nummernkorrektur in die Projektdatei ein. Ohne `--direction` und `--gap` nimmt es den Vorschlag, den `check`
+  zeigt. Es hängt eine Tabelle `[[numbers]]` an und lässt alles davor unverändert, auch die Kommentare, und lädt
+  die Datei danach neu; schlägt das fehl, stellt es den alten Inhalt wieder her. Eine Korrektur für denselben
+  Posten und Geltungsbereich lehnt es ab (ADR 0025).
 
 ### Behoben
 

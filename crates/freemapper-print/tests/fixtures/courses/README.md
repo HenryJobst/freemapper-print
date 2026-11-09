@@ -15,6 +15,8 @@ names source, commit and licence.
 | `text-position.xml` | A score course with a `MapTextPosition` (an offset from the circle centre) on a control. |
 | `forked.xml` | Two courses of one `CourseFamily` (a fork), a plain course, and a course with alternative controls (a `CourseControl` with two `Control` children). |
 | `luebeck-sheets.xml` | Two courses on `tests/fixtures/maps/luebeck.omap` for course sheets (M3 Task 7), written by hand on 2026-11-09: the controls of `luebeck-georef.xml` without lat/lng (y up, so projects confirm `course_y_axis = "up"`). `Kurz` has no length in the file: its legs measure √13000 + √14500 + √21200 = 380.04 mm, 1520.1 m at 1:4000. `D/H 12` gives `Length` 2100 and `Climb` 25 and has a name that is no file name. |
+| `luebeck-numbers.xml` | One course `Eng` on `tests/fixtures/maps/luebeck.omap` (M3 Task 11, hand-written 2026-11-09): control 31 has a `MapTextPosition` of (4, 3) mm, and control 32 sits where that number goes, so `check` reports a number conflict with a proposal (direction 307.9°, gap 0.5 mm at 1:4000). y up, so projects set `course_y_axis = "up"`. |
+| `luebeck-sheets.ppen` | The controls of `luebeck-sheets.xml` as a Purple Pen file (M3 Task 11, hand-written 2026-11-09, Purple Pen's file layout): courses `Kurz` (print scale 4000), `Lang` (5000, a reduction of the 1:4000 map) and `Ohne Maßstab` (no print scale option, so the event's 4000 applies; used for `init --courses`). |
 | `luebeck-georef.xml` | Course on `tests/fixtures/maps/luebeck.omap` (EPSG:25832) with y-up `MapPosition` and `Position` (lat/lng) on every control; control 33 has only `Position`. See below for how the lat/lng were computed. |
 
 ## How the lat/lng of `luebeck-georef.xml` were computed

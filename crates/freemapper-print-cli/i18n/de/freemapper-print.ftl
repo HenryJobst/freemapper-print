@@ -240,7 +240,7 @@ note-element-covers-course = Hinweis: Das Element { $id } deckt { $count ->
 note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
-note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, tragen Sie für den Posten eine Korrektur unter [[numbers]] in die Projektdatei ein.
+note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, rufen Sie numbers accept mit --course „{ $course }“, --control { $control } und --sheet oder --layout-wide auf.
 note-number-gap-out-of-range = Hinweis: Auf dem Blatt der Bahn „{ $course }“ steht die Nummer von Posten { $control } { $gap } mm vom Kreis entfernt. Das Regelprofil erlaubt { $min } bis { $max } mm. Sie wird trotzdem mit diesem Abstand gedruckt; eine Korrektur unter [[numbers]] in der Projektdatei kann ihn ändern.
 number-conflict-symbol = das Symbol von Posten { $control }
 number-conflict-leg = die Strecke von { $from } nach { $to }
@@ -294,3 +294,41 @@ note-map-cropped-to-course = Zur Information: Die Karte ist { $cut } für den Ka
 note-course-placeholder-not-filled = Zur Information: Der Text { $id } nutzt { $name }, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
 note-no-courses-to-export = Hinweis: Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.
 quoted = „{ $text }“
+
+# ---- init --courses, numbers accept (M3 Task 11) ----
+help-init-courses = Die Bahndatei, .ppen (Purple Pen) oder .xml (IOF-XML 3.0). Die Projektdatei speichert ihren Pfad relativ zu sich selbst. Aus einer .ppen entstehen ein Layout je Druckmaßstab der Datei, eine Zuordnung je Bahn und ein Beschreibungskasten; aus IOF-XML ein Layout im Kartenmaßstab.
+numbers-about = Ändert die Lage der Postennummern in der Projektdatei.
+numbers-accept-about = Fügt der Projektdatei eine Korrektur für eine Postennummer hinzu. Ohne --direction und --gap nimmt es den Vorschlag, den check für diesen Posten zeigt.
+numbers-accept-after-content = Die neue Tabelle [[numbers]] kommt als Text ans Ende der Datei. Alles davor bleibt unverändert, auch die Kommentare. Danach lädt das Programm die Datei neu; schlägt das fehl, stellt es den alten Inhalt wieder her.
+numbers-accept-after-exit-codes = Rückgabewerte: 0, wenn die Korrektur geschrieben ist; 1, wenn sich das Projekt oder seine Bahndatei nicht laden oder schreiben lässt oder die geänderte Datei nicht lädt (der alte Inhalt wird wiederhergestellt); 2, wenn die Befehlszeile falsch ist, die Bahn oder der Posten unbekannt ist, check für den Posten keinen Vorschlag zeigt oder die Datei für denselben Posten und Geltungsbereich schon eine Korrektur hat.
+help-numbers-course = Name der Bahn, wie in der Bahndatei.
+help-numbers-control = Code des Postens.
+help-numbers-layout-wide = Die Korrektur gilt für alle Bahnen, die auf dem Layout dieser Bahn gedruckt werden.
+help-numbers-sheet = Die Korrektur gilt nur für das Blatt dieser Bahn. Sie geht einer Layout-Korrektur vor.
+help-numbers-direction = Richtung in Grad, 0 ist Osten, gegen den Uhrzeigersinn. Braucht --gap. Wird mit einer Nachkommastelle geschrieben.
+help-numbers-gap = Abstand zwischen Nummer und Kreis in Druck-mm, größer als 0 und höchstens 10. Braucht --direction. Wird mit zwei Nachkommastellen geschrieben.
+init-courses-read = Bahndatei { $path } gelesen: { $count ->
+        [one] 1 Bahn
+       *[other] { $count } Bahnen
+    }, an die Karte angepasst.
+init-courses-scales-ppen = Die Druckmaßstäbe stammen aus der Bahndatei, ein Layout je Maßstab. Eine Bahn ohne Druckmaßstab bekommt den Kartenmaßstab 1:{ $scale }.
+init-courses-scales-iof = Die Bahndatei ist IOF-XML. Sie hat keine Druckmaßstäbe, deshalb werden alle Bahnen auf einem Layout im Kartenmaßstab 1:{ $scale } gedruckt. Sie hat auch keine Postenbeschreibungen, das Layout bekommt also keinen Beschreibungskasten.
+init-courses-description-box = Jedes Layout hat einen Beschreibungskasten in der oberen rechten Ecke des Kartenausschnitts, mit der Zellengröße des Regelprofils.
+init-courses-crop = Ein Bahnblatt schneidet die Karte mit Absicht auf die Bahn zu, deshalb haben die Layouts map_frame.crop = true.
+init-written-courses = { $path } geschrieben mit { $layouts ->
+        [one] einem Layout
+       *[other] { $layouts } Layouts
+    } und { $assignments ->
+        [one] einer Bahnzuordnung
+       *[other] { $assignments } Bahnzuordnungen
+    }, für { $kind }.
+init-courses-layout = Layout { $layout } bei 1:{ $scale }: { $paper }, Passepartout { $margin } mm, für { $courses }.
+init-courses-no-fit = Warnung: Kein A4- oder A3-Blatt zeigt die Karte bei 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt Layout { $layout } bei A4. check meldet das.
+error-read-courses = die Bahndatei { $path } ließ sich nicht lesen
+error-numbers-no-course-file = numbers accept braucht eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+error-unknown-control = die Bahn „{ $course }“ hat keinen Posten { $control }; ihre Posten sind { $known }
+error-numbers-no-proposal = für Posten { $control } auf dem Blatt der Bahn „{ $course }“ gibt es keinen Vorschlag, denn seine Nummer hat keinen Konflikt. Mit --direction und --gap setzen Sie eine Lage selbst.
+error-numbers-exists = die Projektdatei hat für Posten { $control } schon eine Korrektur für { $scope }. Ändern Sie sie in der Datei; numbers accept legt nur neue an.
+error-numbers-value = --direction braucht eine endliche Zahl, und --gap muss größer als 0 und höchstens { $max } mm sein
+numbers-accepted = Korrektur für die Nummer von Posten { $control } für { $scope } in { $path } eingetragen: Richtung { $direction }° mit einem Abstand von { $gap } mm. Mit check sehen Sie das Ergebnis.
+error-load-changed-project = das Projekt { $path } lässt sich mit der neuen Korrektur nicht laden, deshalb blieb es unverändert

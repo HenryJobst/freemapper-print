@@ -348,10 +348,13 @@ mod tests {
             "min",
             "max",
             "proposal",
+            "courses",
         ] {
             args.set(name, FluentValue::from("sample"));
         }
         args.set("count", FluentValue::from(3_i64));
+        args.set("layouts", FluentValue::from(2_i64));
+        args.set("assignments", FluentValue::from(3_i64));
         args
     }
 

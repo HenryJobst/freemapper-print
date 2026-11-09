@@ -237,7 +237,7 @@ note-element-covers-course = Note: the element { $id } covers { $count ->
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
-note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, add a correction for the control under [[numbers]] in the project file.
+note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, run numbers accept with --course "{ $course }", --control { $control } and --sheet or --layout-wide.
 note-number-gap-out-of-range = Note: on the sheet of course "{ $course }" the number of control { $control } is { $gap } mm from its circle. The rule profile allows { $min } to { $max } mm. It is printed with this gap all the same; a correction under [[numbers]] in the project file can change it.
 number-conflict-symbol = the symbol of control { $control }
 number-conflict-leg = the leg from { $from } to { $to }
@@ -291,3 +291,41 @@ note-map-cropped-to-course = Info: the map is { $cut } for the map frame. A cour
 note-course-placeholder-not-filled = Info: the text { $id } uses { $name }, which is only filled on course sheets. On this sheet it stays empty.
 note-no-courses-to-export = Note: the course file has no course to export, so no PDF was written.
 quoted = "{ $text }"
+
+# ---- init --courses, numbers accept (M3 Task 11) ----
+help-init-courses = The course file, .ppen (Purple Pen) or .xml (IOF XML 3.0). The project stores its path relative to the project file. A .ppen gets one layout per print scale in the file, an assignment per course and a description box; IOF XML gets one layout at the map scale.
+numbers-about = Change the positions of control numbers in the project file.
+numbers-accept-about = Add a correction for one control number to the project file. Without --direction and --gap it takes the proposal that check shows for that control.
+numbers-accept-after-content = The new [[numbers]] table goes to the end of the file as text. Everything before it stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
+numbers-accept-after-exit-codes = Exit codes: 0 when the correction is written, 1 when the project or its course file cannot be loaded or written, or the changed file does not load (the old content is put back), 2 when the command line is wrong, the course or control is unknown, check shows no proposal for the control, or the file has a correction for the same control and scope already.
+help-numbers-course = Name of the course, as in the course file.
+help-numbers-control = Code of the control.
+help-numbers-layout-wide = The correction counts for every course that prints on the course's layout.
+help-numbers-sheet = The correction counts for this course's sheet only. It beats a layout-wide one.
+help-numbers-direction = Direction in degrees, 0 is east, counter-clockwise. Needs --gap. Written with one decimal.
+help-numbers-gap = Gap between number and circle in print mm, above 0 and at most 10. Needs --direction. Written with two decimals.
+init-courses-read = Read the course file { $path }: { $count ->
+        [one] 1 course
+       *[other] { $count } courses
+    }, fitted to the map.
+init-courses-scales-ppen = Print scales come from the course file, one layout per scale. A course without a print scale gets the map scale, 1:{ $scale }.
+init-courses-scales-iof = The course file is IOF XML. It has no print scales, so all courses print on one layout at the map scale, 1:{ $scale }. It has no control descriptions either, so the layout gets no description box.
+init-courses-description-box = Each layout has a description box in the top-right corner of the map frame, with the cell size of the rule profile.
+init-courses-crop = A course sheet cuts the map to the course on purpose, so the layouts have map_frame.crop = true.
+init-written-courses = Wrote { $path } with { $layouts ->
+        [one] one layout
+       *[other] { $layouts } layouts
+    } and { $assignments ->
+        [one] one course assignment
+       *[other] { $assignments } course assignments
+    }, for { $kind } maps.
+init-courses-layout = Layout { $layout } at 1:{ $scale }: { $paper }, passe-partout { $margin } mm, for { $courses }.
+init-courses-no-fit = Warning: no A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so layout { $layout } keeps A4. check reports this.
+error-read-courses = could not read the course file { $path }
+error-numbers-no-course-file = numbers accept needs a course file, and the project names none under [sources] courses
+error-unknown-control = the course "{ $course }" has no control { $control }; its controls are { $known }
+error-numbers-no-proposal = there is no proposal for control { $control } on the sheet of course "{ $course }": its number has no conflict. Give --direction and --gap to set a position yourself.
+error-numbers-exists = the project file has a correction for control { $control } for { $scope } already. Edit the file to change it; numbers accept only adds new ones.
+error-numbers-value = --direction needs a finite number, and --gap must be above 0 and at most { $max } mm
+numbers-accepted = Added a correction for the number of control { $control } for { $scope } to { $path }: direction { $direction }° with a gap of { $gap } mm. Run check to see the result.
+error-load-changed-project = the project { $path } does not load with the new correction, so it was left as it was

@@ -1161,6 +1161,54 @@ pub fn save_new_with_comments(
         .map_err(|source| ProjectError::Write { file, source })
 }
 
+/// Writes `bytes` to `path` through a temporary file next to it and a rename, so that a failed write leaves the
+/// old file whole. The temporary file is removed again on failure.
+fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
+    let file = path.display().to_string();
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".part");
+    let tmp = PathBuf::from(tmp);
+    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    written.map_err(|source| {
+        let _ = std::fs::remove_file(&tmp);
+        ProjectError::Write { file, source }
+    })
+}
+
+/// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
+/// addendum). Everything before the new table stays byte for byte as it was, comments included. The file is
+/// replaced through a temporary file. When the result does not load (for example because `numbers` is written
+/// as an inline array), the old content is put back and the load error is returned.
+pub fn append_correction(
+    path: &Path,
+    correction: &NumberCorrection,
+) -> Result<LoadedProject, ProjectError> {
+    #[derive(Serialize)]
+    struct Wrapper<'a> {
+        numbers: [&'a NumberCorrection; 1],
+    }
+    let file = path.display().to_string();
+    let old = std::fs::read(path).map_err(|source| ProjectError::Io {
+        file: file.clone(),
+        source,
+    })?;
+    let table = toml::to_string(&Wrapper {
+        numbers: [correction],
+    })
+    .map_err(|e| ProjectError::Serialize(e.to_string()))?;
+    let mut new = old.clone();
+    if !new.ends_with(b"\n") {
+        new.push(b'\n');
+    }
+    new.push(b'\n');
+    new.extend_from_slice(table.as_bytes());
+    replace_file(path, &new)?;
+    load(path).inspect_err(|_| {
+        // Best effort: the load error is the one to report.
+        let _ = replace_file(path, &old);
+    })
+}
+
 /// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
 /// parts on every system, so that the project file moves between Windows, macOS and Linux. `to`
 /// itself when the two share no root (another drive on Windows).
