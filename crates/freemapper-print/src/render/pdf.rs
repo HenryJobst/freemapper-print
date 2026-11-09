@@ -2,6 +2,7 @@
 //! Drawing primitives as a one-page PDF: DeviceCMYK colours, painted in the page's order, texts in
 //! embedded subsets of Arimo (ADR 0017).
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -22,16 +23,42 @@ const MITER_LIMIT: f32 = 2.236_068;
 /// OOM's miter limit for text framing in PDF: Qt 0.5 → √(1 + 4 · 0.5²) = √2 (reference §2.1).
 const TEXT_FRAMING_MITER_LIMIT: f32 = std::f32::consts::SQRT_2;
 
-/// Page mm (y down) → page points (y up).
+/// Page mm (y down) → page points (y up). Every number written to the page goes through
+/// [`Transform::num`], which notes one that is not finite as an `f32`.
 struct Transform {
     page_height: f64,
+    /// A number was not finite: the page is refused ([`PdfError::NotFinite`]).
+    not_finite: Cell<bool>,
 }
 
 impl Transform {
+    fn new(page_height: f64) -> Self {
+        Transform {
+            page_height,
+            not_finite: Cell::new(false),
+        }
+    }
+
+    /// `v` as written to the PDF. `inf` and `NaN` are no PDF numbers; one that is (or overflows
+    /// `f32` into) one is a bug upstream, noted here and refused by [`write_pdf`].
+    fn num(&self, v: f64) -> f32 {
+        let n = v as f32;
+        if !n.is_finite() {
+            self.not_finite.set(true);
+            return 0.0;
+        }
+        n
+    }
+
+    /// A length in mm as points.
+    fn len(&self, mm: f64) -> f32 {
+        self.num(mm * PT_PER_MM)
+    }
+
     fn pt(&self, p: Pt) -> (f32, f32) {
         (
-            (p.0 * PT_PER_MM) as f32,
-            ((self.page_height - p.1) * PT_PER_MM) as f32,
+            self.num(p.0 * PT_PER_MM),
+            self.num((self.page_height - p.1) * PT_PER_MM),
         )
     }
 }
@@ -77,7 +104,7 @@ fn paint(
     shape: &Shape,
     fonts: &mut PageFonts,
 ) {
-    let [c, m, y, k] = cmyk.map(|v| v as f32);
+    let [c, m, y, k] = cmyk.map(|v| t.num(v));
     match shape {
         Shape::Fill { rings, rule } => {
             content.set_fill_cmyk(c, m, y, k);
@@ -97,7 +124,7 @@ fn paint(
             join,
         } => {
             content.set_stroke_cmyk(c, m, y, k);
-            content.set_line_width((width * PT_PER_MM) as f32);
+            content.set_line_width(t.len(*width));
             content.set_line_cap(match cap {
                 Cap::Flat => LineCapStyle::ButtCap,
                 Cap::Round => LineCapStyle::RoundCap,
@@ -130,7 +157,7 @@ fn paint(
                 Some(width) => {
                     content.save_state();
                     content.set_stroke_cmyk(c, m, y, k);
-                    content.set_line_width((width * PT_PER_MM) as f32);
+                    content.set_line_width(t.len(*width));
                     content.set_line_join(LineJoinStyle::MiterJoin);
                     content.set_miter_limit(TEXT_FRAMING_MITER_LIMIT);
                 }
@@ -139,16 +166,14 @@ fn paint(
                 }
             }
             content.begin_text();
-            content.set_font(
-                PageFonts::resource_name(font_face),
-                (size * PT_PER_MM) as f32,
-            );
+            content.set_font(PageFonts::resource_name(font_face), t.len(*size));
             if stroke.is_some() {
                 content.set_text_rendering_mode(TextRenderingMode::Stroke);
             }
             // Counter-clockwise on paper is counter-clockwise in PDF too.
             let (sin, cos) = rotation.sin_cos();
-            content.set_text_matrix([cos as f32, sin as f32, -sin as f32, cos as f32, x, y0]);
+            let (cos, sin) = (t.num(cos), t.num(sin));
+            content.set_text_matrix([cos, sin, -sin, cos, x, y0]);
             content.show(Str(&cids));
             content.end_text();
             if stroke.is_some() {
@@ -199,6 +224,10 @@ fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
 pub enum PdfError {
     #[error("could not embed the font {face}: {message}")]
     Font { face: &'static str, message: String },
+    /// A number on the page is infinite or not a number, or too large for a PDF number. That is
+    /// a bug: the project limits keep real input far below it.
+    #[error("a number on the page is not finite; the page is not written")]
+    NotFinite,
 }
 
 /// What a written page could not show as asked.
@@ -230,9 +259,7 @@ impl PdfMeta {
 /// not show.
 pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
     let (page_w, page_h) = page.page_mm;
-    let t = Transform {
-        page_height: page_h,
-    };
+    let t = Transform::new(page_h);
     let colours = &page.colours;
 
     // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
@@ -309,8 +336,8 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
                         images.len() - 1
                     });
                 let (x, y) = t.pt((rect.min.0, rect.max.1));
-                let w = ((rect.max.0 - rect.min.0) * PT_PER_MM) as f32;
-                let h = ((rect.max.1 - rect.min.1) * PT_PER_MM) as f32;
+                let w = t.len(rect.max.0 - rect.min.0);
+                let h = t.len(rect.max.1 - rect.min.1);
                 content.transform([w, 0.0, 0.0, h, x, y]);
                 content.x_object(Name(image_name(index).as_bytes()));
             }
@@ -332,12 +359,7 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     pdf.catalog(catalog).pages(pages);
     pdf.pages(pages).kids([page]).count(1);
     let mut p = pdf.page(page);
-    p.media_box(Rect::new(
-        0.0,
-        0.0,
-        (page_w * PT_PER_MM) as f32,
-        (page_h * PT_PER_MM) as f32,
-    ));
+    p.media_box(Rect::new(0.0, 0.0, t.len(page_w), t.len(page_h)));
     p.parent(pages);
     p.contents(contents);
     let mut resources = p.resources();
@@ -353,6 +375,9 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     }
     resources.finish();
     p.finish();
+    if t.not_finite.get() {
+        return Err(PdfError::NotFinite);
+    }
     // The content stream comes first, the font programs after it.
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&content.finish(), 6);
     pdf.stream(contents, &compressed)
@@ -441,6 +466,51 @@ mod tests {
 
     fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    #[test]
+    fn numbers_beyond_f32_refuse_the_page() {
+        let far = Primitive {
+            priority: 2,
+            shape: Shape::Stroke {
+                path: vec![(1e300, 0.0), (0.0, 0.0)],
+                closed: false,
+                width: 0.1,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        };
+        let err = write_pdf(&page(&[far]), &PdfMeta::new("t")).unwrap_err();
+        assert!(matches!(err, PdfError::NotFinite), "{err}");
+        // A sheet item too: a text of infinite size.
+        let mut p = page(&[]);
+        p.sheet.push(SheetItem::Shape {
+            colour: DirectColour::BLACK,
+            shape: Shape::Text {
+                origin: (10.0, 10.0),
+                size: f64::INFINITY,
+                bold: false,
+                italic: false,
+                text: "x".into(),
+                rotation: 0.0,
+                stroke: None,
+            },
+        });
+        let err = write_pdf(&p, &PdfMeta::new("t")).unwrap_err();
+        assert!(matches!(err, PdfError::NotFinite), "{err}");
+        // A logo whose box is NaN wide.
+        let mut p = page(&[]);
+        p.sheet.push(SheetItem::Image {
+            rect: PaperBox {
+                min: (0.0, 0.0),
+                max: (f64::NAN, 1.0),
+            },
+            image: Arc::new(RasterImage::new(1, 1, vec![0, 0, 0], None).unwrap()),
+        });
+        assert!(matches!(
+            write_pdf(&p, &PdfMeta::new("t")),
+            Err(PdfError::NotFinite)
+        ));
     }
 
     #[test]

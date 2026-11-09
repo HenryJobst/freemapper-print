@@ -13,6 +13,18 @@ use crate::scale::MapKind;
 /// The only format version this program reads and writes.
 pub const FORMAT: u32 = 1;
 
+/// Largest text size (pt) of an element.
+pub const MAX_SIZE_PT: f64 = 200.0;
+/// Largest logo width and largest anchor offset, in either direction (mm): beyond any paper.
+pub const MAX_LENGTH_MM: f64 = 2000.0;
+/// Widest frame line (mm).
+pub const MAX_BORDER_MM: f64 = 20.0;
+/// Largest contour interval (m).
+pub const MAX_CONTOUR_INTERVAL_M: f64 = 100.0;
+/// Farthest map point a frame may centre on, in either direction (mm on the map sheet). OOM maps
+/// span at most ±2147 m of map paper (µm in an `i32`).
+pub const MAX_CENTRE_MM: f64 = 2_000_000.0;
+
 /// Smallest size (pt) of a `credit_line` element: the credit line must stay readable (ADR 0025).
 pub const MIN_CREDIT_PT: f64 = 5.0;
 
@@ -380,6 +392,13 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
     }
     if let Some(c) = p.map.contour_interval_m {
         positive(file, "map.contour_interval_m".to_string(), c)?;
+        at_most(
+            file,
+            "map.contour_interval_m".to_string(),
+            c,
+            MAX_CONTOUR_INTERVAL_M,
+            "m",
+        )?;
     }
     let mut layout_ids = HashSet::new();
     // Lower-case id -> the id as written: the PDFs `<id>.pdf` of `A4` and `a4` are one file on
@@ -457,6 +476,19 @@ fn positive(file: &str, field: String, v: f64) -> Result<(), ProjectError> {
     }
 }
 
+/// `v` must not exceed `max` (in `unit`).
+fn at_most(file: &str, field: String, v: f64, max: f64, unit: &str) -> Result<(), ProjectError> {
+    if v <= max {
+        Ok(())
+    } else {
+        Err(invalid(
+            file,
+            field,
+            &format!("must be at most {max} {unit}"),
+        ))
+    }
+}
+
 fn non_empty(file: &str, field: String, v: &str) -> Result<(), ProjectError> {
     if v.trim().is_empty() {
         Err(invalid(file, field, "must not be empty"))
@@ -475,11 +507,15 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
         ));
     }
     for (i, v) in e.anchor.offset_mm.iter().enumerate() {
+        let field = format!("{at}.anchor.offset_mm[{i}]");
         if !v.is_finite() {
+            return Err(invalid(file, field, "must be a finite number"));
+        }
+        if v.abs() > MAX_LENGTH_MM {
             return Err(invalid(
                 file,
-                format!("{at}.anchor.offset_mm[{i}]"),
-                "must be a finite number",
+                field,
+                "must lie between -2000 and 2000 mm, which reaches past any paper",
             ));
         }
     }
@@ -505,6 +541,7 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
     }
     if let Some(v) = e.size_pt {
         positive(file, format!("{at}.size_pt"), v)?;
+        at_most(file, format!("{at}.size_pt"), v, MAX_SIZE_PT, "pt")?;
         if e.kind == ElementKind::CreditLine && v < MIN_CREDIT_PT {
             return Err(invalid(
                 file,
@@ -525,7 +562,10 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
                     "a logo needs a `width_mm`",
                 ));
             }
-            Some(w) => positive(file, format!("{at}.width_mm"), w)?,
+            Some(w) => {
+                positive(file, format!("{at}.width_mm"), w)?;
+                at_most(file, format!("{at}.width_mm"), w, MAX_LENGTH_MM, "mm")?;
+            }
         }
     }
     Ok(())
@@ -581,25 +621,41 @@ fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError
         return Err(invalid(file, format!("layouts[{i}].id"), problem));
     }
     let f = &l.map_frame;
-    positive(
-        file,
-        format!("layouts[{i}].map_frame.margin_mm"),
-        f.margin_mm,
-    )?;
-    if !(f.border_mm.is_finite() && f.border_mm >= 0.0) {
+    let margin = format!("layouts[{i}].map_frame.margin_mm");
+    positive(file, margin.clone(), f.margin_mm)?;
+    // Half the shorter side or more leaves no map frame.
+    let (w, h) = l.paper.size_mm();
+    let half = w.min(h) / 2.0;
+    if f.margin_mm >= half {
+        let paper = match l.paper {
+            Paper::A4 => "A4",
+            Paper::A3 => "A3",
+        };
         return Err(invalid(
             file,
-            format!("layouts[{i}].map_frame.border_mm"),
-            "must be a number of 0 or more",
+            margin,
+            &format!(
+                "must be less than {half} mm, half the shorter side of {paper}; \
+                 otherwise no map frame is left"
+            ),
         ));
     }
+    let border = format!("layouts[{i}].map_frame.border_mm");
+    if !(f.border_mm.is_finite() && f.border_mm >= 0.0) {
+        return Err(invalid(file, border, "must be a number of 0 or more"));
+    }
+    at_most(file, border, f.border_mm, MAX_BORDER_MM, "mm")?;
     if let Some(c) = f.centre_map_mm {
         for (k, v) in c.iter().enumerate() {
+            let field = format!("layouts[{i}].map_frame.centre_map_mm[{k}]");
             if !v.is_finite() {
+                return Err(invalid(file, field, "must be a finite number"));
+            }
+            if v.abs() > MAX_CENTRE_MM {
                 return Err(invalid(
                     file,
-                    format!("layouts[{i}].map_frame.centre_map_mm[{k}]"),
-                    "must be a finite number",
+                    field,
+                    "must lie between -2 000 000 and 2 000 000 mm, the reach of an OOM map",
                 ));
             }
         }
@@ -1151,6 +1207,94 @@ mod tests {
             };
             assert!(msg.contains(field), "{field}: {msg}");
         }
+    }
+
+    #[test]
+    fn upper_bounds_are_checked() {
+        let offset = |v: &str| {
+            shared("text", "").replace(
+                "corner=\"top\"",
+                &format!("corner=\"top\"\noffset_mm=[{v}, 0.0]"),
+            )
+        };
+        // (head, shared element, layout lines, field, words of the message)
+        let cases: Vec<(&str, String, &str, &str, &str)> = vec![
+            (
+                "",
+                shared("text", "size_pt = 200.5"),
+                "",
+                "shared[0].size_pt",
+                "200",
+            ),
+            (
+                "",
+                shared("logo", "file=\"a.png\"\nwidth_mm = 2000.5"),
+                "",
+                "shared[0].width_mm",
+                "2000",
+            ),
+            (
+                "",
+                offset("-2000.5"),
+                "",
+                "shared[0].anchor.offset_mm[0]",
+                "2000",
+            ),
+            (
+                "",
+                String::new(),
+                "[layouts.map_frame]\nborder_mm = 20.5",
+                "layouts[0].map_frame.border_mm",
+                "20",
+            ),
+            (
+                "",
+                String::new(),
+                "[layouts.map_frame]\nmargin_mm = 105.0",
+                "layouts[0].map_frame.margin_mm",
+                "105",
+            ),
+            (
+                "",
+                String::new(),
+                "paper = \"A3\"\n[layouts.map_frame]\nmargin_mm = 148.5",
+                "layouts[0].map_frame.margin_mm",
+                "148.5",
+            ),
+            (
+                "contour_interval_m = 100.5\n",
+                String::new(),
+                "",
+                "map.contour_interval_m",
+                "100",
+            ),
+            (
+                "",
+                String::new(),
+                "[layouts.map_frame]\ncentre_map_mm = [0.0, -2000000.5]",
+                "layouts[0].map_frame.centre_map_mm[1]",
+                "2 000 000",
+            ),
+        ];
+        for (head, sh, layout, field, words) in cases {
+            let msg = err_for(head, &sh, layout);
+            assert!(
+                msg.contains(field) && msg.contains(words) && msg.contains(FILE_NAME),
+                "{field}: {msg}"
+            );
+        }
+        // The bounds themselves are fine.
+        let ok = format!(
+            "{HEAD}contour_interval_m = 100.0\n\n[[layouts]]\nid = \"a\"\n\
+             [layouts.map_frame]\nmargin_mm = 104.9\nborder_mm = 20.0\n\
+             centre_map_mm = [2000000.0, -2000000.0]\n{}",
+            shared("text", "size_pt = 200.0").replace(
+                "corner=\"top\"",
+                "corner=\"top\"\noffset_mm=[2000.0, -2000.0]"
+            )
+        );
+        let (_d, path) = temp_project(&ok);
+        load(&path).unwrap();
     }
 
     #[test]
