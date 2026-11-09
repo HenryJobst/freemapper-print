@@ -807,8 +807,8 @@ mod tests {
         // The line runs through the bottom-left corner: the footer covers part of it.
         assert_eq!(
             notes,
-            [crate::sheet::SheetNote::ElementOverlapsMap {
-                id: crate::sheet::FOOTER_ID.into()
+            [crate::sheet::SheetNote::FooterOverlapsMap {
+                content: crate::sheet::FooterContent::CopyrightAndCredit
             }]
         );
         // German, and nothing to note when the map keeps clear of the corner.

@@ -52,6 +52,14 @@ impl SheetReport {
     }
 }
 
+/// What the default footer holds: an element can move either part out of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FooterContent {
+    CopyrightAndCredit,
+    Copyright,
+    Credit,
+}
+
 /// Something about a sheet the user should know. None of them stops the export.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SheetNote {
@@ -68,8 +76,13 @@ pub enum SheetNote {
         layout: String,
         missing: Vec<MissingItem>,
     },
-    /// The default footer, on its white box inside the map frame, covers part of the element.
-    FooterCoversElement { id: String },
+    /// The default footer, holding `content`, covers part of the map frame: the passe-partout
+    /// is too narrow for it, so it sits on its white box inside the frame.
+    FooterOverlapsMap { content: FooterContent },
+    /// The default footer, holding `content`, reaches past the page edge.
+    FooterOutsidePage { content: FooterContent },
+    /// The default footer, holding `content`, covers part of the element `id`.
+    FooterCoversElement { id: String, content: FooterContent },
     /// The layout shows no `scale_check_bar` element. The design puts one on every sheet by
     /// default (§5.4); `init` adds it, and the note makes a missing one visible.
     MissingScaleCheckBar { layout: String },
@@ -239,19 +252,25 @@ pub fn render_sheet(
         page.sheet.extend(placed.items);
     }
     let credit_in_footer = credit_lines.is_empty();
-    if let Some(footer) = text::default_footer(&ctx, credit_in_footer, &mut notes) {
+    if let Some((footer, content)) = text::default_footer(&ctx, credit_in_footer, &mut notes) {
         // Hung on the page, so that a footer inside the frame counts as covering the map.
-        notes.extend(layout::bounds_notes(
+        let bounds = layout::bounds_notes(
             text::FOOTER_ID,
             AnchorTarget::Page,
             footer.rect,
             page_box,
             frame,
-        ));
+        );
+        notes.extend(bounds.into_iter().map(|n| match n {
+            SheetNote::ElementOverlapsMap { .. } => SheetNote::FooterOverlapsMap { content },
+            SheetNote::ElementOutsidePage { .. } => SheetNote::FooterOutsidePage { content },
+            other => other,
+        }));
         for (id, rect) in &placed_rects {
             if layout::overlap(footer.rect, *rect) {
                 notes.push(SheetNote::FooterCoversElement {
                     id: (*id).to_string(),
+                    content,
                 });
             }
         }
@@ -288,8 +307,8 @@ pub fn render_sheet(
 /// copyright lines from `map.notes` and the credit line in `lang`, placed against the page's frame
 /// as on a sheet (ADR 0029). With `render`'s 5 mm margin it sits on a white box in the bottom-left
 /// corner of the frame. The map does not move. Notes: [`SheetNote::CopyrightTruncated`] (with the
-/// layout `""`), and [`SheetNote::ElementOverlapsMap`] for [`FOOTER_ID`] when the box covers part
-/// of what the map draws.
+/// layout `""`), and [`SheetNote::FooterOverlapsMap`] when the box covers part of what the map
+/// draws.
 pub fn add_map_footer(
     page: &mut RenderedPage,
     map: &MapDocument,
@@ -300,7 +319,9 @@ pub fn add_map_footer(
         min: (0.0, 0.0),
         max: page.page_mm,
     };
-    if let Some(footer) = text::map_footer(&map.notes, lang, page_box, page.clip, &mut notes) {
+    if let Some((footer, content)) =
+        text::map_footer(&map.notes, lang, page_box, page.clip, &mut notes)
+    {
         let drawn = crate::render::bounds::painted_bounds(&page.primitives);
         let covers = drawn.is_some_and(|(min, max)| {
             footer.rect.min.0 < max.0
@@ -309,9 +330,7 @@ pub fn add_map_footer(
                 && min.1 < footer.rect.max.1
         });
         if covers {
-            notes.push(SheetNote::ElementOverlapsMap {
-                id: FOOTER_ID.into(),
-            });
+            notes.push(SheetNote::FooterOverlapsMap { content });
         }
         page.sheet.extend(footer.items);
     }
@@ -766,8 +785,8 @@ mod tests {
         assert_eq!(
             report.notes,
             [
-                SheetNote::ElementOverlapsMap {
-                    id: "footer".into()
+                SheetNote::FooterOverlapsMap {
+                    content: FooterContent::CopyrightAndCredit
                 },
                 SheetNote::MissingScaleCheckBar {
                     layout: "a4".into()
@@ -1154,8 +1173,8 @@ mod tests {
         map.notes = "a\nb\nc".into();
         let lp = project(MapKind::Sprint, Vec::new(), &a4());
         let (_, report) = sheet_of(&lp, &map);
-        assert!(report.notes.contains(&SheetNote::ElementOverlapsMap {
-            id: "footer".into()
+        assert!(report.notes.contains(&SheetNote::FooterOverlapsMap {
+            content: FooterContent::CopyrightAndCredit
         }));
         // Below the frame: nothing to note.
         let (_, report) = sheet_of(&lp, &empty_map());
@@ -1491,6 +1510,45 @@ mod tests {
     }
 
     #[test]
+    fn footer_notes_name_what_the_footer_holds() {
+        // Three sources do not fit below the 8 mm frame: the footer covers the map.
+        let mut map = empty_map();
+        map.notes = "a\nb\nc".into();
+        let overlaps = |lp: &LoadedProject, map: &MapDocument| {
+            let (_, report) = sheet_of(lp, map);
+            report.notes.into_iter().find_map(|n| match n {
+                SheetNote::FooterOverlapsMap { content } => Some(content),
+                _ => None,
+            })
+        };
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        assert_eq!(overlaps(&lp, &map), Some(FooterContent::CopyrightAndCredit));
+        // The credit line moved away: only the copyright lines are left.
+        let mut credit = text_element("credit", ElementKind::CreditLine, &[], Corner::TopRight);
+        credit.anchor.offset_mm = [2.0, 2.0];
+        let mut moved = a4();
+        moved.elements = vec![credit];
+        let lp = project(MapKind::Sprint, Vec::new(), &moved);
+        assert_eq!(overlaps(&lp, &map), Some(FooterContent::Copyright));
+        // The copyright lines moved away: only the credit line, inside a 6 mm margin.
+        let mut layout = a4();
+        layout.map_frame.margin_mm = 6.0;
+        layout.elements = vec![text_element(
+            "src",
+            ElementKind::CopyrightLine,
+            &[],
+            Corner::TopRight,
+        )];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        assert_eq!(overlaps(&lp, &map), Some(FooterContent::Credit));
+        // No old-style footer notes.
+        let (_, report) = sheet_of(&lp, &map);
+        assert!(!report.notes.iter().any(|n| matches!(n,
+            SheetNote::ElementOverlapsMap { id } | SheetNote::ElementOutsidePage { id }
+                if id == FOOTER_ID)));
+    }
+
+    #[test]
     fn footer_covering_an_element_noted() {
         // Three source lines do not fit below the frame: the footer goes into its bottom-left
         // corner, where the bar hangs too.
@@ -1506,7 +1564,10 @@ mod tests {
         layout.elements = vec![bar.clone()];
         let lp = project(MapKind::Sprint, Vec::new(), &layout);
         let (_, report) = sheet_of(&lp, &map);
-        let note = SheetNote::FooterCoversElement { id: "bar".into() };
+        let note = SheetNote::FooterCoversElement {
+            id: "bar".into(),
+            content: FooterContent::CopyrightAndCredit,
+        };
         assert!(report.notes.contains(&note), "{:?}", report.notes);
         // In the other corner, or with the footer below the frame: nothing to note.
         let mut right = lp.clone();

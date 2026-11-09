@@ -1008,13 +1008,15 @@ fn starter_is_clean(project: &Project, report: &crate::sheet::SheetReport) -> bo
 /// Whether every note that keeps `report` from being clean is about the default footer, so a
 /// wider passe-partout could help.
 fn only_footer_in_the_way(project: &Project, report: &crate::sheet::SheetReport) -> bool {
-    use crate::sheet::{FOOTER_ID, SheetNote};
+    use crate::sheet::SheetNote;
     let mut rest = report.clone();
     rest.notes.retain(|n| {
-        !matches!(n,
-            SheetNote::ElementOverlapsMap { id } | SheetNote::ElementOutsidePage { id }
-                if id == FOOTER_ID)
-            && !matches!(n, SheetNote::FooterCoversElement { .. })
+        !matches!(
+            n,
+            SheetNote::FooterOverlapsMap { .. }
+                | SheetNote::FooterOutsidePage { .. }
+                | SheetNote::FooterCoversElement { .. }
+        )
     });
     rest.notes.len() < report.notes.len() && starter_is_clean(project, &rest)
 }
@@ -1699,7 +1701,7 @@ mod tests {
     /// The sheets [`fit_with`] tries for a map whose footer needs `needs` mm of passe-partout on
     /// each paper (`None`: no margin helps), as (paper, margin) in order, and its result.
     fn fit_trace(needs: [Option<u32>; 2]) -> (Vec<(Paper, u32)>, Project, bool) {
-        use crate::sheet::{FOOTER_ID, SheetNote};
+        use crate::sheet::{FooterContent, SheetNote};
         let p = starter(
             "T",
             PathBuf::from("m.omap"),
@@ -1713,8 +1715,8 @@ mod tests {
             let margin = l.map_frame.margin_mm as u32;
             tried.push((l.paper, margin));
             let need = needs[usize::from(l.paper == Paper::A3)];
-            let footer = SheetNote::ElementOverlapsMap {
-                id: FOOTER_ID.into(),
+            let footer = SheetNote::FooterOverlapsMap {
+                content: FooterContent::CopyrightAndCredit,
             };
             Some(report_with(match need {
                 Some(n) if margin >= n => vec![],

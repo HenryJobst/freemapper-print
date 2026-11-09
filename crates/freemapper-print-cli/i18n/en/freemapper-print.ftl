@@ -126,9 +126,17 @@ check-with-notes = Layouts with notes: { $count } of { $total }.
 
 list-and = { $first } and { $last }
 note-element-outside-page = Note: the element { $id } reaches past the page edge and is cut off there.
-note-footer-outside-page = Note: the footer with the copyright and credit lines reaches past the page edge and is cut off there.
+note-footer-outside-page = Note: the footer with { $content ->
+        [copyright] the copyright lines
+        [credit] the credit line
+       *[both] the copyright and credit lines
+    } reaches past the page edge and is cut off there.
 note-element-overlaps-map = Note: the element { $id } hangs on the page and covers part of the map frame, so the map beneath it does not show.
-note-footer-overlaps-map = Note: the passe-partout is too narrow for the footer with the copyright and credit lines. The footer sits inside the map frame on a white box and covers part of the map. A wider margin_mm or a copyright_line or credit_line element moves it.
+note-footer-overlaps-map = Note: the passe-partout is too narrow for the footer with { $content ->
+        [copyright] the copyright lines
+        [credit] the credit line
+       *[both] the copyright and credit lines
+    }. The footer sits inside the map frame on a white box and covers part of the map. A wider margin_mm or a copyright_line or credit_line element moves it.
 note-larger-than-a3 = Note: the paper is larger than A3, which most office printers cannot take.
 note-missing-scale-or-contour = Note: layout { $layout } lacks { $missing }.
 missing-print-scale-text = a text with { $name } for the print scale
@@ -148,7 +156,11 @@ note-logo-simplified = Note: the logo { $id } is drawn simplified: { $reason }
 note-unknown-placeholder = Note: the text { $id } contains { $name }, which is no placeholder, so it is printed as written.
 note-unknown-part = Note: layout { $layout } hides the map part { $name }, but the map has no part of that name. Upper and lower case count.
 note-credit-line-moved = Note: the credit line element { $id } would not lie wholly on the page, so the credit line stays in the footer at the bottom left.
-note-render-footer-on-map = Note: the footer with the copyright and credit lines sits on a white box in the bottom-left corner of the printable area and covers part of the map. In a project (init, then export) it can go below the map frame.
+note-render-footer-on-map = Note: the footer with { $content ->
+        [copyright] the copyright lines
+        [credit] the credit line
+       *[both] the copyright and credit lines
+    } sits on a white box in the bottom-left corner of the printable area and covers part of the map. In a project (init, then export) it can go below the map frame.
 note-render-copyright-truncated = Note: the footer shows { $shown } of { $total } copyright lines. One more line counts the rest.
 
 ## Why a logo is left out or drawn simpler (after "the logo … is left out:" or "drawn simplified:")
@@ -178,7 +190,11 @@ logo-simplified-image = an embedded image is left out.
 logo-simplified-text = text is left out; convert it to paths.
 logo-simplified-clip-path = a clip path is ignored.
 note-missing-scale-check-bar = Note: layout { $layout } has no scale check bar. An element of kind scale_check_bar shows on the print whether the printer scaled it.
-note-footer-covers-element = Note: the footer with the copyright and credit lines sits on a white box inside the map frame and covers part of the element { $id }. A wider margin_mm, another place for the element, or a copyright_line or credit_line element keeps them apart.
+note-footer-covers-element = Note: the footer with { $content ->
+        [copyright] the copyright lines
+        [credit] the credit line
+       *[both] the copyright and credit lines
+    } at the bottom left covers part of the element { $id }. Move the element, or move the footer lines with a copyright_line or credit_line element.
 error-disk-full-unknown = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and the disk does not say how much is free
 note-copyright-line-cut = Note: the copyright line "{ $line }" is wider than the map frame and is cut short, ending in "…". Shorten it in the map notes or in print.copyright.
 hint-crop = For a sheet that shows only part of the map, map_frame.centre_map_mm picks the part and map_frame.crop = true marks the cut as intended.

@@ -6,7 +6,9 @@ use crate::render::fonts::{ASCENT, LINE_SPACING, char_width, face, text_width};
 use crate::render::page::{DirectColour, FillRule, PaperBox, Pt, Shape, SheetItem};
 
 use super::placeholders::{PlaceholderValues, fill};
-use super::{MissingItem, PlacedElement, SheetContext, SheetNote, layout, layout_elements};
+use super::{
+    FooterContent, MissingItem, PlacedElement, SheetContext, SheetNote, layout, layout_elements,
+};
 
 /// 1 pt in mm.
 const MM_PER_PT: f64 = 25.4 / 72.0;
@@ -212,21 +214,33 @@ pub(super) fn default_footer(
     ctx: &SheetContext<'_>,
     with_credit: bool,
     notes: &mut Vec<SheetNote>,
-) -> Option<PlacedElement> {
+) -> Option<(PlacedElement, FooterContent)> {
     let has = |kind| layout_elements(ctx.project, ctx.layout).any(|e| e.kind == kind);
     let mut text = Vec::new();
     if !has(ElementKind::CopyrightLine) {
         text.extend(copyright_lines(ctx, FOOTER_PT * MM_PER_PT, notes));
     }
+    let content = footer_content(!text.is_empty(), with_credit)?;
     if with_credit {
         text.push(credit_text(ctx));
     }
-    footer_block(&text, ctx.page, ctx.frame, ctx.layout.map_frame.border_mm)
+    let footer = footer_block(&text, ctx.page, ctx.frame, ctx.layout.map_frame.border_mm)?;
+    Some((footer, content))
+}
+
+/// What a footer with copyright lines (`copyright`) and the credit line (`credit`) holds; `None`
+/// when it holds nothing.
+fn footer_content(copyright: bool, credit: bool) -> Option<FooterContent> {
+    match (copyright, credit) {
+        (true, true) => Some(FooterContent::CopyrightAndCredit),
+        (true, false) => Some(FooterContent::Copyright),
+        (false, true) => Some(FooterContent::Credit),
+        (false, false) => None,
+    }
 }
 
 /// The footer of `lines` (copyright lines, then the credit line) at 5 pt, always on a white box
-/// (ADR 0029): below `frame`,
-/// left-aligned with it, the last baseline 4 mm above the paper edge; or, when the passe-partout
+/// (ADR 0029): below `frame`, left-aligned with it, the last baseline 4 mm above the paper edge; or, when the passe-partout
 /// below the frame is under 6.5 mm or too narrow for all the lines, inside the frame at its bottom
 /// left on a white box, inset by half the frame line `border_mm` (ADR 0029). `None` for no lines.
 /// Sheets and the `render` command share it.
@@ -290,7 +304,7 @@ pub(crate) fn map_footer(
     page: PaperBox,
     frame: PaperBox,
     notes: &mut Vec<SheetNote>,
-) -> Option<PlacedElement> {
+) -> Option<(PlacedElement, FooterContent)> {
     let mut lines = copyright_lines_of(
         map_notes,
         lang,
@@ -300,8 +314,9 @@ pub(crate) fn map_footer(
         FOOTER_PT * MM_PER_PT,
         notes,
     );
+    let content = footer_content(!lines.is_empty(), true)?;
     lines.push(crate::credit_line(lang).to_string());
-    footer_block(&lines, page, frame, 0.0)
+    Some((footer_block(&lines, page, frame, 0.0)?, content))
 }
 
 fn values(ctx: &SheetContext<'_>) -> PlaceholderValues {

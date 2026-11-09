@@ -126,9 +126,17 @@ check-with-notes = Layouts mit Hinweisen: { $count } von { $total }.
 
 list-and = { $first } und { $last }
 note-element-outside-page = Hinweis: Das Element { $id } ragt über den Blattrand und wird dort abgeschnitten.
-note-footer-outside-page = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung ragt über den Blattrand und wird dort abgeschnitten.
+note-footer-outside-page = Hinweis: Die Fußzeile { $content ->
+        [copyright] mit den Quellenangaben
+        [credit] mit der Namensnennung
+       *[both] mit Quellenangaben und Namensnennung
+    } ragt über den Blattrand und wird dort abgeschnitten.
 note-element-overlaps-map = Hinweis: Das Element { $id } hängt am Blatt und deckt einen Teil des Kartenausschnitts ab, die Karte darunter ist nicht zu sehen.
-note-footer-overlaps-map = Hinweis: Das Passepartout ist zu schmal für die Fußzeile mit Quellenangaben und Namensnennung. Sie steht deshalb auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil der Karte ab. Ein breiteres margin_mm oder ein Element copyright_line oder credit_line verschiebt sie.
+note-footer-overlaps-map = Hinweis: Das Passepartout ist zu schmal für die Fußzeile { $content ->
+        [copyright] mit den Quellenangaben
+        [credit] mit der Namensnennung
+       *[both] mit Quellenangaben und Namensnennung
+    }. Sie steht deshalb auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil der Karte ab. Ein breiteres margin_mm oder ein Element copyright_line oder credit_line verschiebt sie.
 note-larger-than-a3 = Hinweis: Das Papier ist größer als A3, das nehmen die meisten Bürodrucker nicht.
 note-missing-scale-or-contour = Hinweis: Im Layout { $layout } { $count ->
         [one] fehlt
@@ -151,7 +159,11 @@ note-logo-simplified = Hinweis: Das Logo { $id } wird vereinfacht gezeichnet: { 
 note-unknown-placeholder = Hinweis: Der Text { $id } enthält { $name }. Das ist kein Platzhalter und wird so gedruckt, wie es dasteht.
 note-unknown-part = Hinweis: Layout { $layout } blendet den Kartenteil { $name } aus, die Karte hat aber keinen Teil dieses Namens. Groß- und Kleinschreibung zählt.
 note-credit-line-moved = Hinweis: Das Element { $id } läge mit der Namensnennung nicht ganz auf dem Blatt. Die Namensnennung bleibt deshalb in der Fußzeile unten links.
-note-render-footer-on-map = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten unten links im Druckbereich und deckt einen Teil der Karte ab. In einem Projekt (init, dann export) kann sie unter den Kartenausschnitt rücken.
+note-render-footer-on-map = Hinweis: Die Fußzeile { $content ->
+        [copyright] mit den Quellenangaben
+        [credit] mit der Namensnennung
+       *[both] mit Quellenangaben und Namensnennung
+    } steht auf einem weißen Kasten unten links im Druckbereich und deckt einen Teil der Karte ab. In einem Projekt (init, dann export) kann sie unter den Kartenausschnitt rücken.
 note-render-copyright-truncated = Hinweis: Die Fußzeile zeigt { $shown } von { $total } Quellenangaben. Eine weitere Zeile zählt die übrigen.
 
 ## Warum ein Logo fehlt oder vereinfacht ist (nach „Das Logo … fehlt auf dem Blatt:“ oder „wird vereinfacht gezeichnet:“)
@@ -181,7 +193,11 @@ logo-simplified-image = Ein eingebettetes Bild fehlt.
 logo-simplified-text = Text fehlt; wandeln Sie ihn in Pfade um.
 logo-simplified-clip-path = Ein Beschneidungspfad wird ignoriert.
 note-missing-scale-check-bar = Hinweis: Layout { $layout } hat keine Kontrollstrecke. Ein Element vom Typ scale_check_bar zeigt am Ausdruck, ob der Drucker skaliert hat.
-note-footer-covers-element = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil des Elements { $id } ab. Ein breiteres margin_mm, ein anderer Platz für das Element oder ein Element copyright_line oder credit_line trennt sie.
+note-footer-covers-element = Hinweis: Die Fußzeile { $content ->
+        [copyright] mit den Quellenangaben
+        [credit] mit der Namensnennung
+       *[both] mit Quellenangaben und Namensnennung
+    } unten links deckt einen Teil des Elements { $id } ab. Versetzen Sie das Element, oder verschieben Sie die Zeilen der Fußzeile mit einem Element copyright_line oder credit_line.
 error-disk-full-unknown = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, wie viel frei ist, meldet der Datenträger nicht
 note-copyright-line-cut = Hinweis: Die Quellenangabe „{ $line }“ ist breiter als der Kartenausschnitt und wird mit „…“ gekürzt. Kürzen Sie sie in den Kartennotizen oder in print.copyright.
 hint-crop = Für ein Blatt, das nur einen Teil der Karte zeigt, wählt map_frame.centre_map_mm den Teil, und map_frame.crop = true kennzeichnet den Schnitt als gewollt.

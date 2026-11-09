@@ -16,7 +16,8 @@ use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, pri
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
-    FOOTER_ID, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, SheetNote, SheetReport,
+    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, SheetNote,
+    SheetReport,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -220,9 +221,10 @@ fn sheet_lang(texts: &Texts) -> SheetLang {
 /// to widen, so two notes get their own text.
 fn render_note_line(texts: &Texts, note: &SheetNote) -> String {
     match note {
-        SheetNote::ElementOverlapsMap { id } if id == FOOTER_ID => {
-            texts.plain("note-render-footer-on-map")
-        }
+        SheetNote::FooterOverlapsMap { content } => texts.get(
+            "note-render-footer-on-map",
+            Some(&args!("content" => footer_content(*content))),
+        ),
         SheetNote::CopyrightTruncated { total, shown, .. } => texts.get(
             "note-render-copyright-truncated",
             Some(&args!("total" => *total, "shown" => *shown)),
@@ -783,16 +785,10 @@ fn layout_lines(
 /// has a text.
 fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
     match note {
-        SheetNote::ElementOutsidePage { id } if id == FOOTER_ID => {
-            texts.plain("note-footer-outside-page")
-        }
         SheetNote::ElementOutsidePage { id } => texts.get(
             "note-element-outside-page",
             Some(&args!("id" => printable(id))),
         ),
-        SheetNote::ElementOverlapsMap { id } if id == FOOTER_ID => {
-            texts.plain("note-footer-overlaps-map")
-        }
         SheetNote::ElementOverlapsMap { id } => texts.get(
             "note-element-overlaps-map",
             Some(&args!("id" => printable(id))),
@@ -868,9 +864,17 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-copyright-line-cut",
             Some(&args!("line" => printable(line))),
         ),
-        SheetNote::FooterCoversElement { id } => texts.get(
+        SheetNote::FooterOverlapsMap { content } => texts.get(
+            "note-footer-overlaps-map",
+            Some(&args!("content" => footer_content(*content))),
+        ),
+        SheetNote::FooterOutsidePage { content } => texts.get(
+            "note-footer-outside-page",
+            Some(&args!("content" => footer_content(*content))),
+        ),
+        SheetNote::FooterCoversElement { id, content } => texts.get(
             "note-footer-covers-element",
-            Some(&args!("id" => printable(id))),
+            Some(&args!("id" => printable(id), "content" => footer_content(*content))),
         ),
         SheetNote::MissingScaleCheckBar { layout } => texts.get(
             "note-missing-scale-check-bar",
@@ -880,6 +884,15 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-credit-line-moved",
             Some(&args!("id" => printable(id))),
         ),
+    }
+}
+
+/// The selector the footer messages take for what the footer holds.
+fn footer_content(content: FooterContent) -> &'static str {
+    match content {
+        FooterContent::CopyrightAndCredit => "both",
+        FooterContent::Copyright => "copyright",
+        FooterContent::Credit => "credit",
     }
 }
 
@@ -1283,13 +1296,20 @@ mod tests {
                 SheetNote::ElementOutsidePage { id: s("logo1") },
                 vec!["logo1"],
             ),
-            (SheetNote::ElementOutsidePage { id: s(FOOTER_ID) }, vec![]),
+            (
+                SheetNote::FooterOutsidePage {
+                    content: FooterContent::Credit,
+                },
+                vec![],
+            ),
             (
                 SheetNote::ElementOverlapsMap { id: s("logo1") },
                 vec!["logo1"],
             ),
             (
-                SheetNote::ElementOverlapsMap { id: s(FOOTER_ID) },
+                SheetNote::FooterOverlapsMap {
+                    content: FooterContent::CopyrightAndCredit,
+                },
                 vec!["margin_mm"],
             ),
             (SheetNote::LargerThanA3, vec!["A3"]),
@@ -1370,7 +1390,10 @@ mod tests {
                 vec!["© Someone, a very long line"],
             ),
             (
-                SheetNote::FooterCoversElement { id: s("bar1") },
+                SheetNote::FooterCoversElement {
+                    id: s("bar1"),
+                    content: FooterContent::Copyright,
+                },
                 vec!["bar1"],
             ),
             (
@@ -1492,6 +1515,49 @@ mod tests {
                     assert!(!line.contains(&reason.to_string()), "{line}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn footer_notes_name_only_what_the_footer_holds() {
+        let notes = |content| {
+            [
+                SheetNote::FooterOverlapsMap { content },
+                SheetNote::FooterOutsidePage { content },
+                SheetNote::FooterCoversElement {
+                    id: "bar".into(),
+                    content,
+                },
+            ]
+        };
+        for (lang, copyright, credit) in [
+            ("en", "copyright lines", "credit line"),
+            ("de", "Quellenangaben", "Namensnennung"),
+        ] {
+            let texts = Texts::new(
+                &text::available()
+                    .into_iter()
+                    .find(|l| l.code() == lang)
+                    .unwrap(),
+            );
+            for n in notes(FooterContent::Copyright) {
+                let line = sheet_note_line(&texts, &n);
+                assert!(line.contains(copyright) && !line.contains(credit), "{line}");
+            }
+            for n in notes(FooterContent::Credit) {
+                let line = sheet_note_line(&texts, &n);
+                assert!(line.contains(credit) && !line.contains(copyright), "{line}");
+            }
+            for n in notes(FooterContent::CopyrightAndCredit) {
+                let line = sheet_note_line(&texts, &n);
+                assert!(line.contains(credit), "{line}");
+            }
+            // The covers-element text holds in every position: no "inside the map frame".
+            let line = sheet_note_line(&texts, &notes(FooterContent::Credit)[2]);
+            assert!(
+                !line.contains("inside the map frame") && !line.contains("im Kartenausschnitt"),
+                "{line}"
+            );
         }
     }
 
