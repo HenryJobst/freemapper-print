@@ -173,3 +173,4 @@ logo-simplified-dashes = dashes are drawn as solid lines.
 logo-simplified-image = an embedded image is left out.
 logo-simplified-text = text is left out; convert it to paths.
 logo-simplified-clip-path = a clip path is ignored.
+note-missing-scale-check-bar = Note: layout { $layout } has no scale check bar. An element of kind scale_check_bar shows on the print whether the printer scaled it.

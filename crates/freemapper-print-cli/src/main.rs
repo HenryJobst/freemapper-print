@@ -810,6 +810,10 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-unknown-part",
             Some(&args!("layout" => printable(layout), "name" => printable(name))),
         ),
+        SheetNote::MissingScaleCheckBar { layout } => texts.get(
+            "note-missing-scale-check-bar",
+            Some(&args!("layout" => printable(layout))),
+        ),
         SheetNote::CreditLineMoved { id } => texts.get(
             "note-credit-line-moved",
             Some(&args!("id" => printable(id))),
@@ -1277,6 +1281,10 @@ mod tests {
             (
                 SheetNote::CreditLineMoved { id: s("credit") },
                 vec!["credit"],
+            ),
+            (
+                SheetNote::MissingScaleCheckBar { layout: s("L1") },
+                vec!["L1", "scale_check_bar"],
             ),
         ];
         for lang in text::available() {

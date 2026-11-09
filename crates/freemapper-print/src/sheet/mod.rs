@@ -65,6 +65,9 @@ pub enum SheetNote {
         layout: String,
         missing: Vec<MissingItem>,
     },
+    /// The layout shows no `scale_check_bar` element. The design puts one on every sheet by
+    /// default (§5.4); `init` adds it, and the note makes a missing one visible.
+    MissingScaleCheckBar { layout: String },
     /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
     /// is the mapper's job in OOM, and the program cannot know where.
@@ -237,6 +240,11 @@ pub fn render_sheet(
             frame,
         ));
         page.sheet.extend(credit.items);
+    }
+    if !layout_elements(project, layout).any(|e| e.kind == ElementKind::ScaleCheckBar) {
+        notes.push(SheetNote::MissingScaleCheckBar {
+            layout: layout.id.clone(),
+        });
     }
     let missing = text::missing_scale_or_contour(&ctx);
     if !missing.is_empty() {
@@ -662,6 +670,9 @@ mod tests {
                 SheetNote::ElementOverlapsMap {
                     id: "footer".into()
                 },
+                SheetNote::MissingScaleCheckBar {
+                    layout: "a4".into()
+                },
                 SheetNote::MissingScaleOrContour {
                     layout: "a4".into(),
                     missing: vec![
@@ -713,7 +724,13 @@ mod tests {
     fn without_missing(notes: &[SheetNote]) -> Vec<SheetNote> {
         notes
             .iter()
-            .filter(|n| !matches!(n, SheetNote::MissingScaleOrContour { .. }))
+            .filter(|n| {
+                !matches!(
+                    n,
+                    SheetNote::MissingScaleOrContour { .. }
+                        | SheetNote::MissingScaleCheckBar { .. }
+                )
+            })
             .cloned()
             .collect()
     }
@@ -1253,6 +1270,27 @@ mod tests {
             missing(&report).unwrap(),
             [MissingItem::PrintScaleText, MissingItem::ContourText]
         );
+    }
+
+    #[test]
+    fn missing_scale_check_bar_noted() {
+        let note = SheetNote::MissingScaleCheckBar {
+            layout: "a4".into(),
+        };
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(report.notes.contains(&note), "{:?}", report.notes);
+        assert!(report.needs_attention());
+        // A shared bar counts, unless the layout hides it; so does the layout's own.
+        let mut lp = project(MapKind::Sprint, vec![element("bar")], &a4());
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(!report.notes.contains(&note));
+        lp.project.layouts[0].hide_shared = vec!["bar".into()];
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(report.notes.contains(&note));
+        lp.project.layouts[0].elements = vec![element("own")];
+        let (_, report) = sheet_of(&lp, &empty_map());
+        assert!(!report.notes.contains(&note));
     }
 
     // --- North lines (Task 9, ADR 0027) ---

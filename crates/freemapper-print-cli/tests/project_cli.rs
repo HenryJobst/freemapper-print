@@ -82,6 +82,10 @@ impl Workspace {
     }
 }
 
+/// A shared scale check bar in the bottom-right corner of the map frame.
+const BAR: &str = "[[shared]]\nid = \"bar\"\nkind = \"scale_check_bar\"\n\
+                   [shared.anchor]\nto = \"map_frame\"\ncorner = \"bottom_right\"\n";
+
 fn layouts(ids: &[(&str, &str, &str)]) -> String {
     ids.iter()
         .map(|(id, paper, orientation)| {
@@ -439,7 +443,7 @@ fn check_passes_with_added_north_lines_only() {
     let ws = Workspace::new(FOREST);
     let rest = format!(
         "{}[[shared]]\nid = \"t\"\nkind = \"title_block\"\nlines = [\"1:{{print_scale}} {{contour_interval}}\"]\n\
-         [shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n",
+         [shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n{BAR}",
         layouts(&[("a4", "A4", "auto")])
     );
     let path = ws.write_project("forest", "contour_interval_m = 5.0", &rest);
@@ -573,7 +577,7 @@ fn runs_from_other_cwd() {
     let ws = Workspace::new(FOREST);
     let rest = format!(
         "{}[[shared]]\nid = \"t\"\nkind = \"title_block\"\nlines = [\"1:{{print_scale}} {{contour_interval}}\"]\n\
-         [shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n",
+         [shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n{BAR}",
         layouts(&[("a4", "A4", "auto")])
     );
     let path = ws.write_project("forest", "contour_interval_m = 5.0", &rest);

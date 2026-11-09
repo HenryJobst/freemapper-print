@@ -176,3 +176,4 @@ logo-simplified-dashes = Strichelungen werden als durchgehende Linien gezeichnet
 logo-simplified-image = Ein eingebettetes Bild fehlt.
 logo-simplified-text = Text fehlt; wandeln Sie ihn in Pfade um.
 logo-simplified-clip-path = Ein Beschneidungspfad wird ignoriert.
+note-missing-scale-check-bar = Hinweis: Layout { $layout } hat keine Kontrollstrecke. Ein Element vom Typ scale_check_bar zeigt am Ausdruck, ob der Drucker skaliert hat.
