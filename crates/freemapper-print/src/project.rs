@@ -840,7 +840,9 @@ fn starter_is_clean(project: &Project, report: &crate::sheet::SheetReport) -> bo
             SheetNote::NorthLinesAdded { .. } => true,
             SheetNote::MissingScaleOrContour { missing, .. } => {
                 project.map.contour_interval_m.is_none()
-                    && missing.iter().all(|m| m == "map.contour_interval_m")
+                    && missing
+                        .iter()
+                        .all(|m| *m == crate::sheet::MissingItem::ContourValue)
             }
             _ => false,
         })

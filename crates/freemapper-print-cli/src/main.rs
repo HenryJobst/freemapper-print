@@ -15,7 +15,9 @@ use freemapper_print::output::OutputError;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
-use freemapper_print::sheet::{FOOTER_ID, LogoCache, SheetNote, SheetReport};
+use freemapper_print::sheet::{
+    FOOTER_ID, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, SheetNote, SheetReport,
+};
 
 use text::{Lang, Texts, detect_lang};
 
@@ -750,14 +752,13 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
         SheetNote::MissingScaleOrContour { layout, missing } => {
             let items: Vec<String> = missing
                 .iter()
-                .map(|name| {
-                    let id = match name.as_str() {
-                        "{print_scale}" => "missing-print-scale-text",
-                        "{contour_interval}" => "missing-contour-text",
-                        "map.contour_interval_m" => "missing-contour-value",
-                        other => return printable(other),
+                .map(|item| {
+                    let id = match item {
+                        MissingItem::PrintScaleText => "missing-print-scale-text",
+                        MissingItem::ContourText => "missing-contour-text",
+                        MissingItem::ContourValue => "missing-contour-value",
                     };
-                    texts.get(id, Some(&args!("name" => printable(name))))
+                    texts.get(id, Some(&args!("name" => item.name())))
                 })
                 .collect();
             let count = items.len();
@@ -789,13 +790,16 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
                 "shown" => *shown,
             )),
         ),
-        SheetNote::LogoSkipped { id, reason } => texts.get(
+        SheetNote::LogoSkipped { id, file, reason } => texts.get(
             "note-logo-skipped",
-            Some(&args!("id" => printable(id), "reason" => printable(reason))),
+            Some(&args!(
+                "id" => printable(id),
+                "reason" => logo_skip_reason(texts, file.as_deref(), reason),
+            )),
         ),
         SheetNote::LogoSimplified { id, reason } => texts.get(
             "note-logo-simplified",
-            Some(&args!("id" => printable(id), "reason" => printable(reason))),
+            Some(&args!("id" => printable(id), "reason" => logo_simplification(texts, *reason))),
         ),
         SheetNote::UnknownPlaceholder { id, name } => texts.get(
             "note-unknown-placeholder",
@@ -810,6 +814,64 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             Some(&args!("id" => printable(id))),
         ),
     }
+}
+
+/// Why a logo is left out, in the program language. Details from the operating system, the
+/// image decoder or the SVG check stay as they come (ADR 0024). No wildcard arm: a new reason
+/// does not compile until it has a text.
+fn logo_skip_reason(texts: &Texts, file: Option<&Path>, reason: &LogoSkipReason) -> String {
+    use LogoSkipReason::*;
+    let file = file.map_or_else(String::new, |f| printable(&f.display().to_string()));
+    let with_file = |id: &str| texts.get(id, Some(&args!("file" => file.clone())));
+    let with_detail = |id: &str, name: &str, detail: &str| {
+        let mut a = args!("file" => file.clone());
+        a.set(name.to_string(), printable(detail));
+        texts.get(id, Some(&a))
+    };
+    let with_size = |id: &str, width: u32, height: u32| {
+        texts.get(
+            id,
+            Some(&args!(
+                "file" => file.clone(),
+                "width" => width.to_string(),
+                "height" => height.to_string(),
+            )),
+        )
+    };
+    match reason {
+        NeedsFileAndWidth => texts.plain("logo-reason-needs-file-and-width"),
+        NotFound => with_file("logo-reason-not-found"),
+        Unreadable { error } => with_detail("logo-reason-unreadable", "error", error),
+        NotAFile => with_file("logo-reason-not-a-file"),
+        FileTooLarge => with_file("logo-reason-file-too-large"),
+        UnknownFormat => with_file("logo-reason-unknown-format"),
+        TooManyPixels { width, height } => {
+            with_size("logo-reason-too-many-pixels", *width, *height)
+        }
+        TooWideOrHigh { width, height } => with_size("logo-reason-too-wide", *width, *height),
+        Undecodable { error } => with_detail("logo-reason-undecodable", "error", error),
+        DecoderLimit => with_file("logo-reason-decoder-limit"),
+        SvgNotUtf8 => with_file("logo-reason-svg-not-utf8"),
+        SvgUnreadable { error } => with_detail("logo-reason-svg-unreadable", "error", error),
+        SvgUnsupported { what } => with_detail("logo-reason-svg-unsupported", "detail", what),
+        SvgTooComplex { what } => with_detail("logo-reason-svg-too-complex", "detail", what),
+        CannotSize => with_file("logo-reason-cannot-size"),
+        PixelBudget => with_file("logo-reason-pixel-budget"),
+        SvgBudget => with_file("logo-reason-svg-budget"),
+    }
+}
+
+/// How an SVG logo is drawn simpler, in the program language.
+fn logo_simplification(texts: &Texts, reason: LogoSimplification) -> String {
+    texts.plain(match reason {
+        LogoSimplification::Gradient => "logo-simplified-gradient",
+        LogoSimplification::Pattern => "logo-simplified-pattern",
+        LogoSimplification::Opacity => "logo-simplified-opacity",
+        LogoSimplification::Dashes => "logo-simplified-dashes",
+        LogoSimplification::Image => "logo-simplified-image",
+        LogoSimplification::Text => "logo-simplified-text",
+        LogoSimplification::ClipPath => "logo-simplified-clip-path",
+    })
 }
 
 /// The notes of a print report, without the summary and the reminder. `explicit_orientation`:
@@ -1155,9 +1217,9 @@ mod tests {
                 SheetNote::MissingScaleOrContour {
                     layout: s("L1"),
                     missing: vec![
-                        s("{print_scale}"),
-                        s("{contour_interval}"),
-                        s("map.contour_interval_m"),
+                        MissingItem::PrintScaleText,
+                        MissingItem::ContourText,
+                        MissingItem::ContourValue,
                     ],
                 },
                 vec![
@@ -1183,16 +1245,19 @@ mod tests {
             (
                 SheetNote::LogoSkipped {
                     id: s("logo1"),
-                    reason: s("broken file"),
+                    file: Some(PathBuf::from("logos/x.png")),
+                    reason: LogoSkipReason::Undecodable {
+                        error: s("broken file"),
+                    },
                 },
-                vec!["logo1", "broken file"],
+                vec!["logo1", "logos/x.png", "broken file"],
             ),
             (
                 SheetNote::LogoSimplified {
                     id: s("logo1"),
-                    reason: s("clip path ignored"),
+                    reason: LogoSimplification::ClipPath,
                 },
-                vec!["logo1", "clip path ignored"],
+                vec!["logo1"],
             ),
             (
                 SheetNote::UnknownPlaceholder {
@@ -1222,6 +1287,109 @@ mod tests {
                 assert!(seen.insert(line.clone()), "two notes share {line}");
                 for f in fields {
                     assert!(line.contains(f), "{}: {f} missing in {line}", lang.code());
+                }
+            }
+        }
+    }
+
+    /// Every logo reason, with details that name themselves.
+    fn all_logo_reasons() -> Vec<LogoSkipReason> {
+        use LogoSkipReason::*;
+        let detail = |d: &str| d.to_string();
+        vec![
+            NeedsFileAndWidth,
+            NotFound,
+            Unreadable {
+                error: detail("os-error-text"),
+            },
+            NotAFile,
+            FileTooLarge,
+            UnknownFormat,
+            TooManyPixels {
+                width: 6000,
+                height: 5000,
+            },
+            TooWideOrHigh {
+                width: 70000,
+                height: 2,
+            },
+            Undecodable {
+                error: detail("decoder-text"),
+            },
+            DecoderLimit,
+            SvgNotUtf8,
+            SvgUnreadable {
+                error: detail("xml-text"),
+            },
+            SvgUnsupported {
+                what: detail("the element <text>"),
+            },
+            SvgTooComplex {
+                what: detail("more than 20 000 path segments"),
+            },
+            CannotSize,
+            PixelBudget,
+            SvgBudget,
+        ]
+    }
+
+    #[test]
+    fn logo_reasons_have_texts_in_every_language() {
+        let simplifications = [
+            LogoSimplification::Gradient,
+            LogoSimplification::Pattern,
+            LogoSimplification::Opacity,
+            LogoSimplification::Dashes,
+            LogoSimplification::Image,
+            LogoSimplification::Text,
+            LogoSimplification::ClipPath,
+        ];
+        for lang in text::available() {
+            let texts = Texts::new(&lang);
+            let mut seen = std::collections::HashSet::new();
+            for reason in all_logo_reasons() {
+                let note = SheetNote::LogoSkipped {
+                    id: "logo1".into(),
+                    file: Some(PathBuf::from("logos/x.svg")),
+                    reason: reason.clone(),
+                };
+                let line = sheet_note_line(&texts, &note);
+                assert!(!line.contains("logo-reason"), "{line}");
+                assert!(seen.insert(line.clone()), "two reasons share {line}");
+                if reason != LogoSkipReason::NeedsFileAndWidth {
+                    assert!(line.contains("logos/x.svg"), "{line}");
+                }
+                // Details come through as they are.
+                for d in [
+                    "os-error-text",
+                    "decoder-text",
+                    "xml-text",
+                    "<text>",
+                    "20 000",
+                ] {
+                    if reason.to_string().contains(d) {
+                        assert!(line.contains(d), "{d} missing in {line}");
+                    }
+                }
+                if lang.code() == "de" {
+                    // No English remedy reaches a German run.
+                    for english in ["export the logo", "save it", "not found", "on this sheet"] {
+                        assert!(!line.contains(english), "{line}");
+                    }
+                }
+            }
+            for reason in simplifications {
+                let line = sheet_note_line(
+                    &texts,
+                    &SheetNote::LogoSimplified {
+                        id: "logo1".into(),
+                        reason,
+                    },
+                );
+                assert!(!line.contains("logo-simplified"), "{line}");
+                assert!(seen.insert(line.clone()), "two reasons share {line}");
+                if lang.code() == "de" {
+                    assert!(!line.contains(&reason.to_string()), "{line}");
                 }
             }
         }

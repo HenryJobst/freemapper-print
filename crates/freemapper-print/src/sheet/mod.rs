@@ -8,10 +8,12 @@ pub mod layout;
 mod logo;
 mod north_lines;
 pub mod placeholders;
+mod reasons;
 mod scale_bar;
 mod text;
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
@@ -24,6 +26,7 @@ use crate::render::symbols::{Cap, Join};
 
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
+pub use reasons::{LogoSimplification, LogoSkipReason, MissingItem};
 pub use text::FOOTER_ID;
 
 /// What a sheet shows and what the user should know about it.
@@ -57,11 +60,10 @@ pub enum SheetNote {
     /// The paper is larger than A3, which most office printers do not take.
     LargerThanA3,
     /// No element of the layout shows the print scale or the contour interval, or the contour
-    /// interval is not set. `missing` names what: `{print_scale}`, `{contour_interval}`,
-    /// `map.contour_interval_m`.
+    /// interval is not set. `missing` names what.
     MissingScaleOrContour {
         layout: String,
-        missing: Vec<String>,
+        missing: Vec<MissingItem>,
     },
     /// The map had no north lines; this many were added (ADR 0023, ADR 0027). They run
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
@@ -78,12 +80,19 @@ pub enum SheetNote {
         total: usize,
         shown: usize,
     },
-    /// A logo was left out, and why.
-    LogoSkipped { id: String, reason: String },
+    /// A logo was left out, and why. `file` is the logo file, resolved against the project.
+    LogoSkipped {
+        id: String,
+        file: Option<PathBuf>,
+        reason: LogoSkipReason,
+    },
     /// An SVG logo uses something the sheet cannot draw as written: a gradient, transparency,
     /// dashes or a clip path. `reason` says what and how it is drawn instead. One note per kind
     /// and logo.
-    LogoSimplified { id: String, reason: String },
+    LogoSimplified {
+        id: String,
+        reason: LogoSimplification,
+    },
     /// A text names a placeholder that does not exist; it is printed as written.
     UnknownPlaceholder { id: String, name: String },
     /// `hide_parts` of the layout names a map part the map does not have.
@@ -656,9 +665,9 @@ mod tests {
                 SheetNote::MissingScaleOrContour {
                     layout: "a4".into(),
                     missing: vec![
-                        "{print_scale}".into(),
-                        "{contour_interval}".into(),
-                        "map.contour_interval_m".into()
+                        MissingItem::PrintScaleText,
+                        MissingItem::ContourText,
+                        MissingItem::ContourValue
                     ]
                 }
             ]
@@ -1217,7 +1226,7 @@ mod tests {
         };
         assert_eq!(
             missing(&report).unwrap(),
-            ["{contour_interval}", "map.contour_interval_m"]
+            [MissingItem::ContourText, MissingItem::ContourValue]
         );
         // Both shown and the interval set: nothing to note.
         lp.project.layouts[0].elements[0]
@@ -1242,7 +1251,7 @@ mod tests {
         let (_, report) = sheet_of(&lp, &empty_map());
         assert_eq!(
             missing(&report).unwrap(),
-            ["{print_scale}", "{contour_interval}"]
+            [MissingItem::PrintScaleText, MissingItem::ContourText]
         );
     }
 

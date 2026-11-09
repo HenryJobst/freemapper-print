@@ -149,3 +149,30 @@ note-unknown-part = Hinweis: Layout { $layout } blendet den Kartenteil { $name }
 note-credit-line-moved = Hinweis: Das Element { $id } läge mit der Namensnennung nicht ganz auf dem Blatt. Die Namensnennung bleibt deshalb in der Fußzeile unten links.
 note-render-footer-on-map = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung steht auf einem weißen Kasten unten links im Druckbereich und deckt einen Teil der Karte ab. In einem Projekt (init, dann export) kann sie unter den Kartenausschnitt rücken.
 note-render-copyright-truncated = Hinweis: Die Fußzeile zeigt { $shown } von { $total } Quellenangaben. Eine weitere Zeile zählt die übrigen.
+
+## Warum ein Logo fehlt oder vereinfacht ist (nach „Das Logo … fehlt auf dem Blatt:“ oder „wird vereinfacht gezeichnet:“)
+
+logo-reason-needs-file-and-width = Es braucht file und width_mm.
+logo-reason-not-found = { $file } gibt es nicht.
+logo-reason-unreadable = { $file } lässt sich nicht lesen ({ $error }).
+logo-reason-not-a-file = { $file } ist keine normale Datei.
+logo-reason-file-too-large = { $file } ist größer als 10 MB.
+logo-reason-unknown-format = { $file } ist keine PNG-, JPEG- oder SVG-Datei.
+logo-reason-too-many-pixels = { $file } hat { $width } × { $height } Pixel, mehr als 25 Megapixel. Speichern Sie es mit weniger Pixeln.
+logo-reason-too-wide = { $file } ist { $width } × { $height } Pixel groß, breiter oder höher als 65 535 Pixel.
+logo-reason-undecodable = { $file } lässt sich nicht dekodieren ({ $error }).
+logo-reason-decoder-limit = { $file } ist zu groß zum Dekodieren. Speichern Sie es als 8-Bit-Bild oder mit weniger Pixeln.
+logo-reason-svg-not-utf8 = { $file } ist kein UTF-8-Text.
+logo-reason-svg-unreadable = { $file } lässt sich nicht als SVG lesen ({ $error }).
+logo-reason-svg-unsupported = { $file } nutzt etwas, das ein Logo nicht haben kann: { $detail }. Exportieren Sie das Logo als einfaches SVG mit Formen, Pfaden und Verläufen.
+logo-reason-svg-too-complex = { $file } ist zu aufwendig für ein Logo: { $detail }. Vereinfachen Sie das Logo oder exportieren Sie es als einfaches SVG.
+logo-reason-cannot-size = Breite oder Höhe von { $file } lassen sich nicht bestimmen.
+logo-reason-pixel-budget = Das Blatt trägt schon 50 Megapixel an Logos ({ $file }). Nehmen Sie kleinere Bilder oder weniger Logos.
+logo-reason-svg-budget = Die SVG-Logos des Blatts haben ihr Budget von 1 000 000 Einheiten schon aufgebraucht ({ $file }). Vereinfachen Sie sie oder nehmen Sie weniger.
+logo-simplified-gradient = Ein Farbverlauf wird in seiner ersten Farbe gezeichnet.
+logo-simplified-pattern = Eine Musterfüllung wird schwarz gezeichnet.
+logo-simplified-opacity = Transparenz wird ignoriert, das Logo wird deckend gezeichnet.
+logo-simplified-dashes = Strichelungen werden als durchgehende Linien gezeichnet.
+logo-simplified-image = Ein eingebettetes Bild fehlt.
+logo-simplified-text = Text fehlt; wandeln Sie ihn in Pfade um.
+logo-simplified-clip-path = Ein Beschneidungspfad wird ignoriert.

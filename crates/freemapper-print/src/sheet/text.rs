@@ -6,7 +6,7 @@ use crate::render::fonts::{ASCENT, LINE_SPACING, char_width, face, text_width};
 use crate::render::page::{DirectColour, FillRule, PaperBox, Pt, Shape, SheetItem};
 
 use super::placeholders::{PlaceholderValues, fill};
-use super::{PlacedElement, SheetContext, SheetNote, layout, layout_elements};
+use super::{MissingItem, PlacedElement, SheetContext, SheetNote, layout, layout_elements};
 
 /// 1 pt in mm.
 const MM_PER_PT: f64 = 25.4 / 72.0;
@@ -377,9 +377,9 @@ fn cut_to_width(text: String, size_mm: f64, limit: f64) -> String {
     format!("{}…", text[..end].trim_end())
 }
 
-/// What the text elements of the layout leave out: `{print_scale}`, `{contour_interval}`, the
-/// contour interval of the project. Empty when nothing is missing.
-pub(super) fn missing_scale_or_contour(ctx: &SheetContext<'_>) -> Vec<String> {
+/// What the text elements of the layout leave out: a text with `{print_scale}`, one with
+/// `{contour_interval}`, the contour interval of the project. Empty when nothing is missing.
+pub(super) fn missing_scale_or_contour(ctx: &SheetContext<'_>) -> Vec<MissingItem> {
     use super::placeholders::mentions;
     let lines: Vec<&String> = layout_elements(ctx.project, ctx.layout)
         .filter(|e| matches!(e.kind, ElementKind::TitleBlock | ElementKind::Text))
@@ -388,13 +388,13 @@ pub(super) fn missing_scale_or_contour(ctx: &SheetContext<'_>) -> Vec<String> {
     let shows = |name| lines.iter().any(|l| mentions(l, name));
     let mut missing = Vec::new();
     if !shows("print_scale") {
-        missing.push("{print_scale}".to_string());
+        missing.push(MissingItem::PrintScaleText);
     }
     if !shows("contour_interval") {
-        missing.push("{contour_interval}".to_string());
+        missing.push(MissingItem::ContourText);
     }
     if ctx.project.project.map.contour_interval_m.is_none() {
-        missing.push("map.contour_interval_m".to_string());
+        missing.push(MissingItem::ContourValue);
     }
     missing
 }

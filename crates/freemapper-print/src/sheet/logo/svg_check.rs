@@ -11,6 +11,8 @@ use std::collections::{HashMap, HashSet};
 
 use usvg::roxmltree::{self, Node, NodeId};
 
+use crate::sheet::LogoSkipReason;
+
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
@@ -87,10 +89,8 @@ const EFFECTS: &[&str] = &[
     "marker-end",
 ];
 
-fn unsupported(what: &str) -> String {
-    format!(
-        "{what} is not supported in logos; export the logo as a plain SVG (shapes, paths, gradients)"
-    )
+fn unsupported(what: &str) -> LogoSkipReason {
+    LogoSkipReason::SvgUnsupported { what: what.into() }
 }
 
 /// An element as `usvg` reads it: in the SVG namespace or in none. `usvg` skips other
@@ -291,7 +291,7 @@ fn read_name(name: &str) -> bool {
 /// `style` in a drawing program's namespace, which `usvg` reads as if they had none. Names that
 /// nothing reads may repeat in a drawing program's namespace: Inkscape writes `version` and
 /// `inkscape:version` on the root.
-fn check_attributes(node: Node<'_, '_>) -> Result<(), String> {
+fn check_attributes(node: Node<'_, '_>) -> Result<(), LogoSkipReason> {
     let mut seen = HashSet::new();
     let mut seen_read = HashSet::new();
     for a in node.attributes() {
@@ -443,8 +443,10 @@ impl<'a> Scanner<'a> {
         self.bytes[self.at..].starts_with(pattern)
     }
 
-    fn malformed(&self) -> String {
-        format!("cannot read the SVG (malformed XML at byte {})", self.at)
+    fn malformed(&self) -> LogoSkipReason {
+        LogoSkipReason::SvgUnreadable {
+            error: format!("malformed XML at byte {}", self.at),
+        }
     }
 
     /// Skips white space; whether there was any.
@@ -456,7 +458,7 @@ impl<'a> Scanner<'a> {
         self.at > from
     }
 
-    fn require_space(&mut self) -> Result<(), String> {
+    fn require_space(&mut self) -> Result<(), LogoSkipReason> {
         if self.skip_space() {
             Ok(())
         } else {
@@ -464,7 +466,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn require(&mut self, b: u8) -> Result<(), String> {
+    fn require(&mut self, b: u8) -> Result<(), LogoSkipReason> {
         if self.peek() == Some(b) {
             self.at += 1;
             Ok(())
@@ -492,7 +494,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// A quoted literal; returns its text.
-    fn literal(&mut self) -> Result<&'a [u8], String> {
+    fn literal(&mut self) -> Result<&'a [u8], LogoSkipReason> {
         let quote = match self.peek() {
             Some(q @ (b'"' | b'\'')) => q,
             _ => return Err(self.malformed()),
@@ -530,7 +532,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// The XML declaration after `<?xml `, up to its `?>`.
-    fn xml_declaration(&mut self) -> Result<(), String> {
+    fn xml_declaration(&mut self) -> Result<(), LogoSkipReason> {
         loop {
             match self.peek() {
                 None => return Err(self.malformed()),
@@ -552,7 +554,7 @@ impl<'a> Scanner<'a> {
     /// The document type declaration after `<!DOCTYPE`, by the strict grammar of ADR 0026: a
     /// name, an optional external ID (never loaded), and an internal subset of comments and
     /// entities with plain text only.
-    fn doctype(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), String> {
+    fn doctype(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), LogoSkipReason> {
         self.require_space()?;
         let name = self.take_until(|b| is_space(b) || matches!(b, b'[' | b'>'));
         if name.is_empty() {
@@ -611,7 +613,7 @@ impl<'a> Scanner<'a> {
 
     /// An entity declaration after `<!ENTITY`: a name and a quoted text without markup,
     /// references or `%`, at most [`MAX_ENTITY_BYTES`] long.
-    fn entity(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), String> {
+    fn entity(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Result<(), LogoSkipReason> {
         self.require_space()?;
         if self.peek() == Some(b'%') {
             return Err(unsupported("a parameter entity"));
@@ -657,7 +659,7 @@ impl<'a> Scanner<'a> {
 /// Comments, CDATA sections and processing instructions are skipped where the XML parser skips
 /// them; quoted attribute values may hold `>`. Markup the XML parser would refuse is refused here
 /// too, so the two never read the bytes differently.
-pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
+pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, LogoSkipReason> {
     let mut s = Scanner {
         bytes,
         at: 0,
@@ -818,7 +820,7 @@ pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
 }
 /// Checks an SVG logo before `usvg` resolves it and returns its work count, the size `usvg` will
 /// build (at most [`MAX_WORK`]). The error is the reason the logo is left out.
-pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<u64, String> {
+pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<u64, LogoSkipReason> {
     let links = ids(doc)?;
     // The elements inside a clip path, found in one pass in document order (parents first), so
     // no element walks its ancestors.
@@ -868,7 +870,9 @@ pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<u64, String> {
 /// it parsed, by `id` in the namespaces it reads. [`check_attributes`] leaves an SVG element at
 /// most one `id`, in such a namespace, so both maps agree; an element with two ids or an id
 /// used twice is refused.
-fn ids<'a, 'input>(doc: &'a roxmltree::Document<'input>) -> Result<Links<'a, 'input>, String> {
+fn ids<'a, 'input>(
+    doc: &'a roxmltree::Document<'input>,
+) -> Result<Links<'a, 'input>, LogoSkipReason> {
     let mut ids = HashMap::new();
     for node in doc.descendants().filter(|n| n.is_element()) {
         if node.attributes().filter(|a| a.name() == "id").count() > 1 {
@@ -878,9 +882,9 @@ fn ids<'a, 'input>(doc: &'a roxmltree::Document<'input>) -> Result<Links<'a, 'in
             continue;
         };
         if ids.insert(id, node).is_some() {
-            return Err(format!(
-                "the id \"{id}\" is used twice; export the logo as a plain SVG"
-            ));
+            return Err(unsupported(&format!(
+                "the same id \"{id}\" on two elements"
+            )));
         }
     }
     Ok(Links { ids })
@@ -888,7 +892,7 @@ fn ids<'a, 'input>(doc: &'a roxmltree::Document<'input>) -> Result<Links<'a, 'in
 
 /// `clip-path` at most once per element, attribute and `style` together, and never `inherit`,
 /// which copies the parent's clip path.
-fn check_clip_property(node: Node<'_, '_>) -> Result<(), String> {
+fn check_clip_property(node: Node<'_, '_>) -> Result<(), LogoSkipReason> {
     let values: Vec<&str> = properties(node)
         .into_iter()
         .filter(|(n, _)| *n == "clip-path")
@@ -910,7 +914,7 @@ fn check_property(
     property: &str,
     value: &str,
     links: &Links<'_, '_>,
-) -> Result<(), String> {
+) -> Result<(), LogoSkipReason> {
     let refers_to = |id: &str| links.get(id).filter(|n| is_svg(*n)).map(name);
     if EFFECTS.contains(&property) {
         if value.trim() != "none" {
@@ -945,7 +949,7 @@ fn check_property(
 
 /// A gradient may take its stops from another gradient, and that one from a third; the chain
 /// must end within [`MAX_GRADIENT_LINKS`] and lead to gradients only.
-fn check_gradient_links(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), String> {
+fn check_gradient_links(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), LogoSkipReason> {
     let mut current = node;
     for _ in 0..MAX_GRADIENT_LINKS {
         let Some(next) = href(current).and_then(|id| links.get(id)) else {
@@ -993,7 +997,7 @@ fn gradient_stops(gradient: Node<'_, '_>, links: &Links<'_, '_>) -> u64 {
 
 /// A clip path in user space, of shapes, or of `use` pointing to shapes, none of them clipped
 /// again.
-fn check_clip_path(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), String> {
+fn check_clip_path(node: Node<'_, '_>, links: &Links<'_, '_>) -> Result<(), LogoSkipReason> {
     if let Some(units) = attr(node, "clipPathUnits")
         && units.trim() != "userSpaceOnUse"
     {
@@ -1066,8 +1070,10 @@ fn parts<'a, 'input>(node: Node<'a, 'input>, links: &Links<'a, 'input>) -> Vec<N
 fn check_work<'a, 'input>(
     doc: &'a roxmltree::Document<'input>,
     links: &Links<'a, 'input>,
-) -> Result<u64, String> {
-    let too_complex = || "too complex once `use` and clip paths are resolved".to_string();
+) -> Result<u64, LogoSkipReason> {
+    let too_complex = || LogoSkipReason::SvgTooComplex {
+        what: "too complex once `use` and clip paths are resolved".into(),
+    };
     let looped = || unsupported("a `use` that refers to itself");
     let parts = |node| parts(node, links);
     // Each subtree worked out children first, without recursion.
@@ -1123,7 +1129,9 @@ fn check_work<'a, 'input>(
             ));
         }
         if sum.depth > MAX_DEPTH {
-            return Err(format!("SVG nested deeper than {MAX_DEPTH} levels"));
+            return Err(LogoSkipReason::SvgTooComplex {
+                what: format!("SVG nested deeper than {MAX_DEPTH} levels"),
+            });
         }
         open.remove(&node.id());
         done.insert(node.id(), sum);

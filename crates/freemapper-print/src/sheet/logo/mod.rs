@@ -25,7 +25,7 @@ use crate::render::page::{
     Cap, DirectColour, FillRule, Join, PaperBox, Pt, RasterImage, Shape, SheetItem,
 };
 
-use super::{PlacedElement, SheetContext, SheetNote, layout};
+use super::{LogoSimplification, LogoSkipReason, PlacedElement, SheetContext, SheetNote, layout};
 
 mod svg_check;
 
@@ -44,14 +44,6 @@ const MAX_SVG_POINTS: usize = 500_000;
 const MAX_SVG_NODES: u32 = 200_000;
 /// Most text that entity references may expand to (bytes), estimated from above.
 const MAX_ENTITY_TEXT: u64 = 50_000_000;
-
-const GRADIENT: &str = "gradient drawn in its first stop colour";
-const PATTERN: &str = "pattern fill drawn in black";
-const OPACITY: &str = "transparency ignored, drawn opaque";
-const DASHES: &str = "dashes drawn as solid lines";
-const IMAGE: &str = "embedded image left out";
-const TEXT: &str = "text left out (convert it to paths)";
-const CLIP: &str = "clip path ignored";
 
 /// RGB to CMYK, naive: k = 1 − max(r, g, b), c = (1 − r − k) / (1 − k) and so on; no colour
 /// when k = 1.
@@ -105,7 +97,7 @@ struct Entries {
 
 #[derive(Debug)]
 enum Entry {
-    Failed(String),
+    Failed(LogoSkipReason),
     Known { cost: Cost, logo: Option<Logo> },
 }
 
@@ -162,7 +154,7 @@ impl LogoCache {
 
     /// The logo at `path` if `budget` has room for it, decoding it on first use. The error is the
     /// reason the logo is left out.
-    fn get(&self, path: &Path, budget: &LogoBudget) -> Result<Logo, String> {
+    fn get(&self, path: &Path, budget: &LogoBudget) -> Result<Logo, LogoSkipReason> {
         let known = match self.entries().by_path.get(path) {
             Some(Entry::Failed(reason)) => return Err(reason.clone()),
             Some(Entry::Known { cost, logo }) => Some((*cost, logo.clone())),
@@ -252,20 +244,20 @@ pub struct LogoBudget {
 
 impl LogoBudget {
     /// Whether `cost` still fits; the error is the reason the logo is left out.
-    fn fits(&self, cost: Cost, limits: &LogoLimits) -> Result<(), String> {
+    fn fits(&self, cost: Cost, limits: &LogoLimits) -> Result<(), LogoSkipReason> {
         match cost {
             Cost::Pixels(n) if self.pixels.get().saturating_add(n) > limits.page_pixels => {
-                Err(PIXEL_BUDGET.into())
+                Err(LogoSkipReason::PixelBudget)
             }
             Cost::SvgWork(n) if self.svg_units.get().saturating_add(n) > limits.page_svg_units => {
-                Err(SVG_BUDGET.into())
+                Err(LogoSkipReason::SvgBudget)
             }
             _ => Ok(()),
         }
     }
 
     /// [`fits`](Self::fits), then counts `cost` as used.
-    fn take(&self, cost: Cost, limits: &LogoLimits) -> Result<(), String> {
+    fn take(&self, cost: Cost, limits: &LogoLimits) -> Result<(), LogoSkipReason> {
         self.fits(cost, limits)?;
         match cost {
             Cost::Pixels(n) => self.pixels.set(self.pixels.get() + n),
@@ -275,18 +267,15 @@ impl LogoBudget {
     }
 
     /// Counts `points` flattened SVG points as used; the error when they break the budget.
-    fn take_points(&self, points: usize, limits: &LogoLimits) -> Result<(), String> {
+    fn take_points(&self, points: usize, limits: &LogoLimits) -> Result<(), LogoSkipReason> {
         let used = self.svg_units.get().saturating_add(points as u64);
         if used > limits.page_svg_units {
-            return Err(SVG_BUDGET.into());
+            return Err(LogoSkipReason::SvgBudget);
         }
         self.svg_units.set(used);
         Ok(())
     }
 }
-
-const PIXEL_BUDGET: &str = "more than 50 megapixels of logos on this sheet";
-const SVG_BUDGET: &str = "more SVG logo work on this sheet than its budget of 1 000 000 units";
 
 /// Draws a `logo` element at its anchor, `width_mm` wide. A logo that does not load, or does not
 /// fit into the sheet's budget, gives a [`SheetNote::LogoSkipped`] and draws nothing.
@@ -295,28 +284,29 @@ pub(super) fn place_logo(
     spec: &ElementSpec,
     notes: &mut Vec<SheetNote>,
 ) -> Option<PlacedElement> {
-    let skipped = |reason: String| SheetNote::LogoSkipped {
+    let skipped = |file: Option<&Path>, reason| SheetNote::LogoSkipped {
         id: spec.id.clone(),
+        file: file.map(Path::to_path_buf),
         reason,
     };
     // The project check makes sure both are set; this keeps a hand-built spec from panicking.
     let (Some(file), Some(width_mm)) = (&spec.file, spec.width_mm) else {
-        notes.push(skipped("a logo needs `file` and `width_mm`".into()));
+        notes.push(skipped(None, LogoSkipReason::NeedsFileAndWidth));
         return None;
     };
     let path = ctx.project.resolve(file);
-    let shown = path.display();
+    let skipped = |reason| skipped(Some(&path), reason);
     let logo = match ctx.logos.get(&path, ctx.logo_budget) {
         Ok(logo) => logo,
         Err(reason) => {
-            notes.push(skipped(format!("{shown}: {reason}")));
+            notes.push(skipped(reason));
             return None;
         }
     };
     let (w, h) = logo.size();
     let size = (width_mm, width_mm * h / w);
     if !(size.1.is_finite() && size.1 > 0.0) {
-        notes.push(skipped(format!("{shown}: cannot size the logo")));
+        notes.push(skipped(LogoSkipReason::CannotSize));
         return None;
     }
     let top_left = layout::anchor_point(&spec.anchor, ctx.page, ctx.frame, size);
@@ -329,17 +319,21 @@ pub(super) fn place_logo(
         Logo::Vector(tree) => match svg_items(&tree, rect) {
             Ok((items, simplified, points)) => {
                 if let Err(reason) = ctx.logo_budget.take_points(points, &ctx.logos.limits) {
-                    notes.push(skipped(format!("{shown}: {reason}")));
+                    notes.push(skipped(reason));
                     return None;
                 }
-                notes.extend(simplified.into_iter().map(|r| SheetNote::LogoSimplified {
-                    id: spec.id.clone(),
-                    reason: r.into(),
-                }));
+                notes.extend(
+                    simplified
+                        .into_iter()
+                        .map(|reason| SheetNote::LogoSimplified {
+                            id: spec.id.clone(),
+                            reason,
+                        }),
+                );
                 items
             }
             Err(reason) => {
-                notes.push(skipped(format!("{shown}: {reason}")));
+                notes.push(skipped(reason));
                 return None;
             }
         },
@@ -389,7 +383,7 @@ impl Probe {
         }
     }
 
-    fn decode(self) -> Result<Logo, String> {
+    fn decode(self) -> Result<Logo, LogoSkipReason> {
         match self {
             Probe::Raster { bytes, format, .. } => {
                 decode_raster(&bytes, format).map(|i| Logo::Raster(Arc::new(i)))
@@ -401,7 +395,7 @@ impl Probe {
 
 /// Reads the logo at `path` and checks what it costs: the size in the header of a PNG or JPEG
 /// (no pixel decoded), the work count of an SVG (parsed). The error is the reason it is left out.
-fn probe(path: &Path) -> Result<Probe, String> {
+fn probe(path: &Path) -> Result<Probe, LogoSkipReason> {
     let bytes = read_file(path)?;
     match image::guess_format(&bytes) {
         Ok(format @ (ImageFormat::Png | ImageFormat::Jpeg)) => {
@@ -419,20 +413,22 @@ fn probe(path: &Path) -> Result<Probe, String> {
                 work,
             })
         }
-        _ => Err("not a PNG, JPEG or SVG file".into()),
+        _ => Err(LogoSkipReason::UnknownFormat),
     }
 }
 
 /// The file's bytes, at most [`MAX_FILE_BYTES`]. Only regular files are read, so a device or a
 /// pipe cannot stall the export.
-fn read_file(path: &Path) -> Result<Vec<u8>, String> {
+fn read_file(path: &Path) -> Result<Vec<u8>, LogoSkipReason> {
     let meta = std::fs::metadata(path).map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => "not found".to_string(),
-        _ => format!("cannot read the file ({e})"),
+        std::io::ErrorKind::NotFound => LogoSkipReason::NotFound,
+        _ => LogoSkipReason::Unreadable {
+            error: e.to_string(),
+        },
     })?;
-    let too_large = || "larger than 10 MB".to_string();
+    let too_large = || LogoSkipReason::FileTooLarge;
     if !meta.is_file() {
-        return Err("not a regular file".into());
+        return Err(LogoSkipReason::NotAFile);
     }
     if meta.len() > MAX_FILE_BYTES {
         return Err(too_large());
@@ -440,7 +436,9 @@ fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)
         .and_then(|f| f.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes))
-        .map_err(|e| format!("cannot read the file ({e})"))?;
+        .map_err(|e| LogoSkipReason::Unreadable {
+            error: e.to_string(),
+        })?;
     if bytes.len() as u64 > MAX_FILE_BYTES {
         return Err(too_large());
     }
@@ -457,28 +455,28 @@ fn looks_like_xml(bytes: &[u8]) -> bool {
 
 /// The size in the header of a PNG or JPEG, refused when it is over [`MAX_PIXELS`] or
 /// [`MAX_DIMENSION`]. No pixel is decoded.
-fn raster_size(bytes: &[u8], format: ImageFormat) -> Result<(u32, u32), String> {
+fn raster_size(bytes: &[u8], format: ImageFormat) -> Result<(u32, u32), LogoSkipReason> {
     let (width, height) = ImageReader::with_format(Cursor::new(bytes), format)
         .into_dimensions()
-        .map_err(|e| format!("cannot decode the image ({e})"))?;
+        .map_err(|e| LogoSkipReason::Undecodable {
+            error: e.to_string(),
+        })?;
     if u64::from(width) * u64::from(height) > MAX_PIXELS {
-        return Err(format!(
-            "{width} x {height} pixels, more than 25 megapixels"
-        ));
+        return Err(LogoSkipReason::TooManyPixels { width, height });
     }
     if width > MAX_DIMENSION || height > MAX_DIMENSION {
-        return Err(format!(
-            "{width} x {height} pixels, wider or higher than 65 535"
-        ));
+        return Err(LogoSkipReason::TooWideOrHigh { width, height });
     }
     Ok((width, height))
 }
 
 /// A PNG or JPEG as RGB with its alpha channel, if it has one. The size in the header is checked
 /// before any pixel is decoded, and the decoder runs with a memory limit.
-fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, String> {
+fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, LogoSkipReason> {
     let reader = || ImageReader::with_format(Cursor::new(bytes), format);
-    let cannot = |e: image::ImageError| format!("cannot decode the image ({e})");
+    let cannot = |e: image::ImageError| LogoSkipReason::Undecodable {
+        error: e.to_string(),
+    };
     raster_size(bytes, format)?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_DIMENSION);
@@ -487,9 +485,7 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
     let mut decoder = reader();
     decoder.limits(limits);
     let decoded = decoder.decode().map_err(|e| match e {
-        image::ImageError::Limits(_) => {
-            "too large to decode; save it as an 8-bit image or with fewer pixels".to_string()
-        }
+        image::ImageError::Limits(_) => LogoSkipReason::DecoderLimit,
         e => cannot(e),
     })?;
     let (width, height) = (decoded.width(), decoded.height());
@@ -505,14 +501,16 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
     } else {
         (decoded.into_rgb8().into_raw(), None)
     };
-    RasterImage::new(width, height, rgb, alpha).map_err(|e| format!("cannot use the image ({e})"))
+    RasterImage::new(width, height, rgb, alpha).map_err(|e| LogoSkipReason::Undecodable {
+        error: e.to_string(),
+    })
 }
 
 /// An SVG parsed into paths, with its work count ([`svg_check::check_svg`]). Entities and the allow-list ([`svg_check`]) are checked on the XML
 /// before `usvg` resolves it, so a file that is refused never reaches `usvg`. Embedded images are
 /// never loaded, external files never read.
-fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), String> {
-    let text = std::str::from_utf8(bytes).map_err(|_| "cannot read the SVG (not UTF-8)")?;
+fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), LogoSkipReason> {
+    let text = std::str::from_utf8(bytes).map_err(|_| LogoSkipReason::SvgNotUtf8)?;
     let scan = svg_check::pre_scan(bytes)?;
     check_entities(&scan)?;
     let options = roxmltree::ParsingOptions {
@@ -521,8 +519,11 @@ fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), String> {
         // No resolver: external entities are not loaded.
         ..roxmltree::ParsingOptions::default()
     };
-    let doc = roxmltree::Document::parse_with_options(text, options)
-        .map_err(|e| format!("cannot read the SVG ({e})"))?;
+    let doc = roxmltree::Document::parse_with_options(text, options).map_err(|e| {
+        LogoSkipReason::SvgUnreadable {
+            error: e.to_string(),
+        }
+    })?;
     let work = svg_check::check_svg(&doc)?;
     let opt = usvg::Options {
         resources_dir: None,
@@ -532,17 +533,20 @@ fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), String> {
         },
         ..usvg::Options::default()
     };
-    let tree =
-        usvg::Tree::from_xmltree(&doc, &opt).map_err(|e| format!("cannot read the SVG ({e})"))?;
+    let tree = usvg::Tree::from_xmltree(&doc, &opt).map_err(|e| LogoSkipReason::SvgUnreadable {
+        error: e.to_string(),
+    })?;
     Ok((tree, work))
 }
 
 /// Rejects entity references that expand into more than [`MAX_ENTITY_TEXT`] bytes in all. The
 /// pre-scan has read the entities and counted their uses; an entity holds no references, so its
 /// text is brought in once per use.
-fn check_entities(scan: &svg_check::Scan<'_>) -> Result<(), String> {
+fn check_entities(scan: &svg_check::Scan<'_>) -> Result<(), LogoSkipReason> {
     if scan.entity_text() > MAX_ENTITY_TEXT {
-        return Err("its entities expand too far".into());
+        return Err(LogoSkipReason::SvgTooComplex {
+            what: "its entities expand too far".into(),
+        });
     }
     Ok(())
 }
@@ -562,18 +566,22 @@ struct Budget {
 }
 
 impl Budget {
-    fn add_segments(&mut self, n: usize) -> Result<(), String> {
+    fn add_segments(&mut self, n: usize) -> Result<(), LogoSkipReason> {
         self.segments += n;
         if self.segments > MAX_SVG_SEGMENTS {
-            return Err("more than 20 000 path segments".into());
+            return Err(LogoSkipReason::SvgTooComplex {
+                what: "more than 20 000 path segments".into(),
+            });
         }
         Ok(())
     }
 
-    fn add_points(&mut self, n: usize) -> Result<(), String> {
+    fn add_points(&mut self, n: usize) -> Result<(), LogoSkipReason> {
         self.points += n;
         if self.points > MAX_SVG_POINTS {
-            return Err("more than 500 000 points once its curves are flattened".into());
+            return Err(LogoSkipReason::SvgTooComplex {
+                what: "more than 500 000 points once its curves are flattened".into(),
+            });
         }
         Ok(())
     }
@@ -586,7 +594,7 @@ impl Budget {
 fn svg_items(
     tree: &usvg::Tree,
     rect: PaperBox,
-) -> Result<(Vec<SheetItem>, BTreeSet<&'static str>, usize), String> {
+) -> Result<(Vec<SheetItem>, BTreeSet<LogoSimplification>, usize), LogoSkipReason> {
     let mut simplified = BTreeSet::new();
     let to_page = ToPage {
         origin: rect.min,
@@ -650,14 +658,14 @@ fn group_items(
     to_page: ToPage,
     items: &mut Vec<SheetItem>,
     budget: &mut Budget,
-    simplified: &mut BTreeSet<&'static str>,
-) -> Result<(), String> {
+    simplified: &mut BTreeSet<LogoSimplification>,
+) -> Result<(), LogoSkipReason> {
     if group.opacity().get() < 1.0 {
-        simplified.insert(OPACITY);
+        simplified.insert(LogoSimplification::Opacity);
     }
     // The allow-list lets only clip paths through; masks and filters cannot occur.
     if group.clip_path().is_some() || group.mask().is_some() || !group.filters().is_empty() {
-        simplified.insert(CLIP);
+        simplified.insert(LogoSimplification::ClipPath);
     }
     for node in group.children() {
         match node {
@@ -665,10 +673,10 @@ fn group_items(
             usvg::Node::Path(p) => path_items(p, to_page, items, budget, simplified)?,
             // The allow-list keeps images and text out; if `usvg` still makes one, it is noted.
             usvg::Node::Image(_) => {
-                simplified.insert(IMAGE);
+                simplified.insert(LogoSimplification::Image);
             }
             usvg::Node::Text(_) => {
-                simplified.insert(TEXT);
+                simplified.insert(LogoSimplification::Text);
             }
         }
     }
@@ -676,7 +684,10 @@ fn group_items(
 }
 
 /// The colour of `paint`: a gradient gives its first stop colour, a pattern black.
-fn paint_colour(paint: &usvg::Paint, simplified: &mut BTreeSet<&'static str>) -> DirectColour {
+fn paint_colour(
+    paint: &usvg::Paint,
+    simplified: &mut BTreeSet<LogoSimplification>,
+) -> DirectColour {
     let first_stop = |stops: &[usvg::Stop]| {
         stops.first().map_or(DirectColour::BLACK, |s| {
             let c = s.color();
@@ -686,15 +697,15 @@ fn paint_colour(paint: &usvg::Paint, simplified: &mut BTreeSet<&'static str>) ->
     match paint {
         usvg::Paint::Color(c) => rgb_to_cmyk(c.red, c.green, c.blue),
         usvg::Paint::LinearGradient(g) => {
-            simplified.insert(GRADIENT);
+            simplified.insert(LogoSimplification::Gradient);
             first_stop(g.stops())
         }
         usvg::Paint::RadialGradient(g) => {
-            simplified.insert(GRADIENT);
+            simplified.insert(LogoSimplification::Gradient);
             first_stop(g.stops())
         }
         usvg::Paint::Pattern(_) => {
-            simplified.insert(PATTERN);
+            simplified.insert(LogoSimplification::Pattern);
             DirectColour::BLACK
         }
     }
@@ -706,8 +717,8 @@ fn path_items(
     to_page: ToPage,
     items: &mut Vec<SheetItem>,
     budget: &mut Budget,
-    simplified: &mut BTreeSet<&'static str>,
-) -> Result<(), String> {
+    simplified: &mut BTreeSet<LogoSimplification>,
+) -> Result<(), LogoSkipReason> {
     budget.add_segments(path.data().len())?;
     if !path.is_visible() || (path.fill().is_none() && path.stroke().is_none()) {
         return Ok(());
@@ -730,7 +741,7 @@ fn path_items(
 
     let fill = path.fill().map(|f| {
         if f.opacity().get() < 1.0 {
-            simplified.insert(OPACITY);
+            simplified.insert(LogoSimplification::Opacity);
         }
         SheetItem::Shape {
             colour: paint_colour(f.paint(), simplified),
@@ -750,10 +761,10 @@ fn path_items(
     let mut strokes = Vec::new();
     if let Some(s) = path.stroke() {
         if s.opacity().get() < 1.0 {
-            simplified.insert(OPACITY);
+            simplified.insert(LogoSimplification::Opacity);
         }
         if s.dasharray().is_some() {
-            simplified.insert(DASHES);
+            simplified.insert(LogoSimplification::Dashes);
         }
         let colour = paint_colour(s.paint(), simplified);
         // The width scales with the transform's area factor, exact for uniform scaling.
@@ -806,7 +817,7 @@ fn flatten(
     data: &usvg::tiny_skia_path::Path,
     map: impl Fn(usvg::tiny_skia_path::Point) -> Pt,
     budget: &mut Budget,
-) -> Result<Vec<(Vec<Pt>, bool)>, String> {
+) -> Result<Vec<(Vec<Pt>, bool)>, LogoSkipReason> {
     let mut subpaths: Vec<(Vec<Pt>, bool)> = Vec::new();
     let mut current: Vec<Pt> = Vec::new();
     let finish = |current: &mut Vec<Pt>, closed: bool, subpaths: &mut Vec<(Vec<Pt>, bool)>| {
@@ -930,9 +941,13 @@ mod tests {
 
     fn skipped_reason(report: &SheetReport) -> String {
         match logo_notes(report).as_slice() {
-            [SheetNote::LogoSkipped { id, reason }] => {
+            [SheetNote::LogoSkipped { id, file, reason }] => {
                 assert_eq!(id, "logo");
-                reason.clone()
+                // As the notes read before the reasons became values: the file, then why.
+                match file {
+                    Some(file) => format!("{}: {reason}", file.display()),
+                    None => reason.to_string(),
+                }
             }
             other => panic!("expected one LogoSkipped, got {other:?}"),
         }
@@ -1008,7 +1023,15 @@ mod tests {
         report
             .notes
             .iter()
-            .filter(|n| matches!(n, SheetNote::LogoSkipped { reason, .. } if reason.contains("on this sheet")))
+            .filter(|n| {
+                matches!(
+                    n,
+                    SheetNote::LogoSkipped {
+                        reason: LogoSkipReason::PixelBudget | LogoSkipReason::SvgBudget,
+                        ..
+                    }
+                )
+            })
             .count()
     }
 
@@ -1175,7 +1198,7 @@ mod tests {
             logo_notes(&report),
             [SheetNote::LogoSimplified {
                 id: "logo".into(),
-                reason: "gradient drawn in its first stop colour".into()
+                reason: LogoSimplification::Gradient
             }]
         );
         let items = logo_items(&page);
@@ -1461,7 +1484,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = write_temp(&dir, "mixed.svg", svg.as_bytes());
         let (page, report) = sheet_with(&path, 40.0);
-        let reasons: Vec<String> = logo_notes(&report)
+        let reasons: Vec<LogoSimplification> = logo_notes(&report)
             .into_iter()
             .map(|n| match n {
                 SheetNote::LogoSimplified { reason, .. } => reason,
@@ -1471,9 +1494,9 @@ mod tests {
         assert_eq!(
             reasons,
             [
-                "clip path ignored",
-                "dashes drawn as solid lines",
-                "transparency ignored, drawn opaque",
+                LogoSimplification::Opacity,
+                LogoSimplification::Dashes,
+                LogoSimplification::ClipPath,
             ]
         );
         assert_eq!(fills(&logo_items(&page)).len(), 2);
@@ -1880,7 +1903,7 @@ mod tests {
             notes,
             [SheetNote::LogoSimplified {
                 id: "logo".into(),
-                reason: "gradient drawn in its first stop colour".into()
+                reason: LogoSimplification::Gradient
             }]
         );
         assert_eq!(fills(&items).len(), 1);
@@ -2017,7 +2040,7 @@ mod tests {
             notes,
             [SheetNote::LogoSimplified {
                 id: "logo".into(),
-                reason: "clip path ignored".into()
+                reason: LogoSimplification::ClipPath
             }]
         );
         assert_eq!(fills(&items).len(), 1);
@@ -2070,7 +2093,7 @@ mod tests {
             ),
             (
                 r#"<rect id="a" width="5" height="5"/><rect id="a" width="5" height="5"/>"#,
-                "the id \"a\" is used twice; export the logo as a plain SVG".to_string(),
+                plain("the same id \"a\" on two elements"),
             ),
         ];
         for (body, expected) in cases {
@@ -2095,7 +2118,7 @@ mod tests {
                 notes,
                 [SheetNote::LogoSimplified {
                     id: "logo".into(),
-                    reason: "gradient drawn in its first stop colour".into()
+                    reason: LogoSimplification::Gradient
                 }],
                 "{fill}"
             );
@@ -2601,7 +2624,7 @@ mod tests {
             notes,
             [SheetNote::LogoSimplified {
                 id: "logo".into(),
-                reason: CLIP.into(),
+                reason: LogoSimplification::ClipPath,
             }]
         );
         assert_eq!(fills(&items).len(), 4);

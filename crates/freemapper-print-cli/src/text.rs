@@ -322,6 +322,10 @@ mod tests {
             "available",
             "known",
             "margin",
+            "file",
+            "detail",
+            "width",
+            "height",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

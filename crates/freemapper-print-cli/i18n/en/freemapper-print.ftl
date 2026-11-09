@@ -146,3 +146,30 @@ note-unknown-part = Note: layout { $layout } hides the map part { $name }, but t
 note-credit-line-moved = Note: the credit line element { $id } would not lie wholly on the page, so the credit line stays in the footer at the bottom left.
 note-render-footer-on-map = Note: the footer with the copyright and credit lines sits on a white box in the bottom-left corner of the printable area and covers part of the map. In a project (init, then export) it can go below the map frame.
 note-render-copyright-truncated = Note: the footer shows { $shown } of { $total } copyright lines. One more line counts the rest.
+
+## Why a logo is left out or drawn simpler (after "the logo … is left out:" or "drawn simplified:")
+
+logo-reason-needs-file-and-width = it needs both file and width_mm.
+logo-reason-not-found = { $file } does not exist.
+logo-reason-unreadable = { $file } cannot be read ({ $error }).
+logo-reason-not-a-file = { $file } is not a regular file.
+logo-reason-file-too-large = { $file } is larger than 10 MB.
+logo-reason-unknown-format = { $file } is not a PNG, JPEG or SVG file.
+logo-reason-too-many-pixels = { $file } has { $width } × { $height } pixels, more than 25 megapixels. Save it with fewer pixels.
+logo-reason-too-wide = { $file } is { $width } × { $height } pixels, wider or higher than 65 535 pixels.
+logo-reason-undecodable = { $file } cannot be decoded ({ $error }).
+logo-reason-decoder-limit = { $file } is too large to decode. Save it as an 8-bit image or with fewer pixels.
+logo-reason-svg-not-utf8 = { $file } is not UTF-8 text.
+logo-reason-svg-unreadable = { $file } cannot be read as SVG ({ $error }).
+logo-reason-svg-unsupported = { $file } uses something a logo cannot have: { $detail }. Export the logo as a plain SVG with shapes, paths and gradients.
+logo-reason-svg-too-complex = { $file } is too complex for a logo: { $detail }. Simplify the logo or export it as a plain SVG.
+logo-reason-cannot-size = the width or height of { $file } cannot be worked out.
+logo-reason-pixel-budget = the sheet holds 50 megapixels of logos already ({ $file }). Use smaller images or fewer logos.
+logo-reason-svg-budget = the SVG logos of the sheet have used up their budget of 1 000 000 units already ({ $file }). Simplify them or use fewer.
+logo-simplified-gradient = a gradient is drawn in its first colour.
+logo-simplified-pattern = a pattern fill is drawn in black.
+logo-simplified-opacity = transparency is ignored, the logo is drawn opaque.
+logo-simplified-dashes = dashes are drawn as solid lines.
+logo-simplified-image = an embedded image is left out.
+logo-simplified-text = text is left out; convert it to paths.
+logo-simplified-clip-path = a clip path is ignored.
