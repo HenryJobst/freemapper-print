@@ -267,6 +267,7 @@ note-course-map-issue-as-start = Info: the map issue point { $code } is used as 
 note-course-variations = Note: course "{ $course }" has forks or loops (Purple Pen variations). This version cannot print them, so the course is left out. Purple Pen's IOF XML export writes each variation as a course of its own.
 note-fit-y-up = Info: the course file's y axis points up; the program turned it to match the map.
 note-fit-orientation-assumed = Note: the course fits the map with its y axis pointing up and pointing down, and nothing in the file decides, so the program assumes it points up. Check a sheet, then set course_y_axis = "up" or "down" under [sources] in the project file.
+note-fit-axis-against-format = Note: the project file sets course_y_axis = "{ $set }" under [sources], but Purple Pen always writes the y axis pointing up, so the course prints mirrored. If the file comes from Purple Pen, delete the line.
 note-fit-scale-unchecked = Info: the course file states no map scale, so it was not compared with the map's scale.
 note-fit-georef-checked = Info: { $count ->
         [one] 1 control has

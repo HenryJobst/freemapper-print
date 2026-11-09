@@ -143,6 +143,17 @@ pub enum SourceFormat {
     PurplePen,
 }
 
+impl SourceFormat {
+    /// The y axis the format always writes: up for Purple Pen; `None` for IOF XML, whose writers differ
+    /// (ADR 0032).
+    pub fn y_axis(self) -> Option<super::fit::YAxis> {
+        match self {
+            SourceFormat::PurplePen => Some(super::fit::YAxis::Up),
+            SourceFormat::IofXml => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlKind {
     Start,

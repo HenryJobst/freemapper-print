@@ -560,3 +560,120 @@ fn circle_gaps_flip_for_a_control_placed_by_georef() {
     assert_eq!(stop.circle_gaps, [(-60.0, 30.0), (-150.0, -100.0)]);
     assert!(stop.circle_gaps[0].0 < 0.0 && stop.circle_gaps[0].1 > 0.0);
 }
+
+/// `ev` as if Purple Pen had written it.
+fn as_ppen(mut ev: RawEvent) -> RawEvent {
+    ev.source.format = SourceFormat::PurplePen;
+    ev
+}
+
+#[test]
+fn purple_pen_files_are_y_up() {
+    // Ruling R36: Purple Pen always writes y up. Where both readings fit, nothing is assumed or detected.
+    let map = plain_map((-100_000, -100_000), (100_000, 100_000));
+    let ev = as_ppen(event(vec![
+        control("31", Some((10.0, 20.0)), None),
+        control("32", Some((-30.0, 40.0)), None),
+    ]));
+    let fitted = fit(ev, &map, &FitOptions::default()).unwrap();
+    assert!(
+        !fitted.notes.iter().any(|n| matches!(
+            n,
+            FitNote::OrientationAssumed | FitNote::YUpDetected | FitNote::AxisAgainstFormat { .. }
+        )),
+        "{:?}",
+        fitted.notes
+    );
+    assert!(!fitted.notes.iter().any(FitNote::is_warning));
+    assert_eq!(pos(&fitted.event, "31"), MapCoord::new(10_000, -20_000));
+}
+
+#[test]
+fn purple_pen_file_that_fits_only_y_down_is_outside_the_map() {
+    // Never mirrored silently: read y up, the controls lie outside the map.
+    let map = plain_map((0, 0), (200_000, 100_000));
+    let ev = as_ppen(event(vec![
+        control("31", Some((50.0, 30.0)), None),
+        control("32", Some((150.0, 80.0)), None),
+    ]));
+    assert_eq!(
+        fit(ev, &map, &FitOptions::default()).unwrap_err(),
+        FitError::OutsideMap {
+            inside: 0,
+            total: 2
+        }
+    );
+}
+
+#[test]
+fn project_axis_against_purple_pen_is_a_warning() {
+    // The project file still decides, but a y axis down on a Purple Pen file is noted as a warning: the sheet
+    // would print the course mirrored.
+    let map = plain_map((-100_000, -100_000), (100_000, 100_000));
+    let ev = as_ppen(event(vec![
+        control("31", Some((10.0, 20.0)), None),
+        control("32", Some((-30.0, 40.0)), None),
+    ]));
+    let down = FitOptions {
+        y_axis: Some(YAxis::Down),
+        ..FitOptions::default()
+    };
+    let fitted = fit(ev.clone(), &map, &down).unwrap();
+    let note = FitNote::AxisAgainstFormat {
+        set: YAxis::Down,
+        format: YAxis::Up,
+    };
+    assert!(fitted.notes.contains(&note), "{:?}", fitted.notes);
+    assert!(note.is_warning());
+    assert_eq!(pos(&fitted.event, "31"), MapCoord::new(10_000, 20_000));
+    // Setting what the format says anyway is fine.
+    let up = FitOptions {
+        y_axis: Some(YAxis::Up),
+        ..FitOptions::default()
+    };
+    let fitted = fit(ev, &map, &up).unwrap();
+    assert!(!fitted.notes.iter().any(FitNote::is_warning));
+}
+
+#[test]
+fn geo_only_controls_leave_offsets_and_bends_undecided() {
+    // Every control has only lat/lng: they place themselves, but the bend and the number offset in the file
+    // still depend on the y axis, and nothing decides it for IOF XML. That is assumed, with the warning.
+    let mut ev = luebeck_course();
+    for c in &mut ev.controls {
+        c.position = None;
+    }
+    let fitted = fit(ev.clone(), &luebeck(), &FitOptions::default()).unwrap();
+    assert!(
+        fitted.notes.contains(&FitNote::OrientationAssumed),
+        "{:?}",
+        fitted.notes
+    );
+    // Without offsets, bends, gaps and specials the axis does not matter.
+    for course in &mut ev.courses {
+        for stop in &mut course.stops {
+            stop.number_text_at = None;
+            stop.circle_gaps.clear();
+        }
+        for leg in &mut course.legs {
+            leg.bends.clear();
+        }
+    }
+    ev.specials.clear();
+    let fitted = fit(ev, &luebeck(), &FitOptions::default()).unwrap();
+    assert!(!fitted.notes.contains(&FitNote::OrientationAssumed));
+}
+
+#[test]
+fn file_scale_against_a_map_without_scale_reads_plainly() {
+    let mut map = plain_map((0, 0), (200_000, 100_000));
+    map.georef.scale_denominator = 0;
+    let mut ev = event(vec![
+        control("31", Some((50.0, 30.0)), None),
+        control("32", Some((150.0, 80.0)), None),
+    ]);
+    ev.source.map_scale = Some(4000);
+    let err = fit(ev, &map, &FitOptions::default()).unwrap_err();
+    assert_eq!(err, FitError::MapScaleUnknown { file: 4000 });
+    assert!(!err.to_string().contains("1:0"), "{err}");
+}

@@ -1,9 +1,11 @@
 //! Course fitting: puts the points of a course file into the map's coordinates (ADR 0032).
 //!
 //! A course file gives map positions in mm from the map's origin, but writers disagree on the y axis:
-//! Purple Pen, Condes and OCAD write y up, the IOF standard and OOM y down. Unless the project sets the
-//! axis, both readings are tried, and one fits when every control lies within the box of the map's
-//! objects grown by [`MARGIN_MM`]. When the map is georeferenced with a UTM CRS and the file gives
+//! Purple Pen, Condes and OCAD write y up, the IOF standard and OOM y down. The project can set the axis. A
+//! Purple Pen file is read y up otherwise, as Purple Pen always writes it (ruling R36); a project value against
+//! that is a warning. For IOF XML both readings are tried. A reading fits when every control lies within the box
+//! of the map's objects grown by [`MARGIN_MM`]; a Purple Pen file that does not fit y up is an error, never
+//! read mirrored. When the map is georeferenced with a UTM CRS and the file gives
 //! latitude and longitude, they decide between the readings and check the chosen one: a control more
 //! than [`GEOREF_TOLERANCE_M`] from where its latitude and longitude put it is an error, never a silent
 //! shift. Controls with only latitude and longitude are placed through the map's georeferencing. A map
@@ -65,6 +67,9 @@ pub enum FitNote {
     /// Both readings fit and nothing decided between them, so y up was taken. A warning: set the axis in
     /// the project file to confirm it.
     OrientationAssumed,
+    /// The project file sets the y axis `set`, but the file format always writes `format`. A warning: the
+    /// sheet prints the course mirrored unless the file really is an exception.
+    AxisAgainstFormat { set: YAxis, format: YAxis },
     /// The file states no map scale, so it was not compared with the map's.
     ScaleUnchecked,
     /// `controls` controls have both a map position and latitude and longitude; the largest distance
@@ -81,7 +86,10 @@ pub enum FitNote {
 impl FitNote {
     /// Whether `check` counts the note as a warning.
     pub fn is_warning(&self) -> bool {
-        matches!(self, Self::OrientationAssumed)
+        matches!(
+            self,
+            Self::OrientationAssumed | Self::AxisAgainstFormat { .. }
+        )
     }
 }
 
@@ -119,6 +127,10 @@ pub enum FitError {
         "the course file is drawn for 1:{file}, the map is 1:{map}; export the courses for the map's scale"
     )]
     ScaleMismatch { file: u32, map: u32 },
+    #[error(
+        "the course file is drawn for 1:{file}, and the map states no scale; set the map's scale in the map file"
+    )]
+    MapScaleUnknown { file: u32 },
     #[error(
         "only {inside} of {total} controls lie on the map; the course file belongs to another map, uses another origin or another y axis"
     )]
@@ -258,6 +270,7 @@ pub fn fit(event: RawEvent, map: &MapDocument, options: &FitOptions) -> Result<F
     let mut notes = Vec::new();
     let map_scale = map.georef.scale_denominator;
     match event.source.map_scale {
+        Some(file) if map_scale == 0 => return Err(FitError::MapScaleUnknown { file }),
         Some(file) if file != map_scale => {
             return Err(FitError::ScaleMismatch {
                 file,
@@ -314,11 +327,28 @@ pub fn fit(event: RawEvent, map: &MapDocument, options: &FitOptions) -> Result<F
                 .filter(|(_, p, _)| inside(axis.place(*p)))
                 .count()
     };
-    // Y up first: it is taken when nothing decides.
-    let candidates: &[YAxis] = match &options.y_axis {
+    // The project's axis, else the format's, else both, y up first: it is taken when nothing decides.
+    let format_axis = event.source.format.y_axis();
+    if let (Some(set), Some(format)) = (options.y_axis, format_axis)
+        && set != format
+    {
+        notes.push(FitNote::AxisAgainstFormat { set, format });
+    }
+    let decided = options.y_axis.or(format_axis);
+    let candidates: &[YAxis] = match &decided {
         Some(axis) => std::slice::from_ref(axis),
         None => &[YAxis::Up, YAxis::Down],
     };
+    // Whether the axis changes anything: a control with a map position, or any point, offset or circle gap in
+    // the file. Controls with only lat/lng place themselves.
+    let axis_matters = !positioned.is_empty()
+        || !event.specials.is_empty()
+        || event.courses.iter().any(|c| {
+            c.legs.iter().any(|l| !l.bends.is_empty())
+                || c.stops
+                    .iter()
+                    .any(|s| s.number_text_at.is_some() || !s.circle_gaps.is_empty())
+        });
     let mut fitting: Vec<YAxis> = candidates
         .iter()
         .copied()
@@ -378,9 +408,9 @@ pub fn fit(event: RawEvent, map: &MapDocument, options: &FitOptions) -> Result<F
         Err(reason) => notes.push(FitNote::GeorefSkipped(reason.clone())),
     }
     let axis = fitting[0];
-    if fitting.len() > 1 && !positioned.is_empty() {
+    if fitting.len() > 1 && axis_matters {
         notes.insert(0, FitNote::OrientationAssumed);
-    } else if axis == YAxis::Up && !positioned.is_empty() && options.y_axis.is_none() {
+    } else if axis == YAxis::Up && !positioned.is_empty() && decided.is_none() {
         notes.insert(0, FitNote::YUpDetected);
     }
     if !geo_only.is_empty() {

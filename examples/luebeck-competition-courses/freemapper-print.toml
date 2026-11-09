@@ -12,9 +12,6 @@ lang = "de"
 [sources]
 map = "luebeck.omap"
 courses = "courses.ppen"
-# Purple Pen schreibt die y-Achse nach oben. Auf den Blättern geprüft: Jeder Posten steht an der
-# Gebäudeecke oder Wegegabelung, die seine Beschreibung nennt.
-course_y_axis = "up"
 
 [map]
 kind = "sprint"

@@ -12,9 +12,6 @@ lang = "de"
 [sources]
 map = "berlin-viktoriapark.omap"
 courses = "training.ppen"
-# Purple Pen schreibt die y-Achse nach oben. Auf dem Blatt geprüft: Jeder Posten steht an der
-# Gebäudeecke oder Wegegabelung, die seine Beschreibung nennt.
-course_y_axis = "up"
 
 [map]
 kind = "sprint"

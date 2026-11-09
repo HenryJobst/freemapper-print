@@ -9,7 +9,7 @@ use anyhow::{Context, anyhow, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
-use freemapper_print::course::fit::SkipReason;
+use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
 use freemapper_print::courses::{CorrectionScope, LoadedCourses, Stale, load_courses};
 use freemapper_print::export::{
@@ -1674,6 +1674,13 @@ fn fit_note_line(texts: &Texts, note: &FitNote) -> String {
     match note {
         FitNote::YUpDetected => texts.plain("note-fit-y-up"),
         FitNote::OrientationAssumed => texts.plain("note-fit-orientation-assumed"),
+        FitNote::AxisAgainstFormat { set, .. } => texts.get(
+            "note-fit-axis-against-format",
+            Some(&args!("set" => match set {
+                YAxis::Up => "up",
+                YAxis::Down => "down",
+            })),
+        ),
         FitNote::ScaleUnchecked => texts.plain("note-fit-scale-unchecked"),
         FitNote::GeorefChecked { controls, metres } => texts.get(
             "note-fit-georef-checked",
@@ -2382,6 +2389,13 @@ mod tests {
             (
                 SheetNote::Fit(FitNote::OrientationAssumed),
                 vec!["course_y_axis", "[sources]"],
+            ),
+            (
+                SheetNote::Fit(FitNote::AxisAgainstFormat {
+                    set: YAxis::Down,
+                    format: YAxis::Up,
+                }),
+                vec!["course_y_axis = \"down\"", "Purple Pen"],
             ),
             (SheetNote::Fit(FitNote::ScaleUnchecked), vec![]),
             (

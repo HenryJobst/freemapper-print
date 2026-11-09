@@ -270,6 +270,7 @@ note-course-map-issue-as-start = Zur Information: Die Kartenausgabe { $code } di
 note-course-variations = Hinweis: Die Bahn „{ $course }“ hat Gabelungen oder Schleifen (Varianten in Purple Pen). Diese Version kann sie nicht drucken, die Bahn fehlt deshalb. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene Bahn.
 note-fit-y-up = Zur Information: Die y-Achse der Bahndatei zeigt nach oben; das Programm hat sie zur Karte passend gedreht.
 note-fit-orientation-assumed = Hinweis: Die Bahn passt mit der y-Achse nach oben und nach unten auf die Karte, und nichts in der Datei entscheidet. Das Programm hat „oben“ genommen. Prüfen Sie ein Blatt und tragen Sie dann in der Projektdatei unter [sources] course_y_axis = "up" oder "down" ein.
+note-fit-axis-against-format = Hinweis: Die Projektdatei setzt unter [sources] course_y_axis = "{ $set }", aber Purple Pen schreibt die y-Achse immer nach oben. So steht die Bahn gespiegelt auf dem Blatt. Stammt die Datei aus Purple Pen, löschen Sie die Zeile.
 note-fit-scale-unchecked = Zur Information: Die Bahndatei nennt keinen Kartenmaßstab, deshalb wurde er nicht mit dem der Karte verglichen.
 note-fit-georef-checked = Zur Information: { $count ->
         [one] 1 Posten hat
