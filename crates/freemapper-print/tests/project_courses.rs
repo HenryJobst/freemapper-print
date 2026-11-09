@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use freemapper_print::course::NumberPlacement;
 use freemapper_print::course::fit::{FitError, SkipReason, YAxis};
 use freemapper_print::courses::{
-    CorrectionScope, CourseLoadError, LayoutNote, MaskNote, MaskRef, Stale, base_changed,
-    layout_for, load_courses, mask_for,
+    CorrectionScope, CourseLoadError, LayoutNote, LoadedCourses, MaskNote, MaskRef, Stale,
+    base_changed, layout_for, load_courses, mask_for,
 };
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::project::{self, FILE_NAME};
@@ -443,11 +443,12 @@ fn unused_mask_is_noted() {
     assert!(!loaded.mask_notes[0].is_warning());
     assert!(loaded.stale.is_empty(), "{:?}", loaded.stale);
     // The assigned course gets its mask, the others none (the XML file has no white-out).
-    match mask_for(&lp.project, &loaded, "A") {
-        Some(MaskRef::Project(m)) => assert_eq!(m.id, "used"),
-        other => panic!("{other:?}"),
-    }
-    assert!(mask_for(&lp.project, &loaded, "B").is_none());
+    let a = mask_for(&lp.project, &loaded, "A");
+    assert!(
+        matches!(a.as_slice(), [MaskRef::Project(m)] if m.id == "used"),
+        "{a:?}"
+    );
+    assert!(mask_for(&lp.project, &loaded, "B").is_empty());
     assert!(loaded.white_outs.is_empty());
 }
 
@@ -481,6 +482,14 @@ fn white_out(id: u32, x: f64, y: f64, s: f64, courses: &str) -> String {
         loc(x + s, y + s),
         loc(x, y + s),
     )
+}
+
+/// The ids of the masks `mask_for` gives `course`.
+fn mask_ids(project: &project::Project, loaded: &LoadedCourses, course: &str) -> Vec<String> {
+    mask_for(project, loaded, course)
+        .iter()
+        .map(|m| m.mask().id.clone())
+        .collect()
 }
 
 #[test]
@@ -523,30 +532,24 @@ fn white_outs_become_mask_variants() {
         loaded.white_outs[0].mask.polygons[0].outline,
         [[-80.0, 40.0], [-70.0, 40.0], [-70.0, 50.0], [-80.0, 50.0]]
     );
-    // A has white-outs 1 and 2: one variant with both polygons.
-    let a = mask_for(&lp.project, &loaded, "A").unwrap();
-    assert!(matches!(a, MaskRef::WhiteOut(_)));
-    assert_eq!(a.mask().id, "whiteout-1+whiteout-2");
-    assert_eq!(a.mask().polygons.len(), 2);
-    // B names white-out 3 itself, which wins over white-out 2 of all courses.
+    // A has white-outs 1 and 2, each its own mask (ruling R8), from the course file.
+    let a = mask_for(&lp.project, &loaded, "A");
+    assert!(a.iter().all(|m| matches!(m, MaskRef::WhiteOut(_))));
     assert_eq!(
-        mask_for(&lp.project, &loaded, "B").unwrap().mask().id,
-        "whiteout-3"
+        mask_ids(&lp.project, &loaded, "A"),
+        ["whiteout-1", "whiteout-2"]
     );
-    // C has 2 and 3, which overlap: no mask, and a warning.
-    assert!(mask_for(&lp.project, &loaded, "C").is_none());
-    assert_eq!(loaded.mask_notes.len(), 1, "{:?}", loaded.mask_notes);
-    let MaskNote::WhiteOutUnusable { course, mask, .. } = &loaded.mask_notes[0] else {
-        panic!("{:?}", loaded.mask_notes);
-    };
+    // B names white-out 3 itself, which wins over white-out 2 of all courses: only that one.
+    assert_eq!(mask_ids(&lp.project, &loaded, "B"), ["whiteout-3"]);
+    // C has 2 and 3, which overlap: both, unchecked; the clips of Task 2 unite them. No note.
     assert_eq!(
-        (course.as_str(), mask.as_str()),
-        ("C", "whiteout-2+whiteout-3")
+        mask_ids(&lp.project, &loaded, "C"),
+        ["whiteout-2", "whiteout-3"]
     );
-    assert!(loaded.mask_notes[0].is_warning());
+    assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
 
-    // A `[[masks]]` entry named like a white-out replaces it, for the white-out's courses, and counts as used.
-    // A white-out the course file lacks is stale data.
+    // A `[[masks]]` entry named like a white-out stands in for it, for the white-out's courses, and counts as
+    // used. A white-out the course file lacks is stale data, and the course gets no mask.
     let (_d, path) = ppen_dir(
         &specials,
         "[[masks]]\nid = \"whiteout-3\"\n\
@@ -563,32 +566,17 @@ fn white_outs_become_mask_variants() {
             mask: "whiteout-9".into()
         }]
     );
-    assert!(mask_for(&lp.project, &loaded, "B").is_none());
-    let c = mask_for(&lp.project, &loaded, "C").unwrap();
-    assert_eq!(c.mask().id, "whiteout-2+whiteout-3");
-    assert_eq!(c.mask().polygons[1].outline[0], [150.0, 40.0]);
-    // A single replaced white-out is the project's own mask.
-    let (_d, path) = ppen_dir(
-        &white_out(
-            1,
-            -80.0,
-            40.0,
-            10.0,
-            "<courses><course course=\"1\" /></courses>",
-        ),
-        "[[masks]]\nid = \"whiteout-1\"\npolygons = [[[[150, 40], [160, 40], [160, 50]]]]\n",
+    assert!(mask_for(&lp.project, &loaded, "B").is_empty());
+    let c = mask_for(&lp.project, &loaded, "C");
+    assert!(
+        matches!(c.as_slice(), [MaskRef::WhiteOut(w), MaskRef::Project(p)]
+        if w.id == "whiteout-2" && p.polygons[0].outline[0] == [150.0, 40.0]),
+        "{c:?}"
     );
-    let lp = project::load(&path).unwrap();
-    let loaded = load_courses(&lp, &map).unwrap().unwrap();
-    assert!(matches!(
-        mask_for(&lp.project, &loaded, "A"),
-        Some(MaskRef::Project(m)) if m.id == "whiteout-1"
-    ));
-    assert!(mask_for(&lp.project, &loaded, "B").is_none());
 }
 
 /// The mask ids of courses A, B and C for a project with `specials` in the course file and no assignments.
-fn white_out_masks(specials: &str) -> Vec<Option<String>> {
+fn white_out_masks(specials: &str) -> Vec<Vec<String>> {
     let (_d, path) = ppen_dir(specials, "");
     let lp = project::load(&path).unwrap();
     let map = read_map_file(&lp.map_path()).unwrap();
@@ -596,7 +584,7 @@ fn white_out_masks(specials: &str) -> Vec<Option<String>> {
     assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
     ["A", "B", "C"]
         .iter()
-        .map(|c| mask_for(&lp.project, &loaded, c).map(|m| m.mask().id.clone()))
+        .map(|c| mask_ids(&lp.project, &loaded, c))
         .collect()
 }
 
@@ -615,15 +603,32 @@ fn whiteout_only_applies_to_its_courses() {
         ),
         white_out(2, 50.0, 40.0, 10.0, "<courses />"),
     );
+    let none: Vec<String> = Vec::new();
     assert_eq!(
         white_out_masks(&specials),
-        [None, Some("whiteout-1".to_string()), None]
+        [none.clone(), vec!["whiteout-1".to_string()], none]
     );
 }
 
 #[test]
 fn whiteout_with_all_applies_everywhere() {
     let specials = white_out(1, -80.0, 40.0, 10.0, "<courses all=\"true\" />");
-    let all = Some("whiteout-1".to_string());
+    let all = vec!["whiteout-1".to_string()];
     assert_eq!(white_out_masks(&specials), [all.clone(), all.clone(), all]);
+}
+
+#[test]
+fn overlapping_white_outs_give_both_masks() {
+    // Ruling R8: overlapping white-outs of one course are two masks, not none; nothing is left without its
+    // white-out.
+    let specials = format!(
+        "{}{}",
+        white_out(1, 50.0, 40.0, 10.0, "<courses all=\"true\" />"),
+        white_out(2, 55.0, 45.0, 10.0, "<courses all=\"true\" />"),
+    );
+    let both = vec!["whiteout-1".to_string(), "whiteout-2".to_string()];
+    assert_eq!(
+        white_out_masks(&specials),
+        [both.clone(), both.clone(), both]
+    );
 }

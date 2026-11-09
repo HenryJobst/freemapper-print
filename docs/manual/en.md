@@ -428,8 +428,8 @@ Not everything in a file is printed yet:
 - A course with variations (forks and loops in Purple Pen) is left out, and so is a course with alternative
   controls at one stop. `check` says which. Purple Pen's IOF XML export writes each variation as a course of its
   own, which prints as a sheet of its own.
-- White-out areas are read, but not printed. They wait for the masks of a later version (M4). `check` reports
-  them with a note, so a missing white-out never goes unnoticed.
+- Each white-out area becomes a mask of the courses it belongs to (M4, ADR 0045). When a course's assignment
+  names a mask of its own, only that one applies. `check` reports the white-out areas with a note.
 - An element the program does not know is skipped, with a note.
 
 ### Linking the file: the live link
@@ -873,7 +873,7 @@ the exit code.
 | "Info: control … only latitude and longitude. The map's georeferencing placed them." | The course file has no map position for these controls. Check one of them on the sheet. |
 | "Info: the course file has no control descriptions." | The file is IOF XML, or a `.ppen` without descriptions. |
 | "the course file contains the element …, which this version does not read. It is left out." | The element is missing on the sheets. Look at what it is in your course-setting program. |
-| "the course file has white-out areas. This version leaves them out; later versions turn them into masks." | Purple Pen's white-out is read but not printed yet. It waits for the masks (M4). Until then, sheets show the map under the white-out. |
+| "the course file has white-out areas. Each one becomes a mask of the courses it belongs to, unless a course's assignment names a mask of its own." | Purple Pen's white-out hides the map on the courses it belongs to in Purple Pen. Check on the sheets that this is what you want; a mask of its own in the assignment replaces it for that course. |
 | "course … has forks or loops (Purple Pen variations) … the course is left out" | The course is missing on purpose. Export the courses from Purple Pen as IOF XML, which writes each variation as a course of its own. |
 | "course … offers alternative controls at one stop … the course is left out" | This version cannot print them. Split the course in the course-setting program. |
 | "Info: courses … are the variants of fork …. Each prints as a sheet of its own." | For information only. |

@@ -105,7 +105,7 @@ Event (project file)
 ├── shared elements   title block, logos, credit and copyright line
 ├── layouts           "A4 1:4000"  "A3 1:3000"   … (1–5)
 ├── mask variants     "window 3–5"  "corridor north" …
-└── assignments       course → layout, course → mask variant (0 or 1)
+└── assignments       course → layout, course → mask variant (0 or 1; else the course's white-outs)
 ```
 
 - **Layout.** Paper size and orientation, print scale, map frame (the map extent in map coordinates and the
@@ -118,9 +118,11 @@ Event (project file)
   georeferencing therefore work. Projected coordinates appear only where a georeferenced map and a
   georeferenced course file are matched (§5.3). The project file writes `centre_map_mm` and mask points with y as
   OOM shows it (up), the values of its status bar; the loader turns y down (ADR 0028, ADR 0045).
-- **Mask variant.** One or more polygons in map coordinates, each with holes. The masked area is painted white
-  above the map and below the course overprint. Window orienteering uses holes around legs; corridor
-  orienteering uses a hole along the corridor.
+- **Mask variant.** One or more polygons in map coordinates, each with holes. The mask clips the map: the map is
+  not drawn in the masked area (the outline minus its holes), while the course overprint, the sheet elements and
+  the footer are never clipped. Window orienteering uses circular holes around the control circles, generated
+  from the course with an adjustable radius. Corridor orienteering uses a hole along a polyline the user gives;
+  only its width is adjustable.
 - **Sheet.** One course printed with its layout and its mask variant. Export produces one PDF per course or one
   multi-page PDF for all courses.
 
@@ -196,8 +198,8 @@ Rendering rules:
   and leaves the gap check for later.
 - **Course overprint.** Purple with the standard's widths. On the office PDF the overprint lets the map show
   through (multiply blend or overprint simulation). The map stays readable under circles and lines.
-- **Colour order.** OOM colour priority, as in freemapper. The mask lies above the map and below the course
-  overprint and the sheet elements.
+- **Colour order.** OOM colour priority, as in freemapper. A mask clips the map only; the course overprint and the
+  sheet elements are drawn above it and never clipped.
 
 ### 5.3 Course input
 
@@ -354,7 +356,7 @@ freemapper-print adds masks, sheet elements and the map frame. Like the renderer
 developed here first and extracted into a shared crate later; the course-setting session agreed and will take
 it over once extracted.
 
-**Overprint and masks.** The course overprint lies above the masks, so a mask never hides a marked route, a
+**Overprint and masks.** A mask clips the map, not the course overprint, so a mask never hides a marked route, a
 crossing point, a forbidden route or an out-of-bounds area. `check` warns when such an object lies inside a
 masked area, because the runner then sees it without the map underneath *(Claude's call)*.
 

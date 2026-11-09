@@ -102,11 +102,12 @@ pub enum Problem {
     NoArea,
     /// A ring crosses or touches itself.
     SelfIntersecting,
-    /// A hole is not wholly inside the outline of its polygon.
+    /// A hole is not wholly inside the outline of its polygon, or touches it.
     HoleOutsideOutline,
-    /// The outline overlaps, touches or contains the outline of the polygon `other`.
+    /// The outline overlaps, touches, contains or lies inside the outline of the polygon `other`.
     PolygonsOverlap { other: usize },
-    /// The checks would take more than [`MAX_CHECK_STEPS`].
+    /// The checks of all masks of the budget together would take more than [`MAX_CHECK_STEPS`]; the mask
+    /// being checked when the budget ran out is not to blame by itself.
     TooComplex,
 }
 
@@ -128,17 +129,17 @@ impl std::fmt::Display for Problem {
             Problem::SelfIntersecting => write!(f, "the ring crosses or touches itself here"),
             Problem::HoleOutsideOutline => write!(
                 f,
-                "the hole must lie wholly inside the outline of its polygon (the first ring)"
+                "the hole must lie wholly inside the outline of its polygon (the first ring) and not touch it"
             ),
             Problem::PolygonsOverlap { other } => write!(
                 f,
-                "the outline overlaps, touches or contains the outline of polygon {other}; \
+                "the outline overlaps, touches, contains or lies inside the outline of polygon {other}; \
                  the polygons of one mask must lie apart"
             ),
             Problem::TooComplex => write!(
                 f,
-                "the mask is too complex to check (more than {MAX_CHECK_STEPS} steps); \
-                 use fewer points or polygons"
+                "the masks of this project file together are too complex to check (more than \
+                 {MAX_CHECK_STEPS} steps); use fewer points or polygons"
             ),
         }
     }
@@ -228,13 +229,18 @@ struct Ring {
     bbox: [f64; 4],
 }
 
+/// A point as written (map mm, y up) in the internal frame (y down).
+pub fn to_internal([x, y]: [f64; 2]) -> Pt {
+    (x, -y)
+}
+
 /// `points` (y up) in the internal frame, without consecutive repeats and without a closing point equal to the
 /// first, with the written index of each point.
 fn cleaned(points: &[[f64; 2]]) -> (Vec<Pt>, Vec<usize>) {
     let mut pts: Vec<Pt> = Vec::with_capacity(points.len());
     let mut src = Vec::with_capacity(points.len());
-    for (i, &[x, y]) in points.iter().enumerate() {
-        let p = (x, -y);
+    for (i, &point) in points.iter().enumerate() {
+        let p = to_internal(point);
         if pts.last() != Some(&p) {
             pts.push(p);
             src.push(i);
@@ -521,7 +527,7 @@ fn inside(pts: &[Pt], pt: Pt) -> bool {
 /// [`inside`] for a ring as written (y up), without cleaning it: repeated points add edges of length 0, which
 /// no ray crosses.
 fn inside_written(points: &[[f64; 2]], pt: Pt) -> bool {
-    inside_by(points.len(), |i| (points[i][0], -points[i][1]), pt)
+    inside_by(points.len(), |i| to_internal(points[i]), pt)
 }
 
 fn inside_by(n: usize, at: impl Fn(usize) -> Pt, (px, py): Pt) -> bool {
@@ -603,7 +609,7 @@ mod tests {
 
     /// Map mm as displayed (y up) to the internal frame.
     fn internal(x: f64, y: f64) -> Pt {
-        (x, -y)
+        to_internal([x, y])
     }
 
     #[test]

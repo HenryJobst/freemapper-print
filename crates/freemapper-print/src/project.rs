@@ -761,6 +761,10 @@ fn check_masks<'a>(file: &str, p: &'a Project) -> Result<HashSet<&'a str>, Proje
 
 /// The field of the project file a mask error names: `masks[0].polygons[1][0][2][1]` as far as known.
 fn mask_field(i: usize, e: &crate::mask::MaskError) -> String {
+    // The budget is shared by all masks; the one that ran it out is not to blame alone.
+    if e.problem == crate::mask::Problem::TooComplex {
+        return "masks".to_string();
+    }
     let mut field = format!("masks[{i}].polygons");
     for index in [e.polygon, e.ring, e.point, e.axis]
         .into_iter()
@@ -2687,6 +2691,27 @@ mod tests {
                 "big",
                 &format!("[[{}]]", ring_text(&circle(1000.0, 0.0, 100.0, 4096)))
             )
+        )));
+        load(&path).unwrap();
+        // Exactly 100 000 points in all, and coordinates of exactly ±2 000 000 mm.
+        let total: String = (0..25)
+            .map(|i| {
+                mask_table(
+                    &format!("m{i}"),
+                    &format!(
+                        "[[{}]]",
+                        ring_text(&circle(1000.0 * i as f64, 0.0, 100.0, 4000))
+                    ),
+                )
+            })
+            .collect();
+        let (_d, path) = temp_project(&mask_project(&total));
+        let p = load(&path).unwrap().project;
+        let points: usize = p.masks.iter().map(Mask::point_count).sum();
+        assert_eq!(points, crate::mask::MAX_TOTAL_POINTS);
+        let (_d, path) = temp_project(&mask_project(&mask_table(
+            "edge",
+            "[[[[-2000000, -2000000], [2000000, -2000000], [2000000, 2000000], [-2000000, 2000000]]]]",
         )));
         load(&path).unwrap();
     }
