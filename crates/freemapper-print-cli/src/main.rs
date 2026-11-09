@@ -23,8 +23,8 @@ use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, pri
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
-    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, SheetNote,
-    SheetReport, course_event_notes,
+    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, NoBoxReason,
+    SheetNote, SheetReport, course_event_notes,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -1099,9 +1099,18 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-default-layout",
             Some(&args!("course" => printable(course), "layout" => printable(layout))),
         ),
-        SheetNote::NoDescriptionBox { course } => texts.get(
-            "note-no-description-box",
+        SheetNote::NoDescriptionBox { course, reason } => texts.get(
+            match reason {
+                NoBoxReason::IofXml => "note-no-description-box-iof-xml",
+                NoBoxReason::NoElement => "note-no-description-box-no-element",
+                NoBoxReason::OutsidePage => "note-no-description-box-outside-page",
+                NoBoxReason::NoDescriptions => "note-no-description-box-no-descriptions",
+            },
             Some(&args!("course" => printable(course))),
+        ),
+        SheetNote::UnknownDescriptionSymbol { course, id } => texts.get(
+            "note-unknown-description-symbol",
+            Some(&args!("course" => printable(course), "id" => printable(id))),
         ),
         SheetNote::OverprintCut { course } => texts.get(
             "note-overprint-cut",
@@ -1760,8 +1769,39 @@ mod tests {
                 vec!["Kurz", "a4"],
             ),
             (
-                SheetNote::NoDescriptionBox { course: s("Kurz") },
-                vec!["Kurz"],
+                SheetNote::NoDescriptionBox {
+                    course: s("Kurz"),
+                    reason: NoBoxReason::IofXml,
+                },
+                vec!["Kurz", "IOF"],
+            ),
+            (
+                SheetNote::NoDescriptionBox {
+                    course: s("Kurz"),
+                    reason: NoBoxReason::NoElement,
+                },
+                vec!["Kurz", "control_descriptions"],
+            ),
+            (
+                SheetNote::NoDescriptionBox {
+                    course: s("Kurz"),
+                    reason: NoBoxReason::OutsidePage,
+                },
+                vec!["Kurz", "cell_mm"],
+            ),
+            (
+                SheetNote::NoDescriptionBox {
+                    course: s("Kurz"),
+                    reason: NoBoxReason::NoDescriptions,
+                },
+                vec!["Kurz", "Purple Pen"],
+            ),
+            (
+                SheetNote::UnknownDescriptionSymbol {
+                    course: s("Kurz"),
+                    id: s("99.9"),
+                },
+                vec!["Kurz", "99.9"],
             ),
             (SheetNote::OverprintCut { course: s("Kurz") }, vec!["Kurz"]),
             (

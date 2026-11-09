@@ -226,7 +226,11 @@ note-course-outside-frame = Note: on the sheet of course "{ $course }", { $count
        *[other] controls { $controls } lie
     } outside the map frame or across its edge. Without map_frame.centre_map_mm the frame centres on the course; larger paper or a print scale with a larger number shows more.
 note-default-layout = Info: course "{ $course }" has no assignment and prints on the first layout, { $layout }.
-note-no-description-box = Info: the sheet of course "{ $course }" has no control description box.
+note-no-description-box-iof-xml = Info: course "{ $course }" comes from IOF XML, which has no control descriptions, so its sheet has no description box.
+note-no-description-box-no-element = Info: the layout of course "{ $course }" has no control_descriptions element, so its sheet has no description box.
+note-no-description-box-outside-page = Note: the description box of course "{ $course }" would reach past the page edge, so the sheet leaves it out. Move it with its anchor or make it smaller with cell_mm.
+note-no-description-box-no-descriptions = Note: no control of course "{ $course }" has descriptions in the course file, so its sheet has no description box. Enter them in Purple Pen.
+note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
 

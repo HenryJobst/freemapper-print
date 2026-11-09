@@ -21,6 +21,10 @@ pub const MAX_SIZE_PT: f64 = 200.0;
 pub const MAX_LENGTH_MM: f64 = 2000.0;
 /// Widest frame line (mm).
 pub const MAX_BORDER_MM: f64 = 20.0;
+/// Smallest and largest printed cell of a control description box (mm). Below 4 mm the symbols are hard to
+/// read; IOF events print 5 to 7 mm, and 10 mm leaves room for training sheets in large print.
+pub const MIN_CELL_MM: f64 = 4.0;
+pub const MAX_CELL_MM: f64 = 10.0;
 /// Largest contour interval (m).
 pub const MAX_CONTOUR_INTERVAL_M: f64 = 100.0;
 /// Farthest map point a frame may centre on, in either direction (mm on the map sheet). OOM maps
@@ -264,6 +268,8 @@ pub enum ElementKind {
     ScaleCheckBar,
     CreditLine,
     CopyrightLine,
+    /// The control description box of the course; drawn on course sheets only.
+    ControlDescriptions,
 }
 
 /// A sheet element. One flat struct: which optional fields apply depends on `kind` (see `validate`).
@@ -288,6 +294,9 @@ pub struct ElementSpec {
     /// logo: printed width in mm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width_mm: Option<f64>,
+    /// control_descriptions: printed side of one cell in mm; the rule profile's size when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell_mm: Option<f64>,
 }
 
 impl ElementSpec {
@@ -857,6 +866,11 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
         ("box_white", e.box_white.is_some(), text),
         ("file", e.file.is_some(), logo),
         ("width_mm", e.width_mm.is_some(), logo),
+        (
+            "cell_mm",
+            e.cell_mm.is_some(),
+            e.kind == ElementKind::ControlDescriptions,
+        ),
     ];
     for (name, present, allowed) in stray {
         if present && !allowed {
@@ -877,6 +891,15 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
                 "must be at least 5 for the credit line, so that it stays readable",
             ));
         }
+    }
+    if let Some(v) = e.cell_mm
+        && !(v.is_finite() && (MIN_CELL_MM..=MAX_CELL_MM).contains(&v))
+    {
+        return Err(invalid(
+            file,
+            format!("{at}.cell_mm"),
+            &format!("must lie between {MIN_CELL_MM} and {MAX_CELL_MM} mm"),
+        ));
     }
     if logo {
         if e.file.is_none() {
@@ -908,6 +931,7 @@ fn kind_name(k: ElementKind) -> &'static str {
         ElementKind::ScaleCheckBar => "scale_check_bar",
         ElementKind::CreditLine => "credit_line",
         ElementKind::CopyrightLine => "copyright_line",
+        ElementKind::ControlDescriptions => "control_descriptions",
     }
 }
 
@@ -1194,6 +1218,7 @@ pub fn starter(
         box_white: None,
         file: None,
         width_mm: None,
+        cell_mm: None,
     };
     let mut title_block = element("title", ElementKind::TitleBlock, Corner::TopLeft);
     title_block.lines = vec![
@@ -1608,6 +1633,9 @@ mod tests {
             ("credit_line", "lines", "lines = [\"a\"]"),
             ("copyright_line", "box_white", "box_white = true"),
             ("title_block", "width_mm", "width_mm = 5.0"),
+            ("text", "cell_mm", "cell_mm = 6.0"),
+            ("control_descriptions", "size_pt", "size_pt = 9.0"),
+            ("control_descriptions", "lines", "lines = [\"a\"]"),
         ] {
             let msg = err_for("", &shared(kind, line), "");
             assert!(
@@ -1617,6 +1645,38 @@ mod tests {
                 "{kind} {field}: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn description_cell_size_is_checked() {
+        for bad in ["3.9", "10.5", "nan", "-6.0"] {
+            let msg = err_for(
+                "",
+                &shared("control_descriptions", &format!("cell_mm = {bad}")),
+                "",
+            );
+            assert!(
+                msg.contains("shared[0].cell_mm")
+                    && msg.contains("between 4 and 10 mm")
+                    && msg.contains(&format!("{FILE_NAME}:")),
+                "{bad}: {msg}"
+            );
+        }
+        for good in ["4.0", "6.0", "10.0"] {
+            let (_d, path) = temp_project(&format!(
+                "{HEAD}\n[[layouts]]\nid = \"a\"\n{}",
+                shared("control_descriptions", &format!("cell_mm = {good}"))
+            ));
+            let p = load(&path).unwrap();
+            assert_eq!(p.project.shared[0].kind, ElementKind::ControlDescriptions);
+            assert_eq!(p.project.shared[0].cell_mm, Some(good.parse().unwrap()));
+        }
+        // Without cell_mm the rule profile decides.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n{}",
+            shared("control_descriptions", "")
+        ));
+        assert_eq!(load(&path).unwrap().project.shared[0].cell_mm, None);
     }
 
     #[test]
@@ -1842,6 +1902,7 @@ mod tests {
             box_white: None,
             file: None,
             width_mm: None,
+            cell_mm: None,
         };
         let mut title = el("title", ElementKind::TitleBlock);
         title.lines = vec!["Line 1".into(), "Line 2".into()];

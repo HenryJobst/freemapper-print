@@ -30,6 +30,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   Info. `--layout` still exports a layout without courses. Texts can use `{course}`, `{length_km}`,
   `{climb_m}` and `{controls}`. `check` checks every course and reports controls outside the map frame. Projects without a course file
   export as before (ADR 0035).
+- The control description box on course sheets. A layout element of kind `control_descriptions` draws the IOF
+  description table of the course from a `.ppen` file: the event title, the course with length and climb, the
+  start, one row per control with its number, code and symbols, rows for marked routes and map exchanges with
+  their length, and the finish. Symbols and line widths follow Purple Pen. A cell is 6 mm by default; `cell_mm`
+  sets 4 to 10 mm, and the box keeps that size at every print scale. It hangs on its anchor like any element
+  and sits on a white background. Courses from IOF XML have no descriptions, so their sheets show no box and
+  `check` says so as Info. `check` warns when the box would reach past the page edge (the sheet then leaves it
+  out), when no control of the course has descriptions, and when the course file uses a symbol the
+  description standard does not have (its cell stays empty) (ADR 0037).
 
 ### Fixed
 

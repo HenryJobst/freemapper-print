@@ -137,8 +137,11 @@ pub enum SheetNote {
     },
     /// The course has no assignment in the project file and prints on the first layout. Informs only.
     DefaultLayout { course: String, layout: String },
-    /// The course sheet has no control description box.
-    NoDescriptionBox { course: String },
+    /// The course sheet has no control description box, and why.
+    NoDescriptionBox { course: String, reason: NoBoxReason },
+    /// The course's descriptions use the symbol `id`, which the description standard of the course file does not
+    /// know. Its cell in the description box stays empty.
+    UnknownDescriptionSymbol { course: String, id: String },
     /// A limit ([`crate::overprint::MAX_REPEATS`]) left out hatch lines, dashes or crosses of the course
     /// overprint.
     OverprintCut { course: String },
@@ -170,9 +173,11 @@ impl SheetNote {
             | SheetNote::MapCroppedToCourse { .. }
             | SheetNote::DefaultLayout { .. }
             | SheetNote::CourseValueUnknown { .. }
-            | SheetNote::CoursePlaceholderNotFilled { .. }
-            // Until Task 9 draws the box from a `.ppen`; then only a box that cannot be drawn counts.
-            | SheetNote::NoDescriptionBox { .. } => true,
+            | SheetNote::CoursePlaceholderNotFilled { .. } => true,
+            // Only a box that a `.ppen` could fill but that cannot be drawn counts (ruling R25).
+            SheetNote::NoDescriptionBox { reason, .. } => {
+                matches!(reason, NoBoxReason::IofXml | NoBoxReason::NoElement)
+            }
             // A course note informs unless something of the course file is left out of the print.
             SheetNote::Course(note) => !matches!(
                 note,
@@ -186,6 +191,19 @@ impl SheetNote {
             _ => false,
         }
     }
+}
+
+/// Why a course sheet has no control description box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoBoxReason {
+    /// The course comes from IOF XML, which carries no control descriptions (spec §5.3). Informs only.
+    IofXml,
+    /// The layout has no `control_descriptions` element. Informs only.
+    NoElement,
+    /// The box would reach past the page edge, so it is left out rather than cut.
+    OutsidePage,
+    /// No control of the course has descriptions in the course file.
+    NoDescriptions,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -215,6 +233,9 @@ pub struct SheetContext<'a> {
     pub logo_budget: &'a LogoBudget,
     /// The course placeholders of a course sheet; `None` on a layout sheet.
     pub course: Option<&'a placeholders::CourseValues>,
+    /// The course whose description box a `control_descriptions` element draws; `None` on a layout sheet,
+    /// which leaves the element out.
+    pub descriptions: Option<&'a course_sheet::DescriptionSource<'a>>,
 }
 
 /// An element as drawn: its sheet items in paint order and the box they cover on the page.
@@ -238,17 +259,19 @@ pub fn render_sheet(
     layout: &LayoutSpec,
     logos: &LogoCache,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
-    render_body(project, map, layout, logos, None, None)
+    render_body(project, map, layout, logos, None, None, None)
 }
 
-/// The sheet of [`render_sheet`], also for a course sheet: `course` fills the course placeholders, and `centre`
-/// (map coordinates) goes to the centre of the map frame when the layout sets no `centre_map_mm`.
+/// The sheet of [`render_sheet`], also for a course sheet: `course` fills the course placeholders, `descriptions`
+/// feeds the description box, and `centre` (map coordinates) goes to the centre of the map frame when the layout
+/// sets no `centre_map_mm`.
 fn render_body(
     project: &LoadedProject,
     map: &MapDocument,
     layout: &LayoutSpec,
     logos: &LogoCache,
     course: Option<&placeholders::CourseValues>,
+    descriptions: Option<&course_sheet::DescriptionSource<'_>>,
     centre: Option<MapCoord>,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
     let mut notes = Vec::new();
@@ -312,6 +335,7 @@ fn render_body(
         logos,
         logo_budget: &logo_budget,
         course,
+        descriptions,
     };
     // The credit line goes on top of everything else, so no element can hide it.
     let mut credit_lines = Vec::new();
@@ -456,6 +480,7 @@ fn place_element(
         | ElementKind::CopyrightLine => text::place_text_element(ctx, spec, notes),
         ElementKind::ScaleCheckBar => Some(scale_bar::place_scale_bar(ctx, spec)),
         ElementKind::Logo => logo::place_logo(ctx, spec, notes),
+        ElementKind::ControlDescriptions => course_sheet::place_descriptions(ctx, spec, notes),
     }
 }
 
@@ -914,6 +939,7 @@ mod tests {
             box_white: None,
             file: None,
             width_mm: None,
+            cell_mm: None,
         }
     }
 

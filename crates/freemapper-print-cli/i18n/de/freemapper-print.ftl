@@ -229,7 +229,11 @@ note-course-outside-frame = Hinweis: Auf dem Blatt der Bahn „{ $course }“ { 
        *[other] liegen die Posten { $controls }
     } außerhalb des Kartenausschnitts oder auf seinem Rand. Ohne map_frame.centre_map_mm wird der Ausschnitt auf die Bahn zentriert; größeres Papier oder ein Druckmaßstab mit größerer Zahl zeigt mehr.
 note-default-layout = Zur Information: Die Bahn „{ $course }“ hat keine Zuordnung und wird auf dem ersten Layout gedruckt, { $layout }.
-note-no-description-box = Zur Information: Das Blatt der Bahn „{ $course }“ hat keine Postenbeschreibung.
+note-no-description-box-iof-xml = Zur Information: Die Bahn „{ $course }“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
+note-no-description-box-no-element = Zur Information: Das Layout der Bahn „{ $course }“ hat kein Element control_descriptions, das Blatt hat deshalb keine Postenbeschreibung.
+note-no-description-box-outside-page = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ würde über den Blattrand reichen und fehlt deshalb. Versetzen Sie sie über ihren Anker oder verkleinern Sie sie mit cell_mm.
+note-no-description-box-no-descriptions = Hinweis: Kein Posten der Bahn „{ $course }“ hat in der Bahndatei eine Beschreibung, das Blatt hat deshalb keine Postenbeschreibung. Tragen Sie die Beschreibungen in Purple Pen ein.
+note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
 

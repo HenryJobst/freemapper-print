@@ -28,7 +28,8 @@ in memory at a time.
   A score course without a length in the file has none. An empty `{climb_m}` or `{length_km}` is an Info note.
   The four are always known placeholders: a sheet without a course fills them with nothing and notes it as Info.
 - Course sheet notes: controls outside the frame or across its edge, the default layout (Info), no description
-  box (Info until Task 9, which makes it a warning only where a `.ppen` box cannot be drawn), and an overprint
+  box (Info for IOF XML and for layouts without a box element, a warning where a `.ppen` box cannot be drawn;
+  ADR 0037), and an overprint
   cut short by the repeat limit. The notes about the course file
   as a whole (reader, fit, stale entries) are `SheetNote`s too, but they come once per run from
   `course_event_notes`, before the courses, not on every sheet. A course note is Info unless something is left

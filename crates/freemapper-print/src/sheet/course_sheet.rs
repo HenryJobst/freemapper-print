@@ -1,19 +1,34 @@
 //! Course sheets: one course on its layout (design §5.7). The sheet is the layout's sheet with the frame centred
-//! on the course unless the layout sets `centre_map_mm`, the course placeholders filled, and the course overprint
-//! on the map (ADR 0034).
+//! on the course unless the layout sets `centre_map_mm`, the course placeholders filled, the course overprint
+//! on the map (ADR 0034) and the control description box (ADR 0037).
 
 use std::collections::HashSet;
 
-use crate::course::{Course, CourseKind, FittedEvent, LoadedCourses, Special, layout_for};
+use crate::course::{
+    Course, CourseKind, FittedEvent, LoadedCourses, SourceFormat, Special, layout_for,
+};
+use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
 use crate::omap::{MapCoord, MapDocument};
 use crate::overprint::{applies, control_count, file_numbers, overprint};
 use crate::print::Orientation;
-use crate::project::{LayoutSpec, LoadedProject};
+use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
 use crate::render::page::{Pt, RenderedPage};
 use crate::scale::geometry_factor;
 
+use super::layout::{anchor_point, inside};
 use super::placeholders::CourseValues;
-use super::{LogoCache, SheetError, SheetNote, SheetReport, render_body};
+use super::{
+    LogoCache, NoBoxReason, PlacedElement, SheetContext, SheetError, SheetNote, SheetReport,
+    layout_elements, render_body,
+};
+
+/// What the description box of a course sheet is drawn from.
+#[derive(Debug, Clone)]
+pub struct DescriptionSource<'a> {
+    pub course: &'a Course<MapCoord>,
+    pub event: &'a FittedEvent,
+    pub header: DescriptionHeader,
+}
 
 /// The sheet of `course` (one of `courses`) on `layout`: the map as [`super::render_sheet`] draws it, centred on
 /// [`course_centre`] when the layout has no `centre_map_mm`, with the course overprint and the course
@@ -21,7 +36,8 @@ use super::{LogoCache, SheetError, SheetNote, SheetReport, render_body};
 /// ([`file_numbers`]).
 ///
 /// Notes beyond the layout sheet's: [`SheetNote::CourseOutsideFrame`], [`SheetNote::DefaultLayout`] when
-/// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`],
+/// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`] (also
+/// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
 /// [`SheetNote::OverprintCut`] and [`SheetNote::CourseValueUnknown`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
@@ -43,7 +59,30 @@ pub fn render_course_sheet(
     );
     let map_scale = map.georef.scale_denominator;
     let centre = course_centre(course, event, |w, h| fits_frame(layout, map_scale, w, h));
-    let (mut page, mut report) = render_body(project, map, layout, logos, Some(&values), centre)?;
+    let source = DescriptionSource {
+        course,
+        event,
+        header: DescriptionHeader {
+            event: project.project.event.title.clone(),
+            course: course.name.clone(),
+            length_km: values.length_km.clone(),
+            // Rounded to 5 m, as Purple Pen prints it.
+            climb_m: course
+                .climb_m
+                .filter(|m| m.is_finite())
+                .map(|m| format!("{}", ((m / 5.0).round() * 5.0).max(0.0) as u64))
+                .unwrap_or_default(),
+        },
+    };
+    let (mut page, mut report) = render_body(
+        project,
+        map,
+        layout,
+        logos,
+        Some(&values),
+        Some(&source),
+        centre,
+    )?;
 
     let gf = report.print.geometry_factor;
     let (page_mm, centre_mm) = (page.page_mm, page.centre_mm);
@@ -97,10 +136,17 @@ pub fn render_course_sheet(
             course: course.name.clone(),
         });
     }
-    // Task 9 draws the box for `.ppen` courses.
-    notes.push(SheetNote::NoDescriptionBox {
-        course: course.name.clone(),
-    });
+    // A box element that could not draw has noted why already.
+    if !layout_elements(project, layout).any(|e| e.kind == ElementKind::ControlDescriptions) {
+        notes.push(SheetNote::NoDescriptionBox {
+            course: course.name.clone(),
+            reason: if event.source.format == SourceFormat::IofXml {
+                NoBoxReason::IofXml
+            } else {
+                NoBoxReason::NoElement
+            },
+        });
+    }
     if let (default, Some(_)) = layout_for(&project.project, &course.name)
         && default.id == layout.id
     {
@@ -110,6 +156,66 @@ pub fn render_course_sheet(
         });
     }
     Ok((page, report))
+}
+
+/// The description box a `control_descriptions` element draws on a course sheet, hung on its anchor; `None`
+/// on a layout sheet (silently), and with a [`SheetNote::NoDescriptionBox`] for a course from IOF XML, a
+/// course without any descriptions, or a box that would reach past the page edge. The cell size is the
+/// element's `cell_mm`, else the rule profile's for the map kind; it does not follow the print scale. Each
+/// symbol id the standard does not know gives a [`SheetNote::UnknownDescriptionSymbol`].
+pub(super) fn place_descriptions(
+    ctx: &SheetContext<'_>,
+    spec: &ElementSpec,
+    notes: &mut Vec<SheetNote>,
+) -> Option<PlacedElement> {
+    let source = ctx.descriptions?;
+    let course = source.course;
+    let note = |notes: &mut Vec<SheetNote>, reason| {
+        let n = SheetNote::NoDescriptionBox {
+            course: course.name.clone(),
+            reason,
+        };
+        if !notes.contains(&n) {
+            notes.push(n);
+        }
+    };
+    if source.event.source.format == SourceFormat::IofXml {
+        note(notes, NoBoxReason::IofXml);
+        return None;
+    }
+    if !has_descriptions(course, source.event) {
+        note(notes, NoBoxReason::NoDescriptions);
+        return None;
+    }
+    let project = ctx.project;
+    let cell = spec
+        .cell_mm
+        .unwrap_or_else(|| project.rules.description_cell_mm(project.project.map.kind));
+    let drawn = description_box(
+        course,
+        source.event,
+        cell,
+        project.project.event.lang,
+        &source.header,
+        ctx.map.georef.scale_denominator,
+    );
+    for id in drawn.unknown_symbols {
+        let n = SheetNote::UnknownDescriptionSymbol {
+            course: course.name.clone(),
+            id,
+        };
+        if !notes.contains(&n) {
+            notes.push(n);
+        }
+    }
+    let size = drawn.element.rect.max;
+    let at = anchor_point(&spec.anchor, ctx.page, ctx.frame, size);
+    let placed = moved(drawn.element, at);
+    if !inside(placed.rect, ctx.page) {
+        note(notes, NoBoxReason::OutsidePage);
+        return None;
+    }
+    Some(placed)
 }
 
 /// The notes of the course file as a whole, once per run: what the reader left out or found, what the fit
@@ -472,11 +578,12 @@ mod tests {
                 .any(|t| t.contains(crate::credit_line(crate::project::SheetLang::De))),
             "{texts:?}"
         );
+        // IOF XML carries no descriptions: the sheet says so and only informs.
         let no_box = SheetNote::NoDescriptionBox {
             course: "Kurz".into(),
+            reason: NoBoxReason::IofXml,
         };
         assert!(report.notes.contains(&no_box));
-        // Informs until Task 9 draws boxes from `.ppen` files.
         assert!(no_box.is_info());
         assert!(report.notes.contains(&SheetNote::DefaultLayout {
             course: "Kurz".into(),
@@ -756,5 +863,224 @@ mod tests {
             nfc_latin1("A\u{30A}c\u{327}y\u{308}x\u{308}"),
             "Åçÿx\u{308}"
         );
+    }
+
+    /// The layout `a4` with a description box hung on `anchor` (TOML inline table) and `extra` fields.
+    fn with_box(anchor: &str, extra: &str) -> String {
+        format!(
+            "{A4}[[layouts.elements]]\nid = \"descriptions\"\nkind = \"control_descriptions\"\nanchor = {anchor}\n{extra}"
+        )
+    }
+
+    const TOP_RIGHT: &str =
+        "{ to = \"map_frame\", corner = \"top_right\", offset_mm = [2.0, 2.0] }";
+
+    /// The course file's controls as a `.ppen` would give them: descriptions in columns D and G, 2018.
+    fn as_ppen(courses: &mut LoadedCourses) {
+        use crate::course::Description;
+        courses.event.source.format = SourceFormat::PurplePen;
+        for c in &mut courses.event.controls {
+            let d = |cols: [Option<&str>; 6]| Description {
+                columns: cols.map(|c| c.map(str::to_string)),
+                standard: "2018".into(),
+                column_f_text: None,
+            };
+            c.description = Some(match c.code.as_str() {
+                "F1" => d([Some("14.3"), None, None, None, None, None]),
+                "S1" => d([None, Some("2.6"), None, None, None, None]),
+                _ => d([None, Some("1.1"), None, None, Some("11.1N"), None]),
+            });
+        }
+    }
+
+    /// The course sheet of `name` for a project with `body`, the course file changed by `change`.
+    fn ppen_sheet(
+        body: &str,
+        name: &str,
+        change: impl FnOnce(&mut LoadedCourses),
+    ) -> (RenderedPage, SheetReport) {
+        let (_dir, project, map, mut courses) = course_project(body);
+        change(&mut courses);
+        let layout = layout_for(&project.project, name).0;
+        render_course_sheet(
+            &project,
+            &map,
+            &courses,
+            course(&courses, name),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap()
+    }
+
+    /// The white rectangles of the sheet layer as boxes.
+    fn white_boxes(page: &RenderedPage) -> Vec<crate::render::page::PaperBox> {
+        use crate::render::page::{DirectColour, PaperBox};
+        page.sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    colour,
+                    shape: Shape::Fill { rings, .. },
+                } if *colour == DirectColour::WHITE && rings.len() == 1 && rings[0].len() == 4 => {
+                    let r = &rings[0];
+                    Some(PaperBox {
+                        min: r[0],
+                        max: r[2],
+                    })
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn box_notes(report: &SheetReport) -> Vec<&SheetNote> {
+        report
+            .notes
+            .iter()
+            .filter(|n| {
+                matches!(
+                    n,
+                    SheetNote::NoDescriptionBox { .. } | SheetNote::UnknownDescriptionSymbol { .. }
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn iof_course_gets_note_not_box() {
+        let body = with_box(TOP_RIGHT, "");
+        let (page, report, _) = sheet(&body, "Kurz");
+        let expected = SheetNote::NoDescriptionBox {
+            course: "Kurz".into(),
+            reason: NoBoxReason::IofXml,
+        };
+        assert_eq!(box_notes(&report), vec![&expected]);
+        assert!(expected.is_info());
+        assert!(
+            !sheet_texts(&page).iter().any(|t| t == "Kurz"),
+            "{:?}",
+            sheet_texts(&page)
+        );
+        // Without the element a .ppen course informs that the layout has no box.
+        let (_, report) = ppen_sheet(A4, "Kurz", as_ppen);
+        let none = SheetNote::NoDescriptionBox {
+            course: "Kurz".into(),
+            reason: NoBoxReason::NoElement,
+        };
+        assert_eq!(box_notes(&report), vec![&none]);
+        assert!(none.is_info());
+        // A .ppen course without any descriptions cannot fill the box: a warning.
+        let (_, report) = ppen_sheet(&body, "Kurz", |c| {
+            as_ppen(c);
+            for control in &mut c.event.controls {
+                control.description = None;
+            }
+        });
+        let empty = SheetNote::NoDescriptionBox {
+            course: "Kurz".into(),
+            reason: NoBoxReason::NoDescriptions,
+        };
+        assert_eq!(box_notes(&report), vec![&empty]);
+        assert!(!empty.is_info() && report.needs_attention());
+        // A layout sheet leaves the element out without a note.
+        let (_dir, project, map, _) = course_project(&body);
+        let (page, report) = super::super::render_sheet(
+            &project,
+            &map,
+            &project.project.layouts[0],
+            &LogoCache::new(),
+        )
+        .unwrap();
+        assert!(box_notes(&report).is_empty());
+        assert!(
+            !white_boxes(&page)
+                .iter()
+                .any(|b| (b.max.0 - b.min.0 - 48.3).abs() < 1e-9)
+        );
+    }
+
+    #[test]
+    fn box_respects_anchor_and_stays_on_page() {
+        let (page, report) = ppen_sheet(&with_box(TOP_RIGHT, ""), "Kurz", as_ppen);
+        assert!(box_notes(&report).is_empty(), "{:?}", report.notes);
+        // Title, course row, start, two controls, finish: six rows of the profile's 6 mm sprint cells, plus half a
+        // 0.3 mm line on each side. Hung 2 mm inside the frame's top-right corner.
+        let frame = page.clip;
+        let boxes = white_boxes(&page);
+        let b = boxes
+            .iter()
+            .find(|b| (b.max.0 - b.min.0 - 48.3).abs() < 1e-9)
+            .unwrap_or_else(|| panic!("{boxes:?}"));
+        assert!((b.max.1 - b.min.1 - 36.3).abs() < 1e-9, "{b:?}");
+        assert!((b.max.0 - (frame.max.0 - 2.0)).abs() < 1e-9, "{b:?}");
+        assert!((b.min.1 - (frame.min.1 + 2.0)).abs() < 1e-9, "{b:?}");
+        // The finish row: 32 to F1 is √21200 mm = 145.6 mm, 582.4 m at 1:4000.
+        let texts = sheet_texts(&page);
+        for t in [
+            "Lübeck Training",
+            "Kurz",
+            "1,5 km",
+            "1",
+            "31",
+            "2",
+            "32",
+            "580 m",
+        ] {
+            assert!(texts.contains(&t.to_string()), "{t}: {texts:?}");
+        }
+        // Hung on the map frame, the box may cover the map without a note.
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementOverlapsMap { .. }))
+        );
+        // cell_mm sets the size.
+        let (page, _) = ppen_sheet(&with_box(TOP_RIGHT, "cell_mm = 5.0\n"), "Kurz", as_ppen);
+        assert!(
+            white_boxes(&page)
+                .iter()
+                .any(|b| (b.max.0 - b.min.0 - 40.25).abs() < 1e-9)
+        );
+        // Hung on the page over the map frame: the M2 note for elements over the map.
+        let page_anchor = "{ to = \"page\", corner = \"top_left\", offset_mm = [20.0, 20.0] }";
+        let (_, report) = ppen_sheet(&with_box(page_anchor, ""), "Kurz", as_ppen);
+        assert!(report.notes.contains(&SheetNote::ElementOverlapsMap {
+            id: "descriptions".into()
+        }));
+        // Pushed past the page edge, the box is left out instead of cut, with a warning.
+        let off = "{ to = \"page\", corner = \"top_right\", offset_mm = [-30.0, 20.0] }";
+        let (page, report) = ppen_sheet(&with_box(off, ""), "Kurz", as_ppen);
+        let outside = SheetNote::NoDescriptionBox {
+            course: "Kurz".into(),
+            reason: NoBoxReason::OutsidePage,
+        };
+        assert_eq!(box_notes(&report), vec![&outside]);
+        assert!(!outside.is_info() && report.needs_attention());
+        assert!(!sheet_texts(&page).contains(&"580 m".to_string()));
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementOutsidePage { .. }))
+        );
+    }
+
+    #[test]
+    fn unknown_symbol_id_noted() {
+        let (page, report) = ppen_sheet(&with_box(TOP_RIGHT, ""), "Kurz", |c| {
+            as_ppen(c);
+            let d = c.event.controls[1].description.as_mut().unwrap();
+            d.columns[1] = Some("99.9".into());
+        });
+        let note = SheetNote::UnknownDescriptionSymbol {
+            course: "Kurz".into(),
+            id: "99.9".into(),
+        };
+        assert_eq!(box_notes(&report), vec![&note]);
+        assert!(!note.is_info());
+        // The box is drawn all the same.
+        assert!(sheet_texts(&page).contains(&"31".to_string()));
     }
 }
