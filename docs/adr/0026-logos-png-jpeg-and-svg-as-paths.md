@@ -30,7 +30,12 @@ subset to `?>` and skips `<!ELEMENT`, `<!ATTLIST` and `<!NOTATION` to the first 
 entity count found the subset by searching the text for `<!DOCTYPE` and `]>`, which a comment fooled
 (1.3 to 1.6 GB). A root with 990 namespace declarations and children that each add one made the XML
 parser copy the namespaces for every child (over 20 s for 20 000 children), and a normal Inkscape file was
-refused because `version` and `inkscape:version` share a local name.
+refused because `version` and `inkscape:version` share a local name. The fifth review found two more paths
+that grow with the square of the input. `roxmltree` looks every entity reference up by walking the list of
+declarations, so 80 000 empty entities and 180 000 references to the last one passed the size count and ran
+past 20 s. `simplecss`, which both `usvg` and the check use to split `style` attributes, works out the line
+and column from the start of the value for every declaration: a plain 180 KB style took 7 s, and a 4.8 KB
+file that builds its style from entities ran past 20 s.
 
 ## Decision
 
@@ -60,9 +65,18 @@ refused because `version` and `inkscape:version` share a local name.
     DTD or the identifier alone. Both kinds pass. The external identifier on the DOCTYPE stays allowed although
     the controller's ruling listed it as refused: `roxmltree` reads its two quoted strings and never loads
     the DTD, and refusing it would refuse every Illustrator file.
+  - At most 64 entity declarations, so every lookup the parser makes is short.
   - The pass returns the entities with the number of references to each in text and attribute values. Each
     reference brings in exactly its entity's text, so the expanded size is their sum, at most about 50 MB
     (ADR 0019).
+- The pass also measures every attribute value with its entities expanded. A `style` attribute may hold at
+  most 2048 bytes and 64 declarations (counted as colons, a character reference counted as one), and the
+  `style` attributes of a file at most 256 KiB together. With these numbers `simplecss` reads at most 64
+  times 2048 bytes per attribute and about 17 million bytes per file. Any other value may hold at most
+  1 MiB, except `d` and `points`, which the count of work bounds after parsing. We measured `transform`,
+  `class`, `font`, `font-family`, `stroke-dasharray` and a dozen other presentation attributes at 49 MB
+  built from entities. Only the dash array passed 1 s (1.1 s), and no logo needs a megabyte in one
+  attribute. A `<style>` element never reaches `simplecss`, because the allow-list refuses it.
 - An SVG logo must pass an allow-list on its XML before `usvg` sees it (`sheet::logo::svg_check`). Anything
   else leaves the logo out with `SheetNote::LogoSkipped` and the advice to export it as a plain SVG.
   - Elements: `svg`, `g`, `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `defs`,
@@ -136,4 +150,4 @@ refused because `version` and `inkscape:version` share a local name.
   PDF default of 10 applies: sharp corners of mitred strokes can stick out further than in a browser.
 - Cost if wrong: a club with only a PDF logo has to export it as SVG or PNG first.
 
-Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 reviews and fix rounds 1 to 4 (2026-11-09).
+Source: M2 plan Task 8, controller rulings 2026-11-08, Task 8 reviews and fix rounds 1 to 5 (2026-11-09).

@@ -2066,4 +2066,99 @@ mod tests {
         assert_eq!(notes, []);
         assert_eq!(fills(&items).len(), 1);
     }
+
+    #[test]
+    fn svg_entity_declarations_bounded() {
+        // R1: the XML parser looks every reference up among all entities in turn. Many empty
+        // entities expand to nothing, so only their number bounds the time.
+        let decls =
+            |n: usize| -> String { (0..n).map(|i| format!(r#"<!ENTITY a{i} "">"#)).collect() };
+        let refs = "&a64;".repeat(1000);
+        let svg = svg_with_doctype(
+            &format!("<!DOCTYPE svg [{}]>", decls(65)),
+            &format!("<title>{refs}</title>"),
+        );
+        assert!(
+            skipped_svg(&svg).ends_with(&plain("more than 64 entities")),
+            "65 entities"
+        );
+        let refs = "&a63;".repeat(1000);
+        let (items, notes) = drawn_svg(&svg_with_doctype(
+            &format!("<!DOCTYPE svg [{}]>", decls(64)),
+            &format!(r#"<title>{refs}</title><g data-x="{refs}"/>"#),
+        ));
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_style_bounded() {
+        // R3: `simplecss` works out a line and column for every declaration from the start of
+        // the value, so a long style takes time that grows with its square.
+        let rect = |style: &str| format!(r##"<rect width="5" height="5" style="{style}"/>"##);
+        let reason = svg_skipped(&rect(&"fill:red;".repeat(8000)));
+        assert!(
+            reason.ends_with(&plain("a style attribute longer than 2048 bytes")),
+            "{reason}"
+        );
+        let reason = svg_skipped(&rect(&"a:b;".repeat(65)));
+        assert!(
+            reason.ends_with(&plain("a style attribute with more than 64 declarations")),
+            "{reason}"
+        );
+        // The same built from entities: short in the file, long once expanded.
+        let built = |entity: &str, uses: usize| {
+            svg_with_doctype(
+                &format!(r#"<!DOCTYPE svg [<!ENTITY e "{entity}">]>"#),
+                &rect(&"&e;".repeat(uses)),
+            )
+        };
+        assert!(
+            skipped_svg(&built(&"fill:red;".repeat(113), 1200))
+                .ends_with(&plain("a style attribute longer than 2048 bytes"))
+                && skipped_svg(&built(&"fill:red;".repeat(113), 3))
+                    .ends_with(&plain("a style attribute longer than 2048 bytes")),
+            "entity length"
+        );
+        assert!(
+            skipped_svg(&built(&"fill:red;".repeat(30), 3))
+                .ends_with(&plain("a style attribute with more than 64 declarations")),
+            "entity declarations"
+        );
+        // 2040 bytes of style on each of 129 shapes: more than 256 KiB in all.
+        let long = format!("stroke-dasharray:{}", "1 ".repeat(1011));
+        let reason = svg_skipped(&rect(&long).repeat(129));
+        assert!(
+            reason.ends_with(&plain("this much style in all")),
+            "{reason}"
+        );
+        // A style as editors write it is drawn.
+        let (items, notes) = svg_drawn(&rect(
+            "fill:#008000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.5;\
+             stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;\
+             stroke-dasharray:none;stroke-opacity:1;paint-order:normal",
+        ));
+        assert_eq!(notes, []);
+        assert_eq!(fills(&items).len(), 1);
+    }
+
+    #[test]
+    fn svg_long_attribute_values_bounded() {
+        // Entities can blow any attribute up to megabytes; outside path data, which the count of
+        // work bounds, a value over 1 MB is refused before the XML parser runs.
+        for (attribute, unit) in [
+            ("transform", "translate(1 1) ".repeat(66)),
+            ("stroke-dasharray", "1 2 ".repeat(250)),
+        ] {
+            let svg = svg_with_doctype(
+                &format!(r#"<!DOCTYPE svg [<!ENTITY e "{unit}">]>"#),
+                &format!(r#"<g {attribute}="{}"/>"#, "&e;".repeat(1100)),
+            );
+            let reason = skipped_svg(&svg);
+            assert!(
+                reason.ends_with(&plain("an attribute value longer than 1 MB")),
+                "{attribute}: {reason}"
+            );
+        }
+    }
 }

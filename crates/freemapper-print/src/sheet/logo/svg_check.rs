@@ -35,6 +35,16 @@ const MAX_ATTRIBUTE_PAIRS: u64 = 50_000_000;
 const MAX_NAMESPACES: u64 = 64;
 /// Longest text of an entity of the internal subset.
 const MAX_ENTITY_BYTES: usize = 1024;
+/// Most entity declarations: the XML parser looks every reference up among all of them in turn.
+const MAX_ENTITIES: u64 = 64;
+/// Longest `style` attribute, entities expanded, and most declarations in it (counted as
+/// colons), and most bytes of `style` attributes in the file: `simplecss` works out a line and
+/// column for every declaration, from the start of the value.
+const MAX_STYLE_BYTES: u64 = 2048;
+const MAX_STYLE_DECLARATIONS: u64 = 64;
+const MAX_CSS_BYTES: u64 = 256 * 1024;
+/// Longest attribute value other than path data, entities expanded.
+const MAX_VALUE_BYTES: u64 = 1024 * 1024;
 
 /// The SVG elements a logo may use. `symbol` only takes effect through `use` and is counted with
 /// it.
@@ -388,6 +398,8 @@ impl<'a, 'input> Links<'a, 'input> {
 pub(super) struct Entity {
     pub(super) len: u64,
     pub(super) uses: u64,
+    /// Colons in the text: each CSS declaration it could add to a `style` needs one.
+    colons: u64,
 }
 
 /// What [`pre_scan`] found: the entities of the internal subset by name, with their uses.
@@ -415,6 +427,8 @@ fn is_space(b: u8) -> bool {
 struct Scanner<'a> {
     bytes: &'a [u8],
     at: usize,
+    /// Entity declarations read so far.
+    declared: u64,
 }
 
 impl<'a> Scanner<'a> {
@@ -489,10 +503,17 @@ impl<'a> Scanner<'a> {
     /// An entity reference at `&`: counts a use of the entity it names. Character references
     /// (`&#…;`) and names the subset does not declare are passed over; the XML parser reads
     /// the latter as one of the five predefined entities or refuses the file.
-    fn reference(&mut self, entities: &mut HashMap<&'a [u8], Entity>) {
+    ///
+    /// Returns what the reference brings in, as far as CSS is concerned: the declared entity's
+    /// text, or one character for a character reference (which may be a colon).
+    fn reference(&mut self, entities: &mut HashMap<&'a [u8], Entity>) -> Entity {
         self.at += 1;
         if self.peek() == Some(b'#') {
-            return;
+            return Entity {
+                len: 1,
+                uses: 0,
+                colons: 1,
+            };
         }
         let name = self
             .take_until(|b| is_space(b) || matches!(b, b';' | b'<' | b'&' | b'"' | b'\'' | b'>'));
@@ -500,7 +521,9 @@ impl<'a> Scanner<'a> {
             && let Some(entity) = entities.get_mut(name)
         {
             entity.uses += 1;
+            return *entity;
         }
+        Entity::default()
     }
 
     /// The XML declaration after `<?xml `, up to its `?>`.
@@ -607,9 +630,16 @@ impl<'a> Scanner<'a> {
         }
         self.skip_space();
         self.require(b'>')?;
+        // The XML parser looks each reference up among all declarations one by one.
+        self.declared += 1;
+        if self.declared > MAX_ENTITIES {
+            return Err(unsupported("more than 64 entities"));
+        }
         let entity = entities.entry(name).or_default();
-        // The XML parser takes the first of two declarations; the longer one is counted.
+        // The XML parser takes the first of two declarations; the larger one is counted.
         entity.len = entity.len.max(text.len() as u64);
+        let colons = text.iter().filter(|&&b| b == b':').count() as u64;
+        entity.colons = entity.colons.max(colons);
         Ok(())
     }
 }
@@ -625,7 +655,11 @@ impl<'a> Scanner<'a> {
 /// them; quoted attribute values may hold `>`. Markup the XML parser would refuse is refused here
 /// too, so the two never read the bytes differently.
 pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
-    let mut s = Scanner { bytes, at: 0 };
+    let mut s = Scanner {
+        bytes,
+        at: 0,
+        declared: 0,
+    };
     let mut entities = HashMap::new();
     if s.starts_with(&[0xEF, 0xBB, 0xBF]) {
         s.at += 3;
@@ -637,6 +671,7 @@ pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
     let mut depth = 0u64;
     let mut pairs = 0u64;
     let mut namespaces = 0u64;
+    let mut css = 0u64;
     let mut doctype = false;
     let mut root = false;
     while let Some(next) = s.bytes[s.at..].iter().position(|&b| b == b'<' || b == b'&') {
@@ -718,16 +753,48 @@ pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
                     _ => return Err(s.malformed()),
                 };
                 s.at += 1;
+                // The value with entities expanded, as far as CSS is concerned.
+                let mut value = Entity::default();
                 loop {
-                    s.take_until(|b| b == quote || b == b'<' || b == b'&');
+                    let text = s.take_until(|b| b == quote || b == b'<' || b == b'&');
+                    value.len += text.len() as u64;
+                    value.colons += text.iter().filter(|&&b| b == b':').count() as u64;
                     match s.peek() {
-                        Some(b'&') => s.reference(&mut entities),
+                        Some(b'&') => {
+                            let brought = s.reference(&mut entities);
+                            value.len = value.len.saturating_add(brought.len);
+                            value.colons = value.colons.saturating_add(brought.colons);
+                        }
                         Some(q) if q == quote => {
                             s.at += 1;
                             break;
                         }
                         _ => return Err(s.malformed()),
                     }
+                }
+                // `usvg` and this check split `style` with `simplecss`, which counts the lines
+                // and columns up to the end of each declaration: time grows with the
+                // declarations times the length.
+                if name == b"style" || name.ends_with(b":style") {
+                    if value.len > MAX_STYLE_BYTES {
+                        return Err(unsupported("a style attribute longer than 2048 bytes"));
+                    }
+                    if value.colons > MAX_STYLE_DECLARATIONS {
+                        return Err(unsupported(
+                            "a style attribute with more than 64 declarations",
+                        ));
+                    }
+                    css += value.len;
+                    if css > MAX_CSS_BYTES {
+                        return Err(unsupported("this much style in all"));
+                    }
+                }
+                // Path data is bounded by the count of work after parsing. Any other value that
+                // entities blow up to megabytes slows the parsers of `usvg` (a dash array of
+                // 49 MB takes over a second).
+                let local = name.rsplit(|&b| b == b':').next().unwrap_or(name);
+                if value.len > MAX_VALUE_BYTES && local != b"d" && local != b"points" {
+                    return Err(unsupported("an attribute value longer than 1 MB"));
                 }
             };
             pairs += attributes * attributes;

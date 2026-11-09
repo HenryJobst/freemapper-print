@@ -36,8 +36,10 @@ about 4400 primitives, the forest sample (539 objects) about 1500.
   most 25 megapixels and at most 65 535 pixels a side, checked on the header before any pixel is decoded, and
   the decoder may allocate at most 116 MB. An SVG first passes a linear scan of its bytes: nesting at most 256
   deep, at most 1000 attributes per element and 50 million attribute pairs in all, at most 64 namespace
-  declarations, a DTD of comments and text entities only (each at most 1024 bytes, no markup or references,
-  ADR 0026), and entity references that expand to at most about 50 MB in all, counted from the entities the
+  declarations, a DTD of comments and at most 64 text entities (each at most 1024 bytes, no markup or
+  references, ADR 0026), `style` attributes of at most 2048 bytes and 64 declarations each and 256 KiB in
+  all, other attribute values except path data of at most 1 MiB (all measured with entities expanded), and
+  entity references that expand to at most about 50 MB in all, counted from the entities the
   scan read. Then it is checked on its XML before `usvg` resolves it: at most 200 000 nodes, at most 256
   stops per gradient, only the elements and
   references of the allow-list in ADR 0026, nesting at most 256 levels deep with `use` resolved, and at most
