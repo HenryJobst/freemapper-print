@@ -408,8 +408,9 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             "{}",
             texts.get(
                 "init-courses-read",
+                // As the project file names it: relative to the project folder.
                 Some(&args!(
-                    "path" => plan.file.display().to_string(),
+                    "path" => project::relative_path(&dir, &plan.file).display().to_string(),
                     "count" => plan.courses.len(),
                 ))
             )

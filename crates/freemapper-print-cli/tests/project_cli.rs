@@ -1023,6 +1023,8 @@ fn init_with_iof_xml_makes_one_layout_without_description_box() {
     // Without a description box, only the title block names the course on the sheet.
     assert_eq!(p.shared[0].lines[0], "{event} \u{b7} {course}");
     assert!(err.contains("IOF XML"), "{err}");
+    // The course file as the project names it, not its absolute path.
+    assert!(err.contains("Read the course file c.xml:"), "{err}");
 }
 
 #[test]
