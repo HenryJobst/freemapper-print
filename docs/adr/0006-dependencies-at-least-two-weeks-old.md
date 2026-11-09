@@ -14,6 +14,11 @@ Every dependency version must be at least two weeks old. Where a newer release i
 pinned exactly, in `Cargo.toml` or in `Cargo.lock` for transitive crates. The first `Cargo.lock` was taken from
 freemapper, so shared crates start at versions already checked there.
 
+## Exemption
+
+The suite's own crates from freemapper-core are exempt. A core release may be pinned on the day it appears
+(core ADR 0004, ADR 0042). Third-party crates keep this rule.
+
 ## Consequences
 
 - `cargo update` can pull in a version that is too young, so every lock file change is checked against this

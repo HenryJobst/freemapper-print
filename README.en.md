@@ -58,10 +58,11 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 
 ## Part of the freemapper suite
 
-freemapper-print is one of several programs around the same maps. The code that they share is meant to live in
+freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
-takes in a fixed version instead of copying it. freemapper-print will move its map reader, its renderer and its
-course code there after M3. Today it still uses its own copies.
+takes in a fixed version instead of copying it. freemapper-print uses `freemapper-text` (program texts),
+`freemapper-rules` (rule profiles) and `freemapper-fs` (safe file writing) from it. The map reader (`omap`), the
+renderer (`render`) and the course code (`course`) follow and move there. Until then they stay in this repository.
 
 ## Examples
 
@@ -137,9 +138,19 @@ cargo build --release
 `rust-toolchain.toml` fixes the Rust version; `rustup` installs it on the first build. Before each commit,
 [lefthook](https://github.com/evilmartians/lefthook) checks formatting and clippy (`lefthook install`).
 
-freemapper-print does not depend on [freemapper-core](https://github.com/HenryJobst/freemapper-core) yet. Once it
-does, check freemapper-core out next to freemapper-print and use it during development through a local `[patch]`.
-The freemapper-core README has the details.
+freemapper-print depends on [freemapper-core](https://github.com/HenryJobst/freemapper-core) in a fixed version (a
+git tag). For a normal build that is all there is to it, Cargo fetches the crates itself. If you work on
+freemapper-core at the same time, check it out next to freemapper-print (`../freemapper-core`) and add the local
+folder to `Cargo.toml` for now:
+
+```toml
+[patch."https://github.com/HenryJobst/freemapper-core"]
+freemapper-text = { path = "../freemapper-core/crates/freemapper-text" }
+freemapper-rules = { path = "../freemapper-core/crates/freemapper-rules" }
+freemapper-fs = { path = "../freemapper-core/crates/freemapper-fs" }
+```
+
+This entry is for development only. `main` never carries a `[patch]`. The freemapper-core README has the details.
 
 ## Usage
 

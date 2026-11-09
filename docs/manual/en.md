@@ -157,10 +157,15 @@ layouts are drawn one after another, so only one sheet is in memory at a time. T
 are written, also when there were notes.
 
 Before writing, the program checks the free space: it needs the size of the PDF plus a 50 MB reserve. The PDF is
-first written as `<name>.pdf.part` and gets its name only when it is complete on the disk. On a full disk an
+first written as a partial file (`<name>.pdf.….part`) and gets its name only when it is complete on the disk. On a full disk an
 older PDF of the same name stays as it was, and no half-written PDF is left behind; the same holds for any
 other error. The message says how much space is needed and how much is free, or that the disk does not say.
-Do not run two exports into the same folder at the same time: they would share the `.part` file.
+The partial file is named `<name>.pdf.<process id>.<counter>.part`, so two exports into the same folder do not
+share it. `export` removes partial files older than an hour from the folder `out` of the project.
+
+If `out`, or a folder inside the project that you give with `--out-dir`, is a link that leads out of the project
+folder, the program writes nothing there and says "a link leads out of the project folder". Replace the link with
+a real folder. An `--out-dir` outside the project, also on another drive, works.
 
 ## 6. Layouts: paper size, scale, map frame
 
@@ -636,8 +641,8 @@ only when none of them gets a conflict there. Otherwise it names those courses a
 `--sheet` for the one course, or give `--direction` and `--gap` for all of them.
 
 `numbers accept` appends a `[[numbers]]` table to the end of the project file as text. Everything before it stays
-as it is, comments included. The new lines end like the file's (CRLF or LF), a link to the project file stays a
-link, and the file keeps its permissions. It then loads the file again, and if that fails, it restores the old
+as it is, comments included. The new lines end like the file's (CRLF or LF), a project file that is a link is
+replaced by a regular file (the link's target keeps its content), and the file keeps its permissions. It then loads the file again, and if that fails, it restores the old
 content. It
 refuses a second correction for the same control and scope. To change one, edit the file. Afterwards run `check`
 to see the result.

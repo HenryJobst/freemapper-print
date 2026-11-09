@@ -61,9 +61,11 @@ Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 ## Teil der freemapper-Suite
 
 freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Den Code, den sie gemeinsam brauchen,
-soll [freemapper-core](https://github.com/HenryJobst/freemapper-core) enthalten, eine Bibliothek aus kleinen
-Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren. freemapper-print
-zieht seinen Kartenleser, den Renderer und den Bahncode nach M3 dorthin um. Heute nutzt es noch eigene Kopien.
+liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer Bibliothek aus kleinen
+Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren.
+freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile) und
+`freemapper-fs` (sicheres Schreiben von Dateien). Kartenleser (`omap`), Renderer (`render`) und Bahncode
+(`course`) folgen und ziehen dorthin um. Bis dahin liegen sie noch in diesem Repository.
 
 ## Beispiele
 
@@ -141,9 +143,20 @@ cargo build --release
 `rust-toolchain.toml` legt die Rust-Version fest; `rustup` installiert sie beim ersten Bauen. Vor jedem Commit
 prüft [lefthook](https://github.com/evilmartians/lefthook) Formatierung und clippy (`lefthook install`).
 
-freemapper-print hängt noch nicht von [freemapper-core](https://github.com/HenryJobst/freemapper-core) ab. Sobald es
-das tut, legen Sie freemapper-core neben freemapper-print ab und binden es während der Entwicklung über einen
-lokalen `[patch]` ein. Die Einzelheiten stehen in der README von freemapper-core.
+freemapper-print hängt von [freemapper-core](https://github.com/HenryJobst/freemapper-core) ab, in einer festen
+Version (ein Git-Tag). Zum normalen Bauen genügt das, Cargo holt die Crates selbst. Wer gleichzeitig an
+freemapper-core arbeitet, legt es neben freemapper-print ab (`../freemapper-core`) und trägt in der `Cargo.toml`
+vorübergehend den lokalen Ordner ein:
+
+```toml
+[patch."https://github.com/HenryJobst/freemapper-core"]
+freemapper-text = { path = "../freemapper-core/crates/freemapper-text" }
+freemapper-rules = { path = "../freemapper-core/crates/freemapper-rules" }
+freemapper-fs = { path = "../freemapper-core/crates/freemapper-fs" }
+```
+
+Dieser Eintrag gilt nur zum Entwickeln. Auf `main` steht nie ein `[patch]`. Die Einzelheiten stehen in der README
+von freemapper-core.
 
 ## Benutzung
 

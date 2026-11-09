@@ -29,7 +29,8 @@ is replaced. A failed write removes its partial file.
 - A project file that is a link is replaced by a regular file, never written through (ruling R1). The new file
   gets the old permissions, read before the write. They are set after the rename through an open handle, only
   when they differ, and only when the handle is the regular file at the path (inode on Unix, `same-file` on
-  Windows). That step is best effort: a failure leaves the default permissions and reports nothing.
+  Windows). That step is best effort: a failure leaves the default permissions and reports nothing (ruling R5; the content
+  is written, the mode is a convenience, and a 0600 file may become 0644 on exotic filesystems).
 - The free-space check with the 50 MB reserve and `DiskFull` stays ours (ADR 0030).
 - Core follow-up, to agree with the owner: `write_inside` takes permissions and sets them on the partial file
   before the rename, which removes the window and the handle check here.
@@ -41,5 +42,9 @@ is replaced. A failed write removes its partial file.
   content is written back; the link's target keeps its content. An `out` linked to another drive stops `init` and
   `export`; `--out-dir` with a folder outside the project still works. Every example PDF is byte-identical.
 - Cost if wrong: users re-link their project file, and use `--out-dir` for an output folder on another drive.
+
+- Known gap: the handle for the permission check is opened without `O_NONBLOCK`. A FIFO swapped in between the
+  look and the open would block; that needs a hostile local writer. `O_NONBLOCK` on Unix follows.
+- Dependencies: ADR 0042 records the tag pin and the owners.
 
 Source: core ADR 0009 (freemapper ADR 0060); core-switch plan Task 3; ruling R1; Task 3 review.

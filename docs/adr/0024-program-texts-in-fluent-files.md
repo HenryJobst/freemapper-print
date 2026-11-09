@@ -1,7 +1,7 @@
 # 0024. Program texts in Fluent files (suite rule)
 
 Date: 2026-11-08
-Status: Accepted
+Status: Accepted, loader superseded by freemapper-text (see the end)
 
 ## Context
 
@@ -38,5 +38,19 @@ module. freemapper-print had English-only messages in `main.rs`.
 - Numbers in messages use the decimal separator of the language (`decimal-separator`).
 - Each new message is written in every language, and reviews check the German.
 - Cost if wrong: Fluent files are plain text and convert to another catalog format.
+
+## Supersede note: the loader moves to freemapper-text (core switch, Task 1)
+
+- The bullet "The loader is copied from freemapper-courseplan" no longer holds. The catalog, the language
+  matching and the fallback come from `freemapper-text` (freemapper-core v0.2.0, core ADR 0010; ADR 0042). The
+  copy is gone. `text.rs` keeps a static `Catalog` with our `.ftl` files and thin wrappers, so call sites did not
+  change. `unic-langid` and `fluent-syntax` are no longer direct dependencies; `fluent-bundle` stays for
+  `FluentArgs`.
+- The test that every language has the ids of English is core's `problems()` check now. It also demands the
+  same variables in every language.
+- Ruling R3: English `note-missing-scale-or-contour` has a select on `$count` with two identical variants, because
+  German uses `$count` and the check refuses a message whose variables differ. The output is the same as before.
+- Test gap, accepted: `every_id_used_in_code_exists` scans `main.rs` only, the one CLI source that uses ids. A new
+  source file with ids must be added to it.
 
 Source: user decision 2026-11-08 (suite rule); freemapper-courseplan ADR 0022.

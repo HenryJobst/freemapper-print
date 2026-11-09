@@ -32,7 +32,9 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Programmsprache | program language | Sprache der Meldungen und der Hilfe: `--lang`, sonst `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`; Deutsch oder Englisch, Englisch als Rückfall (ADR 0024). | `Lang`, `detect_lang` |
 | sicheres Schreiben | safe writing | So schreibt `export` (und `render`) ein PDF: freien Platz prüfen (PDF plus 50 MB Reserve), dann schreibt `freemapper-fs` eine Teildatei, synchronisiert sie und benennt sie um. Ein voller Datenträger hinterlässt kein halbes PDF, ein Link am Zielnamen wird ersetzt statt beschrieben (ADR 0030, ADR 0041). | `write_pdf_file`, `write_project_pdf`, `DISK_RESERVE_BYTES` |
 | Teildatei | partial file | Begriff aus freemapper-core: neue Datei `<Datei>.<Prozess-ID>.<Zähler>.part` neben dem Ziel; erst wenn sie vollständig auf dem Datenträger steht, wird sie über das Ziel umbenannt. `export` löscht Teildateien im `out`-Ordner des Projekts, die älter als eine Stunde sind (ADR 0041). | `freemapper_fs`, `remove_stale_parts` |
+| Link | link | Symbolischer Link (Symlink) auf eine Datei oder einen Ordner. Das Programm schreibt nie durch einen Link: Eine Projektdatei, die ein Link ist, wird durch eine normale Datei ersetzt, und ein `out`-Ordner, dessen Link aus dem Projektordner hinausführt, wird abgelehnt (ADR 0041). | `freemapper_fs` |
 | Zuordnung | assignment | Welche Bahn mit welchem Layout gedruckt wird (`[[assignments]]` in der Projektdatei; ab M4 auch mit Abdeckungsvariante). Eine Bahn hat höchstens eine Zuordnung; ohne sie nimmt sie das erste Layout, mit einem Hinweis. | `Assignment`, `layout_for` |
+| Kern-Bibliothek | core library | freemapper-core: die gemeinsame Bibliothek der Suite aus kleinen Crates, die jedes Programm als Git-Abhängigkeit mit festem Tag einbindet (ADR 0042). freemapper-print nutzt `freemapper-text`, `freemapper-rules` und `freemapper-fs`. | `freemapper-core` |
 
 ## Layout & Blatt / layout & sheet
 

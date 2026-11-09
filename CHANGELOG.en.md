@@ -7,6 +7,23 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- Program texts, rule profiles and file writes now come from freemapper-core (`freemapper-text`,
+  `freemapper-rules`, `freemapper-fs`, version v0.2.0; ADR 0042). The printed sheets and all other output stay
+  the same, and the example PDFs are byte for byte identical.
+- When the project file is a symbolic link, `numbers accept` replaces it with a regular file as it writes. It used
+  to write through the link into the target file. The file the link pointed to keeps its content, and the project
+  file keeps its permissions (ADR 0041).
+- An `out` folder, or an `--out-dir` inside the project, that is a link leading out of the project folder is
+  refused. Nothing is written there, and the message says: "...: a link leads out of the project folder, so
+  nothing is written there; replace the link with a real folder". An `--out-dir` to a folder outside the project,
+  also on another drive, still works.
+- The partial file while a PDF is written is now named `<name>.pdf.<process id>.<counter>.part` instead of
+  `<name>.pdf.part`. Two runs into one folder no longer share a partial file. `export` removes partial files older
+  than an hour from the project's `out` folder.
+- A missing `--out-dir` is still reported as before (the folder must exist).
+
 ## [0.3.0] - 2026-11-09
 
 ### Added

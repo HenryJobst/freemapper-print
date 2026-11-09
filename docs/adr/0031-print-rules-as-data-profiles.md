@@ -109,8 +109,15 @@ size of control descriptions and weights for placing control numbers.
   unknown filter values, print scales, a filter on a kind-independent key, non-finite numbers, value names a
   key does not read, and an id that differs from the file name. Variants and rule ids are unchanged.
 - A golden snapshot (`tests/fixtures/rules/resolved.txt`), made with the old loader, holds every resolved
-  value of the base set and the test overlays. One test case per refusal of the old loader checks variant
-  and rule id. Both pass unchanged after the switch, and the example PDFs are byte-identical.
+  value of the base set and the test overlays. One test case per refusal the old tests had checks variant
+  and rule id. Refusals the old tests never covered (`print_scales` not a list, `[4000.0]`, `rows = []`,
+  `enabled = "yes"`) are not pinned by a case here; core tests them. Both pass unchanged after the switch, and the example PDFs are byte-identical.
+
+- Ruling R4: the `Incomplete` text for a missing base-scale row keeps the old wording and names no rule id, so
+  nothing observable changes in this switch. Three tests for it assert the variant only.
+- Accepted, no caller: `RuleSet` derefs to the core set, so core's `pick` is reachable from outside. Profile
+  and overlay names that match several sets give `Ambiguous`, which `profile()` and `parse_profile()` map to
+  `Incomplete`.
 
 Source: spec §5.9; M3 plan Task 1; freemapper-courseplan ADR 0025; ISSprOM 2019-2 (January 2022), ISOM 2017-2
 (errata to February 2022), IOF Printing and Colour Definitions Rev. 4, International Specification for Control
