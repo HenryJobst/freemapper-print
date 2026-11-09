@@ -626,8 +626,11 @@ pub fn place_on_sheet(
             })
             .collect()
     };
-    fn joined<'a>(base: &[&'a Obstacle], extra: &'a [Obstacle]) -> Vec<&'a Obstacle> {
-        base.iter().copied().chain(extra).collect()
+    fn joined<'a>(
+        base: &[&'a Obstacle],
+        extra: &'a [Obstacle],
+    ) -> impl Iterator<Item = &'a Obstacle> {
+        base.iter().copied().chain(extra)
     }
 
     let mut left = budget;
@@ -645,7 +648,7 @@ pub fn place_on_sheet(
             let p = match placement::best_within(
                 t,
                 bounds,
-                &joined(&base_near[i], &extra),
+                joined(&base_near[i], &extra),
                 start,
                 &mut left,
             ) {
@@ -683,7 +686,7 @@ pub fn place_on_sheet(
         let placed = t.box_at(placements[i]);
         let current = placements[i];
         let others = number_boxes(i, &boxes);
-        let score = placement::score(placed, bounds, &joined(&base_near[i], &others));
+        let score = placement::score(placed, bounds, joined(&base_near[i], &others));
         let mut proposal = (current, score.clone());
         // Any covered point or line symbol is a conflict: the user's rule 1 is hard (ruling R31).
         if !score.is_free() {
@@ -692,7 +695,7 @@ pub fn place_on_sheet(
             let searched = placement::best_within(
                 t,
                 bounds,
-                &joined(&base_near[i], &extra),
+                joined(&base_near[i], &extra),
                 current,
                 &mut left,
             );

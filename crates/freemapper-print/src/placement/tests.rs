@@ -453,12 +453,12 @@ fn leaving_the_bounds_is_a_hard_conflict() {
         min: (1.0, 1.0),
         max: (10.0, 4.0),
     };
-    assert!(score::<Obstacle>(inside, bounds, &[]).hard.is_empty());
+    assert!(score(inside, bounds, &[]).hard.is_empty());
     let out = Rect {
         min: (8.0, 1.0),
         max: (10.5, 4.0),
     };
-    assert_eq!(score::<Obstacle>(out, bounds, &[]).hard, [OUTSIDE]);
+    assert_eq!(score(out, bounds, &[]).hard, [OUTSIDE]);
     // A circle near the right edge: the number goes inward.
     let t = Target {
         centre: (6.0, 5.0),
@@ -466,7 +466,7 @@ fn leaving_the_bounds_is_a_hard_conflict() {
     };
     let mut current = START;
     current.direction = 0.0;
-    let (p, s) = best::<Obstacle>(
+    let (p, s) = best(
         &t,
         Rect {
             min: (0.0, -10.0),

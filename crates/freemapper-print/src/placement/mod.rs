@@ -20,8 +20,6 @@
 //! number first moves further out, then turns), the angle to the outer bisector and the direction. The soft cost
 //! of covered areas only breaks ties before the direction.
 
-use std::borrow::Borrow;
-
 /// The gap (mm) when no rule gives a range: placement tries this gap alone (ruling R29).
 pub const DEFAULT_GAP_MM: f64 = 0.5;
 /// Step (mm) between the gaps [`best`] tries.
@@ -478,8 +476,12 @@ pub fn placement_of(
 
 /// How the box `box_` fares within `bounds` among `obstacles`: overprint obstacles hit and leaving the bounds
 /// are hard conflicts, map symbols hit are covered, and each soft obstacle adds its weight × the covered mm².
-pub fn score<O: Borrow<Obstacle>>(box_: Rect, bounds: Rect, obstacles: &[O]) -> Score {
-    let near = Near::new(obstacles.iter().map(Borrow::borrow));
+pub fn score<'a>(
+    box_: Rect,
+    bounds: Rect,
+    obstacles: impl IntoIterator<Item = &'a Obstacle>,
+) -> Score {
+    let near = Near::new(obstacles.into_iter());
     let all = 0..near.items.len();
     near.score(box_, bounds, all, None)
         .map(|s| near.labelled(s))
@@ -953,10 +955,10 @@ pub fn evaluations(target: &Target) -> usize {
 /// [`GapRange::steps`], and ranks them by overprint conflicts, covered map symbols, angle to the preferred
 /// direction, gap, angle to the outer bisector, soft cost and direction. Never fails: when every candidate
 /// conflicts, the least bad one comes back with its conflicts.
-pub fn best<O: Borrow<Obstacle>>(
+pub fn best<'a>(
     target: &Target,
     bounds: Rect,
-    obstacles: &[O],
+    obstacles: impl IntoIterator<Item = &'a Obstacle>,
     current: Placement,
 ) -> (Placement, Score) {
     let mut budget = usize::MAX;
@@ -967,10 +969,10 @@ pub fn best<O: Borrow<Obstacle>>(
 /// [`best`] within a budget of candidate evaluations: `None`, and nothing spent, when `budget` holds fewer than
 /// the [`evaluations`] the search takes; otherwise they are taken from it. A search is never cut short, so its
 /// result does not depend on the budget.
-pub fn best_within<O: Borrow<Obstacle>>(
+pub fn best_within<'a>(
     target: &Target,
     bounds: Rect,
-    obstacles: &[O],
+    obstacles: impl IntoIterator<Item = &'a Obstacle>,
     current: Placement,
     budget: &mut usize,
 ) -> Option<(Placement, Score)> {
@@ -982,8 +984,7 @@ pub fn best_within<O: Borrow<Obstacle>>(
     let region = Rect::centred(target.centre, (0.0, 0.0)).grown(target.reach());
     let near = Near::new(
         obstacles
-            .iter()
-            .map(Borrow::borrow)
+            .into_iter()
             .filter(|o| o.shape.bbox().touches(&region)),
     );
     // Cells about the size of a number box, so each candidate looks at the obstacles around it only.
