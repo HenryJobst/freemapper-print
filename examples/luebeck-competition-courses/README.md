@@ -47,6 +47,11 @@ gelesen. Die Lage jedes Postens ist ein solcher Punkt, in Millimeter umgerechnet
 geschrieben, wie Purple Pen es tut (ADR 0032). Die Beschreibungen folgen der IOF-Norm von 2018: Spalte D
 „Gebäude“ oder „Weg“, Spalte G die Außenecke mit ihrer Himmelsrichtung, Spalte F „Gabelung“.
 
+Posten 36 (Nummer 10 der Bahn A) stand bis zur Karte aus freemapper 0.5.0 an einer Weggabelung zwischen den
+beiden Wasserflächen im Südosten. Seit Version 0.8.0 sind diese Kieswege keine Wege der Karte mehr, sondern
+Kandidaten. Der Posten steht jetzt 53 m weiter westlich an der Ostecke eines kleinen Gebäudes am Weg entlang des
+Wassers. Bahn A ist dadurch 49 m kürzer, und das Blatt nennt nun dieselben 2,5 km wie die Tabelle.
+
 Dazu kommen drei Sonderobjekte für alle Bahnen:
 
 - ein Sperrgebiet in einem Hof südöstlich des Starts. Die Strecke von 1 nach 2 der Bahn B führt darüber
@@ -91,7 +96,7 @@ Bahn, so wie `export --layout` sie schreibt; dort bleiben die Platzhalter der Ba
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
 Bahn „A“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 2,2 mm zu breit und 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „B“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Karte ist 16,7 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „C“ auf Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
@@ -183,7 +188,7 @@ Exit-Code 0:
 ```
 Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
-Bahn „A“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „A“ auf Layout a3-4000: A3 Hochformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „A“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
 Bahn „B“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „B“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
@@ -237,8 +242,8 @@ Kontrollstrecke messen Sie am Ausdruck nach, ob der Drucker skaliert hat.
 ## Herkunft und Lizenz
 
 Karte, `freemapper.toml` und `ATTRIBUTION.txt` aus dem Beispiel `schleswig-holstein-luebeck` von
-[freemapper](https://github.com/HenryJobst/freemapper), Version 0.5.0 (Commit `e8b6db9`), unverändert; Version
-0.6.0 (Commit `a2f8b80`) hat dieselben Dateien. Für die Karte gilt, was `ATTRIBUTION.txt` nennt: Kartendaten
-© OpenStreetMap-Mitwirkende (ODbL) und © GeoBasis-DE/LVermGeo SH (CC BY 4.0, Quelle verändert). Die Bahnen in
-`courses.ppen` und `courses.xml` sind für dieses Beispiel geschrieben und stehen unter CC0. Die PDFs sind mit
+[freemapper](https://github.com/HenryJobst/freemapper), Version 0.8.0 (Commit `a2b41b4`), unverändert. Für die
+Karte gilt, was `ATTRIBUTION.txt` nennt: Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und © GeoBasis-DE/LVermGeo
+SH (CC BY 4.0, Quelle verändert). Die Bahnen in `courses.ppen` und `courses.xml` sind für dieses Beispiel
+geschrieben und stehen unter CC0. Die PDFs sind mit
 [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.

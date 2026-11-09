@@ -26,6 +26,10 @@ ein Drittel mehr Papier in jeder Richtung und passt nur noch auf A3.
 Bei 1:4000 ist die Karte 4,0 mm zu hoch für den bedruckbaren Bereich von A4. Das Programm warnt und schreibt
 das PDF trotzdem. Das ist hier gewollt. Bei 1:3000 auf A3 passt die ganze Karte.
 
+Unter der ganzen Karte liegt die Grundfläche der Sprintkarte, das helle Braun der „belaufbaren Fläche“. Die
+Parks sind gelb, Gebäude und Überdachungen grau. Die Grundfläche wird mitgedruckt, zählt aber nicht für die Mitte
+der Seite und den Überstand (ADR 0044).
+
 Unten links steht auf einem weißen Kasten die Fußzeile: die Quellenangaben aus den Kartennotizen und die
 Namensnennung „Erstellt mit freemapper-print“. Der Rand von 5 mm ist zu schmal für sie, deshalb deckt sie
 eine Ecke der Karte ab, und `render` meldet das.
@@ -35,7 +39,8 @@ eine Ecke der Karte ab, und `render` meldet das.
 - Strichbreiten aus den PDF-Inhalten gelesen: Symbol 506 hat 0,27 mm in `luebeck-4000-a4.pdf` und 0,36 mm in
   `luebeck-3000-a3.pdf`, alle anderen Linien wachsen ebenso auf 133 %.
 - Seitengrößen: 297 × 210 mm und 420 × 297 mm (`/MediaBox` im PDF).
-- Die Vorschau angesehen: beide Karten vollständig, Wasser blau, Seitenrahmen grau, Fußzeile unten links.
+- Die Vorschau angesehen: beide Karten vollständig auf der hellbraunen Grundfläche, Parks gelb, Wasser blau,
+  Seitenrahmen grau, Fußzeile unten links.
 
 ## Neu erzeugen
 
@@ -70,6 +75,6 @@ verfälscht den Maßstab.
 ## Herkunft
 
 Karte aus dem Beispiel `schleswig-holstein-luebeck` von [freemapper](https://github.com/HenryJobst/freemapper),
-Version 0.5.0 (Commit `e8b6db9`), unverändert. Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und
+Version 0.8.0 (Commit `a2b41b4`), unverändert. Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und
 © GeoBasis-DE/LVermGeo SH (CC BY 4.0, Quelle verändert); die Kartennotizen (`<notes>`) nennen die Quellen. Die
 PDFs sind mit [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.

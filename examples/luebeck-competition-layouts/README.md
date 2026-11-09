@@ -35,6 +35,9 @@ auf dem A3-Blatt „1:3000 · Äquidistanz 2 m“. Die Kontrollstrecke misst „
 
 **Nordlinien.** Die Karte bringt ihre eigenen Nordlinien mit. Das Programm ergänzt deshalb keine.
 
+**Grundfläche.** Die Karte liegt auf der hellbraunen Grundfläche, die freemapper unter jede Sprintkarte legt. Sie
+wird mitgedruckt und am Kartenausschnitt beschnitten. Für den Überstand zählt sie nicht (ADR 0044).
+
 **Fußzeile.** Die Karte nennt in ihren Notizen vier Zeilen Quellen. Mit der Namensnennung von freemapper-print
 wären das fünf Zeilen, und auf dem A3-Blatt passt so ein Block nur in einen Rand von 14 mm. Der Kartenausschnitt
 von 1:3000 braucht aber fast die ganze Seite. `print.copyright` fasst die Quellen deshalb in zwei Zeilen
@@ -105,7 +108,7 @@ Die Vorschau entsteht wie bei [luebeck-scales](../luebeck-scales/README.md#neu-e
 - Zweimal exportiert: Die PDFs sind Byte für Byte gleich.
 - Die Seiten bei 200 dpi angesehen: Titelblock und Klassen oben links, die Logos oben rechts, die
   Kontrollstrecke unten rechts, die drei Zeilen der Fußzeile unter dem Kartenausschnitt, die Nordlinien der Karte
-  über die ganze Karte.
+  über die ganze Karte, die Grundfläche hellbraun bis an den Kartenausschnitt.
 
 ## Drucken
 
@@ -115,7 +118,7 @@ Kontrollstrecke messen Sie am Ausdruck nach, ob der Drucker skaliert hat.
 ## Herkunft
 
 Karte und `freemapper.toml` aus dem Beispiel `schleswig-holstein-luebeck` von
-[freemapper](https://github.com/HenryJobst/freemapper), Version 0.5.0 (Commit `e8b6db9`), unverändert.
+[freemapper](https://github.com/HenryJobst/freemapper), Version 0.8.0 (Commit `a2b41b4`), unverändert.
 Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und © GeoBasis-DE/LVermGeo SH (CC BY 4.0, Quelle verändert). Die
 Logos sind für dieses Beispiel gemacht (CC0). Die PDFs sind mit
 [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.

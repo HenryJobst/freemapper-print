@@ -48,6 +48,11 @@ block of houses, the finish on a square. A small script read the building corner
 pointing up, as Purple Pen writes it (ADR 0032). The descriptions follow the IOF 2018 standard: column D
 "building" or "path", column G the outside corner with its compass direction, column F "junction".
 
+Control 36 (number 10 of course A) stood on a path junction between the two water areas in the south-east up to
+the map from freemapper 0.5.0. Since version 0.8.0 these gravel paths are candidates and no longer paths of the
+map. The control now stands 53 m further west, at the east corner of a small building by the path along the
+water. Course A is 49 m shorter for it, and the sheet now gives the same 2.5 km as the table.
+
 Three special objects apply to all courses:
 
 - an out-of-bounds area in a courtyard south-east of the start. The leg from 1 to 2 of course B crosses it, so
@@ -94,7 +99,7 @@ the program to check. After the courses, `check` checks the two layouts as sheet
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
 Bahn „A“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 2,2 mm zu breit und 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „B“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Karte ist 16,7 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Bahn „C“ auf Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
@@ -183,7 +188,7 @@ first `check` reports the assumed y axis, because IOF XML does not say which one
 ```
 Zur Information: Die Bahndatei hat keine Postenbeschreibungen.
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
-Bahn „A“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
+Bahn „A“ auf Layout a3-4000: A3 Hochformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „A“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
 Bahn „B“ auf Layout a3-4000: A3 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Bahn „B“ kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.
@@ -236,8 +241,7 @@ whether the printer scaled the page.
 ## Credits and licence
 
 Map, `freemapper.toml` and `ATTRIBUTION.txt` from the example `schleswig-holstein-luebeck` of
-[freemapper](https://github.com/HenryJobst/freemapper), version 0.5.0 (commit `e8b6db9`), unchanged; version
-0.6.0 (commit `a2f8b80`) has the same files. The map is under the terms `ATTRIBUTION.txt` names: map data
-© OpenStreetMap contributors (ODbL) and © GeoBasis-DE/LVermGeo SH (CC BY 4.0, source modified). The courses in
-`courses.ppen` and `courses.xml` were written for this example and are released under CC0. The PDFs were made
-with [freemapper-print](https://github.com/HenryJobst/freemapper-print).
+[freemapper](https://github.com/HenryJobst/freemapper), version 0.8.0 (commit `a2b41b4`), unchanged. The map is
+under the terms `ATTRIBUTION.txt` names: map data © OpenStreetMap contributors (ODbL) and © GeoBasis-DE/LVermGeo SH
+(CC BY 4.0, source modified). The courses in `courses.ppen` and `courses.xml` were written for this example and are
+released under CC0. The PDFs were made with [freemapper-print](https://github.com/HenryJobst/freemapper-print).
