@@ -53,7 +53,7 @@ pub enum SheetNote {
     /// unbroken across the frame: breaking them at small features such as boulders and path ends
     /// is the mapper's job in OOM, and the program cannot know where.
     NorthLinesAdded { count: usize },
-    /// The map had no north lines and its symbol set has no symbol 601 or 601.x either, so this
+    /// The map had no north lines and its symbol set has no visible line symbol 601 or 601.x either, so this
     /// many plain black lines of 0.14 mm were drawn over the map, clipped to the map frame. Lines
     /// on the sheet layer lie over the map objects instead of under them (ADR 0027).
     NorthLinesWithoutSymbol { count: usize },
@@ -1135,8 +1135,8 @@ mod tests {
         assert_eq!(added(&report), Some(xs.len()));
         // 120 m at 1:4000 is 30 mm on paper, and the lines sit on the map grid from x = 0.
         assert!(gaps(&xs).iter().all(|g| (g - 30.0).abs() < 1e-6), "{xs:?}");
-        // Map x = 0 is at page x = 105 - 25 (the map is centred on its drawn extent, 0 to 50 mm,
-        // lines included), so the lines are 30 mm apart from x = 0 at page x 80.
+        // Map x = 0 is at page x = 105 - 25 (the map is centred on its drawn extent, 0 to 50 mm;
+        // the centre comes from the first pass, which has no lines), so the lines are 30 mm apart from x = 0 at page x 80.
         assert!(xs.iter().any(|x| (x - 80.0).abs() < 1e-6), "{xs:?}");
         // Every line lies in the frame.
         assert!(xs.iter().all(|x| (8.0..=202.0).contains(x)), "{xs:?}");

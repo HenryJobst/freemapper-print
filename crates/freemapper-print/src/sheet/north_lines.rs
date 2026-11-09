@@ -90,7 +90,7 @@ pub(super) fn half_width_mm(set: &SymbolSet, id: u32, factor: f64) -> f64 {
     };
     let width_um = all.symbols.get(&id).map_or(0.0, |s| widest(s, &all, 0));
     // Width in µm as the symbol file has it.
-    width_um / 1000.0 * factor / 2.0
+    (width_um / 1000.0 * factor / 2.0).max(0.0)
 }
 
 /// The inset (page mm) for lines of a symbol whose half width is `half_width_mm`.
