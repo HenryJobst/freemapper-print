@@ -445,10 +445,12 @@ Noch nicht alles in einer Datei wird gedruckt:
 - Eine Bahn mit Varianten (Gabelungen und Schleifen in Purple Pen) fehlt, ebenso eine Bahn mit alternativen
   Posten an einer Stelle. `check` sagt, welche. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene
   Bahn, und die wird ein eigenes Blatt.
-- Abdeckflächen (White-out) werden zu Abdeckungen der Bahnen, für die sie gelten, jede für sich (M4, ADR 0045).
-  Nennt die Zuordnung einer Bahn eine eigene Abdeckung, gilt nur diese. `check` meldet die Abdeckflächen mit einem
-  Hinweis.
 - Ein Element, das das Programm nicht kennt, wird übersprungen, mit einem Hinweis.
+
+Abdeckflächen (White-out) druckt das Programm als Abdeckungen der Bahnen, für die sie gelten, jede für sich, auch
+wenn sie sich überlappen (ADR 0045). Dort fehlt die Karte; Bahnaufdruck, Beschreibungskasten und Fußzeile bleiben.
+Nennt die Zuordnung einer Bahn eine eigene Abdeckung, gilt nur diese. `check` nennt die Abdeckflächen zur
+Information.
 
 ### Die Datei verknüpfen: die lebende Verbindung
 
@@ -914,7 +916,7 @@ nicht für den Exit-Code.
 | „Zur Information: … nur geografische Koordinaten. Die Georeferenzierung der Karte hat sie platziert.“ | Für diese Posten hat die Bahndatei keine Kartenposition. Prüfen Sie einen davon auf dem Blatt. |
 | „Zur Information: Die Bahndatei hat keine Postenbeschreibungen.“ | Die Datei ist IOF-XML oder eine `.ppen` ohne Beschreibungen. |
 | „Die Bahndatei enthält das Element …, das diese Version nicht liest. Es fehlt auf den Blättern.“ | Das Element fehlt auf den Blättern. Sehen Sie in Ihrem Bahnlegungsprogramm nach, was es ist. |
-| „Die Bahndatei hat Abdeckflächen (White-out). Jede wird zur Abdeckung der Bahnen, für die sie gilt, außer wenn die Zuordnung einer Bahn eine eigene Abdeckung nennt.“ | Das White-out aus Purple Pen deckt die Karte auf den Bahnen ab, für die es in Purple Pen gilt. Prüfen Sie auf den Blättern, ob das so gewollt ist; eine eigene Abdeckung in der Zuordnung ersetzt es für diese Bahn. |
+| „Zur Information: Die Bahndatei hat Abdeckflächen (White-out). Jede deckt die Karte auf den Bahnen ab, für die sie gilt, außer wenn die Zuordnung einer Bahn eine eigene Abdeckung nennt.“ | Nur zur Information. Das White-out aus Purple Pen deckt die Karte auf den Bahnen ab, für die es in Purple Pen gilt. Prüfen Sie auf den Blättern, ob das so gewollt ist; eine eigene Abdeckung in der Zuordnung ersetzt es für diese Bahn. |
 | „Die Bahn … hat Gabelungen oder Schleifen (Varianten in Purple Pen) … die Bahn fehlt deshalb.“ | Die Bahn fehlt mit Absicht. Exportieren Sie die Bahnen aus Purple Pen als IOF-XML, das jede Variante als eigene Bahn schreibt. |
 | „Die Bahn … bietet an einer Stelle alternative Posten an … die Bahn fehlt deshalb.“ | Diese Version kann das nicht drucken. Teilen Sie die Bahn im Bahnlegungsprogramm auf. |
 | „Zur Information: Die Bahnen … sind die Varianten der Gabelung …. Jede wird als eigenes Blatt gedruckt.“ | Nur zur Information. |

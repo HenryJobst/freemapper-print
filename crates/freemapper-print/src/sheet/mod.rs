@@ -201,11 +201,11 @@ impl SheetNote {
             SheetNote::NoDescriptionBox { reason, .. } => {
                 matches!(reason, NoBoxReason::IofXml | NoBoxReason::NoElement)
             }
-            // A course note informs unless something of the course file is left out of the print.
+            // A course note informs unless something of the course file is left out of the print. The reader still
+            // names the white-out note for M4; white-outs print as masks now (ADR 0045), so it only informs.
             SheetNote::Course(note) => !matches!(
                 note,
-                CourseNote::WhiteOutLaterInM4
-                    | CourseNote::AlternativeControls(_)
+                CourseNote::AlternativeControls(_)
                     | CourseNote::Variations(_)
                     | CourseNote::UnknownElement(_)
             ),
