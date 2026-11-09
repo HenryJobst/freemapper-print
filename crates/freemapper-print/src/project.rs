@@ -695,6 +695,7 @@ fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<
             });
         }
     }
+    let mut corrections = HashSet::new();
     for (i, n) in p.numbers.iter().enumerate() {
         let at = |k: &str| format!("numbers[{i}].{k}");
         non_empty(file, at("control"), &n.control)?;
@@ -718,6 +719,14 @@ fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<
             }
             (None, Some(c)) => non_empty(file, at("course"), c)?,
             _ => {}
+        }
+        let scope = (n.control.as_str(), n.layout.as_deref(), n.course.as_deref());
+        if !corrections.insert(scope) {
+            return Err(ProjectError::DuplicateId {
+                file: file.to_string(),
+                field: format!("numbers[{i}].control"),
+                id: n.control.clone(),
+            });
         }
         if !n.direction.is_finite() {
             return Err(invalid(file, at("direction"), "must be a finite number"));

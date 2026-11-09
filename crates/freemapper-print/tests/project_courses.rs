@@ -299,3 +299,62 @@ fn base_change_under_correction_reported() {
         .is_warning()
     );
 }
+
+#[test]
+fn course_file_must_be_a_regular_file() {
+    let (_d, path) = project_dir("c.xml", LAYOUTS);
+    let dir = path.parent().unwrap();
+    std::fs::remove_file(dir.join("c.xml")).unwrap();
+    std::fs::create_dir(dir.join("c.xml")).unwrap();
+    let lp = project::load(&path).unwrap();
+    let map = read_map_file(&lp.map_path()).unwrap();
+    let err = load_courses(&lp, &map).unwrap_err();
+    assert!(matches!(err, CourseLoadError::NotAFile { .. }), "{err}");
+    assert!(err.to_string().contains("c.xml"));
+}
+
+#[cfg(unix)]
+#[test]
+fn course_fifo_is_refused() {
+    let (_d, path) = project_dir("c.xml", LAYOUTS);
+    let fifo = path.parent().unwrap().join("c.xml");
+    std::fs::remove_file(&fifo).unwrap();
+    let status = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let lp = project::load(&path).unwrap();
+    let map = read_map_file(&lp.map_path()).unwrap();
+    let err = load_courses(&lp, &map).unwrap_err();
+    assert!(matches!(err, CourseLoadError::NotAFile { .. }), "{err}");
+}
+
+#[test]
+fn duplicate_correction_is_error_with_line() {
+    let one = "[[numbers]]\ncontrol = \"31\"\nlayout = \"a4\"\ndirection = 1\n";
+    let msg = error_of(&format!("{one}{one}"));
+    // Head 8 lines, layouts 4, the first correction 4: the second control key is on line 18.
+    assert!(
+        msg.contains(&format!("{FILE_NAME}:18:")) && msg.contains("numbers[1].control"),
+        "{msg}"
+    );
+    // The same control in another scope is fine.
+    let (_d, path) = project_dir(
+        "c.xml",
+        &format!(
+            "{LAYOUTS}{one}[[numbers]]\ncontrol = \"31\"\nlayout = \"a3\"\ndirection = 1\n[[numbers]]\ncontrol = \"31\"\ncourse = \"A\"\ndirection = 1\n"
+        ),
+    );
+    assert_eq!(project::load(&path).unwrap().project.numbers.len(), 3);
+}
+
+#[test]
+fn course_names_match_exactly() {
+    let (_d, path) = project_dir(
+        "c.xml",
+        &format!("{LAYOUTS}[[assignments]]\ncourse = \"a\"\nlayout = \"a3\"\n"),
+    );
+    let loaded = load_all(&path).unwrap();
+    assert_eq!(loaded.stale, [Stale::Assignment { course: "a".into() }]);
+}

@@ -98,6 +98,8 @@ pub enum CourseLoadError {
         file: String,
         source: std::io::Error,
     },
+    #[error("course file {file} is not a regular file")]
+    NotAFile { file: String },
     #[error("course file {file} is {bytes} bytes; at most {max} are read")]
     TooLarge {
         file: String,
@@ -154,21 +156,39 @@ pub fn load_courses(
     }))
 }
 
-/// The file's bytes, after its size passed [`MAX_COURSE_FILE_BYTES`].
+/// The file's bytes, after it proved to be a regular file within [`MAX_COURSE_FILE_BYTES`]. The read is
+/// capped again, because a file can grow after the size check.
 fn read_capped(path: &Path, file: &str) -> Result<Vec<u8>, CourseLoadError> {
+    use std::io::Read;
     let io = |source| CourseLoadError::Io {
         file: file.to_string(),
         source,
     };
-    let bytes = std::fs::metadata(path).map_err(io)?.len();
-    if bytes > MAX_COURSE_FILE_BYTES as u64 {
-        return Err(CourseLoadError::TooLarge {
+    let meta = std::fs::metadata(path).map_err(io)?;
+    if !meta.is_file() {
+        return Err(CourseLoadError::NotAFile {
             file: file.to_string(),
-            bytes,
-            max: MAX_COURSE_FILE_BYTES,
         });
     }
-    std::fs::read(path).map_err(io)
+    let too_large = |bytes| CourseLoadError::TooLarge {
+        file: file.to_string(),
+        bytes,
+        max: MAX_COURSE_FILE_BYTES,
+    };
+    if meta.len() > MAX_COURSE_FILE_BYTES as u64 {
+        return Err(too_large(meta.len()));
+    }
+    let limit = MAX_COURSE_FILE_BYTES as u64 + 1;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(io)?
+        .take(limit)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+    if bytes.len() as u64 > MAX_COURSE_FILE_BYTES as u64 {
+        return Err(too_large(bytes.len() as u64));
+    }
+    Ok(bytes)
 }
 
 fn stale_entries(project: &Project, event: &FittedEvent) -> Vec<Stale> {
@@ -221,7 +241,8 @@ impl LayoutNote {
 }
 
 /// The layout a course prints on: the assignment's, otherwise the first layout (with the note).
-/// The project loader guarantees at least one layout and that assignments name known layouts.
+/// Requires at least one layout in `project`; `project::load` guarantees that, and that assignments name
+/// known layouts.
 pub fn layout_for<'a>(
     project: &'a Project,
     course_name: &str,

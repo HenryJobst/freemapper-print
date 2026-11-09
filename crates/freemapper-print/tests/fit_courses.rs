@@ -530,3 +530,30 @@ fn circle_gaps_flip_with_y() {
         [(-30.0, 60.0), (100.0, 150.0)]
     );
 }
+
+#[test]
+fn circle_gaps_flip_for_a_control_placed_by_georef() {
+    let mut ev = luebeck_course();
+    // Control 33 has only lat/lng. One gap crosses +x after the flip: (-30, 60) -> (-60, 30).
+    for stop in ev.courses.iter_mut().flat_map(|c| &mut c.stops) {
+        if stop.control == "33" {
+            stop.circle_gaps = vec![(-30.0, 60.0), (100.0, 150.0)];
+        }
+    }
+    let fitted = fit(ev, &luebeck(), &FitOptions::default()).unwrap();
+    assert!(fitted.notes.contains(&FitNote::YUpDetected));
+    assert!(
+        fitted
+            .notes
+            .contains(&FitNote::PlacedByGeoref(vec!["33".into()]))
+    );
+    let stop = fitted
+        .event
+        .courses
+        .iter()
+        .flat_map(|c| &c.stops)
+        .find(|s| s.control == "33")
+        .unwrap();
+    assert_eq!(stop.circle_gaps, [(-60.0, 30.0), (-150.0, -100.0)]);
+    assert!(stop.circle_gaps[0].0 < 0.0 && stop.circle_gaps[0].1 > 0.0);
+}
