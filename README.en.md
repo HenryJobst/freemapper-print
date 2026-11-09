@@ -61,8 +61,9 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
 takes in a fixed version instead of copying it. freemapper-print uses `freemapper-text` (program texts),
-`freemapper-rules` (rule profiles) and `freemapper-fs` (safe file writing) from it. The map reader (`omap`), the
-renderer (`render`) and the course code (`course`) follow and move there. Until then they stay in this repository.
+`freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing), `freemapper-omap` (map model and reader)
+and `freemapper-course` (courses, course files and where control numbers go) from it. The renderer (`render`)
+moves there later and stays in this repository until then.
 
 ## Examples
 

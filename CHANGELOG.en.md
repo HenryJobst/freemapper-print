@@ -10,8 +10,11 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 ### Changed
 
 - Program texts, rule profiles and file writes now come from freemapper-core (`freemapper-text`,
-  `freemapper-rules`, `freemapper-fs`, version v0.2.0; ADR 0042). The printed sheets and all other output stay
-  the same, and the example PDFs are byte for byte identical.
+  `freemapper-rules`, `freemapper-fs`; ADR 0042). The printed sheets and all other output stay the same, and the
+  example PDFs are byte for byte identical.
+- The map reader, the course file readers, the fit of courses to the map and the placement of control numbers
+  now come from freemapper-core too (`freemapper-omap`, `freemapper-course`, all crates at v0.3.0; ADR 0043).
+  This is an internal change. Users see no difference, and the example PDFs are byte for byte identical.
 - When the project file is a symbolic link, `numbers accept` replaces it with a regular file as it writes. It used
   to write through the link into the target file. The file the link pointed to keeps its content, and the project
   file keeps its permissions (ADR 0041).

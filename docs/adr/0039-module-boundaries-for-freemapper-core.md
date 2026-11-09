@@ -1,7 +1,7 @@
 # 0039. Module boundaries for freemapper-core
 
 Date: 2026-11-09
-Status: Accepted
+Status: Accepted, amended by 0043
 
 ## Context
 
@@ -35,5 +35,10 @@ profiles. `course::load` read the project file and called `numbers::changed_base
 - `course::model::NumberPlacement` still derives `Serialize` and `Deserialize` for the project file. That is
   fine in core as long as serde is a core dependency; the extraction plan has to say so.
 - The describe module depends on `course::xml`; when `course` moves, it takes the loop with it.
+
+Amended by ADR 0043: `omap`, `course` and `placement` are the crates `freemapper-omap` and `freemapper-course`
+now, and the compiler keeps them apart from the app. The tests for `course/` and `omap/` are gone, and so is
+the one for the shared XML loop, since `freemapper-course` keeps the rest of `xml` private. The test for
+`render/` stays and also forbids `placement` and `freemapper_course`.
 
 Source: final review of M3 (I2), ruling R37.

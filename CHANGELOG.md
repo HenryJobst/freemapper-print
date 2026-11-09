@@ -10,8 +10,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 ### Geändert
 
 - Programmtexte, Regelprofile und das Schreiben von Dateien kommen jetzt aus freemapper-core
-  (`freemapper-text`, `freemapper-rules`, `freemapper-fs`, Version v0.2.0; ADR 0042). Die gedruckten Blätter und
-  alle Ausgaben bleiben gleich, die Beispiel-PDFs sind Byte für Byte dieselben.
+  (`freemapper-text`, `freemapper-rules`, `freemapper-fs`; ADR 0042). Die gedruckten Blätter und alle Ausgaben
+  bleiben gleich, die Beispiel-PDFs sind Byte für Byte dieselben.
+- Auch Kartenleser, Bahndateien, Einpassung der Bahnen und die Lage der Postennummern kommen jetzt aus
+  freemapper-core (`freemapper-omap`, `freemapper-course`, alle Crates in Version v0.3.0; ADR 0043). Das ist
+  eine interne Änderung. Für Nutzer ändert sich nichts, die Beispiel-PDFs sind Byte für Byte dieselben.
 - Eine Projektdatei, die ein Link (symbolischer Link) ist, ersetzt `numbers accept` beim Schreiben durch eine
   normale Datei. Bisher schrieb es durch den Link in die Zieldatei. Die Datei, auf die er zeigte, behält ihren
   Inhalt; die Rechte der Projektdatei bleiben erhalten (ADR 0041).
