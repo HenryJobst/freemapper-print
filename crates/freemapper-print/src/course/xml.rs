@@ -1,0 +1,114 @@
+//! What the course readers share: the streaming loop over quick-xml events with the ADR 0019 guards (file
+//! size, no DOCTYPE, only the five predefined entities), attribute and number parsing, and the note list.
+
+use std::collections::HashSet;
+
+use quick_xml::events::{BytesStart, Event};
+use quick_xml::{Reader, XmlVersion};
+
+use super::CourseError;
+use super::model::{CourseNote, MAX_COURSE_FILE_BYTES, MAX_NOTES};
+
+/// Receives the elements and the text of a document.
+pub(super) trait Handler {
+    fn begin(&mut self, e: &BytesStart<'_>) -> Result<(), CourseError>;
+    fn end(&mut self) -> Result<(), CourseError>;
+    fn text(&mut self, s: &str);
+}
+
+/// Runs `h` over `bytes`. An empty element is a `begin` followed by an `end`.
+pub(super) fn drive(bytes: &[u8], h: &mut impl Handler) -> Result<(), CourseError> {
+    if bytes.len() > MAX_COURSE_FILE_BYTES {
+        return Err(CourseError::Limit(format!(
+            "file larger than {} MiB",
+            MAX_COURSE_FILE_BYTES / (1024 * 1024)
+        )));
+    }
+    let mut reader = Reader::from_reader(bytes);
+    loop {
+        match reader.read_event().map_err(xml_err)? {
+            Event::Start(e) => h.begin(&e)?,
+            Event::Empty(e) => {
+                h.begin(&e)?;
+                h.end()?;
+            }
+            Event::End(_) => h.end()?,
+            Event::Text(t) => h.text(&t.xml_content(XmlVersion::Explicit1_0)),
+            Event::CData(t) => h.text(&t.xml_content(XmlVersion::Explicit1_0)),
+            Event::GeneralRef(r) => {
+                if let Some(c) = r.resolve_char_ref().map_err(xml_err)? {
+                    h.text(c.encode_utf8(&mut [0; 4]));
+                } else {
+                    let s = match r.xml_content(XmlVersion::Explicit1_0).as_ref() {
+                        "lt" => "<",
+                        "gt" => ">",
+                        "amp" => "&",
+                        "apos" => "'",
+                        "quot" => "\"",
+                        other => {
+                            return Err(CourseError::Xml(format!("entity &{other}; is refused")));
+                        }
+                    };
+                    h.text(s);
+                }
+            }
+            Event::DocType(_) => return Err(CourseError::Xml("a DOCTYPE is refused".into())),
+            Event::Eof => return Ok(()),
+            _ => {}
+        }
+    }
+}
+
+pub(super) fn xml_err(e: impl std::fmt::Display) -> CourseError {
+    CourseError::Xml(e.to_string())
+}
+
+pub(super) fn local(e: &BytesStart<'_>) -> String {
+    e.local_name().as_ref().to_string()
+}
+
+pub(super) fn attr(e: &BytesStart<'_>, name: &str) -> Result<Option<String>, CourseError> {
+    let a = e.try_get_attribute(name).map_err(xml_err)?;
+    a.map(|a| {
+        a.normalized_value(XmlVersion::Explicit1_0)
+            .map(|v| v.into_owned())
+    })
+    .transpose()
+    .map_err(xml_err)
+}
+
+/// A finite number.
+pub(super) fn number(s: &str, what: &str) -> Result<f64, CourseError> {
+    match s.trim().parse::<f64>() {
+        Ok(v) if v.is_finite() => Ok(v),
+        _ => Err(CourseError::Xml(format!("bad number in {what}: {s:?}"))),
+    }
+}
+
+/// The notes of one read: deduplicated, in first-seen order, at most `MAX_NOTES` and then one
+/// `NotesTruncated`.
+#[derive(Default)]
+pub(super) struct Notes {
+    list: Vec<CourseNote>,
+    seen: HashSet<CourseNote>,
+    truncated: bool,
+}
+
+impl Notes {
+    pub(super) fn add(&mut self, n: CourseNote) {
+        if self.truncated || self.seen.contains(&n) {
+            return;
+        }
+        if self.list.len() >= MAX_NOTES {
+            self.truncated = true;
+            self.list.push(CourseNote::NotesTruncated);
+            return;
+        }
+        self.seen.insert(n.clone());
+        self.list.push(n);
+    }
+
+    pub(super) fn into_vec(self) -> Vec<CourseNote> {
+        self.list
+    }
+}

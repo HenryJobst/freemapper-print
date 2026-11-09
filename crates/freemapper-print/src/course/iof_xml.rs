@@ -18,78 +18,28 @@
 
 use std::collections::HashSet;
 
-use quick_xml::events::{BytesStart, Event};
-use quick_xml::{Reader, XmlVersion};
+use quick_xml::events::BytesStart;
 
 use super::CourseError;
 use super::model::*;
+use super::xml::{Handler, Notes, attr, drive, local, number};
 
 /// Parses the bytes of an IOF XML 3.0 `CourseData` file.
 pub fn read_iof_xml(bytes: &[u8]) -> Result<RawEvent, CourseError> {
-    if bytes.len() > MAX_COURSE_FILE_BYTES {
-        return Err(CourseError::Limit(format!(
-            "file larger than {} MiB",
-            MAX_COURSE_FILE_BYTES / (1024 * 1024)
-        )));
-    }
     let mut state = State::default();
-    let mut reader = Reader::from_reader(bytes);
-    loop {
-        match reader.read_event().map_err(xml_err)? {
-            Event::Start(e) => state.begin(&e)?,
-            Event::Empty(e) => {
-                state.begin(&e)?;
-                state.end()?;
-            }
-            Event::End(_) => state.end()?,
-            Event::Text(t) => state.text.push_str(&t.xml_content(XmlVersion::Explicit1_0)),
-            Event::CData(t) => state.text.push_str(&t.xml_content(XmlVersion::Explicit1_0)),
-            Event::GeneralRef(r) => {
-                if let Some(c) = r.resolve_char_ref().map_err(xml_err)? {
-                    state.text.push(c);
-                } else {
-                    match r.xml_content(XmlVersion::Explicit1_0).as_ref() {
-                        "lt" => state.text.push('<'),
-                        "gt" => state.text.push('>'),
-                        "amp" => state.text.push('&'),
-                        "apos" => state.text.push('\''),
-                        "quot" => state.text.push('"'),
-                        other => {
-                            return Err(CourseError::Xml(format!("entity &{other}; is refused")));
-                        }
-                    }
-                }
-            }
-            Event::DocType(_) => return Err(CourseError::Xml("a DOCTYPE is refused".into())),
-            Event::Eof => break,
-            _ => {}
-        }
-    }
+    drive(bytes, &mut state)?;
     state.finish()
 }
 
-fn xml_err(e: impl std::fmt::Display) -> CourseError {
-    CourseError::Xml(e.to_string())
-}
-
-fn local(e: &BytesStart<'_>) -> String {
-    e.local_name().as_ref().to_string()
-}
-
-fn attr(e: &BytesStart<'_>, name: &str) -> Result<Option<String>, CourseError> {
-    let a = e.try_get_attribute(name).map_err(xml_err)?;
-    a.map(|a| {
-        a.normalized_value(XmlVersion::Explicit1_0)
-            .map(|v| v.into_owned())
-    })
-    .transpose()
-    .map_err(xml_err)
-}
-
-fn number(s: &str, what: &str) -> Result<f64, CourseError> {
-    match s.trim().parse::<f64>() {
-        Ok(v) if v.is_finite() => Ok(v),
-        _ => Err(CourseError::Xml(format!("bad number in {what}: {s:?}"))),
+impl Handler for State {
+    fn begin(&mut self, e: &BytesStart<'_>) -> Result<(), CourseError> {
+        State::begin(self, e)
+    }
+    fn end(&mut self) -> Result<(), CourseError> {
+        State::end(self)
+    }
+    fn text(&mut self, s: &str) {
+        self.text.push_str(s);
     }
 }
 
@@ -160,9 +110,7 @@ struct State {
     courses: Vec<Course<RawPoint>>,
     /// Courses seen so far, including those left out.
     course_count: usize,
-    notes: Vec<CourseNote>,
-    note_set: HashSet<CourseNote>,
-    notes_truncated: bool,
+    notes: Notes,
     event_name: Option<String>,
     map_scale: Option<u32>,
     control: Option<ControlB>,
@@ -172,16 +120,7 @@ struct State {
 
 impl State {
     fn note(&mut self, n: CourseNote) {
-        if self.notes_truncated || self.note_set.contains(&n) {
-            return;
-        }
-        if self.notes.len() >= MAX_NOTES {
-            self.notes_truncated = true;
-            self.notes.push(CourseNote::NotesTruncated);
-            return;
-        }
-        self.note_set.insert(n.clone());
-        self.notes.push(n);
+        self.notes.add(n);
     }
 
     fn parent(&self) -> &str {
@@ -493,7 +432,7 @@ impl State {
                 event_name: self.event_name,
                 map_scale: self.map_scale,
             },
-            notes: self.notes,
+            notes: self.notes.into_vec(),
         })
     }
 }

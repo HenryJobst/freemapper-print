@@ -184,14 +184,17 @@ pub struct Stop {
     /// Where the file puts the number text, relative to the circle centre (IOF XML `MapTextPosition`).
     /// Converted to `number` once circle and box sizes are known.
     pub number_text_at: Option<Offset>,
-    /// Angle ranges in degrees where the circle is not drawn.
+    /// Angle ranges `(start, stop)` in degrees where the circle is not drawn, counter-clockwise from the
+    /// file's x axis in the file's axis direction (Purple Pen: y up). Like Purple Pen, `stop` lies in 0..360
+    /// and `start` below it, so a range across east starts negative.
     pub circle_gaps: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Leg<P> {
     pub bends: Vec<P>,
-    /// Distance ranges along the leg in map mm where the line is not drawn.
+    /// Distance ranges `(from, to)` in file mm where the line is not drawn, measured along the leg (through
+    /// its bends) from the centre of the leg's first control.
     pub gaps: Vec<(f64, f64)>,
     pub marked_route: bool,
 }
@@ -223,6 +226,7 @@ pub enum Special<P> {
         rings: Vec<Vec<P>>,
         courses: CourseFilter,
     },
+    /// A forbidden route. Purple Pen marks one with a single cross, which is a path of one point.
     ForbiddenRoute {
         path: Vec<P>,
         courses: CourseFilter,
@@ -243,6 +247,9 @@ pub enum Special<P> {
         pt: P,
         courses: CourseFilter,
     },
+    /// Text in a box. `pt` is the box's top-left corner as the file gives it (Purple Pen: the corner with
+    /// the smallest x and the largest y, y up); `size_mm` is the font height, or the box height when the file
+    /// leaves the font height to the box.
     Text {
         pt: P,
         text: String,
@@ -320,6 +327,9 @@ pub struct Description {
     pub columns: [Option<String>; 6],
     /// The description standard, e.g. "2018".
     pub standard: String,
+    /// Text in column F, such as the dimensions `5x5|3`, when the file gives text instead of or besides a
+    /// symbol.
+    pub column_f_text: Option<String>,
 }
 
 /// Things read but not supported.
@@ -339,4 +349,7 @@ pub enum CourseNote {
     NoDescriptions,
     /// The map issue point of this control code is used as the start.
     MapIssueAsStart(String),
+    /// The named course has forks or loops (Purple Pen variations) and is left out. Purple Pen's IOF XML
+    /// export writes each variation as its own course.
+    Variations(String),
 }

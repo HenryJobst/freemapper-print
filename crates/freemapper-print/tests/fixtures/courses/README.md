@@ -6,6 +6,9 @@ this repository.
 
 The IOF datastandard-v3 examples were not copied: their licence could not be confirmed.
 
+The Purple Pen fixtures in `ppen/` come from Purple Pen's repository under its BSD licence; `ppen/README.md`
+names source, commit and licence.
+
 | File | Purpose |
 |---|---|
 | `y-up.xml` | Two courses; `MapPosition` values with y pointing up, as Purple Pen, Condes and OCAD write them. The reader keeps the values; detection happens later. Also `Position` (lat/lng), length and climb, a crossing point. |

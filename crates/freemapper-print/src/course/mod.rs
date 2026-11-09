@@ -4,7 +4,9 @@
 pub mod fit;
 pub mod iof_xml;
 pub mod model;
+pub mod ppen;
 mod tm;
+mod xml;
 
 pub use fit::{Fit, FitError, FitNote, SkipReason, fit};
 pub use iof_xml::read_iof_xml;
@@ -13,6 +15,7 @@ pub use model::{
     Description, FittedEvent, Leg, NumberPlacement, RawEvent, RawPoint, SourceFormat, Special,
     Stop,
 };
+pub use ppen::read_ppen;
 
 /// Why a course file could not be read.
 #[derive(Debug, thiserror::Error)]

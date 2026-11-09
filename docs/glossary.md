@@ -119,6 +119,8 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Postennummer | control number | Laufende Nummer eines Postens in einer Bahn, auf der Karte neben dem Kreis. | `control_number` |
 | Strecke | leg | Verbindung zwischen zwei aufeinanderfolgenden Posten. | `Leg` |
 | Knickpunkt | bend | Punkt, an dem eine Strecke abknickt, z. B. um ein Sperrgebiet herum. | `bends` |
+| Streckenlücke | leg gap | Abschnitt einer Strecke, der nicht gezeichnet wird, damit die Linie wichtige Kartendetails nicht verdeckt; Abstand vom Mittelpunkt des ersten Postens entlang der Strecke in Millimetern der Bahndatei. | `Leg::gaps` |
+| Kreislücke | circle gap | Winkelbereich, in dem ein Postenkreis nicht gezeichnet wird; Grad gegen den Uhrzeigersinn ab Osten in der Achsrichtung der Bahndatei. Purple Pen speichert sie je Posten und Maßstab; eine Bahn nimmt die ihres Druckmaßstabs. | `Stop::circle_gaps` |
 | Pflichtstrecke | marked route | Abgeflaggter Weg, dem der Läufer folgen muss, z. B. vom letzten Posten zum Ziel. Wird in der Bahnlegung festgelegt. | `MarkedRoute` |
 | Nummernlage | number placement | Richtung und Abstand der Postennummer vom Kreis in Druckmillimetern. Die Bahnlegung legt sie fest; freemapper-print korrigiert sie je Layout oder je Blatt (ADR 0015). | `NumberPlacement` |
 | automatische Platzierung | automatic placement | Wahl der Nummernlage durch das gemeinsame Platzierungsmodul. In freemapper-print nur, wenn die Bahndatei keine Lage enthält, und als Vorschlag bei Konflikten. | `auto_place` |
@@ -131,8 +133,8 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Bahnhinweis | course note | Meldung, dass beim Lesen etwas gefunden, aber nicht unterstützt wurde (unbekanntes Element, Gabelung, fehlende Beschreibungen). | `CourseNote` |
 | Bahneinpassung | course fitting | Umrechnung der Punkte einer Bahndatei in Kartenkoordinaten (µm, y nach unten). Beide Lesarten der y-Achse werden probiert; eine passt, wenn jeder Posten im Rahmen der Kartenobjekte plus 10 mm liegt. Ist die Karte in UTM georeferenziert und nennt die Datei Breite und Länge, entscheiden diese und werden geprüft: mehr als 20 m Abweichung ist ein Fehler. Posten nur mit Breite und Länge setzt die Georeferenzierung der Karte. Ein Maßstab in der Bahndatei muss dem der Karte gleichen. Die Projektdatei kann die y-Achse festlegen und die Prüfung mit Breite und Länge abschalten (ADR 0032). | `course::fit`, `Fit`, `FitNote`, `FitError`, `FitOptions` |
 | y nach oben | y-up | Achsrichtung der Kartenpositionen in einer Bahndatei, wie Purple Pen, Condes und OCAD sie schreiben; der IOF-Standard und OOM zählen y nach unten. Passen beide Lesarten und entscheidet nichts zwischen ihnen, gilt y nach oben, mit einer Warnung. | `YAxis::Up`, `FitNote::YUpDetected`, `FitNote::OrientationAssumed` |
-| Gabelung | forking | Varianten einer Bahn, z. B. in Staffeln. | `Forking` |
-| Purple-Pen-Projekt | Purple Pen project | Native XML-Datei von Purple Pen (`.ppen`). | `PurplePenProject` |
+| Gabelung | forking | Varianten einer Bahn, z. B. in Staffeln. In IOF-XML hat jede Variante ihre eigene Bahn derselben Bahnfamilie (`CourseNote::Forked`). Eine Bahn mit Purple-Pen-Varianten (Gabeln oder Schleifen in einer `.ppen`) wird ausgelassen und gemeldet; Purple Pens IOF-XML-Export schreibt jede Variante als eigene Bahn. | `Course::family`, `CourseNote::Forked`, `CourseNote::Variations` |
+| Purple-Pen-Projekt | Purple Pen project | Native XML-Datei von Purple Pen (`.ppen`) mit Posten, Bahnen, Strecken (Knickpunkte, Lücken, Abflaggung), Kreislücken je Maßstab, Postenbeschreibungen und Sonderobjekten. Posten ohne eigenen Code (Start, Ziel, Kartenwechsel, Querungsstelle, Kartenausgabe) bekommen die Codes aus Purple Pens IOF-XML-Export: `STA1`, `FIN1`, `XCHG1`, `CROSS1`, dazu `ISSUE1`. | `course::read_ppen` |
 
 ## Abdeckungen / masks
 
