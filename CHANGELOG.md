@@ -27,6 +27,13 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   `<Name>.pdf.part`. Zwei Läufe im selben Ordner teilen sich keine Teildatei mehr. `export` löscht Teildateien im
   `out`-Ordner des Projekts, die älter als eine Stunde sind.
 - Ein fehlender `--out-dir` wird wie bisher gemeldet (der Ordner muss vorher existieren).
+- Die Karten in den Tests und in allen vier Beispielen stammen jetzt aus freemapper 0.8.0 (Commit `a2b41b4`). Sie
+  liegen auf der Grundfläche der Sprintkarte, und Parks sind gelb. Die PDFs und Vorschaubilder der Beispiele sind
+  neu erzeugt und zeigen beides. freemapper zeichnet Wege aus festem Kies nicht mehr als Wege der Karte, deshalb
+  stehen sechs Posten an neuen Stellen: Posten 36 der Lübecker Bahn A an einer Gebäudeecke (die Bahn ist jetzt
+  2,5 km lang statt 2,6 km) und fünf Posten des Trainings im Viktoriapark an Gebäudeecken und an einer Ecke der
+  offenen Fläche. Die Kandidaten von freemapper, darunter Postenstandorte und unerreichbare Durchgänge, liegen in
+  einer eigenen Vorlage und kommen nicht aufs Blatt. Ein neuer Test prüft das.
 
 ### Hinzugefügt
 

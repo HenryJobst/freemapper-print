@@ -34,3 +34,17 @@ Source: freemapper ADR 0020; brainstorming 2026-11-08.
   because freemapper is about to regenerate that map. Both wait for M3 or later; `examples/README` says so.
 
 Source: ledger rulings of 2026-11-08 and 2026-11-09 (fixture source, fictional CC0 logos, examples of Task 11).
+
+## Addendum 2026-11-10 (freemapper v0.8.0)
+
+- The maps in the test fixtures and in all four examples come from freemapper v0.8.0 (commit `a2b41b4`), with the
+  base area (ADR 0044) and yellow parks. Each copy keeps its `freemapper.toml` and `ATTRIBUTION.txt`. The template
+  `templates/candidates.omap` that the maps name is not copied: freemapper-print prints no templates, and
+  `tests/candidates.rs` checks that candidates never reach the page.
+- When a refresh removes the feature a control stands on, the control moves to a nearby vertex of a feature the
+  new map still has: a building corner if one fits, otherwise a corner of a mapped area such as open land. The
+  course length stays close to the old one, the description follows the new feature, and the example's README
+  names each move. In v0.8.0 the gravel paths became
+  candidates; one control in Lübeck and five in the Viktoriapark moved.
+
+Source: refresh to freemapper v0.8.0, 2026-11-10.
