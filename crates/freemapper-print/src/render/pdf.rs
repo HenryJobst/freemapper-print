@@ -6,10 +6,10 @@ use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use pdf_writer::types::{LineCapStyle, LineJoinStyle, TextRenderingMode};
+use pdf_writer::types::{BlendMode, LineCapStyle, LineJoinStyle, TextRenderingMode};
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
-use super::draw::{FillRule, Shape};
+use super::draw::{FillRule, Primitive, Shape};
 use super::fonts::{PageFonts, face};
 use super::geometry::Pt;
 use super::image::RasterImage;
@@ -254,35 +254,35 @@ impl PdfMeta {
     }
 }
 
-/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
-/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
-/// not show.
-pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
-    let (page_w, page_h) = page.page_mm;
-    let t = Transform::new(page_h);
-    let colours = &page.colours;
+/// `primitives` with the CMYK of their map colours.
+fn map_run<'a>(
+    colours: &'a [RenderColour],
+    primitives: &'a [Primitive],
+) -> impl Iterator<Item = ([f64; 4], &'a Shape)> + 'a {
+    primitives
+        .iter()
+        .map(|p| (map_cmyk(colours, p.priority), &p.shape))
+}
 
-    // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
-    let items = &page.primitives;
+/// The resource name of the graphics state that paints the course overprint with the blend mode
+/// Multiply.
+const MULTIPLY: &[u8] = b"Mul";
 
-    let mut content = Content::new();
-    let mut fonts = PageFonts::new();
-    // One clip block for the page, and nested in it one for each run of shapes clipped to the
-    // same rings (the lines of one area pattern).
-    if !items.is_empty() {
-        let (cx0, cy0) = t.pt((page.clip.min.0, page.clip.max.1));
-        let (cx1, cy1) = t.pt((page.clip.max.0, page.clip.min.1));
-        content.save_state();
-        content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
-        content.clip_nonzero();
-        content.end_path();
-    }
+/// Paints `shapes` in order, each in its CMYK. Shapes clipped to the same rings share one clip
+/// block, nested in it one for each run of shapes clipped to the same rings (the lines of one area
+/// pattern); every block is closed at the end.
+fn paint_run<'a>(
+    content: &mut Content,
+    t: &Transform,
+    shapes: impl IntoIterator<Item = ([f64; 4], &'a Shape)>,
+    fonts: &mut PageFonts,
+) {
     // The clip blocks open, outermost first. A pattern inside a pattern clips its shapes twice;
     // each level stays open while the next shapes share it.
-    let mut open: Vec<&Arc<[Vec<Pt>]>> = Vec::new();
-    for primitive in items {
+    let mut open: Vec<&'a Arc<[Vec<Pt>]>> = Vec::new();
+    for (cmyk, shape) in shapes {
         let mut chain = Vec::new();
-        let mut shape = &primitive.shape;
+        let mut shape = shape;
         while let Shape::Clipped { rings, inner } = shape {
             chain.push(rings);
             shape = inner;
@@ -300,21 +300,74 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
         }
         open.truncate(kept);
         for rings in &chain[kept..] {
-            begin_clip(&mut content, &t, rings);
+            begin_clip(content, t, rings);
             open.push(rings);
         }
-        paint(
-            &mut content,
-            &t,
-            map_cmyk(colours, primitive.priority),
-            shape,
-            &mut fonts,
-        );
+        paint(content, t, cmyk, shape, fonts);
     }
     for _ in &open {
         content.restore_state();
     }
-    if !items.is_empty() {
+}
+
+/// The one-page PDF of `page`: the MediaBox is the page size, one page millimetre is one PDF
+/// millimetre, and every primitive is clipped to `page.clip`. Also returns what the page could
+/// not show.
+pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInfo), PdfError> {
+    let (page_w, page_h) = page.page_mm;
+    let t = Transform::new(page_h);
+    let colours = &page.colours;
+
+    // The page's primitives are in paint order already ([`RenderedPage::primitives`]).
+    let items = &page.primitives;
+
+    let mut content = Content::new();
+    let mut fonts = PageFonts::new();
+    let overprint = &page.overprint;
+    // One clip block for the page: the map and the course overprint lie inside the frame.
+    let clipped = !items.is_empty() || !overprint.is_empty();
+    if clipped {
+        let (cx0, cy0) = t.pt((page.clip.min.0, page.clip.max.1));
+        let (cx1, cy1) = t.pt((page.clip.max.0, page.clip.min.1));
+        content.save_state();
+        content.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+        content.clip_nonzero();
+        content.end_path();
+    }
+    // The lower purple goes before the first primitive of the full-strength colour painted first
+    // (ADR 0034), or after all of them.
+    let split = match overprint.below_priority {
+        Some(below) if !overprint.lower.is_empty() => items
+            .iter()
+            .position(|p| p.priority <= below)
+            .unwrap_or(items.len()),
+        _ => items.len(),
+    };
+    paint_run(
+        &mut content,
+        &t,
+        map_run(colours, &items[..split]),
+        &mut fonts,
+    );
+    let purple = overprint.colour.cmyk;
+    let layer = |content: &mut Content, fonts: &mut PageFonts, shapes: &[Shape]| {
+        if shapes.is_empty() {
+            return;
+        }
+        content.save_state();
+        content.set_parameters(Name(MULTIPLY));
+        paint_run(content, &t, shapes.iter().map(|s| (purple, s)), fonts);
+        content.restore_state();
+    };
+    layer(&mut content, &mut fonts, &overprint.lower);
+    paint_run(
+        &mut content,
+        &t,
+        map_run(colours, &items[split..]),
+        &mut fonts,
+    );
+    layer(&mut content, &mut fonts, &overprint.upper);
+    if clipped {
         content.restore_state();
     }
 
@@ -364,6 +417,11 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     p.contents(contents);
     let mut resources = p.resources();
     resources.fonts().pairs(fonts.resources());
+    // Only a page with a course overprint has the graphics state, so other pages stay as they were.
+    let multiply = (!overprint.is_empty()).then(|| next.bump());
+    if let Some(id) = multiply {
+        resources.ext_g_states().pair(Name(MULTIPLY), id);
+    }
     if !image_refs.is_empty() {
         let names: Vec<String> = (0..image_refs.len()).map(image_name).collect();
         resources.x_objects().pairs(
@@ -385,6 +443,9 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     fonts.write(&mut pdf)?;
     for (image, (id, mask)) in images.iter().zip(&image_refs) {
         write_image(&mut pdf, image, *id, *mask);
+    }
+    if let Some(id) = multiply {
+        pdf.ext_graphics(id).blend_mode(BlendMode::Multiply);
     }
     pdf.document_info(info)
         .title(TextStr(&meta.title))
@@ -453,6 +514,7 @@ mod tests {
             centre_mm: (0.0, 0.0),
             colours: colours(),
             sheet: Vec::new(),
+            overprint: Default::default(),
         }
     }
 

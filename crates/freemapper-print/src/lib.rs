@@ -8,6 +8,7 @@ pub mod course;
 pub mod export;
 pub mod omap;
 pub mod output;
+pub mod overprint;
 pub mod print;
 pub mod project;
 pub mod render;

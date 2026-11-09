@@ -97,6 +97,16 @@ pub fn char_width(c: char, face: FontFace) -> f64 {
     f64::from(face.advance(face.glyph(c).unwrap_or(GlyphId(0)))) / face.units_per_em()
 }
 
+/// The cap height of `face` in em, from its OS/2 table. Arimo's digits are as tall as its capitals
+/// (test `digits_are_as_tall_as_capitals`), so a control number of height h is set at h / cap height.
+pub fn cap_height(face: FontFace) -> f64 {
+    let parsed = face.parsed();
+    // Every Arimo face has an OS/2 table version 2 or later; the fallback is the ascent.
+    parsed
+        .capital_height()
+        .map_or(ASCENT, |h| f64::from(h) / face.units_per_em())
+}
+
 /// Arimo's ascent and line spacing in em, from its hhea table: ascender 1854, descender −434,
 /// line gap 67 at 2048 units per em, the same as Arial (reference §6; test
 /// `metrics_follow_the_hhea_table`).
@@ -390,6 +400,21 @@ mod tests {
             assert!((-f64::from(f.descender()) / em - DESCENT).abs() < 1e-9);
             let spacing = f64::from(f.ascender() - f.descender() + f.line_gap()) / em;
             assert!((spacing - LINE_SPACING).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn digits_are_as_tall_as_capitals() {
+        let face = FontFace::Regular;
+        let f = face.parsed();
+        let em = face.units_per_em();
+        let cap = cap_height(face);
+        assert!(cap > 0.6 && cap < 0.8, "{cap}");
+        for d in '0'..='9' {
+            let bbox = f.glyph_bounding_box(face.glyph(d).unwrap()).unwrap();
+            // Round digits overshoot the cap height by a few units.
+            let top = f64::from(bbox.y_max) / em;
+            assert!((top - cap).abs() < 0.02, "{d}: {top} vs {cap}");
         }
     }
 

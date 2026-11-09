@@ -7,6 +7,7 @@ pub use super::draw::{FillRule, Primitive, Shape};
 pub use super::geometry::Pt;
 pub use super::image::{ImageError, RasterImage};
 pub use super::symbols::{Cap, Join, RenderColour};
+pub use crate::overprint::Overprint;
 
 /// An axis-parallel rectangle on paper (mm, y down).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +37,10 @@ pub struct RenderedPage {
     /// The sheet elements (title, texts, logos, scale bar, footer), painted after all map
     /// primitives in this order, over the whole page: they are not clipped to `clip`.
     pub sheet: Vec<SheetItem>,
+    /// The course overprint, clipped to `clip` like the map: its lower layer among the map primitives
+    /// ([`Overprint::below_priority`]), its upper layer after them, both before the sheet layer. Empty
+    /// on a page without a course.
+    pub overprint: Overprint,
 }
 
 /// A colour of a sheet element, given directly instead of by map colour priority. CMYK, so that

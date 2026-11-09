@@ -256,6 +256,7 @@ fn render_page_within(
         centre_mm: centre,
         colours: symbols.colours,
         sheet: Vec::new(),
+        overprint: Default::default(),
     };
     let report = PrintReport {
         page_mm,

@@ -184,6 +184,7 @@ mod tests {
             centre_mm: (0.0, 0.0),
             colours: Vec::new(),
             sheet: items,
+            overprint: Default::default(),
         };
         let (pdf, _) = write_pdf(&page, &PdfMeta::new("t")).unwrap();
         let content = String::from_utf8(content_of(&pdf)).unwrap();
