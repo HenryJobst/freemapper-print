@@ -281,11 +281,29 @@ const LUEBECK: &str = concat!(
 fn luebeck_north_lines_drawn_info_block_only_on_request() {
     let mut doc =
         freemapper_print::omap::read::read_map_file(std::path::Path::new(LUEBECK)).unwrap();
-    // Only the peripheral information: nine north lines (601) and the information block (991–994).
-    doc.parts.retain(|p| p.name == "peripheral information");
-    let codes: Vec<&str> = doc.parts[0]
-        .objects
+    // Only the north lines and the information block. Since freemapper v0.5.0 the nine north
+    // lines (601) lie in the default part with the tag `north-lines`; the part "peripheral
+    // information" holds only the information block (991–994), tagged `sheet`.
+    let info = doc
+        .parts
         .iter()
+        .find(|p| p.name == "peripheral information")
+        .expect("part peripheral information");
+    assert!(
+        info.objects
+            .iter()
+            .all(|o| doc.symbol_set.code_of(o.symbol_id) != Some("601"))
+    );
+    let set = doc.symbol_set.clone();
+    for part in &mut doc.parts {
+        let keep_all = part.name == "peripheral information";
+        part.objects
+            .retain(|o| keep_all || set.code_of(o.symbol_id) == Some("601"));
+    }
+    let codes: Vec<&str> = doc
+        .parts
+        .iter()
+        .flat_map(|p| &p.objects)
         .filter_map(|o| doc.symbol_set.code_of(o.symbol_id))
         .collect();
     assert_eq!(codes.iter().filter(|c| **c == "601").count(), 9);

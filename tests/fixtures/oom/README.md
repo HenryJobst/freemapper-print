@@ -91,7 +91,7 @@ Nach dem ersten Lauf mit echten OOM-Dateien hier eintragen.
 ## Probedruck
 
 Der Test prüft Bilder, nicht Papier. Ob der Maßstab auf dem Drucker wirklich stimmt, zeigt nur ein Ausdruck.
-Eine Maßstabsleiste gibt es erst mit M2, deshalb misst du eine bekannte Strecke nach. Der Test
+Der Befehl `render` druckt keine Kontrollstrecke, die gibt es nur auf den Blättern eines Layouts (`export`). Deshalb misst du hier eine bekannte Strecke nach. Der Test
 `probedruck_distances_match_readme` rechnet die Zahlen unten aus der Karte nach, sie veralten also nicht still.
 
 Gemessen wird zwischen den Westspitzen zweier großer Gebäude (Symbol 521) am linken und am rechten Kartenrand.

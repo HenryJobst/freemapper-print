@@ -1297,14 +1297,24 @@ mod tests {
 
     #[test]
     fn luebeck_keeps_its_tagged_north_lines() {
-        // Its 601 objects carry the sheet tag (ADR 0023) and still count.
+        // Since freemapper v0.5.0 its nine 601 objects lie in the default part, tagged
+        // `freemapper:source=north-lines`, and count as the map's own lines.
         let map = luebeck();
-        assert!(map.parts.iter().flat_map(|p| &p.objects).any(|o| {
-            o.tags
+        let tagged = |part: &str| {
+            map.parts
                 .iter()
-                .any(|(k, v)| k == "freemapper:source" && v == "sheet")
-                && map.symbol_set.code_of(o.symbol_id) == Some("601")
-        }));
+                .filter(|p| p.name == part)
+                .flat_map(|p| &p.objects)
+                .filter(|o| {
+                    o.tags
+                        .iter()
+                        .any(|(k, v)| k == "freemapper:source" && v == "north-lines")
+                        && map.symbol_set.code_of(o.symbol_id) == Some("601")
+                })
+                .count()
+        };
+        assert_eq!(tagged("default part"), 9);
+        assert_eq!(tagged("peripheral information"), 0);
         let (_, report) = sheet(&map, &auto());
         assert_eq!(added(&report), None);
         assert!(
