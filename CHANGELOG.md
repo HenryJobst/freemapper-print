@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.4.0] - 2026-11-10
+
 ### Geändert
 
 - Programmtexte, Regelprofile und das Schreiben von Dateien kommen jetzt aus freemapper-core

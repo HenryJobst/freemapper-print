@@ -31,6 +31,15 @@ Neu in 0.2.0:
 - Meldungen und Hilfe auf Deutsch und Englisch;
 - ein volles Laufwerk hinterlässt kein halbes PDF.
 
+Neu in 0.4.0:
+
+- die Grundfläche der Sprintkarten von freemapper wird mitgedruckt, immer und ohne Schalter; sie bestimmt weder
+  die Seitenmitte noch den Überstand (am besten in Farbe drucken);
+- die Karten der Beispiele stammen aus freemapper 0.8.0 (Grundfläche, gelbe Parks), die Beispiele sind neu
+  erzeugt;
+- Programmtexte, Regelprofile, Kartenleser und Bahncode kommen aus freemapper-core. Für Nutzer ändert sich nichts
+  außer einer Schutzregel: Das Programm schreibt nie durch einen Link am Ziel.
+
 Neu in 0.3.0 (Meilenstein M3):
 
 - Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Condes, OCAD-Bahnlegung, der
@@ -104,8 +113,8 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.3.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.3.0) vom
-9. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Aktuelle Version ist [v0.4.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.4.0) vom
+10. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Abdeckungen für Fenster- und Korridor-OL

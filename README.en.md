@@ -31,6 +31,14 @@ New in 0.2.0:
 - messages and help in German and English;
 - a full disk leaves no half-written PDF.
 
+New in 0.4.0:
+
+- the base area of freemapper's sprint maps is printed with the map, always and without a switch; it decides
+  neither the page centre nor the overflow (print in colour for best results);
+- the maps of the examples come from freemapper 0.8.0 (base area, yellow parks), and the examples are rebuilt;
+- program texts, rule profiles, map reader and course code come from freemapper-core. Nothing changes for users
+  apart from a safety rule: the program never writes through a link at the target.
+
 New in 0.3.0 (milestone M3):
 
 - courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Condes, OCAD course setting,
@@ -101,8 +109,8 @@ The next milestone adds window and corridor orienteering (M4).
 
 ## Status
 
-The current version is [v0.3.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.3.0) of
-9 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+The current version is [v0.4.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.4.0) of
+10 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Masks for window and corridor orienteering (M4) follow.

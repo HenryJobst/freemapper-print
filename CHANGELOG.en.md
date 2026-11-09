@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-10
+
 ### Changed
 
 - Program texts, rule profiles and file writes now come from freemapper-core (`freemapper-text`,
