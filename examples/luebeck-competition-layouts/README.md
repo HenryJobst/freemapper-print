@@ -43,16 +43,18 @@ einem weißen Kasten in der Karte.
 
 ## Was `check` meldet
 
-Das A3-Blatt hat keine Hinweise. Das A4-Blatt hat einen, und der ist gewollt: Die Karte ist in 1:4000 14,0 mm
+Beide Blätter sind in Ordnung, `check` endet mit Exit-Code 0. Auf dem A4-Blatt ist die Karte in 1:4000 14,0 mm
 höher als der Kartenausschnitt (210 mm Papier minus zweimal 10 mm Passepartout). Das Programm schneidet oben und
-unten je 7 mm ab und verkleinert nichts. Für einen echten Wettkampf legt man mit `map_frame.centre_map_mm` den
-Ausschnitt auf das Wettkampfgebiet. `check` endet deshalb mit Exit-Code 1.
+unten je 7 mm ab und verkleinert nichts. Das ist hier gewollt, deshalb steht im Layout `map_frame.crop = true`:
+Der Überstand erscheint als Hinweis und zählt nicht für den Exit-Code. Ohne `crop` wäre er eine Warnung, und
+`check` endete mit 1. Für einen echten Wettkampf legt man mit `map_frame.centre_map_mm` den Ausschnitt auf das
+Wettkampfgebiet.
 
 ```
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Warnung: Die Karte passt nicht auf die Seite. Sie ist 14,0 mm zu hoch für den bedruckbaren Bereich. Versuchen Sie Papier im Format A3, die andere Ausrichtung oder einen Druckmaßstab mit größerer Zahl, zum Beispiel 1:5000 (nicht normgerecht, nur fürs Training).
+Hinweis: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
-Layouts mit Hinweisen: 1 von 2.
+2 Layouts geprüft, keine Hinweise.
 ```
 
 ## So ist es entstanden
@@ -64,22 +66,24 @@ freemapper-print --lang de init . --map luebeck.omap --title "Stadtsprint Lübec
 ```
 
 ```
+Kartenart: Sprintkarten, wie in der freemapper.toml neben der Karte angegeben.
+Suche ein A4- oder A3-Blatt, das die Karte in 1:4000 zeigt …
 ./freemapper-print.toml geschrieben, mit einem Layout a3: A3, Passepartout 14 mm, Druckmaßstab 1:4000, für Sprintkarten.
-Das Projekt schlägt eine Äquidistanz von 2,5 m vor, üblich für Sprintkarten. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
+Das Projekt schlägt eine Äquidistanz von 2 m vor, üblich für Sprintkarten. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
 Als Nächstes freemapper-print check ./freemapper-print.toml aufrufen.
 ```
 
 Danach ist die Projektdatei von Hand bearbeitet:
 
 - `[event]`: Datum und Ausrichter ergänzt.
-- `map.contour_interval_m` von 2,5 auf 2 gesetzt. So steht es im Informationsblock der Karte („Maßstab 1:4000 ·
-  Äquidistanz 2 m“).
+- Die vorgeschlagene Äquidistanz von 2 m mit dem Informationsblock der Karte verglichen („Maßstab 1:4000 ·
+  Äquidistanz 2 m“) und bestätigt.
 - `[print]` mit den zwei Quellenzeilen ergänzt.
 - Im Titelblock die Zeile mit Datum und Ausrichter ergänzt und „Äquidistanz“ vor `{contour_interval}`
   geschrieben.
 - Die beiden Logos als gemeinsame Elemente ergänzt.
 - Das Layout `a3` von `init` (1:4000, 14 mm) durch die Layouts `a4-4000` und `a3-3000` ersetzt, beide quer und
-  mit 10 mm Passepartout, jedes mit seinem Text `classes`.
+  mit 10 mm Passepartout, jedes mit seinem Text `classes`; beim A4-Layout `crop = true`.
 
 Dann prüfen und die PDFs schreiben. `export` legt den Ordner `out` neben der Projektdatei an.
 
@@ -89,7 +93,8 @@ freemapper-print --lang de export .
 ```
 
 `export` gibt dieselben Zeilen aus wie `check`, nennt in der ersten Zeile jedes Layouts den Pfad des PDFs und
-erinnert zum Schluss ans Drucken in Originalgröße. Es endet mit Exit-Code 0, auch mit dem Hinweis zum A4-Blatt.
+erinnert zum Schluss ans Drucken in Originalgröße. Es endet mit Exit-Code 0. Das tut `export` auch dann, wenn
+`check` Hinweise meldet, denn die PDFs sind trotzdem geschrieben.
 
 Die Vorschau entsteht wie bei [luebeck-scales](../luebeck-scales/README.md#neu-erzeugen), nur mit
 `out/a4-4000.pdf` und `out/a3-3000.pdf` als Eingabe.
@@ -100,7 +105,7 @@ Die Vorschau entsteht wie bei [luebeck-scales](../luebeck-scales/README.md#neu-e
 - Zweimal exportiert: Die PDFs sind Byte für Byte gleich.
 - Die Seiten bei 200 dpi angesehen: Titelblock und Klassen oben links, die Logos oben rechts, die
   Kontrollstrecke unten rechts, die drei Zeilen der Fußzeile unter dem Kartenausschnitt, die Nordlinien der Karte
-  über die ganze Höhe.
+  über die ganze Karte.
 
 ## Drucken
 

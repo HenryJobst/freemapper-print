@@ -43,20 +43,21 @@ enough, and the footer sits below the map frame instead of on a white box inside
 
 ## What `check` reports
 
-The A3 sheet has no notes. The A4 sheet has one, on purpose: at 1:4000 the map is 14.0 mm taller than the map
-frame (210 mm of paper less twice the 10 mm passe-partout). The program cuts 7 mm at the top and the bottom and
-does not shrink anything. For a real competition, `map_frame.centre_map_mm` moves the frame onto the competition
-area. `check` therefore ends with exit code 1.
+Both sheets are fine, and `check` ends with exit code 0. On the A4 sheet the map at 1:4000 is 14.0 mm taller
+than the map frame (210 mm of paper less twice the 10 mm passe-partout). The program cuts 7 mm at the top and
+the bottom and does not shrink anything. That is intended here, so the layout sets `map_frame.crop = true`: the
+overflow shows as a note and does not count for the exit code. Without `crop` it would be a warning, and `check`
+would end with 1. For a real competition, `map_frame.centre_map_mm` moves the frame onto the competition area.
 
 ```
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Warnung: Die Karte passt nicht auf die Seite. Sie ist 14,0 mm zu hoch für den bedruckbaren Bereich. Versuchen Sie Papier im Format A3, die andere Ausrichtung oder einen Druckmaßstab mit größerer Zahl, zum Beispiel 1:5000 (nicht normgerecht, nur fürs Training).
+Hinweis: Die Karte ist 14,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a3-3000: A3 Querformat, Druckmaßstab 1:3000, Kartenmaßstab 1:4000, Geometriefaktor 1,333, Symbolfaktor 1,333.
-Layouts mit Hinweisen: 1 von 2.
+2 Layouts geprüft, keine Hinweise.
 ```
 
-With `--lang en` the same lines come in English ("Warning: the map does not fit on the page. It is 14.0 mm too
-tall ...").
+With `--lang en` the same lines come in English ("Note: the map is 14.0 mm too tall for the map frame and is
+cut there on purpose ...").
 
 ## How it was made
 
@@ -67,22 +68,24 @@ freemapper-print --lang de init . --map luebeck.omap --title "Stadtsprint Lübec
 ```
 
 ```
+Kartenart: Sprintkarten, wie in der freemapper.toml neben der Karte angegeben.
+Suche ein A4- oder A3-Blatt, das die Karte in 1:4000 zeigt …
 ./freemapper-print.toml geschrieben, mit einem Layout a3: A3, Passepartout 14 mm, Druckmaßstab 1:4000, für Sprintkarten.
-Das Projekt schlägt eine Äquidistanz von 2,5 m vor, üblich für Sprintkarten. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
+Das Projekt schlägt eine Äquidistanz von 2 m vor, üblich für Sprintkarten. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
 Als Nächstes freemapper-print check ./freemapper-print.toml aufrufen.
 ```
 
 Then the project file was edited by hand:
 
 - `[event]`: date and organiser added.
-- `map.contour_interval_m` set from 2.5 to 2, as the map's information block says ("Maßstab 1:4000 ·
-  Äquidistanz 2 m").
+- The proposed contour interval of 2 m compared with the map's information block ("Maßstab 1:4000 ·
+  Äquidistanz 2 m") and confirmed.
 - `[print]` added with the two copyright lines.
 - In the title block, the line with date and organiser added and "Äquidistanz" written before
   `{contour_interval}`.
 - The two logos added as shared elements.
 - The layout `a3` from `init` (1:4000, 14 mm) replaced by the layouts `a4-4000` and `a3-3000`, both landscape
-  with a 10 mm passe-partout, each with its own text `classes`.
+  with a 10 mm passe-partout, each with its own text `classes`; the A4 layout with `crop = true`.
 
 Then check and write the PDFs. `export` creates the folder `out` next to the project file.
 
@@ -92,7 +95,8 @@ freemapper-print --lang de export .
 ```
 
 `export` prints the same lines as `check`, names the path of the PDF in the first line of each layout and ends
-with the reminder to print at actual size. It exits with code 0, also with the note about the A4 sheet.
+with the reminder to print at actual size. It exits with code 0. `export` does that even when `check` reports
+notes, since the PDFs are written all the same.
 
 The preview is made as for [luebeck-scales](../luebeck-scales/README.en.md#regenerate), with `out/a4-4000.pdf`
 and `out/a3-3000.pdf` as input.
@@ -102,8 +106,8 @@ and `out/a3-3000.pdf` as input.
 - `check` and `export` as above, with the messages above.
 - Exported twice: the PDFs are identical byte for byte.
 - The pages viewed at 200 dpi: title block and classes at the top left, the logos at the top right, the scale
-  check bar at the bottom right, the three footer lines below the map frame, the map's north lines over the full
-  height.
+  check bar at the bottom right, the three footer lines below the map frame, the map's north lines over the whole
+  map.
 
 ## Printing
 
