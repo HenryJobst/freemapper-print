@@ -252,6 +252,8 @@ number-conflict-line-symbol = { $count ->
         [one] the line symbol { $code }
        *[other] { $count } objects of the line symbol { $code }
     } of the map
+note-number-conflict-unsearched = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. The sheet reached its search limit, so there is no proposal. Set a position with numbers accept, --direction and --gap.
+note-number-search-limited = Note: on the sheet of course "{ $course }" the search for number positions reached its limit. The numbers it did not get to stay where their level puts them, automatic ones to the upper right of their circle, and get no proposal. Check the sheet.
 number-proposal-free = A free position is direction { $direction }° with a gap of { $gap } mm.
 number-proposal-none = There is no free place; the least covered one is direction { $direction }° with a gap of { $gap } mm.
 

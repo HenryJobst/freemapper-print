@@ -255,6 +255,8 @@ number-conflict-line-symbol = { $count ->
         [one] das Liniensymbol { $code }
        *[other] { $count } Objekte des Liniensymbols { $code }
     } der Karte
+note-number-conflict-unsearched = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. Das Blatt hat seine Suchgrenze erreicht, deshalb gibt es keinen Vorschlag. Eine Lage setzen Sie mit numbers accept, --direction und --gap.
+note-number-search-limited = Hinweis: Auf dem Blatt der Bahn „{ $course }“ hat die Suche nach Plätzen für die Postennummern ihre Grenze erreicht. Die Nummern, zu denen sie nicht mehr kam, bleiben, wo ihre Ebene sie hinsetzt, automatisch gesetzte rechts oben am Kreis, und bekommen keinen Vorschlag. Prüfen Sie das Blatt.
 number-proposal-free = Frei ist Richtung { $direction }° mit { $gap } mm Abstand.
 number-proposal-none = Einen freien Platz gibt es nicht; am wenigsten verdeckt Richtung { $direction }° mit { $gap } mm Abstand.
 

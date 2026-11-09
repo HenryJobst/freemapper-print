@@ -20,6 +20,8 @@
 //! number first moves further out, then turns), the angle to the outer bisector and the direction. The soft cost
 //! of covered areas only breaks ties before the direction.
 
+use std::borrow::Borrow;
+
 /// The gap (mm) when no rule gives a range: placement tries this gap alone (ruling R29).
 pub const DEFAULT_GAP_MM: f64 = 0.5;
 /// Step (mm) between the gaps [`best`] tries.
@@ -144,6 +146,35 @@ fn segments_cross(a: Pt, b: Pt, c: Pt, d: Pt) -> bool {
     let (d3, d4) = (orient(a, b, c), orient(a, b, d));
     ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
         && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
+}
+
+/// Whether the segment `a`–`b` has a point in `r` (edges included): Liang–Barsky clipping.
+fn segment_meets_rect(a: Pt, b: Pt, r: &Rect) -> bool {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for (p, q) in [
+        (-dx, a.0 - r.min.0),
+        (dx, r.max.0 - a.0),
+        (-dy, a.1 - r.min.1),
+        (dy, r.max.1 - a.1),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                lo = lo.max(t);
+            } else {
+                hi = hi.min(t);
+            }
+            if lo > hi {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn point_segment_distance(p: Pt, a: Pt, b: Pt) -> f64 {
@@ -278,13 +309,19 @@ impl ObstacleShape {
             ObstacleShape::Rect(o) => o.overlaps(r),
             ObstacleShape::Circle { centre, radius } => r.distance_to_point(*centre) < *radius,
             ObstacleShape::Segment { a, b, half_width } => {
-                r.distance_to_segment(*a, *b) <= *half_width
+                // Most segments near a box pass it by: one that misses the box grown by its half width (and a
+                // little more) is surely farther away, and only the others need the distance.
+                segment_meets_rect(*a, *b, &r.grown(*half_width + 1e-6))
+                    && r.distance_to_segment(*a, *b) <= *half_width
             }
             ObstacleShape::Polygon(ring) => {
                 let n = ring.len();
-                n > 0
-                    && ((0..n).any(|i| r.distance_to_segment(ring[i], ring[(i + 1) % n]) <= EPS)
-                        || inside_ring(r.centre(), ring))
+                let edge_meets = |i: usize| {
+                    let (a, b) = (ring[i], ring[(i + 1) % n]);
+                    segment_meets_rect(a, b, &r.grown(2.0 * EPS))
+                        && r.distance_to_segment(a, b) <= EPS
+                };
+                n > 0 && ((0..n).any(edge_meets) || inside_ring(r.centre(), ring))
             }
         }
     }
@@ -441,31 +478,235 @@ pub fn placement_of(
 
 /// How the box `box_` fares within `bounds` among `obstacles`: overprint obstacles hit and leaving the bounds
 /// are hard conflicts, map symbols hit are covered, and each soft obstacle adds its weight × the covered mm².
-pub fn score(box_: Rect, bounds: Rect, obstacles: &[Obstacle]) -> Score {
-    let mut s = Score::default();
-    let near = box_.grown(EPS);
-    for o in obstacles {
-        if !o.shape.bbox().touches(&near) {
-            continue;
+pub fn score<O: Borrow<Obstacle>>(box_: Rect, bounds: Rect, obstacles: &[O]) -> Score {
+    let near = Near::new(obstacles.iter().map(Borrow::borrow));
+    let all = 0..near.items.len();
+    near.score(box_, bounds, all, None)
+        .map(|s| near.labelled(s))
+        .unwrap_or_default()
+}
+
+/// Obstacles prepared for scoring many boxes: each with its box, and its label as a number, so that "each label
+/// once" compares numbers, not text.
+struct Near<'a> {
+    items: Vec<(Rect, &'a Obstacle, u32)>,
+    labels: Vec<&'a str>,
+}
+
+/// A box's score with labels as numbers of [`Near::labels`].
+struct Scored {
+    hard: Vec<u32>,
+    covered: Vec<u32>,
+    outside: bool,
+    cost: f64,
+}
+
+impl<'a> Near<'a> {
+    fn new(obstacles: impl Iterator<Item = &'a Obstacle>) -> Near<'a> {
+        let mut ids: std::collections::HashMap<&'a str, u32> = std::collections::HashMap::new();
+        let mut labels = Vec::new();
+        let items = obstacles
+            .map(|o| {
+                let id = *ids.entry(o.label.as_str()).or_insert_with(|| {
+                    labels.push(o.label.as_str());
+                    (labels.len() - 1) as u32
+                });
+                (o.shape.bbox(), o, id)
+            })
+            .collect();
+        Near { items, labels }
+    }
+
+    /// The score of `box_` among the obstacles at `indices` (ascending, so in obstacle order). With `limit`
+    /// (hard conflicts, covered symbols) it gives up, returning `None`, as soon as the box is sure to rank below
+    /// a box with that many: more hard conflicts, or as many and more covered symbols. Both only grow while the
+    /// obstacles are gone through.
+    fn score(
+        &self,
+        box_: Rect,
+        bounds: Rect,
+        indices: impl IntoIterator<Item = usize>,
+        limit: Option<(usize, usize)>,
+    ) -> Option<Scored> {
+        let mut s = Scored {
+            hard: Vec::new(),
+            covered: Vec::new(),
+            outside: !bounds.contains_rect(&box_),
+            cost: 0.0,
+        };
+        let near = box_.grown(EPS);
+        for k in indices {
+            let (bbox, o, id) = &self.items[k];
+            if !bbox.touches(&near) {
+                continue;
+            }
+            match o.tier {
+                Tier::Overprint | Tier::MapSymbol => {
+                    let list = if o.tier == Tier::Overprint {
+                        &mut s.hard
+                    } else {
+                        &mut s.covered
+                    };
+                    if !list.contains(id) && o.shape.hits(&box_) {
+                        list.push(*id);
+                        if let Some((hard, covered)) = limit {
+                            let h = s.hard.len() + usize::from(s.outside);
+                            if h > hard || (h == hard && s.covered.len() > covered) {
+                                return None;
+                            }
+                        }
+                    }
+                }
+                Tier::Soft => s.cost += o.weight * o.shape.overlap_area(&box_),
+            }
         }
-        match o.tier {
-            Tier::Overprint | Tier::MapSymbol => {
-                let list = if o.tier == Tier::Overprint {
-                    &mut s.hard
-                } else {
-                    &mut s.covered
-                };
-                if !list.contains(&o.label) && o.shape.hits(&box_) {
-                    list.push(o.label.clone());
+        Some(s)
+    }
+
+    /// `s` with its labels as text, [`OUTSIDE`] last.
+    fn labelled(&self, s: Scored) -> Score {
+        let text = |ids: Vec<u32>| -> Vec<String> {
+            ids.into_iter()
+                .map(|i| self.labels[i as usize].to_string())
+                .collect()
+        };
+        let mut hard = text(s.hard);
+        if s.outside {
+            hard.push(OUTSIDE.to_string());
+        }
+        Score {
+            hard,
+            covered: text(s.covered),
+            cost: s.cost,
+        }
+    }
+}
+
+/// A uniform grid over boxes, to find those near a rectangle without going through all of them.
+#[derive(Debug, Clone)]
+pub struct BoxGrid {
+    origin: Pt,
+    cell: f64,
+    cols: usize,
+    rows: usize,
+    cells: Vec<Vec<usize>>,
+    /// Boxes spanning more than `wide_cells` cells, or that are not finite: checked for every query.
+    wide: Vec<usize>,
+}
+
+impl BoxGrid {
+    /// A grid of cells `cell` mm wide (more if the boxes span more than `max_cells` of them along one side) over
+    /// `boxes`; a box covering more than `wide_cells` cells goes to a list of its own.
+    pub fn new(boxes: &[Rect], cell: f64, max_cells: usize, wide_cells: usize) -> BoxGrid {
+        let finite = |r: &&Rect| {
+            r.min.0.is_finite() && r.min.1.is_finite() && r.max.0.is_finite() && r.max.1.is_finite()
+        };
+        let (min, max) = boxes.iter().filter(finite).fold(
+            (
+                (f64::INFINITY, f64::INFINITY),
+                (f64::NEG_INFINITY, f64::NEG_INFINITY),
+            ),
+            |(lo, hi), r| {
+                (
+                    (lo.0.min(r.min.0), lo.1.min(r.min.1)),
+                    (hi.0.max(r.max.0), hi.1.max(r.max.1)),
+                )
+            },
+        );
+        let any = min.0 <= max.0;
+        let max_cells = max_cells.max(1);
+        let span = if any {
+            (max.0 - min.0).max(max.1 - min.1)
+        } else {
+            0.0
+        };
+        let cell = cell.max(span / max_cells as f64).max(EPS);
+        let count = |extent: f64| ((extent / cell).floor() as usize + 1).min(max_cells);
+        let (cols, rows) = if any {
+            (count(max.0 - min.0), count(max.1 - min.1))
+        } else {
+            (1, 1)
+        };
+        let mut grid = BoxGrid {
+            origin: if any { min } else { (0.0, 0.0) },
+            cell,
+            cols,
+            rows,
+            cells: vec![Vec::new(); cols * rows],
+            wide: Vec::new(),
+        };
+        for (i, r) in boxes.iter().enumerate() {
+            match grid.span(r) {
+                Some((c0, c1, r0, r1)) if (c1 - c0 + 1) * (r1 - r0 + 1) <= wide_cells => {
+                    for row in r0..=r1 {
+                        for col in c0..=c1 {
+                            grid.cells[row * cols + col].push(i);
+                        }
+                    }
+                }
+                _ => grid.wide.push(i),
+            }
+        }
+        grid
+    }
+
+    /// The columns and rows `r` covers, clamped to the grid; `None` for a box that is not finite.
+    fn span(&self, r: &Rect) -> Option<(usize, usize, usize, usize)> {
+        let at = |v: f64, o: f64, n: usize| -> Option<usize> {
+            let k = ((v - o) / self.cell).floor();
+            k.is_finite().then(|| k.clamp(0.0, (n - 1) as f64) as usize)
+        };
+        Some((
+            at(r.min.0, self.origin.0, self.cols)?,
+            at(r.max.0, self.origin.0, self.cols)?,
+            at(r.min.1, self.origin.1, self.rows)?,
+            at(r.max.1, self.origin.1, self.rows)?,
+        ))
+    }
+
+    /// The indices of the boxes in the cells `r` touches and of the wide ones: every box that touches `r`, and
+    /// some that do not. Ascending, each once.
+    pub fn query(&self, r: &Rect) -> Vec<usize> {
+        let mut bits = Vec::new();
+        self.mark(r, &mut bits);
+        set_bits(&bits).collect()
+    }
+
+    /// Sets the bit of every index [`BoxGrid::query`] gives in `bits`, cleared first.
+    fn mark(&self, r: &Rect, bits: &mut Vec<u64>) {
+        bits.clear();
+        let mut set = |i: usize| {
+            let w = i / 64;
+            if bits.len() <= w {
+                bits.resize(w + 1, 0);
+            }
+            bits[w] |= 1 << (i % 64);
+        };
+        self.wide.iter().for_each(|&i| set(i));
+        if let Some((c0, c1, r0, r1)) = self.span(r) {
+            for row in r0..=r1 {
+                for col in c0..=c1 {
+                    self.cells[row * self.cols + col]
+                        .iter()
+                        .for_each(|&i| set(i));
                 }
             }
-            Tier::Soft => s.cost += o.weight * o.shape.overlap_area(&box_),
         }
     }
-    if !bounds.contains_rect(&box_) {
-        s.hard.push(OUTSIDE.to_string());
-    }
-    s
+}
+
+/// The indices of the set bits of `bits`, ascending.
+fn set_bits(bits: &[u64]) -> impl Iterator<Item = usize> + '_ {
+    bits.iter().enumerate().flat_map(|(w, &word)| {
+        let mut word = word;
+        std::iter::from_fn(move || {
+            (word != 0).then(|| {
+                let b = word.trailing_zeros() as usize;
+                word &= word - 1;
+                w * 64 + b
+            })
+        })
+    })
 }
 
 /// The legs at a control, for the preferred direction.
@@ -683,24 +924,56 @@ impl Rank {
     }
 }
 
+/// How many candidates [`best`] scores for `target`: [`CANDIDATES`] directions at each gap of
+/// [`GapRange::steps`].
+pub fn evaluations(target: &Target) -> usize {
+    target.gaps.steps().len() * CANDIDATES
+}
+
 /// The best placement for `target` within `bounds` among `obstacles`, and its score. Tries the
 /// [`CANDIDATES`] directions around the preferred one ([`Target::directions`]) at each gap of
 /// [`GapRange::steps`], and ranks them by overprint conflicts, covered map symbols, angle to the preferred
 /// direction, gap, angle to the outer bisector, soft cost and direction. Never fails: when every candidate
 /// conflicts, the least bad one comes back with its conflicts.
-pub fn best(
+pub fn best<O: Borrow<Obstacle>>(
     target: &Target,
     bounds: Rect,
-    obstacles: &[Obstacle],
+    obstacles: &[O],
     current: Placement,
 ) -> (Placement, Score) {
+    let mut budget = usize::MAX;
+    best_within(target, bounds, obstacles, current, &mut budget)
+        .unwrap_or((current, Score::default()))
+}
+
+/// [`best`] within a budget of candidate evaluations: `None`, and nothing spent, when `budget` holds fewer than
+/// the [`evaluations`] the search takes; otherwise they are taken from it. A search is never cut short, so its
+/// result does not depend on the budget.
+pub fn best_within<O: Borrow<Obstacle>>(
+    target: &Target,
+    bounds: Rect,
+    obstacles: &[O],
+    current: Placement,
+    budget: &mut usize,
+) -> Option<(Placement, Score)> {
+    let cost = evaluations(target);
+    if *budget < cost {
+        return None;
+    }
+    *budget -= cost;
     let region = Rect::centred(target.centre, (0.0, 0.0)).grown(target.reach());
-    let near: Vec<Obstacle> = obstacles
-        .iter()
-        .filter(|o| o.shape.bbox().touches(&region))
-        .cloned()
-        .collect();
-    let mut found: Option<(Rank, Placement, Score)> = None;
+    let near = Near::new(
+        obstacles
+            .iter()
+            .map(Borrow::borrow)
+            .filter(|o| o.shape.bbox().touches(&region)),
+    );
+    // Cells about the size of a number box, so each candidate looks at the obstacles around it only.
+    let boxes: Vec<Rect> = near.items.iter().map(|(b, _, _)| *b).collect();
+    let cell = target.size.0.max(target.size.1).max(1.0);
+    let grid = BoxGrid::new(&boxes, cell, 256, 16);
+    let mut bits = Vec::new();
+    let mut found: Option<(Rank, Placement, Scored)> = None;
     let (preferred, outer) = target.directions(current);
     for gap in target.gaps.steps() {
         for k in 0..CANDIDATES {
@@ -709,22 +982,40 @@ pub fn best(
                 direction,
                 gap_mm: gap,
             };
-            let s = score(target.box_at(p), bounds, &near);
-            let rank = Rank {
-                hard: s.hard.len(),
-                covered: s.covered.len(),
+            // A candidate that would not win even free of every obstacle is not scored at all.
+            let at_best = Rank {
+                hard: 0,
+                covered: 0,
                 off_preferred: angle_diff(direction, preferred),
                 gap,
                 off_outer: angle_diff(direction, outer),
-                cost: s.cost,
+                cost: f64::NEG_INFINITY,
                 direction,
+            };
+            if found.as_ref().is_some_and(|(r, _, _)| !at_best.beats(r)) {
+                continue;
+            }
+            let box_ = target.box_at(p);
+            // A candidate sure to rank below the best so far is not scored to the end.
+            let limit = found.as_ref().map(|(r, _, _)| (r.hard, r.covered));
+            grid.mark(&box_.grown(EPS), &mut bits);
+            let Some(s) = near.score(box_, bounds, set_bits(&bits), limit) else {
+                continue;
+            };
+            let rank = Rank {
+                hard: s.hard.len() + usize::from(s.outside),
+                covered: s.covered.len(),
+                cost: s.cost,
+                ..at_best
             };
             if found.as_ref().is_none_or(|(r, _, _)| rank.beats(r)) {
                 found = Some((rank, p, s));
             }
         }
     }
-    found.map_or((current, Score::default()), |(_, p, s)| (p, s))
+    Some(found.map_or((current, Score::default()), |(_, p, s)| {
+        (p, near.labelled(s))
+    }))
 }
 
 #[cfg(test)]

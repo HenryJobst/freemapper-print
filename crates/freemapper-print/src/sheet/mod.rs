@@ -174,6 +174,10 @@ pub enum SheetNote {
         min: f64,
         max: f64,
     },
+    /// The number searches of the course sheet reached their budget (ruling R38,
+    /// [`crate::numbers::sheet_budget`]): the numbers left unsearched print where their level puts them, an
+    /// automatic one at [`crate::numbers::automatic_start`], and their conflicts have no proposal.
+    NumberSearchLimited { course: String },
     /// What the course reader found but does not support.
     Course(CourseNote),
     /// What fitting the course file to the map found out.

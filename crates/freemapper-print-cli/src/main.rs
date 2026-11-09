@@ -13,8 +13,8 @@ use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
 use freemapper_print::courses::{CorrectionScope, LoadedCourses, Stale, load_courses};
 use freemapper_print::export::{
-    ExportError, course_sheet_pdf, export_courses, export_courses_single_file, export_layouts,
-    select_courses, select_layouts, sheet_pdf,
+    ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
+    select_courses, select_layouts, sheet_report,
 };
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
@@ -806,12 +806,12 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         }
         _ => {
             // The proposal of `check`: the same sheet, drawn the same way.
-            let (_, _, report) =
-                course_sheet_pdf(&loaded, &map, &courses, course, &LogoCache::new())
+            let (_, report) =
+                course_sheet_report(&loaded, &map, &courses, course, &LogoCache::new())
                     .map_err(|err| export_error(texts, err))?;
             let proposal = report.notes.iter().find_map(|n| match n {
                 SheetNote::NumberConflict(c)
-                    if c.control == args.control && c.course == course.name =>
+                    if c.control == args.control && c.course == course.name && c.searched =>
                 {
                     Some(c.proposal)
                 }
@@ -883,8 +883,8 @@ fn check_lines(
     logos: &LogoCache,
 ) -> (Vec<String>, bool) {
     // The PDF is made in memory only: the font check needs it.
-    match sheet_pdf(loaded, map, layout, logos) {
-        Ok((_, report)) => {
+    match sheet_report(loaded, map, layout, logos) {
+        Ok(report) => {
             let head = summary_line(
                 texts,
                 "check-summary",
@@ -973,8 +973,8 @@ fn check_courses(
     let mut with_notes = 0;
     // Every course is checked, also after one that cannot be drawn.
     for course in &courses.event.courses {
-        let (lines, has_notes) = match course_sheet_pdf(loaded, map, courses, course, &logos) {
-            Ok((_, layout, report)) => {
+        let (lines, has_notes) = match course_sheet_report(loaded, map, courses, course, &logos) {
+            Ok((layout, report)) => {
                 let head = summary_line(
                     texts,
                     "check-course-summary",
@@ -1540,6 +1540,10 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             Some(&args!("id" => printable(element), "name" => format!("{{{name}}}"))),
         ),
         SheetNote::NumberConflict(c) => number_conflict_line(texts, c),
+        SheetNote::NumberSearchLimited { course } => texts.get(
+            "note-number-search-limited",
+            Some(&args!("course" => printable(course))),
+        ),
         SheetNote::NumberGapOutOfRange {
             course,
             control,
@@ -1606,6 +1610,16 @@ fn number_conflict_line(texts: &Texts, c: &NumberConflict) -> String {
             ),
         })
         .collect();
+    if !c.searched {
+        return texts.get(
+            "note-number-conflict-unsearched",
+            Some(&args!(
+                "course" => printable(&c.course),
+                "control" => printable(&c.control),
+                "conflicts" => parts.join(", "),
+            )),
+        );
+    }
     let proposal = texts.get(
         if c.free {
             "number-proposal-free"
@@ -2479,6 +2493,7 @@ mod tests {
                         gap_mm: 0.8,
                     },
                     free: true,
+                    searched: true,
                 }),
                 vec![
                     "Kurz", "31", "32", "S1", "33", "title", "112", "5°", "0", "8 mm", "2 ", "204",
@@ -2499,8 +2514,27 @@ mod tests {
                         gap_mm: 0.5,
                     },
                     free: false,
+                    searched: true,
                 }),
                 vec!["Kurz", "32", "501", "3 ", "45°"],
+            ),
+            (
+                SheetNote::NumberConflict(NumberConflict {
+                    course: s("Kurz"),
+                    control: s("33"),
+                    conflicts: vec![Conflict::Symbol(s("31"))],
+                    proposal: freemapper_print::course::NumberPlacement {
+                        direction: 45.0,
+                        gap_mm: 0.5,
+                    },
+                    free: false,
+                    searched: false,
+                }),
+                vec!["Kurz", "33"],
+            ),
+            (
+                SheetNote::NumberSearchLimited { course: s("Kurz") },
+                vec!["Kurz"],
             ),
             (
                 SheetNote::NumberGapOutOfRange {

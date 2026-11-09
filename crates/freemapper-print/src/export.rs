@@ -143,6 +143,27 @@ pub fn sheet_pdf(
     layout: &LayoutSpec,
     logos: &LogoCache,
 ) -> Result<(Vec<u8>, SheetReport), ExportError> {
+    sheet_pdf_at(project, map, layout, logos, 6)
+}
+
+/// The report of [`sheet_pdf`] alone, as `check` needs it: the PDF is still made, for the characters the font
+/// lacks and for the errors writing it would meet, but with the fastest compression and then dropped.
+pub fn sheet_report(
+    project: &LoadedProject,
+    map: &MapDocument,
+    layout: &LayoutSpec,
+    logos: &LogoCache,
+) -> Result<SheetReport, ExportError> {
+    sheet_pdf_at(project, map, layout, logos, PdfMeta::FAST).map(|(_, report)| report)
+}
+
+fn sheet_pdf_at(
+    project: &LoadedProject,
+    map: &MapDocument,
+    layout: &LayoutSpec,
+    logos: &LogoCache,
+    compression: u8,
+) -> Result<(Vec<u8>, SheetReport), ExportError> {
     let (page, mut report) =
         render_sheet(project, map, layout, logos).map_err(|error| ExportError::Sheet {
             layout: layout.id.clone(),
@@ -150,11 +171,11 @@ pub fn sheet_pdf(
         })?;
     let page = TrackedPage::new(page);
     let title = format!("{} ({})", project.project.event.title, layout.id);
-    let (pdf, info) =
-        write_pdf(&page.page, &PdfMeta::new(&title)).map_err(|error| ExportError::Pdf {
-            layout: layout.id.clone(),
-            error,
-        })?;
+    let meta = PdfMeta::new(&title).compressed(compression);
+    let (pdf, info) = write_pdf(&page.page, &meta).map_err(|error| ExportError::Pdf {
+        layout: layout.id.clone(),
+        error,
+    })?;
     drop(page);
     report.print.missing_glyphs = info.missing_glyphs.into_iter().collect();
     Ok((pdf, report))
@@ -283,13 +304,37 @@ pub fn course_sheet_pdf<'a>(
     course: &Course<MapCoord>,
     logos: &LogoCache,
 ) -> Result<(Vec<u8>, &'a LayoutSpec, SheetReport), ExportError> {
+    course_sheet_pdf_at(project, map, courses, course, logos, 6)
+}
+
+/// The layout and report of [`course_sheet_pdf`] alone, as `check` and `numbers accept` need them: the PDF is
+/// still made, but with the fastest compression and then dropped.
+pub fn course_sheet_report<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    course: &Course<MapCoord>,
+    logos: &LogoCache,
+) -> Result<(&'a LayoutSpec, SheetReport), ExportError> {
+    course_sheet_pdf_at(project, map, courses, course, logos, PdfMeta::FAST)
+        .map(|(_, layout, report)| (layout, report))
+}
+
+fn course_sheet_pdf_at<'a>(
+    project: &'a LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    course: &Course<MapCoord>,
+    logos: &LogoCache,
+    compression: u8,
+) -> Result<(Vec<u8>, &'a LayoutSpec, SheetReport), ExportError> {
     let (page, layout, mut report) = course_page(project, map, courses, course, logos)?;
     let title = format!("{} ({})", project.project.event.title, course.name);
-    let (pdf, info) =
-        write_pdf(&page.page, &PdfMeta::new(&title)).map_err(|error| ExportError::CoursePdf {
-            course: course.name.clone(),
-            error,
-        })?;
+    let meta = PdfMeta::new(&title).compressed(compression);
+    let (pdf, info) = write_pdf(&page.page, &meta).map_err(|error| ExportError::CoursePdf {
+        course: course.name.clone(),
+        error,
+    })?;
     drop(page);
     report.print.missing_glyphs = info.missing_glyphs.into_iter().collect();
     Ok((pdf, layout, report))

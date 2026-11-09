@@ -443,12 +443,12 @@ fn leaving_the_bounds_is_a_hard_conflict() {
         min: (1.0, 1.0),
         max: (10.0, 4.0),
     };
-    assert!(score(inside, bounds, &[]).hard.is_empty());
+    assert!(score::<Obstacle>(inside, bounds, &[]).hard.is_empty());
     let out = Rect {
         min: (8.0, 1.0),
         max: (10.5, 4.0),
     };
-    assert_eq!(score(out, bounds, &[]).hard, [OUTSIDE]);
+    assert_eq!(score::<Obstacle>(out, bounds, &[]).hard, [OUTSIDE]);
     // A circle near the right edge: the number goes inward.
     let t = Target {
         centre: (6.0, 5.0),
@@ -456,7 +456,7 @@ fn leaving_the_bounds_is_a_hard_conflict() {
     };
     let mut current = START;
     current.direction = 0.0;
-    let (p, s) = best(
+    let (p, s) = best::<Obstacle>(
         &t,
         Rect {
             min: (0.0, -10.0),
@@ -520,5 +520,112 @@ fn placement_module_has_no_crate_imports() {
             !source.contains(forbidden),
             "placement/mod.rs uses {forbidden}"
         );
+    }
+}
+
+#[test]
+fn search_within_a_budget_is_all_or_nothing() {
+    let (from, at, to) = ((70.0, 100.0), (100.0, 100.0), (100.0, 140.0));
+    let t = target(Some(from), at, Some(to));
+    let obstacles = leg_obstacles(from, at, to);
+    let cost = evaluations(&t);
+    assert_eq!(cost, PROFILE_GAPS.steps().len() * CANDIDATES);
+    let mut budget = cost - 1;
+    assert_eq!(
+        best_within(&t, big_bounds(), &obstacles, START, &mut budget),
+        None
+    );
+    assert_eq!(budget, cost - 1, "nothing spent");
+    let mut budget = cost + 5;
+    let found = best_within(&t, big_bounds(), &obstacles, START, &mut budget);
+    assert_eq!(found, Some(best(&t, big_bounds(), &obstacles, START)));
+    assert_eq!(budget, 5);
+}
+
+#[test]
+fn giving_up_on_losing_candidates_keeps_the_ranking() {
+    // Many overprint and map obstacles around a circle, so every candidate hits several: `best` stops scoring a
+    // candidate once it is sure to lose, and still finds what scoring every candidate in full ranks first.
+    let at = (100.0, 100.0);
+    let t = target(Some((70.0, 100.0)), at, Some((100.0, 140.0)));
+    let mut obstacles = leg_obstacles((70.0, 100.0), at, (100.0, 140.0));
+    for i in 0..400 {
+        let a = f64::from(i) * 0.37;
+        let r = 3.5 + f64::from(i % 23) * 0.5;
+        let c = (at.0 + r * a.cos(), at.1 + r * a.sin());
+        let shape = ObstacleShape::Rect(Rect::centred(c, (2.0, 2.0)));
+        obstacles.push(if i % 3 == 0 {
+            Obstacle {
+                shape,
+                weight: 0.0,
+                tier: Tier::MapSymbol,
+                label: format!("m{i}"),
+            }
+        } else {
+            overprint(shape, &format!("o{i}"))
+        });
+    }
+    let (p, s) = best(&t, big_bounds(), &obstacles, START);
+    let (preferred, outer) = t.directions(START);
+    let key = |d: f64, g: f64, s: &Score| {
+        (
+            s.hard.len(),
+            s.covered.len(),
+            angle_diff(d, preferred),
+            g,
+            angle_diff(d, outer),
+            s.cost,
+            d,
+        )
+    };
+    let mut all: Vec<_> = PROFILE_GAPS
+        .steps()
+        .into_iter()
+        .flat_map(|g| (0..CANDIDATES).map(move |k| (candidate(preferred, k), g)))
+        .map(|(d, g)| {
+            let s = score(
+                t.box_at(Placement {
+                    direction: d,
+                    gap_mm: g,
+                }),
+                big_bounds(),
+                &obstacles,
+            );
+            (key(d, g, &s), d, g, s)
+        })
+        .collect();
+    all.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let first = &all[0];
+    assert!(
+        !first.3.hard.is_empty(),
+        "the test needs conflicts everywhere"
+    );
+    assert_eq!((p.direction, p.gap_mm), (first.1, first.2));
+    assert_eq!(s, first.3);
+}
+
+#[test]
+fn segments_that_pass_a_box_by_are_not_hits() {
+    // The quick test before the distance: a segment that misses the box grown by its half width is no hit, one
+    // that ends inside it is, and the distance decides the rest, as without the quick test.
+    let r = Rect {
+        min: (0.0, 0.0),
+        max: (2.0, 2.0),
+    };
+    let seg = |a: Pt, b: Pt, half_width: f64| ObstacleShape::Segment { a, b, half_width };
+    assert!(!seg((5.0, -10.0), (5.0, 10.0), 0.5).hits(&r));
+    assert!(seg((2.4, -10.0), (2.4, 10.0), 0.5).hits(&r));
+    assert!(seg((1.0, 1.0), (9.0, 9.0), 0.0).hits(&r));
+    // Diagonal past the corner (2, 2): 0.707 mm from it at its closest.
+    assert!(!seg((3.0, 2.0), (2.0, 3.0), 0.7).hits(&r));
+    assert!(seg((3.0, 2.0), (2.0, 3.0), 0.71).hits(&r));
+    for x in [-3.0, -0.5, 0.0, 1.0, 2.0, 2.3, 2.6, 4.0] {
+        for hw in [0.0, 0.2, 0.5, 1.0] {
+            let s = seg((x, -5.0), (x + 1.0, 7.0), hw);
+            let ObstacleShape::Segment { a, b, .. } = s else {
+                unreachable!()
+            };
+            assert_eq!(s.hits(&r), r.distance_to_segment(a, b) <= hw, "{x} {hw}");
+        }
     }
 }

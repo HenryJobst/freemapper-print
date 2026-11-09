@@ -194,9 +194,9 @@ fn image_name(index: usize) -> String {
 }
 
 /// `image` as a Flate-compressed DeviceRGB XObject, with a DeviceGray soft mask for its alpha.
-fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
+fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>, level: u8) {
     // The whole image is held in memory; pixel limits are enforced where images are decoded (Task 8).
-    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), 6);
+    let data = miniz_oxide::deflate::compress_to_vec_zlib(image.rgb(), level);
     let mut x = pdf.image_xobject(id, &data);
     x.filter(Filter::FlateDecode);
     x.width(image.width() as i32);
@@ -208,7 +208,7 @@ fn write_image(pdf: &mut Pdf, image: &RasterImage, id: Ref, mask: Option<Ref>) {
     }
     x.finish();
     if let (Some(mask), Some(alpha)) = (mask, image.alpha()) {
-        let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, 6);
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(alpha, level);
         let mut x = pdf.image_xobject(mask, &data);
         x.filter(Filter::FlateDecode);
         x.width(image.width() as i32);
@@ -242,6 +242,9 @@ pub struct PdfInfo {
 pub struct PdfMeta {
     pub title: String,
     pub creator: String,
+    /// Deflate level (0 to 10) of the page content and image streams: 6 for files; `check` builds the PDF only
+    /// to learn what the page cannot show and uses [`PdfMeta::FAST`].
+    pub compression: u8,
 }
 
 impl PdfMeta {
@@ -250,6 +253,18 @@ impl PdfMeta {
         PdfMeta {
             title: title.to_string(),
             creator: crate::CREDIT.to_string(),
+            compression: 6,
+        }
+    }
+
+    /// The fastest compression, for a PDF that is thrown away.
+    pub const FAST: u8 = 0;
+
+    /// `self` with the page streams compressed at `level`.
+    pub fn compressed(self, level: u8) -> Self {
+        PdfMeta {
+            compression: level,
+            ..self
         }
     }
 }
@@ -443,6 +458,7 @@ fn write_page(
     parent: Ref,
     body: &PageBody<'_>,
     refs: &PageRefs,
+    level: u8,
 ) -> Result<(), PdfError> {
     let mut p = pdf.page(refs.page);
     p.media_box(body.media_box);
@@ -466,12 +482,12 @@ fn write_page(
     resources.finish();
     p.finish();
     // The content stream comes first, the font programs after it.
-    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&body.content, 6);
+    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&body.content, level);
     pdf.stream(refs.contents, &compressed)
         .filter(Filter::FlateDecode);
     refs.fonts.write(pdf)?;
     for (image, (id, mask)) in body.images.iter().zip(&refs.images) {
-        write_image(pdf, image, *id, *mask);
+        write_image(pdf, image, *id, *mask, level);
     }
     if let Some(id) = refs.multiply {
         pdf.ext_graphics(id).blend_mode(BlendMode::Multiply);
@@ -507,7 +523,7 @@ pub fn write_pdf(page: &RenderedPage, meta: &PdfMeta) -> Result<(Vec<u8>, PdfInf
     let mut pdf = Pdf::new();
     pdf.catalog(catalog).pages(pages);
     pdf.pages(pages).kids([page]).count(1);
-    write_page(&mut pdf, pages, &body, &refs)?;
+    write_page(&mut pdf, pages, &body, &refs, meta.compression)?;
     write_info(&mut pdf, info, meta);
     let info = PdfInfo {
         missing_glyphs: refs.fonts.missing,
@@ -561,7 +577,7 @@ impl MultiPagePdf {
             images,
             multiply,
         };
-        write_page(&mut self.pdf, self.pages, &body, &refs)?;
+        write_page(&mut self.pdf, self.pages, &body, &refs, 6)?;
         self.next = next;
         self.kids.push(page_ref);
         Ok(PdfInfo {
@@ -666,6 +682,26 @@ mod tests {
 
     fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    #[test]
+    fn fast_compression_changes_only_the_bytes() {
+        let square = Primitive::new(
+            2,
+            Shape::Stroke {
+                path: vec![(10.0, 10.0), (50.0, 10.0), (50.0, 50.0)],
+                closed: true,
+                width: 0.3,
+                cap: Cap::Flat,
+                join: Join::Miter,
+            },
+        );
+        let p = page(&[square]);
+        let (normal, a) = write_pdf(&p, &PdfMeta::new("t")).unwrap();
+        let (fast, b) = write_pdf(&p, &PdfMeta::new("t").compressed(PdfMeta::FAST)).unwrap();
+        assert_eq!(content_of(&normal), content_of(&fast));
+        assert_eq!(a, b);
+        assert_eq!(PdfMeta::new("t").compression, 6);
     }
 
     #[test]

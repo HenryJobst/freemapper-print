@@ -594,6 +594,23 @@ fn on_blank_page(
     name: &str,
     primitives: Vec<Primitive>,
 ) -> SheetNumbers {
+    on_blank_page_within(
+        project,
+        courses,
+        name,
+        primitives,
+        MAX_EVALUATIONS_PER_SHEET,
+    )
+}
+
+/// [`on_blank_page`] with a search budget of `budget` candidate evaluations.
+fn on_blank_page_within(
+    project: &LoadedProject,
+    courses: &LoadedCourses,
+    name: &str,
+    primitives: Vec<Primitive>,
+    budget: usize,
+) -> SheetNumbers {
     let c = course(courses, name);
     let resolved = resolve(c, &courses.event, project, "a4");
     let page = RenderedPage {
@@ -626,6 +643,7 @@ fn on_blank_page(
         &project.rules.placement_weights(),
         Some(gap_range(&project.rules)),
         &|id| format!("S{id}"),
+        budget,
     )
 }
 
@@ -782,4 +800,75 @@ fn crossing_points_have_no_gap_check() {
         report.notes
     );
     assert!(number_conflicts(&report).iter().all(|c| c.control != "32"));
+}
+
+#[test]
+fn search_budget_bounds_the_work() {
+    // Ruling R38. Kurz: 31 has the file's position, 32 is automatic; a point symbol under the whole course puts
+    // both in conflict, so the sheet runs three searches: 32's placement and two proposals.
+    let (_dir, project, _, courses) = course_project(A4);
+    let everywhere = || vec![point_symbol((200.0, 200.0), 390.0, 9, 41)];
+    let search = gap_range(&project.rules).steps().len() * placement::CANDIDATES;
+    let full = on_blank_page_within(&project, &courses, "Kurz", everywhere(), 3 * search);
+    assert!(!full.search_limited);
+    assert_eq!(full.conflicts.len(), 2);
+    assert!(full.conflicts.iter().all(|c| c.searched));
+    let automatic = |n: &SheetNumbers| {
+        n.numbers
+            .iter()
+            .find(|n| n.resolved.level == Level::Automatic)
+            .unwrap()
+            .resolved
+            .placement
+    };
+    // One search less: 32 is placed as before, the last proposal is left out.
+    let short = on_blank_page_within(&project, &courses, "Kurz", everywhere(), 3 * search - 1);
+    assert!(short.search_limited);
+    assert_eq!(automatic(&short), automatic(&full));
+    assert_eq!(short.conflicts[0], full.conflicts[0]);
+    let last = &short.conflicts[1];
+    assert!(!last.searched && !last.free, "{last:?}");
+    assert_eq!(last.conflicts, full.conflicts[1].conflicts);
+    // No budget: 32 keeps the automatic start, and every conflict is still reported, without a proposal.
+    let none = on_blank_page_within(&project, &courses, "Kurz", everywhere(), 0);
+    assert!(none.search_limited);
+    assert_eq!(automatic(&none), automatic_start(gap_range(&project.rules)));
+    assert_eq!(none.conflicts.len(), 2);
+    assert!(none.conflicts.iter().all(|c| !c.searched && !c.free));
+}
+
+#[test]
+fn sheet_budget_shares_the_file_budget() {
+    assert_eq!(sheet_budget(0), MAX_EVALUATIONS_PER_SHEET);
+    assert_eq!(sheet_budget(1), MAX_EVALUATIONS_PER_SHEET);
+    assert_eq!(sheet_budget(100), MAX_EVALUATIONS_PER_SHEET);
+    assert_eq!(sheet_budget(1000), MAX_EVALUATIONS_PER_FILE / 1000);
+    assert!(1000 * sheet_budget(1000) <= MAX_EVALUATIONS_PER_FILE);
+}
+
+#[test]
+fn grid_finds_every_obstacle_near_a_box_in_order() {
+    let boxes = vec![
+        Rect::centred((10.0, 10.0), (1.0, 1.0)),
+        // Wide: spans more cells than the grid files per box.
+        Rect::centred((100.0, 100.0), (200.0, 200.0)),
+        Rect::centred((50.0, 12.0), (2.0, 2.0)),
+        Rect {
+            min: (f64::NAN, 0.0),
+            max: (1.0, 1.0),
+        },
+        Rect::centred((11.0, 9.0), (1.0, 1.0)),
+    ];
+    let grid = placement::BoxGrid::new(&boxes, GRID_CELL_MM, GRID_MAX_CELLS, GRID_WIDE_CELLS);
+    assert_eq!(
+        grid.query(&Rect::centred((10.5, 9.5), (2.0, 2.0))),
+        [0, 1, 3, 4]
+    );
+    assert_eq!(
+        grid.query(&Rect::centred((50.0, 12.0), (0.5, 0.5))),
+        [1, 2, 3]
+    );
+    // Far outside the grid: the wide and the odd ones only, and clamped cells never panic.
+    let far = grid.query(&Rect::centred((1e6, -1e6), (1.0, 1.0)));
+    assert!(far.contains(&1) && far.contains(&3));
 }

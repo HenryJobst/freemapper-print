@@ -239,10 +239,13 @@ pub struct NumberConflict {
     pub course: String,
     pub control: String,
     pub conflicts: Vec<Conflict>,
-    /// The best position the search finds, to enter as a correction.
+    /// The best position the search finds, to enter as a correction. The current position when the search did
+    /// not run.
     pub proposal: NumberPlacement,
     /// The proposal is free of every conflict. Without a free place it is the least covered one.
     pub free: bool,
+    /// The search for a proposal ran; `false` when the sheet's search budget was spent (ruling R38).
+    pub searched: bool,
 }
 
 /// One number on the sheet.
@@ -252,7 +255,8 @@ pub struct PlacedNumber {
     /// The centre of its box on the page.
     pub centre: Pt,
     pub score: Score,
-    /// The best position for it among the obstacles of the sheet, with its score.
+    /// The best position for it among the obstacles of the sheet, with its score. A number without a conflict,
+    /// or one the budget left unsearched, keeps its own.
     pub proposal: (Placement, Score),
 }
 
@@ -263,6 +267,8 @@ pub struct SheetNumbers {
     pub numbers: Vec<PlacedNumber>,
     pub conflicts: Vec<NumberConflict>,
     pub gaps_out_of_range: Vec<GapOutOfRange>,
+    /// The search budget ran out (ruling R38): some numbers kept their position unsearched.
+    pub search_limited: bool,
 }
 
 /// A number whose gap, from the course file or a correction, lies outside the range of the `number_gap` rule
@@ -497,18 +503,42 @@ fn target(
     })
 }
 
+/// Most candidate evaluations ([`placement::evaluations`]) the number searches of one course sheet may take
+/// (ruling R38). A sheet with hundreds of controls a few millimetres apart would otherwise take minutes.
+pub const MAX_EVALUATIONS_PER_SHEET: usize = 2_000_000;
+
+/// Most candidate evaluations the sheets of one course file may take together: each course sheet gets an equal
+/// share, at most [`MAX_EVALUATIONS_PER_SHEET`] (ruling R38). The share depends only on the course file, so a
+/// sheet comes out the same in `check`, `export` and `numbers accept`, whatever else the run draws.
+pub const MAX_EVALUATIONS_PER_FILE: usize = 200_000_000;
+
+/// The search budget of one course sheet of a file with `courses` courses.
+pub fn sheet_budget(courses: usize) -> usize {
+    (MAX_EVALUATIONS_PER_FILE / courses.max(1)).min(MAX_EVALUATIONS_PER_SHEET)
+}
+
+/// Side (mm) of a cell of the grid over a sheet's obstacles.
+const GRID_CELL_MM: f64 = 5.0;
+/// Most cells along one side of that grid.
+const GRID_MAX_CELLS: usize = 512;
+/// An obstacle whose box spans more cells is checked for every number.
+const GRID_WIDE_CELLS: usize = 64;
+
 /// Places and checks the numbers of `course` on its sheet (spec §5.7). Level 1 numbers are placed by
 /// [`placement::best`] in course order, each placed box an obstacle for the next; the others stay where their
 /// level puts them. Then every number is scored among the course, the sheet `elements`, the map and the other
-/// numbers, within the map frame (`page.clip`), and gets a proposal. A number with an overprint conflict, or
-/// covering a point or line symbol of the map (ruling R31), gives a [`NumberConflict`] with the code of each covered
-/// symbol (`symbol_code` of the primitive's symbol id). Proposals are made in stop order, each one's box an obstacle
-/// for the stops after it (ruling R32). `gap_rule` is the gap range
-/// of the rule set, `None` without a `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone,
-/// and with a rule every number the file or a correction places outside the range gives a [`GapOutOfRange`].
-/// `to_page` maps map coordinates to the page; `sf` is the course factor of the print scale
-/// ([`RuleSet::course_factor`]). Numbered stops without a map position
-/// are left out.
+/// numbers, within the map frame (`page.clip`). A number with an overprint conflict, or covering a point or line
+/// symbol of the map (ruling R31), gets a proposal and gives a [`NumberConflict`] with the code of each covered
+/// symbol (`symbol_code` of the primitive's symbol id). Proposals are made in stop order, each one's box an
+/// obstacle for the stops after it (ruling R32). `gap_rule` is the gap range of the rule set, `None` without a
+/// `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone, and with a rule every number the
+/// file or a correction places outside the range gives a [`GapOutOfRange`]. `to_page` maps map coordinates to the
+/// page; `sf` is the course factor of the print scale ([`RuleSet::course_factor`]). Numbered stops without a map
+/// position are left out.
+///
+/// The searches take at most `budget` candidate evaluations ([`sheet_budget`]). A search that no longer fits is
+/// not started: an automatic number keeps [`automatic_start`], a conflict gets no proposal, and
+/// [`SheetNumbers::search_limited`] is set.
 #[allow(clippy::too_many_arguments)]
 pub fn place_on_sheet(
     course: &Course<MapCoord>,
@@ -522,6 +552,7 @@ pub fn place_on_sheet(
     weights: &PlacementWeights,
     gap_rule: Option<GapRange>,
     symbol_code: &dyn Fn(u32) -> String,
+    budget: usize,
 ) -> SheetNumbers {
     let gaps = gap_rule.unwrap_or(GapRange::DEFAULT);
     let numbers: Vec<(ResolvedNumber, Target)> = resolved
@@ -538,39 +569,52 @@ pub fn place_on_sheet(
         .map(|(r, t)| Rect::centred(t.centre, (0.0, 0.0)).grown(reach(t, r.placement.gap_mm)))
         .collect();
     let base = obstacles(page, &shapes, elements, weights, &regions);
+    let base_boxes: Vec<Rect> = base.iter().map(|o| o.shape.bbox()).collect();
+    let grid = placement::BoxGrid::new(&base_boxes, GRID_CELL_MM, GRID_MAX_CELLS, GRID_WIDE_CELLS);
     let bounds = Rect {
         min: page.clip.min,
         max: page.clip.max,
     };
-    // Obstacles for number `i`: the base ones near it, without its own symbol (and any symbol at the same
-    // place: the control visited again), plus the boxes of the other numbers placed so far.
-    let for_number = |i: usize, boxes: &[Option<Rect>]| -> Vec<Obstacle> {
-        let t = &numbers[i].1;
-        let region = regions[i];
-        let own: Vec<String> = shapes
-            .symbols
+    // The obstacles of number `i`: the base ones near it, without its own symbol (and any symbol at the same
+    // place: the control visited again), in their order, then the boxes of the other numbers placed so far.
+    let base_near: Vec<Vec<&Obstacle>> = numbers
+        .iter()
+        .zip(&regions)
+        .map(|((_, t), region)| {
+            let own: Vec<String> = shapes
+                .symbols
+                .iter()
+                .filter(|(_, c, _)| (c.0 - t.centre.0).hypot(c.1 - t.centre.1) < 1e-6)
+                .map(|(s, _, _)| format!("{SYMBOL}{s}"))
+                .collect();
+            grid.query(region)
+                .into_iter()
+                .filter(|&k| touches(&base_boxes[k], region) && !own.contains(&base[k].label))
+                .map(|k| &base[k])
+                .collect()
+        })
+        .collect();
+    let number_boxes = |i: usize, boxes: &[Option<Rect>]| -> Vec<Obstacle> {
+        boxes
             .iter()
-            .filter(|(_, c, _)| (c.0 - t.centre.0).hypot(c.1 - t.centre.1) < 1e-6)
-            .map(|(s, _, _)| format!("{SYMBOL}{s}"))
-            .collect();
-        let mut out: Vec<Obstacle> = base
-            .iter()
-            .filter(|o| touches(&o.shape.bbox(), &region) && !own.contains(&o.label))
-            .cloned()
-            .collect();
-        for (j, b) in boxes.iter().enumerate() {
-            if let (true, Some(b)) = (j != i, b) {
-                out.push(Obstacle {
-                    shape: ObstacleShape::Rect(*b),
+            .enumerate()
+            .filter_map(|(j, b)| {
+                let b = (*b)?;
+                (j != i && touches(&b, &regions[i])).then(|| Obstacle {
+                    shape: ObstacleShape::Rect(b),
                     weight: 0.0,
                     tier: Tier::Overprint,
                     label: format!("{NUMBER}{}", numbers[j].0.stop),
-                });
-            }
-        }
-        out
+                })
+            })
+            .collect()
     };
+    fn joined<'a>(base: &[&'a Obstacle], extra: &'a [Obstacle]) -> Vec<&'a Obstacle> {
+        base.iter().copied().chain(extra).collect()
+    }
 
+    let mut left = budget;
+    let mut limited = false;
     let mut boxes: Vec<Option<Rect>> = numbers
         .iter()
         .map(|(r, t)| (r.level != Level::Automatic).then(|| t.box_at(r.placement)))
@@ -578,14 +622,24 @@ pub fn place_on_sheet(
     let mut placements: Vec<Placement> = numbers.iter().map(|(r, _)| r.placement).collect();
     for i in 0..numbers.len() {
         if numbers[i].0.level == Level::Automatic {
-            let (p, _) = placement::best(
-                &numbers[i].1,
+            let extra = number_boxes(i, &boxes);
+            let start = automatic_start(gaps);
+            let t = &numbers[i].1;
+            let p = match placement::best_within(
+                t,
                 bounds,
-                &for_number(i, &boxes),
-                automatic_start(gaps),
-            );
+                &joined(&base_near[i], &extra),
+                start,
+                &mut left,
+            ) {
+                Some((p, _)) => p,
+                None => {
+                    limited = true;
+                    start
+                }
+            };
             placements[i] = p;
-            boxes[i] = Some(numbers[i].1.box_at(p));
+            boxes[i] = Some(t.box_at(p));
         }
     }
 
@@ -594,6 +648,7 @@ pub fn place_on_sheet(
         numbers: Vec::new(),
         conflicts: Vec::new(),
         gaps_out_of_range: Vec::new(),
+        search_limited: false,
     };
     for (i, (r, t)) in numbers.iter().enumerate() {
         if let Some(range) = gap_rule
@@ -609,20 +664,35 @@ pub fn place_on_sheet(
             });
         }
         let placed = t.box_at(placements[i]);
-        let score = placement::score(placed, bounds, &for_number(i, &boxes));
         let current = placements[i];
-        // Proposals in stop order: the earlier numbers stand where their proposals put them (ruling R32).
-        let proposal = placement::best(t, bounds, &for_number(i, &proposed), current);
+        let others = number_boxes(i, &boxes);
+        let score = placement::score(placed, bounds, &joined(&base_near[i], &others));
+        let mut proposal = (current, score.clone());
         // Any covered point or line symbol is a conflict: the user's rule 1 is hard (ruling R31).
         if !score.is_free() {
+            // Proposals in stop order: the earlier numbers stand where their proposals put them (ruling R32).
+            let extra = number_boxes(i, &proposed);
+            let searched = placement::best_within(
+                t,
+                bounds,
+                &joined(&base_near[i], &extra),
+                current,
+                &mut left,
+            );
+            if let Some(found) = &searched {
+                proposal = found.clone();
+                proposed[i] = Some(t.box_at(found.0));
+            } else {
+                limited = true;
+            }
             out.conflicts.push(NumberConflict {
                 course: course.name.clone(),
                 control: r.control.clone(),
                 conflicts: conflicts(&score, course, elements, symbol_code),
                 proposal: proposal.0.into(),
-                free: proposal.1.is_free(),
+                free: searched.is_some() && proposal.1.is_free(),
+                searched: searched.is_some(),
             });
-            proposed[i] = Some(t.box_at(proposal.0));
         }
         out.numbers.push(PlacedNumber {
             resolved: ResolvedNumber {
@@ -634,6 +704,7 @@ pub fn place_on_sheet(
             proposal,
         });
     }
+    out.search_limited = limited;
     out
 }
 

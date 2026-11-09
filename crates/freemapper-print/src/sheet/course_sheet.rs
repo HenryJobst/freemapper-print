@@ -119,6 +119,7 @@ pub fn render_course_sheet(
                 .code_of(id)
                 .map_or_else(|| format!("#{id}"), str::to_string)
         },
+        crate::numbers::sheet_budget(courses.event.courses.len()),
     );
     let centres: Vec<(String, Pt)> = placed
         .numbers
@@ -134,6 +135,11 @@ pub fn render_course_sheet(
 
     let notes = &mut report.notes;
     notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
+    if placed.search_limited {
+        notes.push(SheetNote::NumberSearchLimited {
+            course: course.name.clone(),
+        });
+    }
     notes.extend(
         placed
             .gaps_out_of_range
