@@ -268,17 +268,18 @@ pub(super) fn cross(centre: Pt, size: f64, angle: f64, width: f64) -> [Shape; 2]
     [arm(angle + FRAC_PI_4), arm(angle - FRAC_PI_4)]
 }
 
-/// `n` crosses spread evenly along `points`, one in the middle of each of `n` equal parts, with
-/// `n` = length / (2 × `size`), at least one.
+/// Crosses spread evenly along `points`, one in the middle of each of `n` equal parts, `n` the length
+/// divided by `spacing`, rounded, at least one.
 pub(super) fn crosses_along(
     points: &[Pt],
     size: f64,
+    spacing: f64,
     width: f64,
     budget: &mut Budget,
 ) -> Vec<Shape> {
     let cum = cumulative(points);
     let total = cum.last().copied().unwrap_or(0.0);
-    let n = (total / (2.0 * size)).ceil().clamp(1.0, 1e9) as usize;
+    let n = (total / spacing).round().clamp(1.0, 1e9) as usize;
     let mut out = Vec::new();
     for i in 0..n {
         if !budget.take() {
@@ -292,6 +293,34 @@ pub(super) fn crosses_along(
         out.extend(cross(at, size, angle, width));
     }
     out
+}
+
+/// The length along `points` at which the path first leaves the circle of radius `r` around its first point:
+/// a bend inside the circle does not count. The whole length when the path never leaves it.
+pub(super) fn exit_length(points: &[Pt], r: f64) -> f64 {
+    let Some(&centre) = points.first() else {
+        return 0.0;
+    };
+    if r <= 0.0 {
+        return 0.0;
+    }
+    let mut along = 0.0;
+    for w in points.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let seg = dist(a, b);
+        if dist(b, centre) >= r {
+            // `a` lies inside: the one root of |a + t (b - a) - centre| = r with t in [0, 1].
+            let d = (b.0 - a.0, b.1 - a.1);
+            let f = (a.0 - centre.0, a.1 - centre.1);
+            let qa = d.0 * d.0 + d.1 * d.1;
+            let qb = 2.0 * (f.0 * d.0 + f.1 * d.1);
+            let qc = f.0 * f.0 + f.1 * f.1 - r * r;
+            let t = (-qb + (qb * qb - 4.0 * qa * qc).max(0.0).sqrt()) / (2.0 * qa);
+            return along + t.clamp(0.0, 1.0) * seg;
+        }
+        along += seg;
+    }
+    along
 }
 
 /// A symbol drawn in OOM's µm around the origin, as Bézier paths (`true`: the next three points are a
@@ -335,26 +364,30 @@ pub(super) fn crossing_point(centre: Pt, size: f64, angle: f64, width: f64) -> V
         .into()
 }
 
-/// First aid (ISOM 712): an upright cross of two bars `size` long and `size` / 3 wide.
-pub(super) fn first_aid(centre: Pt, size: f64) -> Vec<Shape> {
-    let h = size / 2.0;
+/// First aid (ISOM 2017-2 712): an upright cross of two bars `length` long and `bar` wide.
+pub(super) fn first_aid(centre: Pt, length: f64, bar: f64) -> Vec<Shape> {
+    let h = length / 2.0;
     vec![
         stroke(
             vec![(centre.0 - h, centre.1), (centre.0 + h, centre.1)],
             false,
-            size / 3.0,
+            bar,
         ),
         stroke(
             vec![(centre.0, centre.1 - h), (centre.0, centre.1 + h)],
             false,
-            size / 3.0,
+            bar,
         ),
     ]
 }
 
-/// Refreshment point (ISOM 713): a cup, `size` the width of the crossing point it shares its scale with.
+/// Refreshment point (ISOM 2017-2 713): a cup `size` wide and high outside its line of `width`. The shape is
+/// OOM's (forest set), stretched to that outside measure.
 pub(super) fn water(centre: Pt, size: f64, width: f64) -> Vec<Shape> {
-    let scale = size / 3000.0;
+    // OOM's cup spans x ±1340 and y -1770..1605 µm at its line centres (the bottom curve peaks at 1605).
+    let inner = (size - width).max(0.0);
+    let (sx, sy) = (inner / 2680.0, inner / 3375.0);
+    let centre = (centre.0, centre.1 - (1605.0 - 1770.0) / 2.0 * sy);
     let paths: [&[(f64, f64, bool)]; 4] = [
         &[(-1340.0, -1395.0, false), (-820.0, 1380.0, false)],
         &[(1340.0, -1395.0, false), (820.0, 1380.0, false)],
@@ -382,7 +415,11 @@ pub(super) fn water(centre: Pt, size: f64, width: f64) -> Vec<Shape> {
     ];
     paths
         .iter()
-        .map(|p| line(oom_path(p, centre, 0.0, scale), width))
+        .map(|p| {
+            let stretched: Vec<(f64, f64, bool)> =
+                p.iter().map(|&(x, y, c)| (x * sx / sy, y, c)).collect();
+            line(oom_path(&stretched, centre, 0.0, sy), width)
+        })
         .collect()
 }
 

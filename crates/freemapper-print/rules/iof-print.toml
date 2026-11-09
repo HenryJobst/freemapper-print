@@ -19,7 +19,9 @@
 #                      marked_route_gap_mm, out_of_bounds_line_mm, crossing_point_mm,
 #                      out_of_bounds_hatch_angle_degrees, out_of_bounds_hatch_second_angle_degrees
 #                      (optional, for a cross hatch), out_of_bounds_hatch_spacing_mm (centre to
-#                      centre), out_of_bounds_hatch_line_mm. Angles run counter-clockwise from east.
+#                      centre), out_of_bounds_hatch_line_mm, first_aid_mm, first_aid_bar_mm,
+#                      refreshment_mm (outside measure), refreshment_line_mm. Angles run
+#                      counter-clockwise from east and may be any number.
 #                      Circle diameters are measured from line centre to line centre.
 #   description_box    cell_mm: side of a control description cell printed on the map
 #   course_colour      cyan_percent, magenta_percent, yellow_percent, black_percent
@@ -213,6 +215,15 @@ map_kinds = ["sprint"]
 values = { out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
 source = { doc = "ISSprOM", section = "4.7, symbol 709 Out-of-bounds area (cross hatch at 45°, 1.2 mm centre to centre, 0.2 mm lines; changed from 0.8 mm and 0.25 mm on 2022-01-02); Purple Pen 201417f OOBCourseObj agrees" }
 
+[[rules]]
+id = "iofprint.course.first_aid_refreshment_sprint"
+key = "course_symbol"
+severity = "warning"
+map_kinds = ["sprint"]
+values = { first_aid_mm = 4.0, first_aid_bar_mm = 1.33, refreshment_mm = 3.5, refreshment_line_mm = 0.4 }
+source = { doc = "fmp", section = "ADR 0034 (ISSprOM 2019-2 has no symbols 712 and 713; the ISOM 2017-2 section 3.7 sizes on paper)" }
+note = { de = "Annahme: ISSprOM 2019-2 kennt weder Erste Hilfe noch Getränkeposten; die Größen auf dem Papier kommen aus ISOM 2017-2 §3.7.", en = "Assumption: ISSprOM 2019-2 has no first aid or refreshment symbol; the sizes on paper come from ISOM 2017-2 section 3.7." }
+
 # --- Course planning symbols, schoolyard maps -------------------------------------------------
 
 [[rules]]
@@ -220,7 +231,7 @@ id = "iofprint.course.schoolyard"
 key = "course_symbol"
 severity = "warning"
 map_kinds = ["schoolyard"]
-values = { start_side_mm = 7.0, circle_diameter_mm = 6.0, number_height_mm = 4.0, line_width_mm = 0.35, finish_inner_mm = 5.0, finish_outer_mm = 7.0, marked_route_dash_mm = 2.0, marked_route_gap_mm = 0.5, out_of_bounds_line_mm = 1.0, crossing_point_mm = 3.0, out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
+values = { start_side_mm = 7.0, circle_diameter_mm = 6.0, number_height_mm = 4.0, line_width_mm = 0.35, finish_inner_mm = 5.0, finish_outer_mm = 7.0, marked_route_dash_mm = 2.0, marked_route_gap_mm = 0.5, out_of_bounds_line_mm = 1.0, crossing_point_mm = 3.0, out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2, first_aid_mm = 4.0, first_aid_bar_mm = 1.33, refreshment_mm = 3.5, refreshment_line_mm = 0.4 }
 source = { doc = "fmp", section = "ADR 0031 (the ISSprOM 2019-2 values of section 4.7, symbols 701 to 710.1, assumed at 1:1000)" }
 note = { de = "Annahme: Schulhofkarten übernehmen die Sprintwerte aus ISSprOM 2019-2 §4.7 bei 1:1000. Der IOF-Schulsymbolsatz ist dafür nicht geprüft.", en = "Assumption: schoolyard maps take the sprint values of ISSprOM 2019-2 section 4.7 at 1:1000. Not checked against the IOF school symbol set." }
 
@@ -297,6 +308,22 @@ severity = "warning"
 map_kinds = ["forest"]
 values = { out_of_bounds_hatch_angle_degrees = 45, out_of_bounds_hatch_second_angle_degrees = 135, out_of_bounds_hatch_spacing_mm = 1.2, out_of_bounds_hatch_line_mm = 0.2 }
 source = { doc = "ISOM", section = "3.7, symbol 709 Out-of-bounds area (cross hatch at 45°, 1.2 mm centre to centre, 0.2 mm lines; ISOM 2000 had vertical stripes); Purple Pen 201417f OOBCourseObj agrees" }
+
+[[rules]]
+id = "iofprint.course.first_aid_forest"
+key = "course_symbol"
+severity = "warning"
+map_kinds = ["forest"]
+values = { first_aid_mm = 4.0, first_aid_bar_mm = 1.33 }
+source = { doc = "ISOM", section = "3.7, symbol 712 First aid post (4.0 mm, bars 1.33 mm)" }
+
+[[rules]]
+id = "iofprint.course.refreshment_forest"
+key = "course_symbol"
+severity = "warning"
+map_kinds = ["forest"]
+values = { refreshment_mm = 3.5, refreshment_line_mm = 0.4 }
+source = { doc = "ISOM", section = "3.7, symbol 713 Refreshment point (3.5 mm wide and high outside measure, 0.4 mm line)" }
 
 # --- Control descriptions on the map -----------------------------------------------------------
 

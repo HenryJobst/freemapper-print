@@ -105,12 +105,12 @@ const FULL_STRENGTH_CMYK: [(FullStrength, [f64; 4]); 4] = [
     (FullStrength::Brown, [0.0, 0.56, 1.0, 0.18]),
 ];
 
-/// The full-strength class of a map colour (ADR 0034). By name: "black", "brown" or "blue", alone or
-/// followed by " 100%" or " 100 %", ignoring case and surrounding white space. Otherwise by CMYK: within
-/// ±0.02 of black 0/0/0/100, blue 100/0/0/0 or brown 25/75/100/0 (Rev. 4) or 0/56/100/18 (Rev. 3).
-pub fn full_strength(name: &str, cmyk: [f64; 4]) -> Option<FullStrength> {
+/// The full-strength class a canonical colour name gives: "black", "brown" or "blue", alone or followed by
+/// " 100%" or " 100 %", ignoring case and surrounding white space. Duplicates such as "Black for open land"
+/// are not canonical.
+pub fn canonical(name: &str) -> Option<FullStrength> {
     let name = name.trim().to_lowercase();
-    let by_name = [
+    [
         ("black", FullStrength::Black),
         ("brown", FullStrength::Brown),
         ("blue", FullStrength::Blue),
@@ -119,31 +119,37 @@ pub fn full_strength(name: &str, cmyk: [f64; 4]) -> Option<FullStrength> {
     .find_map(|(word, class)| {
         let rest = name.strip_prefix(word)?;
         matches!(rest, "" | " 100%" | " 100 %").then_some(class)
-    });
-    by_name.or_else(|| {
-        FULL_STRENGTH_CMYK
-            .iter()
-            .find(|(_, want)| {
-                want.iter()
-                    .zip(cmyk)
-                    .all(|(w, v)| (w - v).abs() <= CMYK_TOLERANCE)
-            })
-            .map(|(class, _)| *class)
     })
 }
 
-/// The priority before whose primitives the lower purple goes: right above the topmost colour (lowest
-/// priority number) that is not full strength, so it lies over every area colour and below the
-/// full-strength colours painted after them. Full-strength colours painted before that colour (a black
-/// duplicate deep in the order) stay below the purple; the fills over them cover them anyway. `None` when
-/// every colour is full strength or there are none.
-pub fn full_strength_priority(colours: &[RenderColour]) -> Option<i32> {
-    colours
+/// The full-strength class of `cmyk`: within ±0.02 of black 0/0/0/100, blue 100/0/0/0, or brown 25/75/100/0
+/// (Rev. 4) or 0/56/100/18 (Rev. 3).
+pub fn by_cmyk(cmyk: [f64; 4]) -> Option<FullStrength> {
+    FULL_STRENGTH_CMYK
         .iter()
-        .filter(|c| full_strength(&c.name, c.cmyk).is_none())
-        .map(|c| c.priority)
-        .min()
-        .map(|p| p.saturating_sub(1))
+        .find(|(_, want)| {
+            want.iter()
+                .zip(cmyk)
+                .all(|(w, v)| (w - v).abs() <= CMYK_TOLERANCE)
+        })
+        .map(|(class, _)| *class)
+}
+
+/// The full-strength class of a map colour (ADR 0034): by its [`canonical`] name, else [`by_cmyk`].
+pub fn full_strength(name: &str, cmyk: [f64; 4]) -> Option<FullStrength> {
+    canonical(name).or_else(|| by_cmyk(cmyk))
+}
+
+/// The priority before whose primitives the lower purple goes (ADR 0034): the highest priority number,
+/// painted first, among the colours with a [`canonical`] name. Only when no colour has one, the highest
+/// among the colours [`by_cmyk`]. Pass the colours the page paints ([`Overprint::on_map`]). Duplicates
+/// deeper in the order ("Black for open land") then lie under the purple, and so do the fills painted
+/// between them and the canonical colour; `None` when no colour is full strength.
+pub fn full_strength_priority(colours: &[RenderColour]) -> Option<i32> {
+    let deepest = |pick: &dyn Fn(&RenderColour) -> bool| {
+        colours.iter().filter(|c| pick(c)).map(|c| c.priority).max()
+    };
+    deepest(&|c| canonical(&c.name).is_some()).or_else(|| deepest(&|c| by_cmyk(c.cmyk).is_some()))
 }
 
 /// Whether a stop of effective kind `kind` at `control` carries a control number.
@@ -237,7 +243,17 @@ struct Scaled {
     hatch_line: f64,
     hatch_spacing: f64,
     hatch_angles: Vec<f64>,
+    first_aid: f64,
+    first_aid_bar: f64,
+    refreshment: f64,
+    refreshment_line: f64,
+    /// Distance between the crosses of a forbidden route.
+    forbidden_spacing: f64,
 }
+
+/// Distance (mm) between the centres of the crosses along a forbidden route: the middle of the 4.0 to 6.0 mm
+/// that ISOM 2017-2 section 3.7, symbol 711, allows.
+const FORBIDDEN_CROSS_SPACING_MM: f64 = 5.0;
 
 impl Scaled {
     fn new(sizes: &CourseSymbolSizes, f: f64) -> Self {
@@ -258,6 +274,11 @@ impl Scaled {
                 .chain(sizes.out_of_bounds_hatch_second_angle_degrees)
                 .map(f64::to_radians)
                 .collect(),
+            first_aid: sizes.first_aid_mm * f,
+            first_aid_bar: sizes.first_aid_bar_mm * f,
+            refreshment: sizes.refreshment_mm * f,
+            refreshment_line: sizes.refreshment_line_mm * f,
+            forbidden_spacing: FORBIDDEN_CROSS_SPACING_MM * f,
         }
     }
 }
@@ -408,7 +429,10 @@ pub fn overprint(
                 continue;
             };
             let total = symbols::length(&points);
-            let (from, to) = (a.radius(&s), total - b.radius(&s));
+            // Where the path leaves each circle: a bend inside a circle is not drawn.
+            let from = symbols::exit_length(&points, a.radius(&s));
+            let reversed: Vec<Pt> = points.iter().rev().copied().collect();
+            let to = total - symbols::exit_length(&reversed, b.radius(&s));
             if to <= from {
                 continue;
             }
@@ -491,16 +515,23 @@ fn special_shapes(
                 budget,
             ));
         }
+        // Upper purple: ISOM 2017-2 section 3.7, 711 Out-of-bounds route (ISSprOM 2019-2 has no 711). The
+        // "forbidden lines" of Rev. 4's lower list are the boundaries 707/708, `Special::Boundary` here.
         Special::ForbiddenRoute { path: p, courses } if applies(courses, course) => {
             let points = path(p);
             match points[..] {
                 [] => {}
                 // Purple Pen's forbidden crossing: one cross.
-                [one] => o.lower.extend(symbols::cross(one, s.crossing, 0.0, s.line)),
+                [one] => o.upper.extend(symbols::cross(one, s.crossing, 0.0, s.line)),
                 _ => {
-                    o.lower
-                        .extend(symbols::crosses_along(&points, s.crossing, s.line, budget));
-                    o.lower.push(symbols::line(points, s.line));
+                    o.upper.push(symbols::line(points.clone(), s.line));
+                    o.upper.extend(symbols::crosses_along(
+                        &points,
+                        s.crossing,
+                        s.forbidden_spacing,
+                        s.line,
+                        budget,
+                    ));
                 }
             }
         }
@@ -511,12 +542,21 @@ fn special_shapes(
             o.upper
                 .extend(symbols::dashes(&path(p), s.dash, s.gap, s.line, budget));
         }
+        // Lower purple: ISOM 2017-2 section 3.7, 712 First aid post and 713 Refreshment point (ISSprOM 2019-2
+        // has neither).
         Special::FirstAid { pt, courses } if applies(courses, course) => {
-            o.lower.extend(symbols::first_aid(to_page(*pt), s.crossing));
+            o.lower.extend(symbols::first_aid(
+                to_page(*pt),
+                s.first_aid,
+                s.first_aid_bar,
+            ));
         }
         Special::Water { pt, courses } if applies(courses, course) => {
-            o.lower
-                .extend(symbols::water(to_page(*pt), s.crossing, s.line));
+            o.lower.extend(symbols::water(
+                to_page(*pt),
+                s.refreshment,
+                s.refreshment_line,
+            ));
         }
         Special::Text {
             pt,

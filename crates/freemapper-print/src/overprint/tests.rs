@@ -277,6 +277,28 @@ fn leg_stops_at_circles_and_honours_gaps() {
 }
 
 #[test]
+fn leg_with_a_bend_inside_the_circle_starts_where_it_leaves_the_circle() {
+    let ev = event(
+        vec![
+            control("31", ControlKind::Control, 0.0, 0.0),
+            control("32", ControlKind::Control, 1.0, 50.0),
+        ],
+        Vec::new(),
+    );
+    let mut c = course(CourseKind::Normal, vec![stop("31"), stop("32")]);
+    // The bend lies 1 mm from the first centre, inside the 3 mm circle.
+    c.legs[0].bends = vec![MapCoord::new(um(1.0), 0)];
+    let o = overprint(&c, &ev, &[], page_of(1.0), &sizes(), 1.0);
+    let legs = lines(&o.lower);
+    assert_eq!(legs.len(), 1, "{legs:?}");
+    let leg = &legs[0].0;
+    // Along the path, 3 mm would end at (1, 2), still inside the circle; the leg starts on it instead.
+    assert!(dist(leg[0], (101.0, 100.0 + 8f64.sqrt())) < 1e-9, "{leg:?}");
+    assert!(dist(*leg.last().unwrap(), (101.0, 147.0)) < 1e-9, "{leg:?}");
+    assert_eq!(leg.len(), 2, "the bend inside the circle is not drawn");
+}
+
+#[test]
 fn short_leg_not_drawn() {
     let ev = event(
         vec![
@@ -477,14 +499,15 @@ fn specials_go_to_their_layer() {
         courses: all.clone(),
     });
     assert!(matches!(line[..], [Shape::Stroke { width, .. }] if (width - 0.35).abs() < 1e-9));
-    // A forbidden route of one point is Purple Pen's forbidden crossing: one cross.
-    let cross = lower_only(Special::ForbiddenRoute {
+    // Forbidden routes (ISOM 2017-2 711) are upper purple. One point is Purple Pen's forbidden
+    // crossing: one cross.
+    let cross = upper_only(Special::ForbiddenRoute {
         path: vec![pt()],
         courses: all.clone(),
     });
     assert_eq!(cross.len(), 2, "{cross:?}");
     // Two or more points: the line with crosses along it.
-    let route = lower_only(Special::ForbiddenRoute {
+    let route = upper_only(Special::ForbiddenRoute {
         path: path(30.0),
         courses: all.clone(),
     });
@@ -495,14 +518,49 @@ fn specials_go_to_their_layer() {
     });
     // Dashes of 2 mm with gaps of 0.5 mm.
     assert_eq!(marked.len(), 12, "{marked:?}");
-    lower_only(Special::FirstAid {
+    // First aid (712) and refreshment point (713) are lower purple (ISOM 2017-2 p. 38). First aid: two bars
+    // 4.0 mm long and 1.33 mm wide.
+    let aid = lower_only(Special::FirstAid {
         pt: pt(),
         courses: all.clone(),
     });
-    lower_only(Special::Water {
+    assert_eq!(aid.len(), 2);
+    for bar in &aid {
+        let Shape::Stroke { path, width, .. } = bar else {
+            panic!("{bar:?}")
+        };
+        assert!((dist(path[0], path[1]) - 4.0).abs() < 1e-9);
+        assert!((width - 1.33).abs() < 1e-9);
+    }
+    // The cup measures 3.5 mm wide and high outside its 0.4 mm line.
+    let cup = lower_only(Special::Water {
         pt: pt(),
         courses: all.clone(),
     });
+    let points: Vec<Pt> = cup
+        .iter()
+        .flat_map(|s| match s {
+            Shape::Stroke { path, width, .. } => {
+                assert!((width - 0.4).abs() < 1e-9);
+                path.clone()
+            }
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let extent = |f: fn(&Pt) -> f64| {
+        let v: Vec<f64> = points.iter().map(f).collect();
+        v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min)
+    };
+    assert!(
+        (extent(|p| p.0) + 0.4 - 3.5).abs() < 1e-6,
+        "{}",
+        extent(|p| p.0)
+    );
+    assert!(
+        (extent(|p| p.1) + 0.4 - 3.5).abs() < 1e-6,
+        "{}",
+        extent(|p| p.1)
+    );
     let text = upper_only(Special::Text {
         pt: pt(),
         text: "Zuschauer".into(),
@@ -618,25 +676,52 @@ fn full_strength_by_name_or_cmyk() {
 }
 
 #[test]
-fn lower_purple_goes_above_the_topmost_colour_that_is_not_full_strength() {
+fn below_priority_is_the_deepest_canonical_colour() {
     let named = |priority: i32, name: &str, cmyk: [f64; 4]| RenderColour {
         name: name.into(),
         ..colour(priority, cmyk)
     };
     let black = named(1, "Black", [0.0, 0.0, 0.0, 1.0]);
-    let green = named(2, "Green", [0.76, 0.0, 0.91, 0.0]);
-    let blue = named(3, "Blue", [1.0, 0.0, 0.0, 0.0]);
+    let green = named(2, "Green 100%", [0.76, 0.0, 0.91, 0.0]);
+    let blue = named(3, " blue 100 % ", [0.87, 0.18, 0.0, 0.0]);
     let grey = named(9, "Black 60%", [0.0, 0.0, 0.0, 0.6]);
+    let deep = named(29, "Black for open land", [0.0, 0.0, 0.0, 1.0]);
+    // By name; the deep black duplicate matches only by CMYK and does not count.
     assert_eq!(
-        full_strength_priority(&[black.clone(), green.clone(), blue.clone(), grey]),
-        Some(1)
+        full_strength_priority(&[
+            black.clone(),
+            green.clone(),
+            blue.clone(),
+            grey.clone(),
+            deep.clone()
+        ]),
+        Some(3)
     );
     // Order in the slice does not matter, only priorities.
     assert_eq!(
-        full_strength_priority(&[blue.clone(), green, black.clone()]),
-        Some(1)
+        full_strength_priority(&[deep.clone(), blue, black]),
+        Some(3)
     );
-    assert_eq!(full_strength_priority(&[black, blue]), None, "all full");
+    // No colour matches by name: the CMYK list decides, deep duplicates included.
+    let unnamed = |priority: i32, cmyk: [f64; 4]| named(priority, "x", cmyk);
+    assert_eq!(
+        full_strength_priority(&[
+            unnamed(1, [0.0, 0.0, 0.0, 1.0]),
+            unnamed(7, [1.0, 0.0, 0.0, 0.0]),
+            grey.clone(),
+            deep,
+        ]),
+        Some(29)
+    );
+    assert_eq!(
+        full_strength_priority(&[
+            unnamed(1, [0.0, 0.0, 0.0, 1.0]),
+            unnamed(7, [1.0, 0.0, 0.0, 0.0]),
+            grey.clone()
+        ]),
+        Some(7)
+    );
+    assert_eq!(full_strength_priority(&[green, grey]), None, "none full");
     assert_eq!(full_strength_priority(&[]), None, "no colours");
 }
 
@@ -668,7 +753,7 @@ fn names(page: &RenderedPage, pick: impl Fn(&RenderColour) -> bool) -> Vec<(i32,
 }
 
 #[test]
-fn luebeck_lower_purple_above_buildings_and_roads() {
+fn luebeck_lower_purple_under_black_over_every_fill() {
     let page = fixture_page("luebeck.omap", MapKind::Sprint);
     let full = names(&page, |c| full_strength(&c.name, c.cmyk).is_some());
     assert_eq!(
@@ -682,26 +767,28 @@ fn luebeck_lower_purple_above_buildings_and_roads() {
             (29, "Black for open land".to_string()),
         ]
     );
-    // Over all colours of the set, the course purple itself (0) is the topmost colour that is not full
-    // strength: the lower purple would go over everything. Only the colours the page paints count.
-    assert_eq!(full_strength_priority(&page.colours), Some(-1));
+    // Only painted colours count: 2 (Black 100%), 10 (Black 50%, buildings), 14 (Lower brown 30%, roads),
+    // 15 and 16. Of these only Black 100% has a canonical name, so the lower purple goes right under it,
+    // over every fill. Blue 100% (7) and Brown 100% (8) are in the colour table but paint nothing here.
+    let painted: std::collections::BTreeSet<i32> =
+        page.primitives.iter().map(|p| p.priority).collect();
+    assert_eq!(painted.into_iter().collect::<Vec<_>>(), [2, 10, 14, 15, 16]);
     let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
-    // The page paints 2 (Black 100%), 10 (Black 50%, buildings), 14 (Lower brown 30%, roads), 15 and 16:
-    // the lower purple goes right above the buildings, below black.
-    assert_eq!(o.below_priority, Some(9));
+    assert_eq!(o.below_priority, Some(2));
     let below = o.below_priority.unwrap();
-    for (priority, what) in [(10, "Black 50%"), (14, "Lower brown 30%")] {
-        assert!(
-            page.primitives.iter().any(|p| p.priority == priority),
-            "{what}"
-        );
+    for (priority, what) in [
+        (10, "Black 50%"),
+        (14, "Lower brown 30%"),
+        (15, "Black below lower light brown"),
+        (16, "Blue 100% for area features"),
+    ] {
         assert!(priority > below, "{what} lies under the lower purple");
     }
     assert!(2 <= below, "Black 100% lies over it");
 }
 
 #[test]
-fn forest_lower_purple_above_brown_50_below_black() {
+fn forest_lower_purple_right_under_brown() {
     let page = fixture_page("forest-sample.omap", MapKind::Forest);
     let full = names(&page, |c| full_strength(&c.name, c.cmyk).is_some());
     assert_eq!(
@@ -715,8 +802,10 @@ fn forest_lower_purple_above_brown_50_below_black() {
         ]
     );
     let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
-    // The topmost painted colour that is not full strength is Brown 50% (2).
-    assert_eq!(o.below_priority, Some(1));
+    // Painted canonical colours: Black (1) and Brown (7); Blue (5) paints nothing. The lower purple goes
+    // right under Brown, over the greens and yellows, and under Brown 50% (2) and Black below light
+    // browns (3).
+    assert_eq!(o.below_priority, Some(7));
 }
 
 #[test]
@@ -857,7 +946,7 @@ fn lower_layer_below_black_upper_above() {
         colour(9, [0.0, 0.0, 0.0, 0.6]),
     ];
     let page = course_page(colours);
-    // Green (2) is the topmost colour that is not full strength.
+    // No canonical names: black (1) is the only colour of the CMYK list.
     assert_eq!(page.overprint.below_priority, Some(1));
     let (pdf, _) = write_pdf(&page, &PdfMeta::new("t")).unwrap();
     let content = content_of(&pdf);
@@ -911,8 +1000,7 @@ fn no_full_strength_colours_paints_lower_on_top() {
         colour(9, [0.0, 0.0, 0.0, 0.6]),
     ];
     let page = course_page(colours);
-    // Above the topmost colour (1): after every map primitive.
-    assert_eq!(page.overprint.below_priority, Some(0));
+    assert_eq!(page.overprint.below_priority, None);
     let (pdf, _) = write_pdf(&page, &PdfMeta::new("t")).unwrap();
     let content = content_of(&pdf);
     let gs = positions(&content, MULTIPLY);

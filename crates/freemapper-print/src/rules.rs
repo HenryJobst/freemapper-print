@@ -35,7 +35,7 @@ pub const BASE_PROFILE: &str = "iof-print";
 const EMBEDDED: &[(&str, &str)] = &[("iof-print", include_str!("../rules/iof-print.toml"))];
 
 /// The value names of `course_symbol` rules, one per field of [`CourseSymbolSizes`].
-const COURSE_SYMBOL_VALUES: [&str; 14] = [
+const COURSE_SYMBOL_VALUES: [&str; 18] = [
     "circle_diameter_mm",
     "line_width_mm",
     "start_side_mm",
@@ -50,6 +50,10 @@ const COURSE_SYMBOL_VALUES: [&str; 14] = [
     "out_of_bounds_hatch_second_angle_degrees",
     "out_of_bounds_hatch_spacing_mm",
     "out_of_bounds_hatch_line_mm",
+    "first_aid_mm",
+    "first_aid_bar_mm",
+    "refreshment_mm",
+    "refreshment_line_mm",
 ];
 
 /// The rule keys this program reads, each with the value names a rule of that key may give.
@@ -254,6 +258,14 @@ pub struct CourseSymbolSizes {
     pub out_of_bounds_hatch_spacing_mm: f64,
     /// Width of a hatch line.
     pub out_of_bounds_hatch_line_mm: f64,
+    /// Length of each bar of a first aid post (712).
+    pub first_aid_mm: f64,
+    /// Width of a bar of a first aid post.
+    pub first_aid_bar_mm: f64,
+    /// Outer width and height of a refreshment point (713).
+    pub refreshment_mm: f64,
+    /// Line width of a refreshment point.
+    pub refreshment_line_mm: f64,
 }
 
 /// How much a mm² of map detail under a control number counts, by colour class.
@@ -692,6 +704,10 @@ fn resolve_kind(rules: &[SetRule], kind: MapKind) -> Result<KindValues, String> 
             )?,
             out_of_bounds_hatch_spacing_mm: course("out_of_bounds_hatch_spacing_mm")?,
             out_of_bounds_hatch_line_mm: course("out_of_bounds_hatch_line_mm")?,
+            first_aid_mm: course("first_aid_mm")?,
+            first_aid_bar_mm: course("first_aid_bar_mm")?,
+            refreshment_mm: course("refreshment_mm")?,
+            refreshment_line_mm: course("refreshment_line_mm")?,
         },
         description_cell_mm: needed(rules, "description_box", "cell_mm", k)?,
     })
@@ -991,7 +1007,7 @@ fn parse_rule(profile: &str, entry: &Table, index: usize) -> Result<Rule, RuleEr
 }
 
 /// Checks one value of a rule: a documented table has its shape, a number its range by unit
-/// (`mm` and `metres` above 0, `factor` 0 or more, `percent` from 0 to 100).
+/// (`mm` and `metres` above 0, `factor` 0 or more, `percent` from 0 to 100, `degrees` any finite number).
 fn value_problem(key: &str, name: &str, value: &Value) -> Result<(), String> {
     if key == "scale_table" && name == "rows" {
         return scale_rows(value).map(|_| ());
@@ -1007,6 +1023,8 @@ fn value_problem(key: &str, name: &str, value: &Value) -> Result<(), String> {
     let fits = match unit {
         "percent" => (0.0..=100.0).contains(&n),
         "factor" => n >= 0.0,
+        // An angle may point anywhere.
+        "degrees" => true,
         _ => n > 0.0,
     };
     if fits {
@@ -1336,6 +1354,19 @@ mod tests {
     }
 
     #[test]
+    fn degrees_take_any_finite_number() {
+        let check = |name: &str, value: Value| value_problem("course_symbol", name, &value);
+        let angle = "out_of_bounds_hatch_angle_degrees";
+        assert!(check(angle, Value::Integer(0)).is_ok());
+        assert!(check(angle, Value::Integer(-45)).is_ok());
+        assert!(check(angle, Value::Float(400.0)).is_ok());
+        assert!(check(angle, Value::Float(f64::NAN)).is_err());
+        assert!(check(angle, Value::Float(f64::INFINITY)).is_err());
+        // Lengths stay above 0.
+        assert!(check("first_aid_mm", Value::Integer(0)).is_err());
+    }
+
+    #[test]
     fn sprint_course_symbols() {
         // ISSprOM 2019-2 section 4.7, at 1:4000; Purple Pen's Spr2019 sizes agree.
         assert_eq!(
@@ -1355,6 +1386,10 @@ mod tests {
                 out_of_bounds_hatch_second_angle_degrees: Some(135.0),
                 out_of_bounds_hatch_spacing_mm: 1.2,
                 out_of_bounds_hatch_line_mm: 0.2,
+                first_aid_mm: 4.0,
+                first_aid_bar_mm: 1.33,
+                refreshment_mm: 3.5,
+                refreshment_line_mm: 0.4,
             }
         );
         // Schoolyard maps take the sprint values (an assumption the rule's note states).
@@ -1388,6 +1423,10 @@ mod tests {
                 out_of_bounds_hatch_second_angle_degrees: Some(135.0),
                 out_of_bounds_hatch_spacing_mm: 1.2,
                 out_of_bounds_hatch_line_mm: 0.2,
+                first_aid_mm: 4.0,
+                first_aid_bar_mm: 1.33,
+                refreshment_mm: 3.5,
+                refreshment_line_mm: 0.4,
             }
         );
     }
