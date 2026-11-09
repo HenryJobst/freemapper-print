@@ -21,6 +21,20 @@ help-paper = Paper size.
 help-orientation = Page orientation. Auto picks the one that cuts off less of the map.
 help-kind = Map kind. Needed only when the program cannot tell it from freemapper.toml or the map file.
 help-show-sheet-objects = Also draw freemapper's information block: title, scale, scale bar and credits. It scales with the map at another print scale, so its scale text can be wrong then.
+init-about = Create the project file of an event for a map.
+init-after-content = The new file has one A4 layout at the map scale, a title block, a scale check bar and a proposed contour interval to confirm.
+init-after-exit-codes = Exit codes: 0 on success, 1 when the map cannot be read, the map kind is unknown or the project file exists already, 2 when the command line is wrong.
+help-init-folder = Folder for the new freemapper-print.toml. Created if missing.
+help-init-map = The OOM map file (.omap). The project file stores its path relative to itself.
+help-init-title = Event title on the sheets. The default is the map's file name.
+help-init-kind = Map kind. Needed when no freemapper.toml next to the map names it.
+check-about = Draw every layout of a project without writing a file and list the notes.
+check-after-exit-codes = Exit codes: 0 when no layout has notes (added north lines do not count), 1 when the project cannot be loaded or a layout has notes, 2 when the command line is wrong.
+help-project = The project file freemapper-print.toml, or the folder that holds it.
+export-about = Write one PDF per layout, named after the layout id.
+export-after-exit-codes = Exit codes: 0 when every PDF is written, even with notes, 1 when the project cannot be loaded or a PDF cannot be drawn or written, 2 when the command line is wrong or names an unknown layout.
+help-layout = Export only this layout. Repeat it for more. Without it, export writes every layout.
+help-out-dir = Folder for the PDFs. It must exist. The default is the folder out next to the project file, created if missing. Export overwrites a PDF of the same name.
 
 ## Errors
 
@@ -32,6 +46,15 @@ error-out-folder-missing = the folder { $path } for the PDF does not exist; crea
 error-out-is-map = --out points at the map file { $path }; choose a PDF path so the map stays safe
 error-print = could not print the map
 error-write = could not write the PDF
+error-load-project = could not load the project { $path }
+error-project-exists = { $path } exists already; init does not overwrite it
+error-create-folder = could not create the folder { $path }
+error-init-kind-unknown = no freemapper.toml next to the map names the map kind; pass --kind sprint, --kind schoolyard or --kind forest
+error-unknown-layout = the project has no layout { $id }; its layouts are { $known }
+error-out-dir-missing = the folder { $path } for the PDFs does not exist; create it first
+error-sheet = could not draw layout { $layout }
+error-disk-full = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and { $available } MB are free
+error-write-file = could not write { $path }
 
 ## Notes and warnings after a print
 
@@ -76,3 +99,46 @@ note-dropped-pattern = Note: { $count ->
 note-fonts = Note: the font Arimo replaces { $names }.
 note-missing-glyphs = Note: the embedded font has no glyph for these characters, so they are missing in the PDF: { $chars }
 reminder-actual-size = Print at actual size: 100 %, with "fit to page" switched off. Any other size breaks the scale.
+
+## Project commands: init, check, export
+
+init-written = Wrote { $path } with one A4 layout, { $layout }, at 1:{ $scale } for { $kind } maps.
+init-contour-hint = The project proposes a contour interval of { $value } m, common for { $kind } maps. Look it up on the map and confirm it, or change map.contour_interval_m.
+init-no-contour-hint = Schoolyard maps get no proposed contour interval. If the map has contours, set map.contour_interval_m; until then check reports it as missing.
+init-next = Run freemapper-print check { $path } next.
+# Comments in the new project file.
+init-comment-contour = Proposed for { $kind } maps. Confirm it against the map.
+init-comment-no-contour = No contour interval is proposed for schoolyard maps. If the map has contours, add contour_interval_m with the interval in metres.
+init-comment-footer = The copyright and credit lines go in the footer at the bottom left, below the map frame if the passe-partout is wide enough, else inside it. A copyright_line or credit_line element moves them.
+check-summary = Layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.
+check-clean = Checked { $count ->
+        [one] 1 layout
+       *[other] { $count } layouts
+    }, no notes.
+check-with-notes = Layouts with notes: { $count } of { $total }.
+
+## Sheet notes
+
+list-and = { $first } and { $last }
+note-element-outside-page = Note: the element { $id } reaches past the page edge and is cut off there.
+note-footer-outside-page = Note: the footer with the copyright and credit lines reaches past the page edge and is cut off there.
+note-element-overlaps-map = Note: the element { $id } hangs on the page and covers part of the map frame, so the map beneath it does not show.
+note-footer-overlaps-map = Note: the passe-partout is too narrow for the footer with the copyright and credit lines. The footer sits inside the map frame on a white box and covers part of the map. A wider margin_mm or a copyright_line or credit_line element moves it.
+note-larger-than-a3 = Note: the paper is larger than A3, which most office printers cannot take.
+note-missing-scale-or-contour = Note: layout { $layout } lacks { $missing }.
+missing-print-scale-text = a text with { $name } for the print scale
+missing-contour-text = a text with { $name } for the contour interval
+missing-contour-value = a value for { $name }, the contour interval in metres
+note-north-lines-added = Note: the map has no north lines, so { $count ->
+        [one] 1 line was
+       *[other] { $count } lines were
+    } added. They run unbroken across the map frame. Breaking them at small features such as boulders or path ends is the mapper's job in OOM.
+note-north-lines-without-symbol = Note: the map has neither north lines nor a usable line symbol 601, so { $count ->
+        [one] 1 plain black line was
+       *[other] { $count } plain black lines were
+    } drawn over the map.
+note-copyright-truncated = Note: layout { $layout } shows { $shown } of { $total } copyright lines. One more line counts the rest.
+note-logo-skipped = Note: the logo { $id } is left out: { $reason }
+note-logo-simplified = Note: the logo { $id } is drawn simplified: { $reason }
+note-unknown-placeholder = Note: the text { $id } contains { $name }, which is no placeholder, so it is printed as written.
+note-unknown-part = Note: layout { $layout } hides the map part { $name }, but the map has no part of that name. Upper and lower case count.

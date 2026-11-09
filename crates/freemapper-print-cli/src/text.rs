@@ -186,6 +186,11 @@ impl Texts {
         }
     }
 
+    /// The language of the texts.
+    pub fn lang(&self) -> &Lang {
+        &self.lang
+    }
+
     /// A text without variables.
     pub fn plain(&self, id: &str) -> String {
         self.get(id, None)
@@ -304,6 +309,18 @@ mod tests {
             "last",
             "names",
             "chars",
+            "id",
+            "layout",
+            "missing",
+            "name",
+            "shown",
+            "total",
+            "reason",
+            "value",
+            "scale",
+            "needed",
+            "available",
+            "known",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

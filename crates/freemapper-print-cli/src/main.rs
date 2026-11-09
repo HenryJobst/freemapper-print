@@ -5,12 +5,17 @@ mod text;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, bail};
+use anyhow::{Context, anyhow, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
+use freemapper_print::export::{ExportError, export_layouts, select_layouts, sheet_pdf};
+use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
+use freemapper_print::output::OutputError;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
+use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
+use freemapper_print::sheet::{FOOTER_ID, SheetNote, SheetReport};
 
 use text::{Lang, Texts, detect_lang};
 
@@ -27,6 +32,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Render(RenderArgs),
+    Init(InitArgs),
+    Check(CheckArgs),
+    Export(ExportArgs),
 }
 
 #[derive(Args)]
@@ -44,6 +52,31 @@ struct RenderArgs {
     kind: Option<KindArg>,
     #[arg(long)]
     show_sheet_objects: bool,
+}
+
+#[derive(Args)]
+struct InitArgs {
+    folder: PathBuf,
+    #[arg(long)]
+    map: PathBuf,
+    #[arg(long)]
+    title: Option<String>,
+    #[arg(long, value_enum)]
+    kind: Option<KindArg>,
+}
+
+#[derive(Args)]
+struct CheckArgs {
+    project: PathBuf,
+}
+
+#[derive(Args)]
+struct ExportArgs {
+    project: PathBuf,
+    #[arg(long = "layout", value_name = "ID")]
+    layout: Vec<String>,
+    #[arg(long, value_name = "DIR")]
+    out_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -95,6 +128,18 @@ impl From<KindArg> for MapKind {
     }
 }
 
+/// A wrong command line found after clap parsed it, such as an unknown layout id: exit code 2.
+#[derive(Debug)]
+struct UsageError(String);
+
+impl std::fmt::Display for UsageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UsageError {}
+
 /// Message arguments: `args!("name" => value, ...)`.
 macro_rules! args {
     ($($name:literal => $value:expr),* $(,)?) => {{
@@ -104,13 +149,8 @@ macro_rules! args {
     }};
 }
 
-fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<()> {
-    let map = read_map_file(&args.map).with_context(|| {
-        texts.get(
-            "error-read-map",
-            Some(&args!("path" => args.map.display().to_string())),
-        )
-    })?;
+fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
+    let map = read_map(texts, &args.map)?;
     let kind = match args.kind {
         Some(kind) => kind.into(),
         None => {
@@ -171,7 +211,283 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<()> {
     ) {
         eprintln!("{line}");
     }
-    Ok(())
+    Ok(0)
+}
+
+fn read_map(texts: &Texts, path: &Path) -> anyhow::Result<MapDocument> {
+    read_map_file(path).with_context(|| {
+        texts.get(
+            "error-read-map",
+            Some(&args!("path" => path.display().to_string())),
+        )
+    })
+}
+
+/// The project file named by `arg`: the file itself, or `freemapper-print.toml` in a folder.
+fn project_file(arg: &Path) -> PathBuf {
+    if arg.is_dir() {
+        arg.join(project::FILE_NAME)
+    } else {
+        arg.to_path_buf()
+    }
+}
+
+fn load_project(texts: &Texts, arg: &Path) -> anyhow::Result<LoadedProject> {
+    let path = project_file(arg);
+    project::load(&path).with_context(|| {
+        texts.get(
+            "error-load-project",
+            Some(&args!("path" => path.display().to_string())),
+        )
+    })
+}
+
+/// Metres with the decimal separator of the language and no needless `.0`: `2.5`, `5`.
+fn metres(texts: &Texts, value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        texts.decimal(&format!("{value}"))
+    }
+}
+
+fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
+    let map = read_map(texts, &args.map)?;
+    let kind: MapKind = match args.kind {
+        Some(kind) => kind.into(),
+        // As the M1 `render` reads it, but without guessing from the symbol set: the kind is
+        // written into the project and stays.
+        None => match read_sidecar(&args.map) {
+            Ok(Some(kind)) => kind,
+            Ok(None) => bail!(texts.plain("error-init-kind-unknown")),
+            Err(err) => {
+                return Err(anyhow::Error::new(err).context(texts.plain("error-init-kind-unknown")));
+            }
+        },
+    };
+    let shown = args.folder.join(project::FILE_NAME);
+    let folder_error = || {
+        texts.get(
+            "error-create-folder",
+            Some(&args!("path" => args.folder.display().to_string())),
+        )
+    };
+    std::fs::create_dir_all(&args.folder).with_context(folder_error)?;
+    // Both canonical, so that links and `..` do not spoil the relative path.
+    let dir = args.folder.canonicalize().with_context(folder_error)?;
+    let map_path = args.map.canonicalize().with_context(|| {
+        texts.get(
+            "error-read-map",
+            Some(&args!("path" => args.map.display().to_string())),
+        )
+    })?;
+    let title = args.title.clone().unwrap_or_else(|| {
+        args.map
+            .file_stem()
+            .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
+    });
+    let sheet_lang = if texts.lang().code() == "de" {
+        SheetLang::De
+    } else {
+        SheetLang::En
+    };
+    let map_scale = map.georef.scale_denominator;
+    let new = project::starter(
+        &title,
+        project::relative_path(&dir, &map_path),
+        kind,
+        map_scale,
+        sheet_lang,
+    );
+    let kind_word = texts.plain(kind_word_id(kind));
+    let contour = new.map.contour_interval_m;
+    let contour_comment = match contour {
+        Some(_) => texts.get(
+            "init-comment-contour",
+            Some(&args!("kind" => kind_word.clone())),
+        ),
+        None => texts.plain("init-comment-no-contour"),
+    };
+    let footer_comment = texts.plain("init-comment-footer");
+    let comments = [
+        KeyComment {
+            table: "map",
+            key: Some("contour_interval_m"),
+            text: &contour_comment,
+        },
+        KeyComment {
+            table: "shared",
+            key: None,
+            text: &footer_comment,
+        },
+    ];
+    let file = dir.join(project::FILE_NAME);
+    match project::save_new_with_comments(&file, &new, &comments) {
+        Ok(()) => {}
+        Err(project::ProjectError::Exists { .. }) => bail!(texts.get(
+            "error-project-exists",
+            Some(&args!("path" => shown.display().to_string()))
+        )),
+        Err(err) => {
+            return Err(anyhow::Error::new(err).context(texts.get(
+                "error-write-file",
+                Some(&args!("path" => shown.display().to_string())),
+            )));
+        }
+    }
+    let path = shown.display().to_string();
+    eprintln!(
+        "{}",
+        texts.get(
+            "init-written",
+            Some(&args!(
+                "path" => path.clone(),
+                "layout" => project::STARTER_LAYOUT_ID,
+                "scale" => map_scale.to_string(),
+                "kind" => kind_word.clone(),
+            ))
+        )
+    );
+    eprintln!(
+        "{}",
+        match contour {
+            Some(value) => texts.get(
+                "init-contour-hint",
+                Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
+            ),
+            None => texts.plain("init-no-contour-hint"),
+        }
+    );
+    eprintln!("{}", texts.get("init-next", Some(&args!("path" => path))));
+    Ok(0)
+}
+
+fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
+    let loaded = load_project(texts, &args.project)?;
+    let map = read_map(texts, &loaded.map_path())?;
+    let map_scale = map.georef.scale_denominator;
+    let kind = loaded.project.map.kind;
+    let total = loaded.project.layouts.len();
+    let mut with_notes = 0;
+    for layout in &loaded.project.layouts {
+        // The PDF is made in memory only: the font check needs it.
+        let (_, report) =
+            sheet_pdf(&loaded, &map, layout).map_err(|err| export_error(texts, err))?;
+        let head = summary_line(
+            texts,
+            "check-summary",
+            ("layout", printable(&layout.id)),
+            layout.paper,
+            &report.print,
+            map_scale,
+        );
+        let (lines, has_notes) = layout_lines(texts, head, layout, &report, kind);
+        for line in lines {
+            eprintln!("{line}");
+        }
+        with_notes += usize::from(has_notes);
+    }
+    if with_notes == 0 {
+        eprintln!(
+            "{}",
+            texts.get("check-clean", Some(&args!("count" => total)))
+        );
+        Ok(0)
+    } else {
+        eprintln!(
+            "{}",
+            texts.get(
+                "check-with-notes",
+                Some(&args!("count" => with_notes, "total" => total))
+            )
+        );
+        Ok(1)
+    }
+}
+
+fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
+    let loaded = load_project(texts, &args.project)?;
+    let layouts = select_layouts(&loaded, &args.layout).map_err(|unknown| {
+        let known: Vec<String> = unknown.known.iter().map(|id| printable(id)).collect();
+        UsageError(texts.get(
+            "error-unknown-layout",
+            Some(&args!("id" => printable(&unknown.id), "known" => known.join(", "))),
+        ))
+    })?;
+    let map = read_map(texts, &loaded.map_path())?;
+    let out_dir = match &args.out_dir {
+        Some(dir) => {
+            if !dir.is_dir() {
+                bail!(texts.get(
+                    "error-out-dir-missing",
+                    Some(&args!("path" => dir.display().to_string()))
+                ));
+            }
+            dir.clone()
+        }
+        None => {
+            let dir = loaded.dir.join("out");
+            std::fs::create_dir_all(&dir).with_context(|| {
+                texts.get(
+                    "error-create-folder",
+                    Some(&args!("path" => dir.display().to_string())),
+                )
+            })?;
+            dir
+        }
+    };
+    let map_scale = map.georef.scale_denominator;
+    let kind = loaded.project.map.kind;
+    export_layouts(&loaded, &map, &layouts, &out_dir, |done| {
+        let head = summary_line(
+            texts,
+            "report-summary",
+            ("out", done.path.display().to_string()),
+            done.layout.paper,
+            &done.report.print,
+            map_scale,
+        );
+        for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
+            eprintln!("{line}");
+        }
+    })
+    .map_err(|err| export_error(texts, err))?;
+    eprintln!("{}", texts.plain("reminder-actual-size"));
+    Ok(0)
+}
+
+/// An export error with a translated lead-in; a full disk is translated whole.
+fn export_error(texts: &Texts, err: ExportError) -> anyhow::Error {
+    const MB: u64 = 1024 * 1024;
+    let sheet =
+        |layout: &str| texts.get("error-sheet", Some(&args!("layout" => printable(layout))));
+    match err {
+        ExportError::Sheet { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
+        ExportError::Pdf { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
+        ExportError::Write {
+            error:
+                OutputError::DiskFull {
+                    needed,
+                    available,
+                    path,
+                },
+            ..
+        } => anyhow!(texts.get(
+            "error-disk-full",
+            Some(&args!(
+                "path" => path.display().to_string(),
+                "needed" => needed.div_ceil(MB).to_string(),
+                "available" => (available / MB).to_string(),
+            ))
+        )),
+        ExportError::Write {
+            error: OutputError::Io { path, source },
+            ..
+        } => anyhow::Error::new(source).context(texts.get(
+            "error-write-file",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+    }
 }
 
 /// True when `out` names the same file as `map`, even through links or `..`.
@@ -223,6 +539,64 @@ fn mm(texts: &Texts, value: f64) -> String {
     texts.decimal(&format!("{:.1}", value.max(0.1)))
 }
 
+fn paper_name(paper: Paper) -> &'static str {
+    match paper {
+        Paper::A4 => "A4",
+        Paper::A3 => "A3",
+    }
+}
+
+/// The message id of the plural kind word: "sprint" in "sprint maps", "Sprintkarten".
+fn kind_word_id(kind: MapKind) -> &'static str {
+    match kind {
+        MapKind::Sprint => "word-kind-sprint",
+        MapKind::Schoolyard => "word-kind-schoolyard",
+        MapKind::Forest => "word-kind-forest",
+    }
+}
+
+/// `items` as "a, b and c" in the language of `texts`.
+fn join_and(texts: &Texts, mut items: Vec<String>) -> String {
+    match items.len() {
+        0 | 1 => items.pop().unwrap_or_default(),
+        _ => {
+            let last = items.pop().unwrap_or_default();
+            texts.get(
+                "list-and",
+                Some(&args!("first" => items.join(", "), "last" => last)),
+            )
+        }
+    }
+}
+
+/// The first line about a printed page: message `id` with `key` (the PDF path or the layout id)
+/// and the page size, scales and factors.
+fn summary_line(
+    texts: &Texts,
+    id: &str,
+    key: (&'static str, String),
+    paper: Paper,
+    report: &PrintReport,
+    map_scale: u32,
+) -> String {
+    let (w, h) = report.page_mm;
+    let orientation = texts.plain(if w > h {
+        "word-landscape"
+    } else {
+        "word-portrait"
+    });
+    let mut a = args!(
+        "paper" => paper_name(paper),
+        "orientation" => orientation,
+        "print_scale" => report.print_scale.to_string(),
+        "map_scale" => map_scale.to_string(),
+        "geometry" => texts.decimal(&format!("{:.3}", report.geometry_factor)),
+        "symbol" => texts.decimal(&format!("{:.3}", report.symbol_factor)),
+    );
+    a.set(key.0, key.1);
+    texts.get(id, Some(&a))
+}
+
 /// The messages for a finished print, in the order they appear on stderr.
 fn report_lines(
     texts: &Texts,
@@ -233,38 +607,148 @@ fn report_lines(
     map_scale: u32,
     out: &Path,
 ) -> Vec<String> {
-    let paper_name = paper
-        .to_possible_value()
-        .map_or_else(String::new, |v| v.get_name().to_uppercase());
-    let (w, h) = report.page_mm;
-    let orientation = texts.plain(if w > h {
-        "word-landscape"
-    } else {
-        "word-portrait"
-    });
-    let mut lines = vec![texts.get(
+    let mut lines = vec![summary_line(
+        texts,
         "report-summary",
-        Some(&args!(
-            "out" => out.display().to_string(),
-            "paper" => paper_name,
-            "orientation" => orientation,
-            "print_scale" => report.print_scale.to_string(),
-            "map_scale" => map_scale.to_string(),
-            "geometry" => texts.decimal(&format!("{:.3}", report.geometry_factor)),
-            "symbol" => texts.decimal(&format!("{:.3}", report.symbol_factor)),
-        )),
+        ("out", out.display().to_string()),
+        paper.into(),
+        report,
+        map_scale,
     )];
+    lines.extend(print_notes(
+        texts,
+        report,
+        paper.into(),
+        orientation_arg != OrientationArg::Auto,
+        kind,
+    ));
+    lines.push(texts.plain("reminder-actual-size"));
+    lines
+}
+
+/// The lines about one sheet: `head`, the notes of its print report, then its sheet notes. Also
+/// whether any of them asks the user to look (every note but [`SheetNote::NorthLinesAdded`]).
+fn layout_lines(
+    texts: &Texts,
+    head: String,
+    layout: &LayoutSpec,
+    report: &SheetReport,
+    kind: MapKind,
+) -> (Vec<String>, bool) {
+    let print = print_notes(
+        texts,
+        &report.print,
+        layout.paper,
+        layout.orientation != Orientation::Auto,
+        kind,
+    );
+    let has_notes = !print.is_empty()
+        || report
+            .notes
+            .iter()
+            .any(|n| !matches!(n, SheetNote::NorthLinesAdded { .. }));
+    let mut lines = vec![head];
+    lines.extend(print);
+    lines.extend(report.notes.iter().map(|n| sheet_note_line(texts, n)));
+    (lines, has_notes)
+}
+
+/// The message for one sheet note. No wildcard arm: a new kind of note does not compile until it
+/// has a text.
+fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
+    match note {
+        SheetNote::ElementOutsidePage { id } if id == FOOTER_ID => {
+            texts.plain("note-footer-outside-page")
+        }
+        SheetNote::ElementOutsidePage { id } => texts.get(
+            "note-element-outside-page",
+            Some(&args!("id" => printable(id))),
+        ),
+        SheetNote::ElementOverlapsMap { id } if id == FOOTER_ID => {
+            texts.plain("note-footer-overlaps-map")
+        }
+        SheetNote::ElementOverlapsMap { id } => texts.get(
+            "note-element-overlaps-map",
+            Some(&args!("id" => printable(id))),
+        ),
+        SheetNote::LargerThanA3 => texts.plain("note-larger-than-a3"),
+        SheetNote::MissingScaleOrContour { layout, missing } => {
+            let items: Vec<String> = missing
+                .iter()
+                .map(|name| {
+                    let id = match name.as_str() {
+                        "{print_scale}" => "missing-print-scale-text",
+                        "{contour_interval}" => "missing-contour-text",
+                        "map.contour_interval_m" => "missing-contour-value",
+                        other => return printable(other),
+                    };
+                    texts.get(id, Some(&args!("name" => printable(name))))
+                })
+                .collect();
+            let count = items.len();
+            texts.get(
+                "note-missing-scale-or-contour",
+                Some(&args!(
+                    "layout" => printable(layout),
+                    "missing" => join_and(texts, items),
+                    "count" => count,
+                )),
+            )
+        }
+        SheetNote::NorthLinesAdded { count } => {
+            texts.get("note-north-lines-added", Some(&args!("count" => *count)))
+        }
+        SheetNote::NorthLinesWithoutSymbol { count } => texts.get(
+            "note-north-lines-without-symbol",
+            Some(&args!("count" => *count)),
+        ),
+        SheetNote::CopyrightTruncated {
+            layout,
+            total,
+            shown,
+        } => texts.get(
+            "note-copyright-truncated",
+            Some(&args!(
+                "layout" => printable(layout),
+                "total" => *total,
+                "shown" => *shown,
+            )),
+        ),
+        SheetNote::LogoSkipped { id, reason } => texts.get(
+            "note-logo-skipped",
+            Some(&args!("id" => printable(id), "reason" => printable(reason))),
+        ),
+        SheetNote::LogoSimplified { id, reason } => texts.get(
+            "note-logo-simplified",
+            Some(&args!("id" => printable(id), "reason" => printable(reason))),
+        ),
+        SheetNote::UnknownPlaceholder { id, name } => texts.get(
+            "note-unknown-placeholder",
+            Some(&args!("id" => printable(id), "name" => printable(&format!("{{{name}}}")))),
+        ),
+        SheetNote::UnknownPart { layout, name } => texts.get(
+            "note-unknown-part",
+            Some(&args!("layout" => printable(layout), "name" => printable(name))),
+        ),
+    }
+}
+
+/// The notes of a print report, without the summary and the reminder. `explicit_orientation`:
+/// the orientation was chosen, so trying the other one is worth a hint.
+fn print_notes(
+    texts: &Texts,
+    report: &PrintReport,
+    paper: Paper,
+    explicit_orientation: bool,
+    kind: MapKind,
+) -> Vec<String> {
+    let mut lines = Vec::new();
     if report.non_standard_scale {
-        let kind_word = match kind {
-            MapKind::Sprint => "word-kind-sprint",
-            MapKind::Schoolyard => "word-kind-schoolyard",
-            MapKind::Forest => "word-kind-forest",
-        };
         lines.push(texts.get(
             "warning-non-standard-scale",
             Some(&args!(
                 "print_scale" => report.print_scale.to_string(),
-                "kind" => texts.plain(kind_word),
+                "kind" => texts.plain(kind_word_id(kind)),
                 "base_scale" => kind.base_scale().to_string(),
             )),
         ));
@@ -288,11 +772,11 @@ fn report_lines(
             cut.remove(0)
         };
         let mut hints = Vec::new();
-        if matches!(paper, PaperArg::A4) {
+        if paper == Paper::A4 {
             hints.push(texts.plain("hint-paper-a3"));
         }
         // Auto already took the orientation that cuts off less.
-        if orientation_arg != OrientationArg::Auto {
+        if explicit_orientation {
             hints.push(texts.plain("hint-other-orientation"));
         }
         // The next larger allowed number shrinks the map on the page.
@@ -353,7 +837,6 @@ fn report_lines(
             .join(" ");
         lines.push(texts.get("note-missing-glyphs", Some(&args!("chars" => chars))));
     }
-    lines.push(texts.plain("reminder-actual-size"));
     lines
 }
 
@@ -397,6 +880,34 @@ fn localised_command(texts: &Texts) -> clap::Command {
                     a.help(texts.plain("help-show-sheet-objects"))
                 })
         })
+        .mut_subcommand("init", |c| {
+            c.about(texts.plain("init-about"))
+                .after_long_help(format!(
+                    "{}\n\n{}",
+                    texts.plain("init-after-content"),
+                    texts.plain("init-after-exit-codes")
+                ))
+                .mut_arg("folder", |a| a.help(texts.plain("help-init-folder")))
+                .mut_arg("map", |a| a.help(texts.plain("help-init-map")))
+                .mut_arg("title", |a| a.help(texts.plain("help-init-title")))
+                .mut_arg("kind", |a| a.help(texts.plain("help-init-kind")))
+        })
+        .mut_subcommand("check", |c| {
+            c.about(texts.plain("check-about"))
+                .after_long_help(texts.plain("check-after-exit-codes"))
+                .mut_arg("project", |a| a.help(texts.plain("help-project")))
+        })
+        .mut_subcommand("export", |c| {
+            c.about(texts.plain("export-about"))
+                .after_long_help(format!(
+                    "{}\n\n{}",
+                    texts.plain("render-after-size"),
+                    texts.plain("export-after-exit-codes")
+                ))
+                .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                .mut_arg("layout", |a| a.help(texts.plain("help-layout")))
+                .mut_arg("out_dir", |a| a.help(texts.plain("help-out-dir")))
+        })
 }
 
 fn main() -> std::process::ExitCode {
@@ -427,9 +938,12 @@ fn main() -> std::process::ExitCode {
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     let result = match cli.command {
         Commands::Render(args) => render(&texts, &args),
+        Commands::Init(args) => init(&texts, &args),
+        Commands::Check(args) => check(&texts, &args),
+        Commands::Export(args) => export(&texts, &args),
     };
     match result {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+        Ok(code) => std::process::ExitCode::from(code),
         Err(err) => {
             // Errors can quote map content, so they get the same escaping as the notes.
             let message = printable(&format!("{err:#}"));
@@ -437,7 +951,12 @@ fn main() -> std::process::ExitCode {
                 "{}",
                 texts.get("error-line", Some(&args!("message" => message)))
             );
-            std::process::ExitCode::FAILURE
+            let code = if err.downcast_ref::<UsageError>().is_some() {
+                2
+            } else {
+                1
+            };
+            std::process::ExitCode::from(code)
         }
     }
 }
@@ -532,6 +1051,111 @@ mod tests {
         assert!(
             l[3].contains("1 object is drawn without an area pattern"),
             "{l:?}"
+        );
+    }
+
+    #[test]
+    fn every_sheet_note_has_a_text_with_its_fields() {
+        let s = |v: &str| v.to_string();
+        let notes: Vec<(SheetNote, Vec<&str>)> = vec![
+            (
+                SheetNote::ElementOutsidePage { id: s("logo1") },
+                vec!["logo1"],
+            ),
+            (SheetNote::ElementOutsidePage { id: s(FOOTER_ID) }, vec![]),
+            (
+                SheetNote::ElementOverlapsMap { id: s("logo1") },
+                vec!["logo1"],
+            ),
+            (
+                SheetNote::ElementOverlapsMap { id: s(FOOTER_ID) },
+                vec!["margin_mm"],
+            ),
+            (SheetNote::LargerThanA3, vec!["A3"]),
+            (
+                SheetNote::MissingScaleOrContour {
+                    layout: s("L1"),
+                    missing: vec![
+                        s("{print_scale}"),
+                        s("{contour_interval}"),
+                        s("map.contour_interval_m"),
+                    ],
+                },
+                vec![
+                    "L1",
+                    "{print_scale}",
+                    "{contour_interval}",
+                    "map.contour_interval_m",
+                ],
+            ),
+            (SheetNote::NorthLinesAdded { count: 7 }, vec!["7", "OOM"]),
+            (
+                SheetNote::NorthLinesWithoutSymbol { count: 3 },
+                vec!["3", "601"],
+            ),
+            (
+                SheetNote::CopyrightTruncated {
+                    layout: s("L1"),
+                    total: 9,
+                    shown: 5,
+                },
+                vec!["L1", "9", "5"],
+            ),
+            (
+                SheetNote::LogoSkipped {
+                    id: s("logo1"),
+                    reason: s("broken file"),
+                },
+                vec!["logo1", "broken file"],
+            ),
+            (
+                SheetNote::LogoSimplified {
+                    id: s("logo1"),
+                    reason: s("clip path ignored"),
+                },
+                vec!["logo1", "clip path ignored"],
+            ),
+            (
+                SheetNote::UnknownPlaceholder {
+                    id: s("t1"),
+                    name: s("curse"),
+                },
+                vec!["t1", "{curse}"],
+            ),
+            (
+                SheetNote::UnknownPart {
+                    layout: s("L1"),
+                    name: s("courses"),
+                },
+                vec!["L1", "courses"],
+            ),
+        ];
+        for lang in text::available() {
+            let texts = Texts::new(&lang);
+            let mut seen = std::collections::HashSet::new();
+            for (note, fields) in &notes {
+                let line = sheet_note_line(&texts, note);
+                assert!(!line.starts_with("note-"), "{line}");
+                assert!(seen.insert(line.clone()), "two notes share {line}");
+                for f in fields {
+                    assert!(line.contains(f), "{}: {f} missing in {line}", lang.code());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn notes_cannot_inject_escape_sequences() {
+        let line = sheet_note_line(
+            &Texts::new(&Lang::english()),
+            &SheetNote::UnknownPart {
+                layout: "a\u{1b}[2J".into(),
+                name: "\u{202e}x".into(),
+            },
+        );
+        assert!(
+            !line.contains('\u{1b}') && !line.contains('\u{202e}'),
+            "{line:?}"
         );
     }
 
