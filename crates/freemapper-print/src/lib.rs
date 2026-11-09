@@ -5,6 +5,7 @@
 //! server and the layout editor (ADR 0001). Terms follow `docs/glossary.md`.
 
 pub mod course;
+pub mod describe;
 pub mod export;
 pub mod omap;
 pub mod output;

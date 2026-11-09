@@ -1,5 +1,6 @@
-//! What the course readers share: the streaming loop over quick-xml events with the ADR 0019 guards (file
-//! size, no DOCTYPE, only the five predefined entities), attribute and number parsing, and the note list.
+//! What the course readers and the description symbol reader share: the streaming loop over quick-xml events
+//! with the ADR 0019 guards (file size, no DOCTYPE, only the five predefined entities), attribute and number
+//! parsing, and the note list.
 
 use std::collections::HashSet;
 
@@ -10,14 +11,14 @@ use super::CourseError;
 use super::model::{CourseNote, MAX_COURSE_FILE_BYTES, MAX_NOTES, MAX_TOTAL_TEXT_BYTES};
 
 /// Receives the elements and the text of a document.
-pub(super) trait Handler {
+pub(crate) trait Handler {
     fn begin(&mut self, e: &BytesStart<'_>) -> Result<(), CourseError>;
     fn end(&mut self) -> Result<(), CourseError>;
     fn text(&mut self, s: &str);
 }
 
 /// Runs `h` over `bytes`. An empty element is a `begin` followed by an `end`.
-pub(super) fn drive(bytes: &[u8], h: &mut impl Handler) -> Result<(), CourseError> {
+pub(crate) fn drive(bytes: &[u8], h: &mut impl Handler) -> Result<(), CourseError> {
     if bytes.len() > MAX_COURSE_FILE_BYTES {
         return Err(CourseError::Limit(format!(
             "file larger than {} MiB",
@@ -59,15 +60,15 @@ pub(super) fn drive(bytes: &[u8], h: &mut impl Handler) -> Result<(), CourseErro
     }
 }
 
-pub(super) fn xml_err(e: impl std::fmt::Display) -> CourseError {
+pub(crate) fn xml_err(e: impl std::fmt::Display) -> CourseError {
     CourseError::Xml(e.to_string())
 }
 
-pub(super) fn local(e: &BytesStart<'_>) -> String {
+pub(crate) fn local(e: &BytesStart<'_>) -> String {
     e.local_name().as_ref().to_string()
 }
 
-pub(super) fn attr(e: &BytesStart<'_>, name: &str) -> Result<Option<String>, CourseError> {
+pub(crate) fn attr(e: &BytesStart<'_>, name: &str) -> Result<Option<String>, CourseError> {
     let a = e.try_get_attribute(name).map_err(xml_err)?;
     a.map(|a| {
         a.normalized_value(XmlVersion::Explicit1_0)
@@ -78,7 +79,7 @@ pub(super) fn attr(e: &BytesStart<'_>, name: &str) -> Result<Option<String>, Cou
 }
 
 /// A finite number.
-pub(super) fn number(s: &str, what: &str) -> Result<f64, CourseError> {
+pub(crate) fn number(s: &str, what: &str) -> Result<f64, CourseError> {
     match s.trim().parse::<f64>() {
         Ok(v) if v.is_finite() => Ok(v),
         _ => Err(CourseError::Xml(format!("bad number in {what}: {s:?}"))),
@@ -88,14 +89,14 @@ pub(super) fn number(s: &str, what: &str) -> Result<f64, CourseError> {
 /// The notes of one read: deduplicated, in first-seen order, at most `MAX_NOTES` and then one
 /// `NotesTruncated`.
 #[derive(Default)]
-pub(super) struct Notes {
+pub(crate) struct Notes {
     list: Vec<CourseNote>,
     seen: HashSet<CourseNote>,
     truncated: bool,
 }
 
 impl Notes {
-    pub(super) fn add(&mut self, n: CourseNote) {
+    pub(crate) fn add(&mut self, n: CourseNote) {
         if self.truncated || self.seen.contains(&n) {
             return;
         }
@@ -108,13 +109,13 @@ impl Notes {
         self.list.push(n);
     }
 
-    pub(super) fn into_vec(self) -> Vec<CourseNote> {
+    pub(crate) fn into_vec(self) -> Vec<CourseNote> {
         self.list
     }
 }
 
 /// `text` if it has at most `max` characters, else a `Limit` error naming `what`.
-pub(super) fn bounded(text: &str, max: usize, what: &str) -> Result<String, CourseError> {
+pub(crate) fn bounded(text: &str, max: usize, what: &str) -> Result<String, CourseError> {
     if text.chars().count() > max {
         return Err(CourseError::Limit(format!(
             "{what} longer than {max} characters"
@@ -124,7 +125,7 @@ pub(super) fn bounded(text: &str, max: usize, what: &str) -> Result<String, Cour
 }
 
 /// The bytes of codes and names one read may still copy into its result (`MAX_TOTAL_TEXT_BYTES`).
-pub(super) struct TextBudget {
+pub(crate) struct TextBudget {
     left: usize,
 }
 
@@ -138,7 +139,7 @@ impl Default for TextBudget {
 
 impl TextBudget {
     /// A copy of `s`, paid from the budget.
-    pub(super) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
+    pub(crate) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
         self.left = self.left.checked_sub(s.len()).ok_or_else(|| {
             CourseError::Limit(format!(
                 "more than {} MiB of codes, names and description standards in the result",

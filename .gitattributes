@@ -8,3 +8,5 @@
 *.ttf binary
 # Purple Pen fixtures stay byte-identical to the originals (CRLF, BOM); see their README.
 *.ppen -text
+# Purple Pen's description symbols stay byte-identical to the original (CRLF, BOM); see data/README.md.
+crates/freemapper-print/data/purple-pen-symbols.xml -text

@@ -7,7 +7,7 @@ pub mod load;
 pub mod model;
 pub mod ppen;
 mod tm;
-mod xml;
+pub(crate) mod xml;
 
 pub use fit::{Fit, FitError, FitNote, SkipReason, fit};
 pub use iof_xml::read_iof_xml;
