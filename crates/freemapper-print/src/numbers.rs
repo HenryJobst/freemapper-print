@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use crate::course::model::Offset;
-use crate::course::{Course, FittedEvent, NumberPlacement, Stop};
+use crate::course::{Course, FittedEvent, NumberPlacement, Stop, placement_from_offset};
 use crate::courses::{Stale, base_changed, layout_for};
 use crate::omap::MapCoord;
 use crate::overprint::{FullStrength, full_strength, labels, leg_lines, number_size, stop_symbols};
@@ -86,49 +86,26 @@ pub struct ResolvedNumber {
     pub base: Option<Placement>,
 }
 
-impl From<NumberPlacement> for Placement {
-    fn from(p: NumberPlacement) -> Self {
-        Placement {
-            direction: p.direction,
-            gap_mm: p.gap_mm,
-        }
-    }
-}
-
-impl From<Placement> for NumberPlacement {
-    fn from(p: Placement) -> Self {
-        NumberPlacement {
-            direction: p.direction,
-            gap_mm: p.gap_mm,
-        }
-    }
-}
-
 /// The placement of a number whose text centre the course file puts at `offset` from the circle centre (map mm,
 /// map frame), ruling R12. Purple Pen adds the offset to the control in map coordinates and draws course symbols
 /// at their nominal size times `ratio` map mm (`CourseFormatter.CreateControlNumber`, `CourseView.CourseObjRatio`,
 /// commit 201417f; [`Course::course_obj_ratio`]). So the offset divided by `ratio` lies among the nominal sizes of
 /// `sizes`: the box of `text` and the circle take them, and the gap is the shortest distance from the box to the
 /// outer edge of the circle line, in mm at the base scale (ruling R4). A sheet multiplies it by the course factor
-/// of its print scale, as it does the symbols.
+/// of its print scale, as it does the symbols. The formula is freemapper-course's [`placement_from_offset`].
 pub fn file_placement(
     offset: Offset,
     text: &str,
     sizes: &CourseSymbolSizes,
     ratio: f64,
 ) -> Placement {
-    let ratio = if ratio > 0.0 && ratio.is_finite() {
-        ratio
-    } else {
-        1.0
-    };
-    let centre = (offset.dx_mm / ratio, offset.dy_mm / ratio);
-    placement::placement_of(
-        (0.0, 0.0),
+    placement_from_offset(
+        offset,
         r_outer(sizes, 1.0),
-        centre,
         number_size(text, sizes.number_height_mm),
+        ratio,
     )
+    .into()
 }
 
 /// The course file's placement of the number `text` at `stop` (level 2), if the file gives one.

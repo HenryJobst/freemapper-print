@@ -4,21 +4,24 @@
 //! All domain logic lives in this library. The binary crate `freemapper-print-cli` holds the CLI, the MCP
 //! server and the layout editor (ADR 0001). Terms follow `docs/glossary.md`.
 
-pub mod course;
 pub mod courses;
 pub mod describe;
 pub mod export;
 pub mod numbers;
-pub mod omap;
 pub mod output;
 pub mod overprint;
-pub mod placement;
 pub mod print;
 pub mod project;
 pub mod render;
 pub mod rules;
 pub mod scale;
 pub mod sheet;
+
+// The map model, the course model and the number placement come from freemapper-core (ADR 0043), under the
+// module names they had here.
+pub use freemapper_course as course;
+pub use freemapper_course::placement;
+pub use freemapper_omap as omap;
 
 /// The program and where to find it, as named in the PDF metadata.
 pub const CREDIT: &str = concat!("freemapper-print – ", env!("CARGO_PKG_REPOSITORY"));
@@ -46,8 +49,8 @@ pub const fn credit_line(lang: project::SheetLang) -> &'static str {
 
 #[cfg(test)]
 mod boundaries {
-    //! The module boundaries of ADR 0039: `course`, `render` and `omap` move into freemapper-core later, so they
-    //! must not reach into the parts of freemapper-print that stay here.
+    //! The module boundaries of ADR 0039: `render` moves into freemapper-core later, so it must not reach into
+    //! the parts of freemapper-print that stay here.
 
     use std::path::{Path, PathBuf};
 
@@ -155,8 +158,8 @@ mod boundaries {
         out
     }
 
-    /// The external core paths that `course`, `render` and `omap` must not use: after stage 2 they live in core,
-    /// where `rules` and the file writing of freemapper-print do not exist.
+    /// The external core paths that `render` must not use: in core it will depend on neither the rule profiles
+    /// nor the file writing.
     const FORBIDDEN_EXTERNAL: [&str; 2] = ["freemapper_rules::", "freemapper_fs::"];
 
     /// The paths of `forbidden` modules that `text` reaches, see [`reached`], and the external paths of
@@ -227,29 +230,6 @@ mod boundaries {
     }
 
     #[test]
-    fn course_does_not_know_the_stage_1_modules() {
-        let found = uses(
-            "course",
-            &[
-                "rules",
-                "output",
-                "scale",
-                "project",
-                "courses",
-                "sheet",
-                "numbers",
-                "export",
-                "render",
-                "overprint",
-                "placement",
-                "describe",
-                "print",
-            ],
-        );
-        assert!(found.is_empty(), "{found:#?}");
-    }
-
-    #[test]
     fn render_does_not_know_courses_or_sheets() {
         let found = uses(
             "render",
@@ -269,68 +249,6 @@ mod boundaries {
             ],
         );
         assert!(found.is_empty(), "{found:#?}");
-    }
-
-    #[test]
-    fn omap_knows_no_other_module() {
-        let found = uses(
-            "omap",
-            &[
-                "course",
-                "courses",
-                "describe",
-                "export",
-                "numbers",
-                "output",
-                "overprint",
-                "placement",
-                "print",
-                "project",
-                "render",
-                "rules",
-                "scale",
-                "sheet",
-            ],
-        );
-        assert!(found.is_empty(), "{found:#?}");
-    }
-
-    #[test]
-    fn only_the_xml_loop_of_course_is_shared() {
-        // The description symbol reader shares the streaming loop and attribute parsing with the course readers;
-        // the note list, text budget and length check stay inside `course` (`pub(super)`).
-        let shared = ["Handler", "attr", "drive", "local", "number"];
-        let mut seen = Vec::new();
-        let outside_course = sources("")
-            .into_iter()
-            .filter(|f| !f.components().any(|c| c.as_os_str() == "course"));
-        for file in outside_course {
-            let text = std::fs::read_to_string(&file).unwrap();
-            for (i, _) in text.match_indices("course::xml::") {
-                let rest = &text[i + "course::xml::".len()..];
-                let list = rest
-                    .strip_prefix('{')
-                    .and_then(|r| r.split_once('}'))
-                    .map_or_else(
-                        || {
-                            rest.split(|c: char| !c.is_alphanumeric() && c != '_')
-                                .next()
-                                .unwrap_or("")
-                        },
-                        |(inner, _)| inner,
-                    );
-                seen.extend(
-                    list.split(',')
-                        .map(|n| n.trim().to_string())
-                        .filter(|n| !n.is_empty()),
-                );
-            }
-        }
-        assert!(!seen.is_empty());
-        assert!(
-            seen.iter().all(|n| shared.contains(&n.as_str())),
-            "{seen:?}"
-        );
     }
 
     #[test]
