@@ -160,8 +160,8 @@ Layouts entstehen nacheinander, es liegt immer nur ein Blatt im Speicher. Der Ex
 PDFs geschrieben sind, auch wenn es Hinweise gab.
 
 Vor dem Schreiben prüft das Programm den freien Platz: Es braucht die Größe des PDFs und 50 MB Reserve. Das PDF
-entsteht zuerst als Teildatei (`<Name>.pdf.….part`) und bekommt erst seinen Namen, wenn es vollständig auf dem Datenträger
-steht. Ist der Datenträger voll, bleibt ein älteres PDF gleichen Namens unverändert, und es bleibt kein halbes
+entsteht zuerst als Teildatei (`<Name>.pdf.….part`) und bekommt erst seinen Namen, wenn es vollständig auf dem
+Datenträger steht. Ist der Datenträger voll, bleibt ein älteres PDF gleichen Namens unverändert, und es bleibt kein halbes
 PDF zurück; ebenso bei jedem anderen Fehler. Die Meldung nennt, wie viel Platz nötig und wie viel frei ist, oder
 dass der Datenträger das nicht meldet. Die Teildatei heißt `<Name>.pdf.<Prozess-ID>.<Zähler>.part`, zwei Exporte
 im selben Ordner teilen sie sich also nicht. `export` löscht Teildateien im Ordner `out` des Projekts, die älter
@@ -674,8 +674,8 @@ keine davon dort einen Konflikt bekommt. Sonst nennt er diese Bahnen und hält m
 
 `numbers accept` hängt eine Tabelle `[[numbers]]` als Text ans Ende der Projektdatei. Alles davor bleibt, wie es
 ist, auch die Kommentare. Die neuen Zeilen enden wie die der Datei (CRLF oder LF), eine Projektdatei, die ein Link ist,
-wird durch eine normale Datei ersetzt (das Ziel des Links behält seinen Inhalt), und die Datei behält ihre Rechte. Danach lädt es die Datei neu und stellt den alten Inhalt wieder
-her, wenn das scheitert.
+wird durch eine normale Datei ersetzt (das Ziel des Links behält seinen Inhalt), und die Datei behält ihre Rechte. Danach lädt es die Datei neu und stellt den alten Inhalt
+wieder her, wenn das scheitert.
 Eine zweite Korrektur für denselben Posten und Geltungsbereich lehnt es ab. Zum Ändern bearbeiten Sie die Datei.
 Danach rufen Sie `check` auf, um das Ergebnis zu sehen.
 

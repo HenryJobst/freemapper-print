@@ -17,6 +17,7 @@ freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag 
 freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.2.0" }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
+# The version freemapper-text uses; move it together with the core tag (ADR 0042).
 fluent-bundle = "=0.16.0"
 fs4 = "1.1.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }

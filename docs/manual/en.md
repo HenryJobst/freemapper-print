@@ -157,9 +157,9 @@ layouts are drawn one after another, so only one sheet is in memory at a time. T
 are written, also when there were notes.
 
 Before writing, the program checks the free space: it needs the size of the PDF plus a 50 MB reserve. The PDF is
-first written as a partial file (`<name>.pdf.….part`) and gets its name only when it is complete on the disk. On a full disk an
-older PDF of the same name stays as it was, and no half-written PDF is left behind; the same holds for any
-other error. The message says how much space is needed and how much is free, or that the disk does not say.
+first written as a partial file (`<name>.pdf.….part`) and gets its name only when it is complete on the disk. On a
+full disk an older PDF of the same name stays as it was, and no half-written PDF is left behind; the same holds
+for any other error. The message says how much space is needed and how much is free, or that the disk does not say.
 The partial file is named `<name>.pdf.<process id>.<counter>.part`, so two exports into the same folder do not
 share it. `export` removes partial files older than an hour from the folder `out` of the project.
 
@@ -642,8 +642,8 @@ only when none of them gets a conflict there. Otherwise it names those courses a
 
 `numbers accept` appends a `[[numbers]]` table to the end of the project file as text. Everything before it stays
 as it is, comments included. The new lines end like the file's (CRLF or LF), a project file that is a link is
-replaced by a regular file (the link's target keeps its content), and the file keeps its permissions. It then loads the file again, and if that fails, it restores the old
-content. It
+replaced by a regular file (the link's target keeps its content), and the file keeps its permissions. It then
+loads the file again, and if that fails, it restores the old content. It
 refuses a second correction for the same control and scope. To change one, edit the file. Afterwards run `check`
 to see the result.
 
