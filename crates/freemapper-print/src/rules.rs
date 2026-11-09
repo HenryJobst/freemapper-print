@@ -1875,4 +1875,610 @@ mod tests {
         assert!(!rule.applies(MapKind::Sprint, 3000));
         assert!(!rule.applies(MapKind::Forest, 4000));
     }
+
+    /// The filters of `rule` as `map_kinds = [...] print_scales = [...]`, for the snapshot.
+    fn rule_filters(rule: &Rule) -> String {
+        let kinds: Vec<&str> = rule.map_kinds.iter().map(|k| k.name()).collect();
+        format!(
+            "map_kinds = {kinds:?} print_scales = {:?}",
+            rule.print_scales
+        )
+    }
+
+    /// A TOML value in a stable text form: floats with `{:?}`, tables in key order.
+    fn value_text(value: &Value) -> String {
+        match value {
+            Value::Integer(n) => n.to_string(),
+            Value::Float(f) => format!("{f:?}"),
+            Value::String(s) => format!("{s:?}"),
+            Value::Boolean(b) => b.to_string(),
+            Value::Datetime(d) => d.to_string(),
+            Value::Array(items) => format!(
+                "[{}]",
+                items.iter().map(value_text).collect::<Vec<_>>().join(", ")
+            ),
+            Value::Table(table) => table_text(table),
+        }
+    }
+
+    fn table_text(table: &Table) -> String {
+        let mut entries: Vec<(&String, &Value)> = table.iter().collect();
+        entries.sort_by_key(|(name, _)| *name);
+        let entries: Vec<String> = entries
+            .into_iter()
+            .map(|(name, value)| format!("{name} = {}", value_text(value)))
+            .collect();
+        format!("{{ {} }}", entries.join(", "))
+    }
+
+    /// Every accessor of `set`, one `key = value` line each, prefixed with `label`.
+    fn resolved_text(label: &str, set: &RuleSet, out: &mut String) {
+        use std::fmt::Write;
+        let mut line = |key: String, value: String| {
+            let _ = writeln!(out, "{label}.{key} = {value}");
+        };
+        line(s("base"), format!("{:?}", set.base));
+        line(s("overlays"), format!("{:?}", set.overlays));
+        for (i, r) in set.rules.iter().enumerate() {
+            let rule = &r.rule;
+            line(
+                format!("rule[{i}]"),
+                format!(
+                    "{} from {} key {} severity {} enabled {} {} values {} source {:?} {:?} note {:?}",
+                    rule.id,
+                    r.profile,
+                    rule.key,
+                    rule.severity.as_str(),
+                    rule.enabled,
+                    rule_filters(rule),
+                    table_text(&rule.values),
+                    rule.source.doc,
+                    rule.source.section,
+                    rule.note.as_ref().map(|n| &n.0),
+                ),
+            );
+        }
+        for (i, off) in set.switched_off.iter().enumerate() {
+            line(
+                format!("switched_off[{i}]"),
+                format!("{} from {} by {}", off.rule.id, off.profile, off.by),
+            );
+        }
+        for (profile, docs) in &set.sources {
+            for (doc, source) in docs {
+                line(
+                    format!("source.{profile}.{doc}"),
+                    format!("{:?} url {:?}", source.title, source.url),
+                );
+            }
+        }
+        for kind in MapKind::ALL {
+            let k = kind.name();
+            for e in set.scale_entries(kind) {
+                line(
+                    format!("{k}.scale.{}", e.scale),
+                    format!(
+                        "size_factor {:?} standard {} course_factor {:?} is_standard {}",
+                        e.size_factor,
+                        e.standard,
+                        set.course_factor(kind, e.scale),
+                        set.is_standard_scale(kind, e.scale)
+                    ),
+                );
+            }
+            line(
+                format!("{k}.scale_table"),
+                format!("{:?}", set.scale_table(kind)),
+            );
+            // A scale outside every table.
+            line(
+                format!("{k}.scale.12345"),
+                format!(
+                    "{:?} course_factor {:?} is_standard {}",
+                    set.scale_entry(kind, 12345),
+                    set.course_factor(kind, 12345),
+                    set.is_standard_scale(kind, 12345)
+                ),
+            );
+            line(
+                format!("{k}.north_line_spacing_m"),
+                format!("{:?}", set.north_line_spacing_m(kind)),
+            );
+            line(
+                format!("{k}.proposed_contour_interval_m"),
+                format!("{:?}", set.proposed_contour_interval_m(kind)),
+            );
+            line(
+                format!("{k}.description_cell_mm"),
+                format!("{:?}", set.description_cell_mm(kind)),
+            );
+            let c = set.course_symbol(kind);
+            for (name, value) in [
+                ("circle_diameter_mm", c.circle_diameter_mm),
+                ("line_width_mm", c.line_width_mm),
+                ("start_side_mm", c.start_side_mm),
+                ("finish_inner_mm", c.finish_inner_mm),
+                ("finish_outer_mm", c.finish_outer_mm),
+                ("number_height_mm", c.number_height_mm),
+                ("marked_route_dash_mm", c.marked_route_dash_mm),
+                ("marked_route_gap_mm", c.marked_route_gap_mm),
+                ("out_of_bounds_line_mm", c.out_of_bounds_line_mm),
+                ("crossing_point_mm", c.crossing_point_mm),
+                (
+                    "out_of_bounds_hatch_angle_degrees",
+                    c.out_of_bounds_hatch_angle_degrees,
+                ),
+                (
+                    "out_of_bounds_hatch_spacing_mm",
+                    c.out_of_bounds_hatch_spacing_mm,
+                ),
+                ("out_of_bounds_hatch_line_mm", c.out_of_bounds_hatch_line_mm),
+                ("first_aid_mm", c.first_aid_mm),
+                ("first_aid_bar_mm", c.first_aid_bar_mm),
+                ("refreshment_mm", c.refreshment_mm),
+                ("refreshment_line_mm", c.refreshment_line_mm),
+            ] {
+                line(format!("{k}.course.{name}"), format!("{value:?}"));
+            }
+            line(
+                format!("{k}.course.out_of_bounds_hatch_second_angle_degrees"),
+                format!("{:?}", c.out_of_bounds_hatch_second_angle_degrees),
+            );
+        }
+        line(s("purple_cmyk"), format!("{:?}", set.purple_cmyk()));
+        let w = set.placement_weights();
+        line(
+            s("placement_weights"),
+            format!(
+                "black {:?} brown {:?} blue {:?} other {:?}",
+                w.black, w.brown, w.blue, w.other
+            ),
+        );
+        line(s("number_gap"), format!("{:?}", set.number_gap()));
+        line(
+            s("number_gap_allowed"),
+            format!("{:?}", set.number_gap_allowed()),
+        );
+    }
+
+    /// The snapshot of every resolved value (`tests/fixtures/rules/resolved.txt`, README there).
+    /// `FMP_BLESS_RULES=1` writes the file from the current loader instead of comparing.
+    #[test]
+    fn resolved_values_unchanged() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/rules/resolved.txt"
+        );
+        let gap_overlay = overlay_with(&gap_rule(
+            "reg.number.gap",
+            "min_gap_mm = 0.8, max_gap_mm = 8.0",
+        ));
+        let at_4000 = REPLACE.replace(
+            "map_kinds = [\"sprint\"]",
+            "map_kinds = [\"sprint\"]\nprint_scales = [4000]",
+        );
+        let mut all = files();
+        all.push(("test-gaps", gap_overlay.as_str()));
+        let at_4000_files = [
+            ("iof-print", EMBEDDED[0].1),
+            ("test-replace", at_4000.as_str()),
+        ];
+        let mut text = String::new();
+        resolved_text("base", base(), &mut text);
+        for (label, overlays) in [
+            ("replace", vec![s("test-replace")]),
+            ("off", vec![s("test-off")]),
+            ("replace_off", vec![s("test-replace"), s("test-off")]),
+            ("gaps", vec![s("test-gaps")]),
+        ] {
+            let set = load_from(&all, "iof-print", &overlays).unwrap();
+            resolved_text(label, &set, &mut text);
+        }
+        let set = load_from(&at_4000_files, "iof-print", &[s("test-replace")]).unwrap();
+        resolved_text("replace_at_4000", &set, &mut text);
+        if std::env::var_os("FMP_BLESS_RULES").is_some() {
+            std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
+            std::fs::write(path, &text).unwrap();
+        }
+        let expected = std::fs::read_to_string(path).unwrap();
+        assert_eq!(text, expected);
+    }
+
+    /// The name of the variant of `err`.
+    fn variant(err: &RuleError) -> &'static str {
+        match err {
+            RuleError::UnknownProfile { .. } => "UnknownProfile",
+            RuleError::NotABase(_) => "NotABase",
+            RuleError::NotAnOverlay(_) => "NotAnOverlay",
+            RuleError::OverlayForAnotherBase { .. } => "OverlayForAnotherBase",
+            RuleError::Malformed { .. } => "Malformed",
+            RuleError::UnknownKey { .. } => "UnknownKey",
+            RuleError::UnknownRule { .. } => "UnknownRule",
+            RuleError::Incomplete { .. } => "Incomplete",
+        }
+    }
+
+    /// Every refusal the loader had before the switch to freemapper-rules: the case, the files, the base and
+    /// overlays, the variant and the texts the message must contain (the rule id where the case has one, else
+    /// the profile or the value).
+    #[test]
+    fn refused_profiles_still_refused() {
+        let north = |values: &str| {
+            base_with_rule(&format!(
+                "id = \"basex.north.x\"\nkey = \"north_lines\"\nseverity = \"hint\"\nvalues = {values}\n\
+                 source = {{ doc = \"DOC\", section = \"1\" }}\n"
+            ))
+        };
+        let keyed = |key: &str, extra: &str, values: &str| {
+            base_with_rule(&format!(
+                "id = \"basex.x.y\"\nkey = \"{key}\"\nseverity = \"hint\"\n{extra}values = {values}\n\
+                 source = {{ doc = \"DOC\", section = \"1\" }}\n"
+            ))
+        };
+        let good = north("{ spacing_metres = 1.0 }");
+        let sprint_table = |rows: &str| {
+            REPLACE
+                .replace("key = \"north_lines\"", "key = \"scale_table\"")
+                .replace("iofprint.north_lines.sprint", "iofprint.scale.sprint")
+                .replace(
+                    "values = { spacing_metres = 100.0 }",
+                    &format!("values = {{ rows = [{rows}] }}"),
+                )
+        };
+        let base_only = |text: String| (vec![(s("base-x"), text)], s("base-x"), Vec::new());
+        let on_iof = |id: &str, text: String| {
+            (
+                vec![(s("iof-print"), s(EMBEDDED[0].1)), (s(id), text)],
+                s("iof-print"),
+                vec![s(id)],
+            )
+        };
+        type Setup = (Vec<(String, String)>, String, Vec<String>);
+        let cases: Vec<(&str, Setup, &str, Vec<&str>)> = vec![
+            (
+                "unknown rule key",
+                base_only(keyed("no_such_rule", "", "{}")),
+                "UnknownKey",
+                vec!["basex.x.y", "no_such_rule"],
+            ),
+            (
+                "number without a unit",
+                base_only(north("{ spacing = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing"],
+            ),
+            (
+                "misspelt unit",
+                base_only(north("{ spacing_metresx = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metresx"],
+            ),
+            (
+                "unknown value name with a unit",
+                base_only(north("{ spacing_mm = 120.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_mm"],
+            ),
+            (
+                "extra value name",
+                base_only(north("{ spacing_metres = 120.0, extra_metres = 1.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "extra_metres"],
+            ),
+            (
+                "scale table row with an unknown field",
+                base_only(keyed(
+                    "scale_table",
+                    "",
+                    "{ rows = [{ scale = 4000, size = 1.0 }] }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "size"],
+            ),
+            (
+                "format missing",
+                base_only(good.replacen("format = 1", "", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "format newer",
+                base_only(good.replacen("format = 1", "format = 2", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "format as text",
+                base_only(good.replacen("format = 1", "format = \"1\"", 1)),
+                "Malformed",
+                vec!["base-x", "format"],
+            ),
+            (
+                "misspelt rule field",
+                base_only(good.replacen("severity", "severty", 1)),
+                "Malformed",
+                vec!["basex.north.x", "severty"],
+            ),
+            (
+                "map_kind instead of map_kinds",
+                base_only(good.replacen("key = ", "map_kind = [\"sprint\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "map_kind"],
+            ),
+            (
+                "courseplan's disciplines filter",
+                base_only(good.replacen("key = ", "disciplines = [\"sprint\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "disciplines"],
+            ),
+            (
+                "unknown map kind",
+                base_only(good.replacen("key = ", "map_kinds = [\"moon\"]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x", "moon"],
+            ),
+            (
+                "print scale that is no scale",
+                base_only(good.replacen("key = ", "print_scales = [0]\nkey = ", 1)),
+                "Malformed",
+                vec!["basex.north.x"],
+            ),
+            (
+                "source not listed",
+                base_only(good.replacen("doc = \"DOC\"", "doc = \"NOPE\"", 1)),
+                "Malformed",
+                vec!["basex.north.x", "NOPE"],
+            ),
+            (
+                "no source",
+                base_only(good.replacen("source = { doc = \"DOC\", section = \"1\" }", "", 1)),
+                "Malformed",
+                vec!["basex.north.x", "source"],
+            ),
+            (
+                "rule id not dotted lower case",
+                base_only(good.replacen("basex.north.x", "basex.North", 1)),
+                "Malformed",
+                vec!["basex.North"],
+            ),
+            (
+                "unknown severity",
+                base_only(good.replacen("severity = \"hint\"", "severity = \"fatal\"", 1)),
+                "Malformed",
+                vec!["basex.north.x", "fatal"],
+            ),
+            (
+                "rule defined twice",
+                base_only(format!(
+                    "{good}[[rules]]\nid = \"basex.north.x\"\nkey = \"north_lines\"\nseverity = \"hint\"\n\
+                     values = {{ spacing_metres = 2.0 }}\nsource = {{ doc = \"DOC\", section = \"1\" }}\n"
+                )),
+                "Malformed",
+                vec!["basex.north.x"],
+            ),
+            (
+                "profile id differs from the file",
+                (vec![(s("base-y"), good.clone())], s("base-y"), Vec::new()),
+                "Malformed",
+                vec!["base-x", "base-y"],
+            ),
+            (
+                "not a number: nan",
+                base_only(north("{ spacing_metres = nan }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "not a number: inf",
+                base_only(north("{ spacing_metres = inf }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "text under a unit name",
+                base_only(north("{ spacing_metres = \"120\" }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "list under a name read as one number",
+                base_only(north("{ spacing_metres = [100.0, 120.0] }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "length of 0",
+                base_only(north("{ spacing_metres = 0.0 }")),
+                "Malformed",
+                vec!["basex.north.x", "spacing_metres"],
+            ),
+            (
+                "negative length",
+                base_only(keyed("number_gap", "", "{ max_gap_mm = -1.0 }")),
+                "Malformed",
+                vec!["basex.x.y", "max_gap_mm"],
+            ),
+            (
+                "percent above 100",
+                base_only(keyed("course_colour", "", "{ cyan_percent = 101 }")),
+                "Malformed",
+                vec!["basex.x.y", "cyan_percent"],
+            ),
+            (
+                "negative factor",
+                base_only(keyed("placement_weights", "", "{ black_factor = -1.0 }")),
+                "Malformed",
+                vec!["basex.x.y", "black_factor"],
+            ),
+            (
+                "description cell below 4 mm",
+                base_only(keyed("description_box", "", "{ cell_mm = 3.9 }")),
+                "Malformed",
+                vec!["basex.x.y", "cell_mm"],
+            ),
+            (
+                "description cell above 10 mm",
+                base_only(keyed("description_box", "", "{ cell_mm = 10.5 }")),
+                "Malformed",
+                vec!["basex.x.y", "cell_mm"],
+            ),
+            (
+                "map_kinds on a kind-independent key",
+                base_only(keyed(
+                    "course_colour",
+                    "map_kinds = [\"sprint\"]\n",
+                    "{ cyan_percent = 35 }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "course_colour"],
+            ),
+            (
+                "print_scales on a kind-independent key",
+                base_only(keyed(
+                    "number_gap",
+                    "print_scales = [4000]\n",
+                    "{ min_gap_mm = 0.5 }",
+                )),
+                "Malformed",
+                vec!["basex.x.y", "number_gap"],
+            ),
+            (
+                "scale table without the base row",
+                on_iof(
+                    "test-replace",
+                    sprint_table(
+                        "{ scale = 3000, size_factor = 1.3333333333333333 }, \
+                         { scale = 5000, size_factor = 1.0, standard = false }",
+                    ),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "base row not at 100 %",
+                on_iof(
+                    "test-replace",
+                    sprint_table("{ scale = 4000, size_factor = 1.1 }"),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "base row not standard",
+                on_iof(
+                    "test-replace",
+                    sprint_table("{ scale = 4000, size_factor = 1.0, standard = false }"),
+                ),
+                "Incomplete",
+                vec!["scale = 4000", "sprint"],
+            ),
+            (
+                "two rules for one slot",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace(
+                        "id = \"iofprint.north_lines.sprint\"",
+                        "id = \"testreplace.north_lines.sprint\"",
+                    ),
+                ),
+                "Incomplete",
+                vec![
+                    "iofprint.north_lines.sprint",
+                    "testreplace.north_lines.sprint",
+                    "spacing_metres",
+                    "sprint",
+                ],
+            ),
+            (
+                "a value no rule gives",
+                on_iof("test-gap", s(LEAVES_A_GAP)),
+                "Incomplete",
+                vec!["line_width_mm", "forest"],
+            ),
+            (
+                "print_scales filter read at the base scale",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace(
+                        "map_kinds = [\"sprint\"]",
+                        "map_kinds = [\"sprint\"]\nprint_scales = [3000]",
+                    ),
+                ),
+                "Incomplete",
+                vec!["spacing_metres", "sprint"],
+            ),
+            (
+                "overlay switches off an unknown rule",
+                on_iof(
+                    "test-off",
+                    SWITCH_OFF.replace(
+                        "id = \"iofprint.course.control_sprint\"",
+                        "id = \"iofprint.course.nope\"",
+                    ),
+                ),
+                "UnknownRule",
+                vec!["iofprint.course.nope", "test-off"],
+            ),
+            (
+                "unknown base profile",
+                (Vec::new(), s("iof-2030"), Vec::new()),
+                "UnknownProfile",
+                vec!["iof-2030"],
+            ),
+            (
+                "unknown overlay",
+                (
+                    vec![(s("iof-print"), s(EMBEDDED[0].1))],
+                    s("iof-print"),
+                    vec![s("nope")],
+                ),
+                "UnknownProfile",
+                vec!["nope", "iof-print"],
+            ),
+            (
+                "overlay as base",
+                (
+                    vec![(s("test-off"), s(SWITCH_OFF))],
+                    s("test-off"),
+                    Vec::new(),
+                ),
+                "NotABase",
+                vec!["test-off"],
+            ),
+            (
+                "base as overlay",
+                (
+                    vec![(s("iof-print"), s(EMBEDDED[0].1))],
+                    s("iof-print"),
+                    vec![s("iof-print")],
+                ),
+                "NotAnOverlay",
+                vec!["iof-print"],
+            ),
+            (
+                "overlay for another base",
+                on_iof(
+                    "test-replace",
+                    REPLACE.replace("base = \"iof-print\"", "base = \"other\""),
+                ),
+                "OverlayForAnotherBase",
+                vec!["test-replace", "other", "iof-print"],
+            ),
+        ];
+        for (case, (files, base, overlays), expected, texts) in cases {
+            let files: Vec<(&str, &str)> = files
+                .iter()
+                .map(|(id, text)| (id.as_str(), text.as_str()))
+                .collect();
+            let err = match load_from(&files, &base, &overlays) {
+                Ok(_) => panic!("{case}: loaded"),
+                Err(err) => err,
+            };
+            assert_eq!(variant(&err), expected, "{case}: {err}");
+            let message = err.to_string();
+            for text in texts {
+                assert!(message.contains(text), "{case}: {text} not in {message}");
+            }
+        }
+    }
 }
