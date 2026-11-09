@@ -2,7 +2,7 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 5, 6, 7, 9 und 10. Am Ende soll es
+Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 5 bis 10. Am Ende soll es
 Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern führen,
 auch ohne Erfahrung mit der Kommandozeile.
 
@@ -15,9 +15,10 @@ Kapitel:
 5. [Eine Veranstaltung anlegen](#5-eine-veranstaltung-anlegen)
 6. [Layouts: Blattformat, Maßstab, Kartenausschnitt](#6-layouts-blattformat-maßstab-kartenausschnitt)
 7. [Titel, Logos und andere Blattelemente](#7-titel-logos-und-andere-blattelemente)
-8. Abdeckungen für Fenster- und Korridor-OL
+8. [Bahnen](#8-bahnen)
 9. [Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop](#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop)
 10. [Meldungen und was zu tun ist](#10-meldungen-und-was-zu-tun-ist)
+11. Abdeckungen für Fenster- und Korridor-OL (geplant, M4)
 
 Das Programm spricht Deutsch oder Englisch. Es nimmt die Sprache aus `--lang de` oder `--lang en`, sonst aus
 den Umgebungsvariablen `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` und `LANG`. Die Meldungen in diesem Handbuch
@@ -26,15 +27,15 @@ sind die deutschen.
 ## 5. Eine Veranstaltung anlegen
 
 Zu jeder Veranstaltung gehört ein Ordner mit einer Projektdatei, `freemapper-print.toml`. Darin stehen die
-Veranstaltung, die Karte, die Layouts und die Blattelemente. Bahnen kommen mit einer späteren Version dazu (M3);
-bis dahin druckt das Programm die Karte mit Titel, Logos und Kontrollstrecke, aber ohne Bahnaufdruck.
+Veranstaltung, die Karte, die Layouts und die Blattelemente. Ohne Bahndatei druckt das Programm die Karte mit
+Titel, Logos und Kontrollstrecke. Mit einer Bahndatei druckt es ein Blatt je Bahn, mit Bahnaufdruck (Kapitel 8).
 
 Der Ablauf hat drei Befehle:
 
 1. `init` legt die Projektdatei an.
 2. Sie bearbeiten die Datei mit einem Texteditor und rufen `check` auf, bis die Blätter so aussehen, wie sie
    sollen.
-3. `export` schreibt je Layout ein PDF.
+3. `export` schreibt je Layout ein PDF, bei einem Projekt mit Bahndatei je Bahn eines.
 
 Das Beispiel [examples/luebeck-competition-layouts](../../examples/luebeck-competition-layouts/README.md) zeigt
 den ganzen Weg mit allen Befehlen und Ausgaben.
@@ -261,7 +262,7 @@ Jedes Element hat:
 | Schlüssel | Bedeutung |
 |---|---|
 | `id` | Name, mit dem Hinweise das Element nennen |
-| `kind` | `title_block`, `text`, `logo`, `scale_check_bar`, `copyright_line` oder `credit_line` |
+| `kind` | `title_block`, `text`, `logo`, `scale_check_bar`, `copyright_line`, `credit_line` oder `control_descriptions` (Kapitel 8) |
 | `anchor.to` | `"page"` (das Blatt) oder `"map_frame"` (der Kartenausschnitt) |
 | `anchor.corner` | eine von neun Stellen: `top_left`, `top`, `top_right`, `left`, `centre`, `right`, `bottom_left`, `bottom`, `bottom_right` |
 | `anchor.offset_mm` | `[x, y]`, Abstand in mm von dieser Stelle nach innen |
@@ -301,9 +302,14 @@ In den Zeilen setzt das Programm diese Platzhalter ein:
 | `{map_scale}` | Maßstab der Karte |
 | `{contour_interval}` | `map.contour_interval_m` mit Einheit: „2 m“, „2,5 m“ |
 | `{layout}` | die Layout-ID |
+| `{course}` | auf einem Bahnblatt der Name der Bahn |
+| `{length_km}` | auf einem Bahnblatt die Länge der Bahn in Kilometern, ohne Einheit |
+| `{climb_m}` | auf einem Bahnblatt der Anstieg in Metern, ohne Einheit |
+| `{controls}` | auf einem Bahnblatt die Zahl der Posten |
 
-Ein unbekannter Platzhalter, etwa ein Tippfehler wie `{evnet}`, bleibt so stehen und gibt einen Hinweis.
-`{course}` für den Bahnnamen kommt mit den Bahnen.
+Ein unbekannter Platzhalter, etwa ein Tippfehler wie `{evnet}`, bleibt so stehen und gibt einen Hinweis. Die vier Bahn-Platzhalter kennt das
+Programm überall, gefüllt werden sie aber nur auf Bahnblättern (Kapitel 8). Auf einem Layoutblatt bleiben sie leer,
+und `check` sagt das als Information.
 
 Die IOF verlangt Maßstab und Äquidistanz auf jedem Blatt. Fehlt in allen Texten eines Layouts
 `{print_scale}` oder `{contour_interval}`, oder fehlt `map.contour_interval_m`, meldet `check` das.
@@ -392,6 +398,308 @@ eigenen weißen Kasten. Ein
 Fußzeile, und `check` meldet das. Die Namensnennung wird nach allem anderen auf dem Blatt gezeichnet, kein
 Element kann sie verdecken.
 
+## 8. Bahnen
+
+Ein Bahnblatt ist ein Layout, auf dem die Bahn in Violett über der Karte liegt. Die Projektdatei verweist auf die
+Datei Ihres Bahnlegungsprogramms, den Rest erledigen `check` und `export`: ein Blatt je Bahn, mit Postennummern
+und, bei Purple-Pen-Dateien, der Postenbeschreibung. Das Beispiel
+[examples/luebeck-competition-courses](../../examples/luebeck-competition-courses/README.md) geht alles mit jedem
+Befehl und seiner Ausgabe durch. [examples/berlin-viktoriapark-training](../../examples/berlin-viktoriapark-training/README.md)
+ist ein kleineres, ein Vereinstraining mit einer einzigen Bahn.
+
+### Woher die Bahnen kommen
+
+Das Programm liest zwei Arten von Dateien:
+
+- Ein Purple-Pen-Projekt, `.ppen`. Es enthält die Posten, die Bahnen, Knickpunkte und Lücken der Strecken,
+  Kreislücken je Maßstab, die Postenbeschreibungen, Sonderobjekte wie Sperrgebiete, verbotene Strecken und
+  Pflichtstrecken, die Lage jeder Postennummer und den Druckmaßstab jeder Bahn.
+- IOF-XML 3.0 mit `CourseData`, aus Purple Pen, Condes, der OCAD-Bahnlegung oder jedem anderen Programm, das es
+  schreibt. Es enthält Posten, Bahnen, die Positionen der Posten und, wenn das schreibende Programm sie setzt, die
+  Lage jeder Nummer, die Länge der Bahn und den Anstieg.
+
+IOF-XML kennt keine Postenbeschreibungen, Sonderobjekte, Knickpunkte oder Druckmaßstäbe. Ein Blatt aus einer
+IOF-XML-Datei zeigt die Posten, die Strecken und die Nummern, sonst nichts. Wollen Sie die Postenbeschreibung oder
+ein Sperrgebiet auf dem Blatt, nehmen Sie die `.ppen` aus Purple Pen. Das Programm wählt den Leser nach der
+Dateiendung, `.ppen` oder `.xml`; jede andere Endung ist ein Fehler. Bietet Ihr Programm beides an, gibt die
+`.ppen` das vollständigere Blatt.
+
+Noch nicht alles in einer Datei wird gedruckt:
+
+- Eine Bahn mit Varianten (Gabelungen und Schleifen in Purple Pen) fehlt, ebenso eine Bahn mit alternativen
+  Posten an einer Stelle. `check` sagt, welche. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene
+  Bahn, und die wird ein eigenes Blatt.
+- Abdeckflächen (White-out) werden gelesen, aber nicht gedruckt. Sie warten auf die Abdeckungen einer späteren
+  Version (M4). `check` meldet sie mit einem Hinweis, damit eine fehlende Abdeckung nicht unbemerkt bleibt.
+- Ein Element, das das Programm nicht kennt, wird übersprungen, mit einem Hinweis.
+
+### Die Datei verknüpfen: die lebende Verbindung
+
+In der Projektdatei bekommt `[sources]` den Schlüssel `courses`:
+
+```toml
+[sources]
+map = "luebeck.omap"
+courses = "courses.ppen"
+```
+
+Der Pfad gilt relativ zur Projektdatei. Das Programm liest die Bahndatei bei jedem `check` und jedem `export`
+neu. Verschieben Sie in Purple Pen einen Posten, legen eine Bahn an oder ändern eine Beschreibung, speichern Sie
+die Datei und rufen `export` auf. Im Projekt muss nichts aufgefrischt werden.
+
+Die Projektdatei hält nur, was die Bahndatei nicht weiß. Zwei Arten von Einträgen beziehen sich auf sie:
+
+- `[[assignments]]` sagt, auf welchem Layout eine Bahn gedruckt wird. Es nennt die Bahn so, wie die Bahndatei sie
+  nennt:
+
+  ```toml
+  [[assignments]]
+  course = "A"
+  layout = "a4-4000"
+  ```
+
+  Eine Bahn ohne Zuordnung nimmt das erste Layout, und `check` sagt das als Information.
+- `[[numbers]]` korrigiert die Lage einer Postennummer, entweder für ein Layout oder für eine Bahn (siehe
+  „Lage der Nummern“ unten). Es nennt den Posten mit seinem Code.
+
+Ändert sich die Bahndatei, kann ein solcher Eintrag etwas nennen, das es nicht mehr gibt, etwa eine umbenannte
+Bahn oder einen gelöschten Posten. Das Programm wirft ihn nicht weg. Es meldet jeden mit einem Hinweis und lässt
+ihn in der Projektdatei stehen, damit eine umbenannte Bahn nicht ihre Einstellungen kostet. Die übrigen Bahnen
+laden wie gewohnt. Korrigieren Sie den Namen in der Projektdatei oder löschen Sie den Eintrag. Ist eine Lage in der
+Bahndatei weitergewandert, seit Sie eine Korrektur gemacht haben, meldet `check` auch das. Die Korrektur gilt
+weiter, und Sie entscheiden, ob sie noch passt.
+
+### Koordinaten und Einpassung
+
+Bevor es druckt, passt das Programm die Bahn an die Karte an und bricht ab, wenn die Einpassung falsch aussieht.
+Eine Bahn auf der falschen Karte oder auf dem Kopf schickte Läufer an die falsche Stelle. Diese Prüfungen laufen:
+
+- Die y-Achse. Purple Pen, Condes und OCAD schreiben die y-Achse nach oben, OOM zählt nach unten. Nichts in der
+  Datei sagt, was gilt. Das Programm probiert beide Lesarten und nimmt die, bei der jeder Posten auf der Karte
+  liegt. Gibt es in der Datei Breite und Länge und ist die Karte georeferenziert, entscheiden die Koordinaten.
+  Passen beide Lesarten und entscheidet nichts, nimmt das Programm „oben“ und warnt, denn eine Bahn nahe der
+  Kartenmitte passt in beide Richtungen. Sehen Sie sich ein Blatt an und bestätigen Sie dann die Achse in der
+  Projektdatei:
+
+  ```toml
+  [sources]
+  course_y_axis = "up"      # oder "down"
+  ```
+
+  Eine Datei, die nach unten geschrieben wurde und in beide Richtungen passt, druckt auf dem Kopf, bis Sie die
+  Achse setzen. Das ist der eine Fall, in dem das Programm Sie bittet hinzusehen.
+- Der Kartenmaßstab. Nennt die Bahndatei einen Kartenmaßstab, muss er dem der Karte entsprechen. Weicht er ab,
+  bricht die Einpassung ab. Die Meldung ist noch englisch: „the course file is drawn for 1:…, the map is 1:…“.
+  Exportieren Sie die Bahnen im Bahnlegungsprogramm für den Maßstab der
+  Karte. Das Programm skaliert Positionen nie um. Eine Datei ohne Kartenmaßstab bekommt eine Zeile „Zur
+  Information“.
+- Die Georeferenzierung. Ist die Karte in UTM georeferenziert und hat ein Posten sowohl eine Kartenposition als auch
+  Breite und Länge, vergleicht das Programm beide. Liegt ein Posten mehr als 20 m von dem Ort entfernt, den seine
+  Breite und Länge angeben, bricht die Einpassung ab mit „control … lies … m from where its lat/lng put it“.
+  Breite und Länge aus einer GNSS-Messung im Gelände stimmen auf 5 bis 10 m. Eine falsche Karte, Zone oder ein
+  falsches Datum verschiebt jeden Posten um Hunderte Meter. Was zu tun ist, hängt von der Ursache ab:
+  - Die Georeferenzierung der Karte ist falsch oder gehört zu einer anderen Karte. Korrigieren Sie sie in OOM.
+  - Die Bahndatei gehört zu einer anderen Karte. Nehmen Sie die richtige Datei.
+  - Nur Breite und Länge sind falsch oder unerwünscht. Setzen Sie `course_georef_check = false` unter `[sources]`.
+    Die Kartenpositionen platzieren die Bahn dann allein, und `check` sagt in einer Zeile „Zur Information“,
+    dass es die Koordinaten nicht beachtet hat.
+
+  Andere Koordinatensysteme als UTM werden noch nicht geprüft; `check` sagt das als Information.
+- Außerhalb der Karte. Bringt keine Lesart der y-Achse alle Posten auf die Karte, bricht die Einpassung ab mit
+  „only … of … controls lie on the map; the course file belongs to another map, uses another origin or another y
+  axis“. Prüfen Sie, ob Sie die richtige Bahndatei und die richtige Karte verknüpft haben, und, falls Sie
+  `course_y_axis` gesetzt haben, ob der Wert stimmt. Posten bis 10 mm außerhalb der gezeichneten Karte zählen
+  noch, ein Start oder Ziel am Rand eines Ausschnitts geht also.
+- Nur Breite und Länge. Ein Posten mit Breite und Länge, aber ohne Kartenposition wird über die Georeferenzierung der
+  Karte platziert. Kann die Karte das nicht, oder haben Sie die Prüfung abgeschaltet, bricht die Einpassung ab mit
+  „controls … have only lat/lng and cannot be placed“ und dem Grund.
+
+Schlägt eine Prüfung fehl, geben `check` und `export` den Fehler aus und halten für die ganze Bahndatei an, damit
+eine schlechte Datei nie ein Blatt erzeugt. Der Exit-Code ist 1.
+
+### Bahnblätter und Bahnaufdruck
+
+Mit einer Bahndatei schreibt `export` ein PDF je Bahn statt je Layout (siehe „Export“ unten). Ein Bahnblatt ist
+das Layout, dem die Bahn zugeordnet ist, mit diesen Änderungen:
+
+- Der Kartenausschnitt zentriert sich auf die Bahn, sofern das Layout kein `map_frame.centre_map_mm` setzt. Das
+  Programm zentriert auf Posten und Knickpunkte und weitet den Ausschnitt für ein Sonderobjekt nur, wenn das
+  Objekt noch hineinpasst. Bahnblätter schneiden meist einen Teil aus einer größeren Karte, setzen Sie also
+  `map_frame.crop = true`, wie es `init --courses` tut. Eine Karte, die größer ist als der Ausschnitt, ist auf
+  einem Bahnblatt zu erwarten und nur eine Zeile „Zur Information“. Ein Posten, der außerhalb des Ausschnitts oder
+  auf seinem Rand liegt, ist ein Hinweis.
+- Das Programm zeichnet die Bahn in Violett (35/85/0/0 CMYK im Regelprofil) über die Karte, mit den
+  Symbolgrößen, die das Regelprofil für die Kartenart vorgibt, aus ISSprOM 2019-2 und ISOM 2017-2. Sie wachsen mit
+  dem Symbolfaktor wie jedes andere Symbol: 133 % bei 1:3000 heißt auch größere Kreise.
+- Das Violett hat zwei Schichten, wie es die „Printing and Colour Definitions“ der IOF (Rev. 4) verlangen. Das
+  untere Violett enthält Start, Posten, Strecken, Ziel, verbotene Linien und Querungsstellen. Es liegt unter
+  Schwarz, Braun und Blau 100 %, damit schwarze Kartendetails über dem Kreis lesbar bleiben. Das obere Violett
+  enthält die Postennummern, Kartenwechsel, Sperrgebiete, verbotene Strecken, Pflichtstrecken und Texte. Es liegt
+  über der ganzen Karte.
+- Beide Schichten werden im Mischmodus `Multiply` gemalt. Die Karte scheint überall durch das Violett, und Schwarz
+  unter dem Violett bleibt schwarz. Ein Bürodrucker hat weder Sonderfarbe noch Überdruckattribut, deshalb muss das
+  PDF das Ergebnis selbst zeigen.
+- Die Textelemente kennen vier weitere Platzhalter: `{course}` (der Bahnname), `{length_km}` (die Länge in
+  Kilometern, ohne Einheit), `{climb_m}` (der Anstieg in Metern, ohne Einheit) und `{controls}` (die Zahl der
+  Posten). Ein Platzhalter bleibt leer, mit einer Zeile „Zur Information“, wenn die Datei für die Bahn keinen Wert
+  hat oder das Blatt keine Bahn hat. Zum Beispiel nennt `"{event} · Bahn {course}"` die Bahn im Titelblock.
+  `init --courses` schreibt `{event} · {course}`.
+
+Das Programm prüft auch, dass kein Blattelement einen Teil der Bahn verdeckt. Deckt ein Titelblock, Logo, Text,
+eine Kontrollstrecke, Fußzeile oder die Postenbeschreibung einen Posten, den Start oder das Ziel ab, warnt
+`check` und nennt das Element und die Posten. Versetzen Sie das Element mit seinem Anker.
+
+### Die Postenbeschreibung
+
+Ein Layoutelement der Art `control_descriptions` zeigt die Postenbeschreibung der Bahn so, wie die IOF sie
+festlegt:
+
+```toml
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+cell_mm = 6.0                        # optional, 4 bis 10, sonst aus dem Regelprofil
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+```
+
+Der Kasten ist so aufgebaut, wie Purple Pen ihn aufbaut. Er zeigt den Titel der Veranstaltung, die Bahn mit Länge
+und Anstieg, den Start, je Posten eine Zeile mit Nummer, Code und den Symbolen der Spalten C bis H, Zeilen für
+Pflichtstrecken und Kartenwechsel mit ihrer Länge und das Ziel. Der zweite Titel einer Bahn aus Purple Pen
+bekommt eine eigene Zeile, ein Kartenwechsel („map flip“) die Zeile 15.6. Eine Bahn mit Wertung (Score-Lauf) führt ihre Posten
+nach Code auf, wie Purple Pen es tut.
+
+Der Kasten hat weißen Hintergrund und ist in Arimo gesetzt. Ein Kästchen ist standardmäßig 6 mm groß, `cell_mm`
+setzt 4 bis 10 mm. Der Kasten behält seine Größe bei jedem Druckmaßstab, wie es ein Element auf dem Papier tun
+soll. Braucht ein Blatt in 1:3000 mehr Platz für die Karte, nehmen Sie kleinere Kästchen.
+
+Der Kasten entfällt, wenn er über den Blattrand ragen würde, denn eine abgeschnittene Beschreibung könnte einen
+Posten verbergen. Davor warnt `check`, ebenso vor einer Bahn, bei der kein Posten eine Beschreibung hat. Ein
+Layout ohne das Element hat schlicht keinen Kasten, und `check` sagt das als Information. Dasselbe gilt für
+IOF-XML. Ein Symbol, das der Beschreibungsstandard der Bahndatei nicht kennt, lässt sein Kästchen leer, und
+`check` nennt es. Die Beschreibungsstandards 2004, 2018 und 2024 werden gelesen.
+
+Noch nicht gemacht:
+
+- Eine Kartenausgabe („map issue“) wird als Start gelesen. Ihre eigene Zeile mit der Länge der Pflichtstrecke zum
+  Start fehlt.
+- Eine Strecke, die nur teilweise abgeflaggt ist, wird als nicht abgeflaggt gezeichnet und beschrieben.
+- Eine lange Bahn wird nicht auf mehrere Spalten verteilt.
+- Der Kasten hat keine Textspalte neben den Symbolen und keine Legende für eigene Symbole.
+
+### Lage der Nummern
+
+Wo eine Postennummer steht, zählt auf einer vollen Sprintkarte, und mehrere Beteiligte wollen mitreden. Das
+Programm kennt vier Ebenen, die genauere gewinnt:
+
+1. Die automatische Platzierung. Sie gilt nur für einen nummerierten Posten, für den die Bahndatei keine Lage
+   angibt.
+2. Die Bahndatei. Purple Pen speichert die Lage je Bahn, relativ zum Posten. Bei einer `.ppen` rechnet das
+   Programm den Versatz im Druckmaßstab der Bahn um. Bei IOF-XML nimmt es `MapTextPosition`.
+3. Eine Korrektur für das Layout: eine Tabelle `[[numbers]]` mit `layout`.
+4. Eine Korrektur für das Blatt einer Bahn: eine Tabelle `[[numbers]]` mit `course`.
+
+Eine Korrektur nennt den Posten, eine Richtung in Grad (0 ist Osten, gegen den Uhrzeigersinn) und, wenn nötig, einen
+Abstand:
+
+```toml
+[[numbers]]
+control = "49"
+course = "A"
+direction = 161.0
+gap_mm = 0.5
+```
+
+Der Abstand ist die kürzeste Entfernung in Druck-mm zwischen dem äußeren Rand der Kreislinie und dem Kasten der
+Nummer. Er wächst mit dem Symbolfaktor wie der Kreis, die Nummer behält also bei jedem Druckmaßstab ihr Aussehen.
+`gap_mm` liegt über 0 und bei höchstens 10 mm. Ohne ihn behält die Korrektur den Abstand der Ebene darunter.
+`numbers accept` schreibt außerdem eine Tabelle `[numbers.base_seen]` mit der Lage, die die Datei hatte, als Sie die
+Korrektur machten.
+
+Das Regelprofil legt fest, in welcher Spanne ein Abstand liegen soll. In `iof-print` sind es 0,5 bis 5 mm. Eine
+Nummer außerhalb der Spanne wird dort gedruckt, wo sie steht, und `check` warnt.
+
+Platziert das Programm eine Nummer selbst, folgt es vier Regeln, die aus den Regeln der Bahnleger stammen:
+
+1. Die Nummer verdeckt kein Punkt- und kein Liniensymbol der Karte. Diese Regel ist hart.
+2. Die Nummer steht hinter dem Posten, in Linie mit der hereinführenden Strecke. Beim ersten Posten kommt diese
+   Strecke vom Start.
+3. Käme der Kasten hinter dem Posten näher als eine halbe Linienbreite an die hinausführende Strecke, steht die
+   Nummer auf der äußeren Winkelhalbierenden, zwischen den beiden Strecken auf ihrer Außenseite.
+4. Ist der bevorzugte Platz belegt, gewinnt der freie Platz, der am wenigsten davon abweicht.
+
+Das Programm verschiebt eine Nummer nie von selbst. Es druckt sie dort, wo ihre Ebene sie hinsetzt, und `check`
+bewertet jede Nummer gegen den Bahnaufdruck, die Blattelemente, den Rand des Kartenausschnitts und die Symbole der
+Karte. Liegt eine Nummer auf einem davon, nennt der Hinweis, was sie überdeckt (Kartensymbole mit ihrem Code), und
+schlägt eine Richtung und einen Abstand vor. Gibt es keinen freien Platz, ist der Vorschlag der am wenigsten
+verdeckte.
+
+So übernehmen Sie einen Vorschlag:
+
+```sh
+freemapper-print numbers accept stadtsprint --course A --control 49 --sheet
+```
+
+`--sheet` macht die Korrektur für das Blatt dieser Bahn (Ebene 4). `--layout-wide` macht sie für jede Bahn, die auf
+dem Layout der Bahn gedruckt wird (Ebene 3). Eines von beiden ist nötig. Ohne `--direction` und `--gap` nimmt der
+Befehl den Vorschlag von `check`. Mit beiden schreibt er Ihre Werte. Hat `check` keinen Vorschlag, weil die Nummer
+keinen Konflikt hat, hält der Befehl an und verlangt die beiden Werte.
+
+`numbers accept` hängt eine Tabelle `[[numbers]]` als Text ans Ende der Projektdatei. Alles davor bleibt, wie es
+ist, auch die Kommentare. Danach lädt es die Datei neu und stellt den alten Inhalt wieder her, wenn das scheitert.
+Eine zweite Korrektur für denselben Posten und Geltungsbereich lehnt es ab. Zum Ändern bearbeiten Sie die Datei.
+Danach rufen Sie `check` auf, um das Ergebnis zu sehen.
+
+### Export
+
+```sh
+freemapper-print export stadtsprint
+freemapper-print export stadtsprint --course A --course B
+freemapper-print export stadtsprint --single-file
+freemapper-print export stadtsprint --layout a4-4000
+```
+
+Mit einer Bahndatei schreibt `export` ein PDF je Bahn in den Ordner `out`, benannt nach der Bahn: `A.pdf`.
+Zeichen, die ein Dateiname nicht enthalten kann, werden zu `-`. Namen, die sich nur in der Groß- und Kleinschreibung
+unterscheiden, bekommen „ (2)“.
+
+- `--course <NAME>` exportiert nur die genannte Bahn. Die Option lässt sich wiederholen. Ein Name, den die Datei
+  nicht hat, ist ein Fehler, der die vorhandenen Bahnen nennt, mit Exit-Code 2.
+- `--single-file` schreibt alle Bahnen in ein PDF, eine Seite je Bahn, jede auf dem Papier ihres Layouts. Die Datei
+  heißt nach dem Titel der Veranstaltung mit „ - alle Bahnen“ („ - all courses“ auf englischen Blättern). Mit
+  `--layout` lässt sie sich nicht verbinden.
+- `--layout <ID>` exportiert ein Layout wie bisher ohne Bahn, die Karte allein mit Titel und Kontrollstrecke. Mit
+  einer Bahndatei lässt sich die Option nicht mit `--course` oder `--single-file` verbinden.
+- `--out-dir` wirkt wie bisher.
+
+Ein Projekt ohne Bahndatei exportiert genau wie in Kapitel 5.
+
+### Mit einer Bahndatei beginnen: `init --courses`
+
+```sh
+freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck" --courses courses.ppen
+```
+
+`init` liest die Bahndatei zuerst und passt sie an die Karte an. Eine Datei, die nicht zur Karte passt, stoppt
+`init` vor dem Schreiben. Aus einer `.ppen` entstehen dann ein Layout je Druckmaßstab der Datei, eine Zuordnung für
+jede Bahn, ein Beschreibungskasten in der oberen rechten Ecke des Kartenausschnitts und `map_frame.crop = true`.
+Eine Bahn ohne Druckmaßstab bekommt den Kartenmaßstab. Aus IOF-XML entsteht ein Layout im Kartenmaßstab, ohne
+Beschreibungskasten, denn das Format hat keine. In beiden Fällen beginnt der Titelblock mit `{event} · {course}`,
+damit jedes Blatt seine Bahn nennt. `init` sagt, woher jeder Wert stammt.
+
+Nehmen Sie die Datei als Anfang. `init` sucht das kleinste A4- oder A3-Blatt, auf dem die ganze Karte Platz hat,
+und das braucht ein Bahnblatt nicht. Ändern Sie Papier und Passepartout nach Wunsch und rufen Sie dann `check` auf.
+Meldet das erste `check` die angenommene y-Achse, bestätigen Sie sie wie oben beschrieben.
+
+### Bahnen prüfen
+
+`check` geht jede Bahn durch statt jedes Layout. Je Bahn gibt es eine Zeile mit Layout, Papier, Druckmaßstab,
+Kartenmaßstab und Faktoren, danach die Hinweise. Hinweise zur Bahndatei selbst, vom Lesen und Einpassen, stehen
+einmal vor der ersten Bahn. Die letzte Zeile lautet „3 Bahnen geprüft, keine Hinweise.“ oder „Bahnen mit Hinweisen:
+1 von 3.“ Der Exit-Code ist 0, wenn nichts Ihre Aufmerksamkeit braucht („Zur Information“ zählt nicht), sonst 1.
+Ein Skript kann `check` vor `export` aufrufen.
+
+Die Hinweise und was zu tun ist, stehen in Kapitel 10.
+
 ## 9. Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop
 
 Eine Orientierungslaufkarte muss den Maßstab haben, der darauf steht. Das PDF von freemapper-print hat ihn
@@ -415,6 +723,10 @@ Programmsprache, auf einem weißen Kasten unten links im Druckbereich. Unter der
 Platz. Deckt der Kasten einen Teil der Karte ab, meldet `render` das; ein Projekt mit breiterem Passepartout setzt
 die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren, danach
 folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
+
+Auch ein Bahnblatt kommt aus `export` (Kapitel 8). Für den Maßstab gelten dieselben Regeln wie bei einem
+Layoutblatt. In einem PDF aus `--single-file` hat jede Seite das Papier ihres Layouts, und der Druckdialog muss
+jede Seite in Originalgröße drucken.
 
 ### In Originalgröße drucken
 
@@ -507,8 +819,8 @@ Diese Hinweise kommen von `render`, `check` und `export`:
 
 ## 10. Meldungen und was zu tun ist
 
-Dieses Kapitel erklärt die Hinweise zu den Blättern eines Layouts. Die Hinweise zum Druck der Karte selbst
-stehen in Kapitel 9. Keiner hält den Export auf. Jede Zeile, die mit „Hinweis:“ beginnt, lässt `check` mit
+Dieses Kapitel erklärt die Hinweise zu den Blättern eines Layouts und einer Bahn. Die Hinweise zum Druck der Karte
+selbst stehen in Kapitel 9. Keiner hält den Export auf. Jede Zeile, die mit „Hinweis:“ beginnt, lässt `check` mit
 Exit-Code 1 enden; eine Zeile, die mit „Zur Information:“ beginnt, nicht.
 
 | Hinweis (gekürzt) | Bedeutung und Abhilfe |
@@ -537,3 +849,87 @@ Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Dat
 Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm`
 ``. Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört. Diese Texte kommen aus der Bibliothek
 und sind vorerst Englisch.
+
+### Hinweise zu den Bahnen
+
+Diese Hinweise erscheinen, wenn das Projekt eine Bahndatei hat. Hinweise zur Bahndatei selbst stehen einmal vor
+der ersten Bahn. Die Schlusszeile „Die Bahndatei selbst hat Hinweise. Sie stehen vor der ersten Bahn.“ sagt Ihnen,
+dass einige Hinweise weiter oben zur Datei gehören und nicht zu einer Bahn. Eine Zeile mit „Zur Information:“ zählt
+nicht für den Exit-Code.
+
+| Hinweis (gekürzt) | Bedeutung und Abhilfe |
+|---|---|
+| „Zur Information: Die y-Achse der Bahndatei zeigt nach oben; das Programm hat sie zur Karte passend gedreht.“ | Nur zur Information. Purple Pen und die meisten Bahnlegungsprogramme schreiben sie so. |
+| „Die Bahn passt mit der y-Achse nach oben und nach unten auf die Karte, und nichts in der Datei entscheidet …“ | Die Bahn liegt dort, wo beide Lesarten passen, das Programm hat „oben“ angenommen. Sehen Sie sich ein Blatt an. Stimmt die Bahn, bestätigen Sie mit `course_y_axis = "up"` unter `[sources]`, steht sie auf dem Kopf, setzen Sie `"down"`. |
+| „Zur Information: Die Bahndatei nennt keinen Kartenmaßstab, deshalb wurde er nicht mit dem der Karte verglichen.“ | Die Datei hat keinen Maßstab zum Vergleichen. Nichts zu tun, prüfen Sie aber, ob Sie die richtige Karte verknüpft haben. |
+| „Zur Information: … eine Kartenposition und geografische Koordinaten. Beide weichen höchstens … m voneinander ab.“ | Die Prüfung mit den geografischen Koordinaten ist bestanden. |
+| „Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn …“ | Es folgt der Grund: Die Karte ist nicht georeferenziert, ihr Koordinatensystem ist nicht UTM, kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten, oder die Projektdatei hat die Prüfung abgeschaltet. |
+| „Zur Information: Die Projektdatei schaltet die Prüfung mit geografischen Koordinaten ab …“ | `course_georef_check = false` ist gesetzt. |
+| „Zur Information: … nur geografische Koordinaten. Die Georeferenzierung der Karte hat sie platziert.“ | Für diese Posten hat die Bahndatei keine Kartenposition. Prüfen Sie einen davon auf dem Blatt. |
+| „Zur Information: Die Bahndatei hat keine Postenbeschreibungen.“ | Die Datei ist IOF-XML oder eine `.ppen` ohne Beschreibungen. |
+| „Die Bahndatei enthält das Element …, das diese Version nicht liest. Es fehlt auf den Blättern.“ | Das Element fehlt auf den Blättern. Sehen Sie in Ihrem Bahnlegungsprogramm nach, was es ist. |
+| „Die Bahndatei hat Abdeckflächen (White-out). Diese Version lässt sie weg; spätere Versionen machen Masken daraus.“ | Das White-out aus Purple Pen wird gelesen, aber noch nicht gedruckt. Es wartet auf die Abdeckungen (M4). Bis dahin zeigen die Blätter die Karte unter der Abdeckfläche. |
+| „Die Bahn … hat Gabelungen oder Schleifen (Varianten in Purple Pen) … die Bahn fehlt deshalb.“ | Die Bahn fehlt mit Absicht. Exportieren Sie die Bahnen aus Purple Pen als IOF-XML, das jede Variante als eigene Bahn schreibt. |
+| „Die Bahn … bietet an einer Stelle alternative Posten an … die Bahn fehlt deshalb.“ | Diese Version kann das nicht drucken. Teilen Sie die Bahn im Bahnlegungsprogramm auf. |
+| „Zur Information: Die Bahnen … sind die Varianten der Gabelung …. Jede wird als eigenes Blatt gedruckt.“ | Nur zur Information. |
+| „Zur Information: Die Kartenausgabe … dient als Start.“ | Eine Kartenausgabe wird als Start gelesen, ihre Zeile in der Postenbeschreibung fehlt deshalb. |
+| „Zur Information: Die Bahndatei hat mehr Hinweise ergeben, als hier stehen.“ | Die Datei ist ungewöhnlich oder beschädigt. Die gezeigten Hinweise sind die ersten. |
+| „Zur Information: Die Bahn … hat keine Zuordnung und wird auf dem ersten Layout gedruckt, …“ | Legen Sie einen Eintrag `[[assignments]]` an, wenn ein anderes Layout gemeint ist. |
+| „Die Projektdatei ordnet die Bahn … einem Layout zu, die Bahndatei hat aber keine solche Bahn. Die Zuordnung bleibt …“ | Die Bahn wurde in der Bahndatei umbenannt oder gelöscht. Korrigieren Sie den Namen in der Projektdatei oder löschen Sie den Eintrag. |
+| „Die Projektdatei korrigiert die Nummer von Posten … für …, die Bahndatei hat dort aber keinen solchen Posten. Die Korrektur bleibt …“ | Der Posten wurde umnummeriert oder entfernt, oder er gehört nicht zu dieser Bahn. Korrigieren Sie den Code oder löschen Sie den Eintrag. |
+| „Die Bahndatei hat die Nummer von Posten … verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.“ | Jemand hat die Nummer im Bahnlegungsprogramm verschoben, nachdem Sie die Korrektur gemacht haben. Sehen Sie sich das Blatt an. Passt die Korrektur noch, bleibt der Hinweis, bis Sie den Eintrag löschen und mit `numbers accept --direction … --gap …` neu schreiben. Passt sie nicht, löschen Sie den Eintrag. |
+| „Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.“ | Die Datei hat keine Bahn, oder jede Bahn fehlt. Siehe die Hinweise davor. |
+
+Hinweise zum Blatt einer Bahn:
+
+| Hinweis (gekürzt) | Bedeutung und Abhilfe |
+|---|---|
+| „Auf dem Blatt der Bahn … liegt Posten … außerhalb des Kartenausschnitts oder auf seinem Rand.“ | Der Ausschnitt zeigt nicht die ganze Bahn. Nehmen Sie größeres Papier oder einen Druckmaßstab mit größerer Zahl, oder verschieben Sie den Ausschnitt mit `map_frame.centre_map_mm`. |
+| „Zur Information: Die Karte ist … für den Kartenausschnitt. Ein Bahnblatt zeigt den Teil um die Bahn …“ | Nur zur Information. Ein Bahnblatt schneidet die Karte mit Absicht. |
+| „Zur Information: Die Bahn … kommt aus IOF-XML. Das Format kennt keine Postenbeschreibungen, das Blatt hat deshalb keine.“ | Nur zur Information. Für Beschreibungen nehmen Sie die `.ppen`. |
+| „Zur Information: Das Layout der Bahn … hat kein Element control_descriptions …“ | Nur zur Information. Fügen Sie dem Layout das Element hinzu, wenn Sie den Kasten wollen. |
+| „Die Postenbeschreibung der Bahn … würde über den Blattrand reichen und fehlt deshalb …“ | Versetzen Sie sie über ihren Anker oder verkleinern Sie sie mit `cell_mm`. |
+| „Kein Posten der Bahn … hat in der Bahndatei eine Beschreibung … Tragen Sie die Beschreibungen in Purple Pen ein.“ | Tragen Sie die Beschreibungen in Purple Pen ein. |
+| „Das Element … deckt den Posten … der Bahn ab. Versetzen Sie das Element über seinen Anker …“ | Ein Titelblock, Logo, Text, eine Fußzeile oder der Kasten liegt auf einem Posten, dem Start oder dem Ziel. Versetzen Sie das Element. |
+| „Die Postenbeschreibung der Bahn … nutzt das Symbol …, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.“ | Die Symbol-ID gibt es im Standard der Datei (2004, 2018 oder 2024) nicht. Wählen Sie in Purple Pen ein anderes Symbol. |
+| „Der Bahnaufdruck der Bahn … verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.“ | Ein Sonderobjekt ist sehr groß, oder die Datei ist beschädigt. Verkleinern oder teilen Sie die Fläche. |
+| „Zur Information: Der Text … nutzt …, die Bahndatei hat für die Bahn … aber keinen Wert. Der Platzhalter bleibt leer.“ | Die Datei hat für die Bahn keine Länge oder keinen Anstieg. Tragen Sie sie im Bahnlegungsprogramm ein oder lassen Sie den Platzhalter aus dem Text weg. |
+| „Zur Information: Der Text … nutzt …, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.“ | Ein gemeinsamer Text mit `{course}` oder ähnlichem steht auf einem Blatt ohne Bahn. Blenden Sie den Text auf diesem Layout mit `hide_shared` aus. |
+| „Auf dem Blatt der Bahn … überdeckt die Nummer von Posten … Sie wird trotzdem dort gedruckt. …“ | Die Nummer liegt auf dem Bahnaufdruck, einem Blattelement, dem Rand des Kartenausschnitts oder einem Punkt- oder Liniensymbol der Karte. Der Hinweis schlägt eine freie Richtung und einen Abstand vor. Übernehmen Sie sie mit `numbers accept` (siehe Kapitel 8). |
+| „… steht die Nummer von Posten … mm vom Kreis entfernt. Das Regelprofil erlaubt … bis … mm.“ | Der Abstand aus der Datei oder einer Korrektur liegt außerhalb der Spanne des Regelprofils. Die Nummer wird so gedruckt. Ändern Sie ihn unter `[[numbers]]`. |
+
+### Fehler mit der Bahndatei
+
+Ein Fehler hält `check` und `export` an. Die Zeile beginnt mit „Die Bahndatei lässt sich nicht verwenden“ oder „die
+Bahndatei … ließ sich nicht lesen“, danach folgt der Grund. Die Gründe beim Lesen der Datei sind englisch:
+
+- „invalid course file: …“: Das XML ist beschädigt oder es fehlt etwas, das das Format verlangt, etwa die ID eines
+  Postens. Öffnen Sie die Datei im Bahnlegungsprogramm und speichern Sie sie neu.
+- „course file too large or too complex: …“: Die Datei überschreitet eine der Grenzen, die das Programm vor
+  feindlichen Dateien schützen. Teilen Sie die Veranstaltung auf mehrere Dateien auf.
+- „… uses unit …; only mm is supported“: Das IOF-XML gibt Positionen in einer anderen Einheit an. Exportieren Sie es
+  mit Millimetern.
+- „unknown file type; use `.ppen` (Purple Pen) or `.xml` (IOF XML 3.0)“: Die Endung von `[sources] courses` ist
+  keine von beiden.
+
+Die Gründe der Einpassung sind die Fehler aus dem Abschnitt über Koordinaten in Kapitel 8, ebenfalls englisch:
+
+- „the course file is drawn for 1:…, the map is 1:…; export the courses for the map's scale“
+- „only … of … controls lie on the map; the course file belongs to another map, uses another origin or another y axis“
+- „control … lies … m from where its lat/lng put it (20 m allowed); the course file does not match the map's georeferencing“
+- „controls … have only lat/lng and cannot be placed: …“
+
+Fehler von `export` und `numbers accept` zu Namen:
+
+- „Die Bahndatei hat keine Bahn …; vorhanden sind …“: Der Name hinter `--course` steht nicht in der Datei.
+- „--course und --single-file brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses“:
+  Ergänzen Sie den Schlüssel `courses`.
+- „die Bahn … hat keinen Posten …; ihre Posten sind …“: Der Code für `numbers accept` gehört nicht zur Bahn.
+- „für Posten … auf dem Blatt der Bahn … gibt es keinen Vorschlag, denn seine Nummer hat keinen Konflikt. Mit
+  --direction und --gap setzen Sie eine Lage selbst.“: Es gibt nichts zu korrigieren. Geben Sie beide Werte an, wenn
+  Sie die Nummer trotzdem versetzen wollen.
+- „die Projektdatei hat für Posten … schon eine Korrektur für …. Ändern Sie sie in der Datei …“: Bearbeiten Sie den
+  Eintrag.
+- „--direction braucht eine endliche Zahl, und --gap muss größer als 0 und höchstens … mm sein“.
+- „das Projekt … lässt sich mit der neuen Korrektur nicht laden, deshalb blieb es unverändert“: Das Programm hat die
+  Datei wiederhergestellt. Melden Sie das, denn es sollte nicht vorkommen.
