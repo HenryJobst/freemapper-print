@@ -60,7 +60,7 @@ pub(crate) fn drive(bytes: &[u8], h: &mut impl Handler) -> Result<(), CourseErro
     }
 }
 
-pub(crate) fn xml_err(e: impl std::fmt::Display) -> CourseError {
+pub(super) fn xml_err(e: impl std::fmt::Display) -> CourseError {
     CourseError::Xml(e.to_string())
 }
 
@@ -89,14 +89,14 @@ pub(crate) fn number(s: &str, what: &str) -> Result<f64, CourseError> {
 /// The notes of one read: deduplicated, in first-seen order, at most `MAX_NOTES` and then one
 /// `NotesTruncated`.
 #[derive(Default)]
-pub(crate) struct Notes {
+pub(super) struct Notes {
     list: Vec<CourseNote>,
     seen: HashSet<CourseNote>,
     truncated: bool,
 }
 
 impl Notes {
-    pub(crate) fn add(&mut self, n: CourseNote) {
+    pub(super) fn add(&mut self, n: CourseNote) {
         if self.truncated || self.seen.contains(&n) {
             return;
         }
@@ -112,19 +112,19 @@ impl Notes {
     /// Adds `n` (once) even after the list was cut short: for a course left out and for the notes a reader adds at
     /// the end, about the file as a whole. There is at most one such note per course and a few more, so the list
     /// stays bounded by the course limit.
-    pub(crate) fn add_final(&mut self, n: CourseNote) {
+    pub(super) fn add_final(&mut self, n: CourseNote) {
         if self.seen.insert(n.clone()) {
             self.list.push(n);
         }
     }
 
-    pub(crate) fn into_vec(self) -> Vec<CourseNote> {
+    pub(super) fn into_vec(self) -> Vec<CourseNote> {
         self.list
     }
 }
 
 /// `text` if it has at most `max` characters, else a `Limit` error naming `what`.
-pub(crate) fn bounded(text: &str, max: usize, what: &str) -> Result<String, CourseError> {
+pub(super) fn bounded(text: &str, max: usize, what: &str) -> Result<String, CourseError> {
     if text.chars().count() > max {
         return Err(CourseError::Limit(format!(
             "{what} longer than {max} characters"
@@ -134,7 +134,7 @@ pub(crate) fn bounded(text: &str, max: usize, what: &str) -> Result<String, Cour
 }
 
 /// The bytes of codes and names one read may still copy into its result (`MAX_TOTAL_TEXT_BYTES`).
-pub(crate) struct TextBudget {
+pub(super) struct TextBudget {
     left: usize,
 }
 
@@ -148,7 +148,7 @@ impl Default for TextBudget {
 
 impl TextBudget {
     /// A copy of `s`, paid from the budget.
-    pub(crate) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
+    pub(super) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
         self.left = self.left.checked_sub(s.len()).ok_or_else(|| {
             CourseError::Limit(format!(
                 "more than {} MiB of codes, names and description standards in the result",

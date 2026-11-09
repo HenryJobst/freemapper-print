@@ -131,6 +131,44 @@ mod boundaries {
     }
 
     #[test]
+    fn only_the_xml_loop_of_course_is_shared() {
+        // The description symbol reader shares the streaming loop and attribute parsing with the course readers;
+        // the note list, text budget and length check stay inside `course` (`pub(super)`).
+        let shared = ["Handler", "attr", "drive", "local", "number"];
+        let mut seen = Vec::new();
+        let outside_course = sources("")
+            .into_iter()
+            .filter(|f| !f.components().any(|c| c.as_os_str() == "course"));
+        for file in outside_course {
+            let text = std::fs::read_to_string(&file).unwrap();
+            for (i, _) in text.match_indices("course::xml::") {
+                let rest = &text[i + "course::xml::".len()..];
+                let list = rest
+                    .strip_prefix('{')
+                    .and_then(|r| r.split_once('}'))
+                    .map_or_else(
+                        || {
+                            rest.split(|c: char| !c.is_alphanumeric() && c != '_')
+                                .next()
+                                .unwrap_or("")
+                        },
+                        |(inner, _)| inner,
+                    );
+                seen.extend(
+                    list.split(',')
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty()),
+                );
+            }
+        }
+        assert!(!seen.is_empty());
+        assert!(
+            seen.iter().all(|n| shared.contains(&n.as_str())),
+            "{seen:?}"
+        );
+    }
+
+    #[test]
     fn the_check_sees_a_forbidden_path() {
         // The test above would pass on an empty list: one known use proves the walk reads the files.
         assert!(!uses("sheet", &["project"]).is_empty());
