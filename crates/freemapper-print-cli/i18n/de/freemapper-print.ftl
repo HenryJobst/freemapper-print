@@ -102,10 +102,15 @@ reminder-actual-size = In Originalgröße drucken: 100 % („Tatsächliche Grö�
 ## Projektbefehle: init, check, export
 
 init-written = { $path } geschrieben, mit einem Layout { $layout }: { $paper }, Passepartout { $margin } mm, Druckmaßstab 1:{ $scale }, für { $kind }.
-init-no-fit = Weder auf A4 noch auf A3 zeigt ein Blatt die Karte im Maßstab 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt das Projekt bei A4. check meldet Folgendes:
+init-no-fit = Warnung: Weder auf A4 noch auf A3 zeigt ein Blatt die Karte im Maßstab 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt das Projekt bei A4. check meldet Folgendes:
 init-contour-hint = Das Projekt schlägt eine Äquidistanz von { $value } m vor, üblich für { $kind }. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
 init-no-contour-hint = Für Schulhofkarten schlägt das Projekt keine Äquidistanz vor. Hat die Karte Höhenlinien, tragen Sie map.contour_interval_m ein; bis dahin meldet check sie als fehlend.
 init-next = Als Nächstes freemapper-print check { $path } aufrufen.
+init-kind-flag = Kartenart: { $kind }, wie mit --kind angegeben.
+init-kind-sidecar = Kartenart: { $kind }, wie in der freemapper.toml neben der Karte angegeben.
+init-kind-inferred = Kartenart: { $kind }, abgeleitet aus Symbolsatz und Maßstab der Karte. Stimmt das nicht, ändern Sie map.kind in der Projektdatei.
+init-fitting = Suche ein A4- oder A3-Blatt, das die Karte in 1:{ $scale } zeigt …
+init-next-with-notes = Als Nächstes freemapper-print check { $path } aufrufen. Es meldet die Hinweise oben, bis das Layout geändert ist.
 # Kommentare in der neuen Projektdatei.
 init-comment-contour = Vorschlag für { $kind }. An der Karte prüfen und bestätigen.
 init-comment-no-contour = Für Schulhofkarten gibt es keinen Vorschlag. Hat die Karte Höhenlinien, contour_interval_m mit der Äquidistanz in Metern ergänzen.

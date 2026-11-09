@@ -979,7 +979,9 @@ pub fn starter(
 }
 
 /// Widest passe-partout (mm) [`fit_starter`] tries to make room for the footer.
-const MAX_STARTER_MARGIN_MM: u32 = 25;
+const MAX_STARTER_MARGIN_MM: u32 = 24;
+/// Steps (mm) in which [`fit_starter`] widens the passe-partout.
+const STARTER_MARGIN_STEP_MM: usize = 2;
 
 /// Whether the starter sheet in `report` is ready: no note but added north lines, and the missing
 /// contour interval value when the starter proposes none (schoolyard).
@@ -1014,38 +1016,75 @@ fn only_footer_in_the_way(project: &Project, report: &crate::sheet::SheetReport)
 
 /// The starter on the first sheet that shows `map` without notes (only added north lines and,
 /// for schoolyard maps, the contour interval left to the user may remain): A4 with the default
-/// 8 mm passe-partout, A4 with a passe-partout wide enough for the footer below the map frame
-/// (tried in 1 mm steps up to 25 mm), then A3 the same way; always with auto orientation and
-/// through the same drawing as `check`. `dir` is the project folder. The second value is false
-/// when no candidate fits: the project then keeps A4 with 8 mm, and `check` will list its notes.
+/// 8 mm passe-partout, A4 with a passe-partout wide enough for the footer below the map frame,
+/// then A3 the same way; always with auto orientation and through the same drawing as `check`.
+/// `dir` is the project folder. The second value is false when no candidate fits: the project
+/// then keeps A4 with 8 mm, and `check` will list its notes.
+///
+/// When only the footer is in the way at 8 mm, the widest passe-partout (24 mm) is tried next:
+/// if the footer is still in the way there, no width helps and the next paper follows. Otherwise
+/// the passe-partout grows from 10 mm in 2 mm steps to the first that fits, at most ten sheets
+/// per paper.
 pub fn fit_starter(
     starter: Project,
     dir: &Path,
     map: &crate::omap::MapDocument,
+) -> (Project, bool) {
+    let logos = crate::sheet::LogoCache::new();
+    fit_with(starter, dir, |candidate| {
+        let layout = candidate.project.layouts[0].clone();
+        crate::export::sheet_pdf(candidate, map, &layout, &logos)
+            .ok()
+            .map(|(_, report)| report)
+    })
+}
+
+/// [`fit_starter`] with the sheet check `check` (`None`: the sheet cannot be drawn).
+fn fit_with(
+    starter: Project,
+    dir: &Path,
+    mut check: impl FnMut(&LoadedProject) -> Option<crate::sheet::SheetReport>,
 ) -> (Project, bool) {
     let mut candidate = LoadedProject {
         path: dir.join(FILE_NAME),
         dir: dir.to_path_buf(),
         project: starter,
     };
-    let logos = crate::sheet::LogoCache::new();
-    for paper in [Paper::A4, Paper::A3] {
-        for margin in 8..=MAX_STARTER_MARGIN_MM {
-            let layout = &mut candidate.project.layouts[0];
-            layout.id = starter_layout_id(paper).into();
-            layout.paper = paper;
-            layout.orientation = Orientation::Auto;
-            layout.map_frame.margin_mm = f64::from(margin);
-            let layout = candidate.project.layouts[0].clone();
-            let Ok((_, report)) = crate::export::sheet_pdf(&candidate, map, &layout, &logos) else {
-                break;
-            };
-            if starter_is_clean(&candidate.project, &report) {
-                return (candidate.project, true);
-            }
+    // Clean, only the footer in the way, or something else.
+    enum Outcome {
+        Clean,
+        Footer,
+        Other,
+    }
+    let mut try_sheet = |candidate: &mut LoadedProject, paper: Paper, margin: u32| {
+        let layout = &mut candidate.project.layouts[0];
+        layout.id = starter_layout_id(paper).into();
+        layout.paper = paper;
+        layout.orientation = Orientation::Auto;
+        layout.map_frame.margin_mm = f64::from(margin);
+        match check(candidate) {
+            Some(r) if starter_is_clean(&candidate.project, &r) => Outcome::Clean,
             // A wider passe-partout only shrinks the frame, so it helps the footer alone.
-            if !only_footer_in_the_way(&candidate.project, &report) {
-                break;
+            Some(r) if only_footer_in_the_way(&candidate.project, &r) => Outcome::Footer,
+            _ => Outcome::Other,
+        }
+    };
+    let first = MapFrameSpec::default().margin_mm as u32;
+    for paper in [Paper::A4, Paper::A3] {
+        match try_sheet(&mut candidate, paper, first) {
+            Outcome::Clean => return (candidate.project, true),
+            Outcome::Other => continue,
+            Outcome::Footer => {}
+        }
+        if let Outcome::Footer = try_sheet(&mut candidate, paper, MAX_STARTER_MARGIN_MM) {
+            continue;
+        }
+        let wider = (first + 2..=MAX_STARTER_MARGIN_MM).step_by(STARTER_MARGIN_STEP_MM);
+        for margin in wider {
+            match try_sheet(&mut candidate, paper, margin) {
+                Outcome::Clean => return (candidate.project, true),
+                Outcome::Footer => {}
+                Outcome::Other => break,
             }
         }
     }
@@ -1627,6 +1666,90 @@ mod tests {
         assert!(fits);
         let l = &fitted.layouts[0];
         assert_eq!((l.paper, l.map_frame.margin_mm), (Paper::A4, 8.0));
+    }
+
+    /// A sheet report with the given notes and nothing else to say.
+    fn report_with(notes: Vec<crate::sheet::SheetNote>) -> crate::sheet::SheetReport {
+        crate::sheet::SheetReport {
+            print: crate::print::PrintReport {
+                page_mm: (210.0, 297.0),
+                print_scale: 4000,
+                geometry_factor: 1.0,
+                symbol_factor: 1.0,
+                non_standard_scale: false,
+                overflow_mm: None,
+                skipped_objects: 0,
+                unknown_type_objects: 0,
+                truncated_objects: 0,
+                objects_not_drawn_page_limit: 0,
+                dropped_pattern_objects: 0,
+                substituted_fonts: vec![],
+                missing_glyphs: vec![],
+            },
+            notes,
+        }
+    }
+
+    /// The sheets [`fit_with`] tries for a map whose footer needs `needs` mm of passe-partout on
+    /// each paper (`None`: no margin helps), as (paper, margin) in order, and its result.
+    fn fit_trace(needs: [Option<u32>; 2]) -> (Vec<(Paper, u32)>, Project, bool) {
+        use crate::sheet::{FOOTER_ID, SheetNote};
+        let p = starter(
+            "T",
+            PathBuf::from("m.omap"),
+            MapKind::Sprint,
+            4000,
+            SheetLang::De,
+        );
+        let mut tried = Vec::new();
+        let (project, fits) = fit_with(p, Path::new("/nowhere"), |lp| {
+            let l = &lp.project.layouts[0];
+            let margin = l.map_frame.margin_mm as u32;
+            tried.push((l.paper, margin));
+            let need = needs[usize::from(l.paper == Paper::A3)];
+            let footer = SheetNote::ElementOverlapsMap {
+                id: FOOTER_ID.into(),
+            };
+            Some(report_with(match need {
+                Some(n) if margin >= n => vec![],
+                _ => vec![footer],
+            }))
+        });
+        (tried, project, fits)
+    }
+
+    #[test]
+    fn fit_search_steps_2_mm_and_stops_early() {
+        // The footer fits A4 from 13 mm on: 8, then the widest (24) to see that some margin
+        // helps, then up from 10 in 2 mm steps to the first that fits.
+        let (tried, project, fits) = fit_trace([Some(13), Some(9)]);
+        let a4 = |m| (Paper::A4, m);
+        assert_eq!(tried, [a4(8), a4(24), a4(10), a4(12), a4(14)]);
+        assert!(fits);
+        assert_eq!(project.layouts[0].map_frame.margin_mm, 14.0);
+        // No margin helps on A4: after 8 and 24 the search moves on to A3.
+        let (tried, project, fits) = fit_trace([None, Some(9)]);
+        let a3 = |m| (Paper::A3, m);
+        assert_eq!(tried, [a4(8), a4(24), a3(8), a3(24), a3(10)]);
+        assert!(fits);
+        assert_eq!(
+            (
+                project.layouts[0].paper,
+                project.layouts[0].map_frame.margin_mm
+            ),
+            (Paper::A3, 10.0)
+        );
+        // Nothing fits: four sheets, then A4 with 8 mm.
+        let (tried, project, fits) = fit_trace([None, None]);
+        assert_eq!(tried, [a4(8), a4(24), a3(8), a3(24)]);
+        assert!(!fits);
+        assert_eq!(
+            (
+                project.layouts[0].paper,
+                project.layouts[0].map_frame.margin_mm
+            ),
+            (Paper::A4, 8.0)
+        );
     }
 
     #[test]

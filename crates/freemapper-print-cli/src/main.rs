@@ -153,7 +153,7 @@ macro_rules! args {
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
-    let kind = detect_kind(texts, &map, &args.map, args.kind)?;
+    let (kind, _) = detect_kind(texts, &map, &args.map, args.kind)?;
     let parent = match args.out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
@@ -268,29 +268,40 @@ fn metres(texts: &Texts, value: f64) -> String {
     }
 }
 
+/// Where the map kind came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KindSource {
+    Flag,
+    Sidecar,
+    Inferred,
+}
+
 /// The map kind: `arg`, else `map_kind` in `freemapper.toml` next to the map, else inferred from
-/// the symbol set and scale (ADR 0021). A `freemapper.toml` that cannot be read or parsed gets a
-/// note that says so; without any kind the error asks for `--kind`.
+/// the symbol set and scale (ADR 0021), and where it came from. A `freemapper.toml` that cannot
+/// be read or parsed gets a note that says so; without any kind the error asks for `--kind`.
 fn detect_kind(
     texts: &Texts,
     map: &MapDocument,
     path: &Path,
     arg: Option<KindArg>,
-) -> anyhow::Result<MapKind> {
+) -> anyhow::Result<(MapKind, KindSource)> {
     if let Some(kind) = arg {
-        return Ok(kind.into());
+        return Ok((kind.into(), KindSource::Flag));
     }
-    if let Err(err) = read_sidecar(path) {
-        eprintln!(
+    match read_sidecar(path) {
+        Ok(Some(kind)) => return Ok((kind, KindSource::Sidecar)),
+        Ok(None) => {}
+        Err(err) => eprintln!(
             "{}",
             texts.get(
                 "note-sidecar",
                 // The whole chain: the operating system's error is the source.
                 Some(&args!("error" => printable(&format!("{:#}", anyhow::Error::new(err)))))
             )
-        );
+        ),
     }
-    infer_kind(map, path).context(texts.plain("error-kind-unknown"))
+    let kind = infer_kind(map, path).context(texts.plain("error-kind-unknown"))?;
+    Ok((kind, KindSource::Inferred))
 }
 
 fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
@@ -300,7 +311,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         return Err(UsageError(texts.plain("error-title-control")).into());
     }
     let map = read_map(texts, &args.map)?;
-    let kind = detect_kind(texts, &map, &args.map, args.kind)?;
+    let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
     let shown = args.folder.join(project::FILE_NAME);
     if shown.exists() {
         bail!(texts.get(
@@ -337,8 +348,25 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         map_scale,
         sheet_lang,
     );
-    let (new, fits) = project::fit_starter(starter, &dir, &map);
     let kind_word = texts.plain(kind_word_id(kind));
+    let source_id = match source {
+        KindSource::Flag => "init-kind-flag",
+        KindSource::Sidecar => "init-kind-sidecar",
+        KindSource::Inferred => "init-kind-inferred",
+    };
+    eprintln!(
+        "{}",
+        texts.get(source_id, Some(&args!("kind" => kind_word.clone())))
+    );
+    // Drawing up to twenty sheets takes a moment on a large map.
+    eprintln!(
+        "{}",
+        texts.get(
+            "init-fitting",
+            Some(&args!("scale" => map_scale.to_string()))
+        )
+    );
+    let (new, fits) = project::fit_starter(starter, &dir, &map);
     let contour = new.map.contour_interval_m;
     let contour_comment = match contour {
         Some(_) => texts.get(
@@ -418,7 +446,12 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             None => texts.plain("init-no-contour-hint"),
         }
     );
-    eprintln!("{}", texts.get("init-next", Some(&args!("path" => path))));
+    let next = if fits {
+        "init-next"
+    } else {
+        "init-next-with-notes"
+    };
+    eprintln!("{}", texts.get(next, Some(&args!("path" => path))));
     Ok(0)
 }
 
@@ -600,6 +633,10 @@ fn same_file(map: &Path, out: &Path) -> bool {
 }
 
 /// Unicode format characters (category Cf): bidi controls, zero-width characters, joiners, tags.
+///
+/// A hand-written table of Unicode 16.0's category Cf, kept on purpose: `std` has no lookup of
+/// general categories ([`char::is_control`] covers Cc only), and a dependency for this one table
+/// is not worth it (ADR 0006). Re-check it when a Unicode version adds format characters.
 fn is_format(c: char) -> bool {
     matches!(c as u32,
         0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E

@@ -102,10 +102,15 @@ reminder-actual-size = Print at actual size: 100 %, with "fit to page" switched 
 ## Project commands: init, check, export
 
 init-written = Wrote { $path } with one layout, { $layout }: { $paper }, passe-partout { $margin } mm, print scale 1:{ $scale }, for { $kind } maps.
-init-no-fit = No A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so the project keeps A4. check reports this:
+init-no-fit = Warning: no A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so the project keeps A4. check reports this:
 init-contour-hint = The project proposes a contour interval of { $value } m, common for { $kind } maps. Look it up on the map and confirm it, or change map.contour_interval_m.
 init-no-contour-hint = Schoolyard maps get no proposed contour interval. If the map has contours, set map.contour_interval_m; until then check reports it as missing.
 init-next = Run freemapper-print check { $path } next.
+init-kind-flag = Map kind: { $kind } maps, as --kind says.
+init-kind-sidecar = Map kind: { $kind } maps, as freemapper.toml next to the map says.
+init-kind-inferred = Map kind: { $kind } maps, inferred from the map's symbol set and scale. If that is wrong, change map.kind in the project file.
+init-fitting = Looking for an A4 or A3 sheet that shows the map at 1:{ $scale } …
+init-next-with-notes = Run freemapper-print check { $path } next. It lists the notes above until the layout changes.
 # Comments in the new project file.
 init-comment-contour = Proposed for { $kind } maps. Confirm it against the map.
 init-comment-no-contour = No contour interval is proposed for schoolyard maps. If the map has contours, add contour_interval_m with the interval in metres.

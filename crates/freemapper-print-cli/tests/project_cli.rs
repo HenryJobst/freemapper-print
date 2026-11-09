@@ -187,6 +187,13 @@ fn init_writes_project() {
         err.contains(&ws.project_file().display().to_string()),
         "{err}"
     );
+    // Where the kind came from, a line before the fit search, and the plain next step.
+    assert!(
+        err.contains("Map kind: sprint maps, as --kind says."),
+        "{err}"
+    );
+    assert!(err.contains("Looking for an A4 or A3 sheet"), "{err}");
+    assert!(err.contains("check") && !err.contains("Warning"), "{err}");
 }
 
 #[test]
@@ -214,6 +221,10 @@ fn init_takes_kind_from_freemapper_toml_in_german() {
     assert_eq!(p.event.lang, project::SheetLang::De);
     assert_eq!(p.event.title, "forest-sample");
     assert!(err.contains("Äquidistanz") && err.contains("5 m"), "{err}");
+    assert!(
+        err.contains("Kartenart: Waldkarten, wie in der freemapper.toml"),
+        "{err}"
+    );
     // The generated project passes the check: the forest sample fits on A4.
     let o = run("de", &["check", ws.project_file().to_str().unwrap()]);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
@@ -716,4 +727,41 @@ fn render_into_a_folder_names_the_os_error_once() {
     let err = stderr(&o);
     assert!(err.contains("map.pdf"), "{err}");
     assert_eq!(err.matches("os error").count(), 1, "{err}");
+}
+
+#[test]
+fn init_without_fit_warns_and_says_check_will_complain() {
+    let ws = Workspace::new(LUEBECK);
+    // Lübeck at 1:5000, no standard sprint scale: every sheet has a note.
+    let text = std::fs::read_to_string(&ws.map).unwrap();
+    let text = text.replacen(
+        "<georeferencing scale=\"4000\"",
+        "<georeferencing scale=\"5000\"",
+        1,
+    );
+    std::fs::write(&ws.map, text).unwrap();
+    for (lang, warning, next) in [
+        (
+            "en",
+            "Warning: no A4 or A3 sheet",
+            "until the layout changes",
+        ),
+        ("de", "Warnung: Weder auf A4", "bis das Layout geändert ist"),
+    ] {
+        let folder = ws.event().join(lang);
+        let o = run(
+            lang,
+            &[
+                "init",
+                folder.to_str().unwrap(),
+                "--map",
+                ws.map.to_str().unwrap(),
+                "--kind",
+                "sprint",
+            ],
+        );
+        let err = stderr(&o);
+        assert!(o.status.success(), "{err}");
+        assert!(err.contains(warning) && err.contains(next), "{lang}: {err}");
+    }
 }
