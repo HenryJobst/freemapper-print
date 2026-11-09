@@ -275,7 +275,15 @@ pub(crate) fn map_footer(
     frame: PaperBox,
     notes: &mut Vec<SheetNote>,
 ) -> Option<PlacedElement> {
-    let mut lines = copyright_lines_of(map_notes, lang, "", frame, FOOTER_PT * MM_PER_PT, notes);
+    let mut lines = copyright_lines_of(
+        map_notes,
+        lang,
+        "",
+        frame,
+        0.0,
+        FOOTER_PT * MM_PER_PT,
+        notes,
+    );
     lines.push(crate::credit_line(lang).to_string());
     footer_block(&lines, page, frame, 0.0)
 }
@@ -314,17 +322,23 @@ fn copyright_lines(
         ctx.project.project.event.lang,
         &ctx.layout.id,
         ctx.frame,
+        ctx.layout.map_frame.border_mm,
         size_mm,
         notes,
     )
 }
 
-/// [`copyright_lines`] of the text `source`, for the sheet of `layout` in `lang` with `frame`.
+/// [`copyright_lines`] of the text `source`, for the sheet of `layout` in `lang` with `frame` and
+/// its frame line `border_mm`. A line wider than the footer's white box inside the frame is cut
+/// ([`SheetNote::CopyrightLineCut`]). The limit is the same wherever the lines go: below the frame
+/// they have that room, and a `copyright_line` element placed elsewhere can still reach past the
+/// page, which its own note reports.
 fn copyright_lines_of(
     source: &str,
     lang: SheetLang,
     layout: &str,
     frame: PaperBox,
+    border_mm: f64,
     size_mm: f64,
     notes: &mut Vec<SheetNote>,
 ) -> Vec<String> {
@@ -349,20 +363,28 @@ fn copyright_lines_of(
             shown,
         });
     }
-    let limit = frame.max.0 - frame.min.0 - 2.0 * FOOTER_BOX_PADDING_MM;
+    // The white box sits inside the frame line's inner half on both sides.
+    let limit = frame.max.0 - frame.min.0 - 2.0 * FOOTER_BOX_PADDING_MM - border_mm;
     lines
         .into_iter()
-        .map(|l| cut_to_width(l, size_mm, limit))
+        .map(|l| match cut_to_width(&l, size_mm, limit) {
+            Some(cut) => {
+                notes.push(SheetNote::CopyrightLineCut { line: l });
+                cut
+            }
+            None => l,
+        })
         .collect()
 }
 
-/// `text` cut at a character boundary to fit `limit` mm at `size_mm`, ending in "…"; as is when
-/// it fits.
-fn cut_to_width(text: String, size_mm: f64, limit: f64) -> String {
+/// `text` cut at a character boundary to fit `limit` mm at `size_mm`, ending in "…"; `None` when
+/// it fits. Widths are the sums of the glyph advances without kerning, as the PDF writer sets the
+/// text, so the measured width is the printed one.
+fn cut_to_width(text: &str, size_mm: f64, limit: f64) -> Option<String> {
     let regular = face(false, false);
     let width = |t: &str| text_width(t, regular) * size_mm;
-    if width(&text) <= limit {
-        return text;
+    if width(text) <= limit {
+        return None;
     }
     let ellipsis = width("…");
     let mut used = ellipsis;
@@ -374,7 +396,7 @@ fn cut_to_width(text: String, size_mm: f64, limit: f64) -> String {
         }
         end = i + c.len_utf8();
     }
-    format!("{}…", text[..end].trim_end())
+    Some(format!("{}…", text[..end].trim_end()))
 }
 
 /// What the text elements of the layout leave out: a text with `{print_scale}`, one with

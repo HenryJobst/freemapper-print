@@ -175,3 +175,4 @@ logo-simplified-clip-path = a clip path is ignored.
 note-missing-scale-check-bar = Note: layout { $layout } has no scale check bar. An element of kind scale_check_bar shows on the print whether the printer scaled it.
 note-footer-covers-element = Note: the footer with the copyright and credit lines sits on a white box inside the map frame and covers part of the element { $id }. A wider margin_mm, another place for the element, or a copyright_line or credit_line element keeps them apart.
 error-disk-full-unknown = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and the disk does not say how much is free
+note-copyright-line-cut = Note: the copyright line "{ $line }" is wider than the map frame and is cut short, ending in "…". Shorten it in the map notes or in print.copyright.

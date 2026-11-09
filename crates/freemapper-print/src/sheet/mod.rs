@@ -85,6 +85,9 @@ pub enum SheetNote {
         total: usize,
         shown: usize,
     },
+    /// A copyright line is wider than the footer's white box inside the map frame and is cut,
+    /// ending in "…". `line` is the line as written.
+    CopyrightLineCut { line: String },
     /// A logo was left out, and why. `file` is the logo file, resolved against the project.
     LogoSkipped {
         id: String,
@@ -1058,9 +1061,23 @@ mod tests {
         let t = footer_texts(&page);
         assert!(t[0].0.ends_with('…') && t[0].0.len() < 300, "{}", t[0].0);
         let w = text_width(&t[0].0, FontFace::Regular) * pt_mm(5.0);
-        assert!(w <= 194.0 - 1.6 && w > 180.0, "{w}");
+        // The frame (194 mm) less the box padding and the frame line (0.25 mm).
+        assert!(w <= 194.0 - 1.6 - 0.25 && w > 180.0, "{w}");
         // The credit line stays whole.
         assert!(t[1].0.ends_with("freemapper-print"));
+        let (_, report) = sheet_of(&lp, &map);
+        assert!(report.notes.contains(&SheetNote::CopyrightLineCut {
+            line: "x".repeat(300)
+        }));
+        // A line that fits gives no note.
+        map.notes = "x".repeat(30);
+        let (_, report) = sheet_of(&lp, &map);
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::CopyrightLineCut { .. }))
+        );
     }
 
     #[test]

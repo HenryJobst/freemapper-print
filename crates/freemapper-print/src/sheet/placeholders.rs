@@ -187,6 +187,19 @@ mod tests {
     }
 
     #[test]
+    fn forty_characters_still_name_a_placeholder() {
+        // 40 characters are a name, 41 are plain text; characters count, not bytes.
+        for c in ['a', 'ä'] {
+            let name: String = std::iter::repeat_n(c, 40).collect();
+            let (text, unknown) = fill(&format!("{{{name}}}"), &values());
+            assert_eq!(unknown, std::slice::from_ref(&name));
+            assert_eq!(text, format!("{{{name}}}"));
+            let longer = format!("{{{name}{c}}}");
+            assert!(fill(&longer, &values()).1.is_empty());
+        }
+    }
+
+    #[test]
     fn numbers_and_dates() {
         assert_eq!(group_thousands(999), "999");
         assert_eq!(group_thousands(4000), "4000");

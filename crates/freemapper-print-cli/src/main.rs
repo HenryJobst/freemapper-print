@@ -819,6 +819,10 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-unknown-part",
             Some(&args!("layout" => printable(layout), "name" => printable(name))),
         ),
+        SheetNote::CopyrightLineCut { line } => texts.get(
+            "note-copyright-line-cut",
+            Some(&args!("line" => printable(line))),
+        ),
         SheetNote::FooterCoversElement { id } => texts.get(
             "note-footer-covers-element",
             Some(&args!("id" => printable(id))),
@@ -1294,6 +1298,12 @@ mod tests {
             (
                 SheetNote::CreditLineMoved { id: s("credit") },
                 vec!["credit"],
+            ),
+            (
+                SheetNote::CopyrightLineCut {
+                    line: s("© Someone, a very long line"),
+                },
+                vec!["© Someone, a very long line"],
             ),
             (
                 SheetNote::FooterCoversElement { id: s("bar1") },

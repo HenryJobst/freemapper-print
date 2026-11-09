@@ -324,6 +324,7 @@ mod tests {
             "margin",
             "file",
             "detail",
+            "line",
             "width",
             "height",
         ] {
