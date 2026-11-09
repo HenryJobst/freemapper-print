@@ -413,12 +413,14 @@ pub fn available() -> Vec<&'static str> {
     freemapper_rules::available(EMBEDDED)
 }
 
-/// The embedded profile `id`.
+/// The embedded profile `id`. `id` also goes to `from_core` as the set name for `Ambiguous`, which
+/// these calls can never return.
 pub fn profile(id: &str) -> Result<RuleProfile, RuleError> {
     freemapper_rules::profile(&SCHEMA, EMBEDDED, id).map_err(|e| RuleError::from_core(e, id))
 }
 
-/// Parses one profile file embedded as `id` against [`SCHEMA`].
+/// Parses one profile file embedded as `id` against [`SCHEMA`]. `id` also goes to `from_core` as the
+/// set name for `Ambiguous`, which this call can never return.
 pub fn parse_profile(id: &str, text: &str) -> Result<RuleProfile, RuleError> {
     freemapper_rules::parse_profile(&SCHEMA, id, text).map_err(|e| RuleError::from_core(e, id))
 }
