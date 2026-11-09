@@ -588,15 +588,19 @@ mod tests {
         };
         assert_eq!(*colour, DirectColour::BLACK);
         assert!(matches!(shape, Shape::Stroke { width, .. } if *width == 0.25));
-        // Only the footer is left without the frame line.
+        // Only the footer, its white box and its line, is left without the frame line.
         let mut layout = a4();
         layout.map_frame.border_mm = 0.0;
         let (page, _) = sheet(&map, &layout);
-        assert!(
-            page.sheet
-                .iter()
-                .all(|i| texts(std::slice::from_ref(i)).len() == 1)
-        );
+        assert_eq!(page.sheet.len(), 2, "{:?}", page.sheet);
+        assert!(matches!(
+            page.sheet[0],
+            SheetItem::Shape {
+                colour: DirectColour::WHITE,
+                shape: Shape::Fill { .. }
+            }
+        ));
+        assert_eq!(texts(&page.sheet[1..]).len(), 1);
     }
 
     #[test]
@@ -1011,6 +1015,15 @@ mod tests {
         // Below the frame (bottom edge 289 mm), baseline 4 mm above the paper edge, left edge
         // at the frame's.
         assert_eq!(*origin, (8.0, 293.0));
+        // On a white box that keeps off the frame line's outer half (289.125 mm).
+        let Some(SheetItem::Shape {
+            colour: DirectColour::WHITE,
+            shape: Shape::Fill { rings, .. },
+        }) = page.sheet.iter().rev().nth(1)
+        else {
+            panic!("{:?}", page.sheet)
+        };
+        assert!(rings[0].iter().all(|p| p.1 >= 289.125), "{rings:?}");
         // English sheet.
         let mut en = lp.clone();
         en.project.event.lang = SheetLang::En;
@@ -1239,6 +1252,102 @@ mod tests {
         let lp = project(MapKind::Sprint, Vec::new(), &layout);
         let (page, _) = sheet_of(&lp, &empty_map());
         assert_eq!(footer_texts(&page)[0].2, pt_mm(5.0));
+    }
+
+    /// A layout with a 15 mm passe-partout, one copyright source and a black 150 mm logo in the
+    /// page's bottom-left corner, listed before `extra`; and the logo file's folder.
+    fn black_logo_sheet(extra: Vec<ElementSpec>) -> (RenderedPage, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let svg = dir.path().join("black.svg");
+        std::fs::write(
+            &svg,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="20"><rect width="100" height="20" fill="#000"/></svg>"##,
+        )
+        .unwrap();
+        let logo = ElementSpec {
+            kind: ElementKind::Logo,
+            anchor: Anchor {
+                to: AnchorTarget::Page,
+                corner: Corner::BottomLeft,
+                offset_mm: [0.0, 0.0],
+            },
+            file: Some(svg),
+            width_mm: Some(150.0),
+            ..element("blk")
+        };
+        let mut layout = a4();
+        layout.map_frame.margin_mm = 15.0;
+        layout.elements = std::iter::once(logo).chain(extra).collect();
+        let mut lp = project(MapKind::Sprint, Vec::new(), &layout);
+        lp.project.print.copyright = Some("© OSM".into());
+        let (page, _) = sheet_of(&lp, &empty_map());
+        (page, dir)
+    }
+
+    /// Indices in `page.sheet` of: the last black fill (the logo), the white fill under the credit
+    /// line's origin, and the credit line's text.
+    fn credit_paint_order(page: &RenderedPage) -> (usize, usize, usize) {
+        let credit = page
+            .sheet
+            .iter()
+            .position(|i| {
+                matches!(i, SheetItem::Shape { shape: Shape::Text { text, .. }, .. }
+                    if text.starts_with("Erstellt mit freemapper-print"))
+            })
+            .expect("credit line");
+        let SheetItem::Shape {
+            shape: Shape::Text { origin, .. },
+            ..
+        } = &page.sheet[credit]
+        else {
+            unreachable!()
+        };
+        let under = |i: &SheetItem| match i {
+            SheetItem::Shape {
+                colour: DirectColour::WHITE,
+                shape: Shape::Fill { rings, .. },
+            } => {
+                let xs = rings[0].iter().map(|p| p.0);
+                let ys = rings[0].iter().map(|p| p.1);
+                let (x0, x1) = (
+                    xs.clone().fold(f64::MAX, f64::min),
+                    xs.fold(f64::MIN, f64::max),
+                );
+                let (y0, y1) = (
+                    ys.clone().fold(f64::MAX, f64::min),
+                    ys.fold(f64::MIN, f64::max),
+                );
+                (x0..=x1).contains(&origin.0) && (y0..=y1).contains(&origin.1)
+            }
+            _ => false,
+        };
+        let white = page.sheet[..credit]
+            .iter()
+            .rposition(under)
+            .expect("a white box under the credit line");
+        let logo = page
+            .sheet
+            .iter()
+            .rposition(|i| {
+                matches!(i, SheetItem::Shape { colour, shape: Shape::Fill { .. } }
+                    if *colour == DirectColour::BLACK)
+            })
+            .expect("the black logo");
+        (logo, white, credit)
+    }
+
+    #[test]
+    fn credit_line_on_white_over_a_dark_element() {
+        // The default footer below the frame, over a black logo listed before it.
+        let (page, _dir) = black_logo_sheet(Vec::new());
+        let (logo, white, credit) = credit_paint_order(&page);
+        assert!(logo < white && white < credit, "{logo} {white} {credit}");
+        // A moved credit line over the logo gets its own white box.
+        let mut moved = text_element("credit", ElementKind::CreditLine, &[], Corner::BottomLeft);
+        moved.anchor.offset_mm = [20.0, 5.0];
+        let (page, _dir) = black_logo_sheet(vec![moved]);
+        let (logo, white, credit) = credit_paint_order(&page);
+        assert!(logo < white && white < credit, "{logo} {white} {credit}");
     }
 
     #[test]

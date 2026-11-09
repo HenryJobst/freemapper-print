@@ -900,29 +900,32 @@ mod tests {
         sheet_of(&lp, &empty_map())
     }
 
-    /// The sheet items after the frame line: what the logo drew.
+    /// The sheet items after the frame line and before the footer: what the logo drew. The
+    /// footer is the last items: its white box, then its lines of text.
     fn logo_items(page: &RenderedPage) -> Vec<SheetItem> {
-        page.sheet
-            .iter()
-            .skip_while(|i| {
-                matches!(
-                    i,
-                    SheetItem::Shape {
-                        shape: Shape::Stroke { .. },
-                        colour: DirectColour::BLACK,
-                    }
-                )
-            })
-            .take_while(|i| match i {
-                // The credit footer starts with its text or white box; the logos come before.
+        let is_text = |i: &SheetItem| {
+            matches!(
+                i,
                 SheetItem::Shape {
                     shape: Shape::Text { .. },
                     ..
-                } => false,
-                _ => true,
+                }
+            )
+        };
+        let mut end = page.sheet.len();
+        while end > 0 && is_text(&page.sheet[end - 1]) {
+            end -= 1;
+        }
+        // The footer's white box.
+        end = end.saturating_sub(1);
+        let start = usize::from(matches!(
+            page.sheet.first(),
+            Some(SheetItem::Shape {
+                shape: Shape::Stroke { .. },
+                colour: DirectColour::BLACK,
             })
-            .cloned()
-            .collect()
+        ));
+        page.sheet[start..end.max(start)].to_vec()
     }
 
     fn logo_notes(report: &SheetReport) -> Vec<SheetNote> {
@@ -2201,7 +2204,8 @@ mod tests {
             .lines()
             .filter(|l| *l == "f" || *l == "f*")
             .collect();
-        assert_eq!(ops, ["f", "f*"]);
+        // The logo's two fills, then the footer's white box (even-odd).
+        assert_eq!(ops, ["f", "f*", "f*"]);
     }
 
     #[test]

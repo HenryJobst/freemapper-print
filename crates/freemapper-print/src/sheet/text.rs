@@ -182,8 +182,9 @@ pub(super) fn place_text_element(
                 &[credit_text(ctx)],
                 spec.size_pt.unwrap_or(FOOTER_PT).max(FOOTER_PT),
             ),
-            padding_mm: 0.0,
-            white_box: false,
+            // On a white box, so that the line stays readable over the map or a dark element.
+            padding_mm: FOOTER_BOX_PADDING_MM,
+            white_box: true,
         },
         ElementKind::CopyrightLine => Block {
             lines: plain_lines(
@@ -223,7 +224,8 @@ pub(super) fn default_footer(
     footer_block(&text, ctx.page, ctx.frame, ctx.layout.map_frame.border_mm)
 }
 
-/// The footer of `lines` (copyright lines, then the credit line) at 5 pt: below `frame`,
+/// The footer of `lines` (copyright lines, then the credit line) at 5 pt, always on a white box
+/// (ADR 0029): below `frame`,
 /// left-aligned with it, the last baseline 4 mm above the paper edge; or, when the passe-partout
 /// below the frame is under 6.5 mm or too narrow for all the lines, inside the frame at its bottom
 /// left on a white box, inset by half the frame line `border_mm` (ADR 0029). `None` for no lines.
@@ -237,10 +239,12 @@ pub(super) fn footer_block(
     if lines.is_empty() {
         return None;
     }
+    // Always on a white box, so that no element painted before the footer hides it. Below the
+    // frame the box is white on white paper.
     let mut block = Block {
         lines: plain_lines(lines, FOOTER_PT),
         padding_mm: 0.0,
-        white_box: false,
+        white_box: true,
     };
     let margin = page.max.1 - frame.max.1;
     let (_, h) = block.size();
@@ -249,7 +253,19 @@ pub(super) fn footer_block(
     let bottom = page.max.1 - FOOTER_BASELINE_MM + (size * LINE_SPACING - ASCENT * size);
     // Below the frame only if the whole block fits there, not just the last line.
     if margin >= FOOTER_MIN_MARGIN_MM && bottom - h >= frame.max.1 {
-        Some(block.place((frame.min.0, bottom - h)))
+        let mut placed = block.place((frame.min.0, bottom - h));
+        // The box must not cover the outer half of the frame line just above it.
+        let clear = frame.max.1 + border_mm / 2.0;
+        if let Some(SheetItem::Shape {
+            shape: Shape::Fill { rings, .. },
+            ..
+        }) = placed.items.first_mut()
+        {
+            for p in &mut rings[0] {
+                p.1 = p.1.max(clear);
+            }
+        }
+        Some(placed)
     } else {
         block.padding_mm = FOOTER_BOX_PADDING_MM;
         block.white_box = true;
