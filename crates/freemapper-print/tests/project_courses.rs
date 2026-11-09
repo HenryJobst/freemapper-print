@@ -393,3 +393,30 @@ fn course_names_match_exactly() {
     let loaded = load_all(&path).unwrap();
     assert_eq!(loaded.stale, [Stale::Assignment { course: "a".into() }]);
 }
+
+/// The Lübeck example's `.ppen` through `load_courses`: the reader, the fit and the stable ids of the course
+/// crate meet the project here, now that `tests/fit_courses.rs` lives in freemapper-core (ADR 0043).
+#[test]
+fn the_luebeck_example_courses_load_through_the_course_crate() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/luebeck-competition-courses")
+        .join(FILE_NAME);
+    let loaded = load_all(&path).unwrap();
+    let names: Vec<&str> = loaded
+        .event
+        .courses
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(names, ["A", "B", "C"]);
+    let c51 = loaded
+        .event
+        .controls
+        .iter()
+        .find(|c| c.code == "51")
+        .unwrap();
+    assert_eq!(c51.id, Some(3));
+    // `<location x="-91.189" y="36.718">` in map µm, y turned down.
+    let at = c51.position.unwrap();
+    assert_eq!((at.x, at.y), (-91189, -36718));
+}

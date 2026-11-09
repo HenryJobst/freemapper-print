@@ -49,13 +49,20 @@ pub const fn credit_line(lang: project::SheetLang) -> &'static str {
 
 #[cfg(test)]
 mod boundaries {
-    //! The module boundaries of ADR 0039: `render` moves into freemapper-core later, so it must not reach into
-    //! the parts of freemapper-print that stay here.
+    //! The boundaries of ADR 0039 and 0043. `omap`, `course` and `placement` are freemapper-core crates now, so
+    //! the compiler keeps them apart; the code here reaches them through the re-exports in this file only.
+    //! `render` moves into freemapper-core later and must not reach into the parts of freemapper-print that stay
+    //! here, nor into the course crate.
 
     use std::path::{Path, PathBuf};
 
     /// Every `.rs` file under `src/<dir>`, tests included.
     fn sources(dir: &str) -> Vec<PathBuf> {
+        files_under(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(dir))
+    }
+
+    /// Every `.rs` file under `root`.
+    fn files_under(root: &Path) -> Vec<PathBuf> {
         fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             for entry in std::fs::read_dir(dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -67,11 +74,8 @@ mod boundaries {
             }
         }
         let mut out = Vec::new();
-        walk(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(dir),
-            &mut out,
-        );
-        assert!(!out.is_empty(), "no sources under src/{dir}");
+        walk(root, &mut out);
+        assert!(!out.is_empty(), "no sources under {}", root.display());
         out
     }
 
@@ -158,9 +162,13 @@ mod boundaries {
         out
     }
 
-    /// The external core paths that `render` must not use: in core it will depend on neither the rule profiles
-    /// nor the file writing.
-    const FORBIDDEN_EXTERNAL: [&str; 2] = ["freemapper_rules::", "freemapper_fs::"];
+    /// The external core paths that `render` must not use: in core it will depend on neither the rule profiles,
+    /// nor the file writing, nor the courses.
+    const FORBIDDEN_EXTERNAL: [&str; 3] = [
+        "freemapper_rules::",
+        "freemapper_fs::",
+        "freemapper_course::",
+    ];
 
     /// The paths of `forbidden` modules that `text` reaches, see [`reached`], and the external paths of
     /// [`FORBIDDEN_EXTERNAL`] that it names.
@@ -204,6 +212,7 @@ mod boundaries {
             "let x = crate::numbers::f();",
             "use freemapper_rules::Rules;",
             "let r = freemapper_fs::write_inside(a, b, c);",
+            "use freemapper_course::Course;",
         ] {
             assert!(!forbidden_in(bad, &f).is_empty(), "accepted: {bad}");
         }
@@ -242,6 +251,7 @@ mod boundaries {
                 "project",
                 "course",
                 "courses",
+                "placement",
                 "numbers",
                 "export",
                 "describe",
@@ -249,6 +259,44 @@ mod boundaries {
             ],
         );
         assert!(found.is_empty(), "{found:#?}");
+    }
+
+    /// The files under `src/` and `tests/` other than this one that name `freemapper_omap` or
+    /// `freemapper_course`, as "file: crate".
+    fn direct_crate_uses() -> Vec<String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lib = root.join("src").join("lib.rs");
+        let mut found = Vec::new();
+        for file in files_under(&root.join("src"))
+            .into_iter()
+            .chain(files_under(&root.join("tests")))
+            .filter(|f| *f != lib)
+        {
+            let text = std::fs::read_to_string(&file).unwrap();
+            for name in ["freemapper_omap", "freemapper_course"] {
+                if text.contains(name) {
+                    found.push(format!("{}: {name}", file.display()));
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn the_core_crates_come_in_through_the_re_exports() {
+        // One path per item: `crate::omap`, `crate::course` and `crate::placement` (`freemapper_print::…` in the
+        // integration tests), so the code reads as before the move and a crate rename touches this file only.
+        let found = direct_crate_uses();
+        assert!(found.is_empty(), "{found:#?}");
+        let lib = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+            .unwrap();
+        for line in [
+            "pub use freemapper_course as course;",
+            "pub use freemapper_course::placement;",
+            "pub use freemapper_omap as omap;",
+        ] {
+            assert!(lib.contains(line), "missing: {line}");
+        }
     }
 
     #[test]
