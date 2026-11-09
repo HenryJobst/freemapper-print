@@ -641,7 +641,7 @@ fn on_blank_page_within(
         &project.rules.course_symbol(project.project.map.kind),
         1.0,
         &project.rules.placement_weights(),
-        Some(gap_range(&project.rules)),
+        number_gap(&project.rules),
         &|id| format!("S{id}"),
         budget,
     )

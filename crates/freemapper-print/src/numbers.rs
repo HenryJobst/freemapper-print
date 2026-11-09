@@ -30,6 +30,23 @@ pub fn gap_range(rules: &RuleSet) -> GapRange {
         .map_or(GapRange::DEFAULT, |(min, max)| GapRange { min, max })
 }
 
+/// The gaps of the `number_gap` rules (ruling R29, courseplan ADR 0032): those placement tries, and those the
+/// check allows, whose missing sides stay open.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NumberGap {
+    pub search: GapRange,
+    pub allowed: GapRange,
+}
+
+/// The [`NumberGap`] of `rules`, `None` without a `number_gap` rule.
+pub fn number_gap(rules: &RuleSet) -> Option<NumberGap> {
+    let range = |(min, max)| GapRange { min, max };
+    Some(NumberGap {
+        search: range(rules.number_gap()?),
+        allowed: range(rules.number_gap_allowed()?),
+    })
+}
+
 /// What automatic placement starts from: the outer side of a control without legs (as freemapper-courseplan),
 /// and the smallest gap of `gaps`. A correction over an automatic number without a gap of its own takes this
 /// gap.
@@ -530,11 +547,11 @@ const GRID_WIDE_CELLS: usize = 64;
 /// numbers, within the map frame (`page.clip`). A number with an overprint conflict, or covering a point or line
 /// symbol of the map (ruling R31), gets a proposal and gives a [`NumberConflict`] with the code of each covered
 /// symbol (`symbol_code` of the primitive's symbol id). Proposals are made in stop order, each one's box an
-/// obstacle for the stops after it (ruling R32). `gap_rule` is the gap range of the rule set, `None` without a
-/// `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone, and with a rule every number the
-/// file or a correction places outside the range gives a [`GapOutOfRange`]. `to_page` maps map coordinates to the
-/// page; `sf` is the course factor of the print scale ([`RuleSet::course_factor`]). Numbered stops without a map
-/// position are left out.
+/// obstacle for the stops after it (ruling R32). `gap_rule` holds the gaps of the rule set ([`number_gap`]), `None`
+/// without a `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone, and with a rule every
+/// number the file or a correction places outside the allowed gaps gives a [`GapOutOfRange`]. `to_page` maps map
+/// coordinates to the page; `sf` is the course factor of the print scale ([`RuleSet::course_factor`]). Numbered
+/// stops without a map position are left out.
 ///
 /// The searches take at most `budget` candidate evaluations ([`sheet_budget`]). A search that no longer fits is
 /// not started: an automatic number keeps [`automatic_start`], a conflict gets no proposal, and
@@ -550,11 +567,11 @@ pub fn place_on_sheet(
     sizes: &CourseSymbolSizes,
     sf: f64,
     weights: &PlacementWeights,
-    gap_rule: Option<GapRange>,
+    gap_rule: Option<NumberGap>,
     symbol_code: &dyn Fn(u32) -> String,
     budget: usize,
 ) -> SheetNumbers {
-    let gaps = gap_rule.unwrap_or(GapRange::DEFAULT);
+    let gaps = gap_rule.map_or(GapRange::DEFAULT, |g| g.search);
     let numbers: Vec<(ResolvedNumber, Target)> = resolved
         .into_iter()
         .filter_map(|r| {
@@ -651,7 +668,7 @@ pub fn place_on_sheet(
         search_limited: false,
     };
     for (i, (r, t)) in numbers.iter().enumerate() {
-        if let Some(range) = gap_rule
+        if let Some(range) = gap_rule.map(|g| g.allowed)
             && r.level != Level::Automatic
             && !range.contains(r.placement.gap_mm)
         {

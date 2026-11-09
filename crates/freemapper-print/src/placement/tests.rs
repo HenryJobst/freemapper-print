@@ -76,14 +76,24 @@ fn gap_steps_run_from_min_to_exactly_max() {
     // Every step comes out rounded to 0.01 mm (0.8 + 0.5 is 1.3, not 1.3000000000000003).
     let steps = GapRange { min: 0.8, max: 5.0 }.steps();
     assert_eq!(steps, [0.8, 1.3, 1.8, 2.3, 2.8, 3.3, 3.8, 4.3, 4.8, 5.0]);
-    // Ruling R30: limits are rounded inwards, held to 0.01..10 mm, a missing minimum is 0.5, a missing maximum
-    // open, and a maximum below the minimum is raised to it.
+    // Ruling R30, courseplan ADR 0032 and its `gap_range`: limits are rounded inwards, held to 0.01..10 mm, a
+    // missing minimum is 0.5, a missing maximum equals the minimum (placement does not wander out to 10 mm), and a
+    // maximum below the minimum is raised to it. Values that are not finite or not above 0 count as missing.
     let r = GapRange::from_limits(Some(0.123), Some(3.456));
     assert_eq!((r.min, r.max), (0.13, 3.45));
     let r = GapRange::from_limits(None, Some(12.0));
     assert_eq!((r.min, r.max), (0.5, 10.0));
     let r = GapRange::from_limits(Some(0.004), None);
-    assert_eq!((r.min, r.max), (0.01, 10.0));
+    assert_eq!((r.min, r.max), (0.01, 0.01));
+    let r = GapRange::from_limits(Some(0.8), None);
+    assert_eq!((r.min, r.max), (0.8, 0.8));
+    let r = GapRange::from_limits(Some(f64::NAN), Some(-1.0));
+    assert_eq!((r.min, r.max), (0.5, 0.5));
+    // The check keeps a missing maximum open, up to the largest gap a correction may have.
+    let r = GapRange::allowed(Some(0.8), None);
+    assert_eq!((r.min, r.max), (0.8, 10.0));
+    let r = GapRange::allowed(None, Some(2.0));
+    assert_eq!((r.min, r.max), (0.01, 2.0));
     let r = GapRange::from_limits(Some(3.0), Some(1.0));
     assert_eq!((r.min, r.max), (3.0, 3.0));
     assert_eq!(r.steps(), [3.0]);

@@ -735,15 +735,28 @@ impl GapRange {
         max: DEFAULT_GAP_MM,
     };
 
-    /// The range from rule limits (ruling R30, courseplan ADR 0032): a missing minimum is
-    /// [`DEFAULT_GAP_MM`], a missing maximum stays open up to the largest gap; both are held to
-    /// [`GAP_LIMITS_MM`], the minimum rounded up and the maximum down to 0.01 mm, and a maximum below the minimum
-    /// is raised to it.
+    /// The gaps placement tries for rule limits (ruling R30, courseplan ADR 0032 and its `gap_range`): a missing
+    /// minimum is [`DEFAULT_GAP_MM`], a missing maximum equals the minimum. A value that is not finite or not above
+    /// 0 counts as missing. Both are held to [`GAP_LIMITS_MM`], the minimum rounded up and the maximum down to
+    /// 0.01 mm, and a maximum below the minimum is raised to it.
     pub fn from_limits(min: Option<f64>, max: Option<f64>) -> GapRange {
+        let (min, max) = (usable(min), usable(max));
+        let min = min.unwrap_or(DEFAULT_GAP_MM);
+        Self::rounded(min, max.unwrap_or(min))
+    }
+
+    /// The gaps a number may have under rule limits, for the check: as [`GapRange::from_limits`], but a missing
+    /// side stays open, down to the smallest or up to the largest gap of [`GAP_LIMITS_MM`] (courseplan ADR 0032).
+    pub fn allowed(min: Option<f64>, max: Option<f64>) -> GapRange {
         let (lo, hi) = GAP_LIMITS_MM;
-        let clamp = |v: f64| if v.is_nan() { lo } else { v.clamp(lo, hi) };
-        let min = (clamp(min.unwrap_or(DEFAULT_GAP_MM)) * 100.0 - 1e-6).ceil() / 100.0;
-        let max = (clamp(max.unwrap_or(hi)) * 100.0 + 1e-6).floor() / 100.0;
+        Self::rounded(usable(min).unwrap_or(lo), usable(max).unwrap_or(hi))
+    }
+
+    /// `min` to `max` held to [`GAP_LIMITS_MM`] and rounded inwards to 0.01 mm, the maximum at least the minimum.
+    fn rounded(min: f64, max: f64) -> GapRange {
+        let (lo, hi) = GAP_LIMITS_MM;
+        let min = (min.clamp(lo, hi) * 100.0 - 1e-6).ceil() / 100.0;
+        let max = (max.clamp(lo, hi) * 100.0 + 1e-6).floor() / 100.0;
         GapRange {
             min,
             max: max.max(min),
@@ -772,6 +785,11 @@ impl GapRange {
     pub fn contains(&self, gap: f64) -> bool {
         gap >= self.min - 1e-6 && gap <= self.max + 1e-6
     }
+}
+
+/// A rule's gap value, if it can be used: finite and above 0.
+fn usable(v: Option<f64>) -> Option<f64> {
+    v.filter(|v| v.is_finite() && *v > 0.0)
 }
 
 /// A number to place.

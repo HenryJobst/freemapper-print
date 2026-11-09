@@ -315,6 +315,7 @@ pub struct RuleSet {
     purple_cmyk: [f64; 4],
     placement_weights: PlacementWeights,
     number_gap: Option<(f64, f64)>,
+    number_gap_allowed: Option<(f64, f64)>,
 }
 
 impl RuleSet {
@@ -373,6 +374,12 @@ impl RuleSet {
     /// rule; placement then uses a fixed gap.
     pub fn number_gap(&self) -> Option<(f64, f64)> {
         self.number_gap
+    }
+
+    /// The gaps the check allows under the active `number_gap` rules: as [`Self::number_gap`], but a side no rule
+    /// gives stays open ([`GapRange::allowed`]). `None` without such a rule.
+    pub fn number_gap_allowed(&self) -> Option<(f64, f64)> {
+        self.number_gap_allowed
     }
 
     /// The symbol size table of `kind`: scale denominator and symbol size relative to the base
@@ -556,7 +563,8 @@ fn load_from(
         blue: weight("blue_factor").map_err(incomplete)?,
         other: weight("other_factor").map_err(incomplete)?,
     };
-    let number_gap = number_gap(&merged.rules);
+    let number_gap = gap_limits(&merged.rules, GapRange::from_limits);
+    let number_gap_allowed = gap_limits(&merged.rules, GapRange::allowed);
     Ok(RuleSet {
         base: base.to_owned(),
         overlays: overlays.to_vec(),
@@ -567,14 +575,18 @@ fn load_from(
         purple_cmyk,
         placement_weights,
         number_gap,
+        number_gap_allowed,
     })
 }
 
 /// The strictest range of the active `number_gap` rules: the largest `min_gap_mm` and the smallest
-/// `max_gap_mm`, normalised by [`GapRange::from_limits`] (ruling R30, courseplan ADR 0032). A rule with neither
-/// value is skipped; `None` when no rule gives one. Values that are not finite or not above 0 never get here: the
-/// profile loader refuses them.
-fn number_gap(rules: &[SetRule]) -> Option<(f64, f64)> {
+/// `max_gap_mm`, normalised by `range` ([`GapRange::from_limits`] for placement, [`GapRange::allowed`] for the
+/// check; ruling R30, courseplan ADR 0032). A rule with neither value is skipped; `None` when no rule gives one.
+/// Values that are not finite or not above 0 never get here: the profile loader refuses them.
+fn gap_limits(
+    rules: &[SetRule],
+    range: fn(Option<f64>, Option<f64>) -> GapRange,
+) -> Option<(f64, f64)> {
     let values = |name: &str| -> Vec<f64> {
         rules
             .iter()
@@ -586,7 +598,7 @@ fn number_gap(rules: &[SetRule]) -> Option<(f64, f64)> {
     if mins.is_empty() && maxs.is_empty() {
         return None;
     }
-    let range = GapRange::from_limits(
+    let range = range(
         mins.into_iter().reduce(f64::max),
         maxs.into_iter().reduce(f64::min),
     );
@@ -1552,12 +1564,25 @@ mod tests {
                 .number_gap()
         };
         assert_eq!(only("max_gap_mm = 12.0"), Some((0.5, 10.0)));
-        assert_eq!(only("min_gap_mm = 0.8"), Some((0.8, 10.0)));
+        // Only a minimum: placement keeps to it, as freemapper-courseplan does; the check leaves the top open.
+        assert_eq!(only("min_gap_mm = 0.8"), Some((0.8, 0.8)));
+        let allowed = |values: &str| {
+            gap_set(&format!("{off}{}", gap_rule("reg.number.gap", values)))
+                .unwrap()
+                .number_gap_allowed()
+        };
+        assert_eq!(allowed("min_gap_mm = 0.8"), Some((0.8, 10.0)));
+        assert_eq!(allowed("max_gap_mm = 2.0"), Some((0.01, 2.0)));
+        assert_eq!(
+            allowed("min_gap_mm = 1.0, max_gap_mm = 3.0"),
+            Some((1.0, 3.0))
+        );
+        assert_eq!(base().number_gap_allowed(), Some((0.5, 5.0)));
         assert_eq!(
             only("min_gap_mm = 0.123, max_gap_mm = 3.456"),
             Some((0.13, 3.45))
         );
-        assert_eq!(only("min_gap_mm = 0.001"), Some((0.01, 10.0)));
+        assert_eq!(only("min_gap_mm = 0.001"), Some((0.01, 0.01)));
         // A rule with neither value is skipped.
         assert_eq!(only(""), None);
         // Values that are not above 0 or not finite still stop the profile from loading.

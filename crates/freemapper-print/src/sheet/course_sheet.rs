@@ -110,10 +110,7 @@ pub fn render_course_sheet(
         &sizes,
         cf,
         &project.rules.placement_weights(),
-        project
-            .rules
-            .number_gap()
-            .map(|(min, max)| crate::placement::GapRange { min, max }),
+        crate::numbers::number_gap(&project.rules),
         &|id| {
             map.symbol_set
                 .code_of(id)
