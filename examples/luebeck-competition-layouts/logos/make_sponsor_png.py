@@ -150,5 +150,12 @@ def main(out):
         f.write(png)
 
 
+USAGE = "usage: python3 make_sponsor_png.py OUTPUT.png"
+
+
 if __name__ == "__main__":
+    # One output path, never an option: "--help" must not become a file named --help.
+    if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
+        print(USAGE, file=sys.stderr)
+        sys.exit(2)
     main(sys.argv[1])
