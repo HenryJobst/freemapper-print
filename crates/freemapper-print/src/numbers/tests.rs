@@ -469,6 +469,20 @@ fn obstacles_of_map_symbols_by_class() {
             rule: FillRule::EvenOdd,
         },
     );
+    // The base area of a sprint map covers everything, and is no obstacle: it is the ground, like white paper.
+    let mut base = Primitive::new(
+        4,
+        Shape::Fill {
+            rings: vec![vec![
+                (-50.0, -50.0),
+                (300.0, -50.0),
+                (300.0, 350.0),
+                (-50.0, 350.0),
+            ]],
+            rule: FillRule::EvenOdd,
+        },
+    );
+    base.base = true;
     let colour = |priority: i32, name: &str, cmyk: [f64; 4]| RenderColour {
         priority,
         name: name.into(),
@@ -477,7 +491,7 @@ fn obstacles_of_map_symbols_by_class() {
         opacity: 1.0,
     };
     let page = RenderedPage {
-        primitives: vec![point, line, north, area, far],
+        primitives: vec![base, point, line, north, area, far],
         clip: PaperBox {
             min: (0.0, 0.0),
             max: (210.0, 297.0),
@@ -488,6 +502,11 @@ fn obstacles_of_map_symbols_by_class() {
             colour(1, "Black 100%", [0.0, 0.0, 0.0, 1.0]),
             colour(2, "Brown 100%", [0.25, 0.75, 1.0, 0.0]),
             colour(3, "Black for buildings", [0.0, 0.0, 0.0, 1.0]),
+            colour(
+                4,
+                "Lower brown 30% for walkable area",
+                [0.06, 0.23, 0.33, 0.0],
+            ),
         ],
         sheet: Vec::new(),
         overprint: Default::default(),

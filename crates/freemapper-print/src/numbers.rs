@@ -311,6 +311,7 @@ const MAP_LINE: char = 'm';
 
 /// The obstacles of a course sheet for its numbers, in page mm: the course's stop symbols and legs and the sheet
 /// `elements` (id and box) as overprint; the map's point and line symbols as map symbols, except north lines;
+/// nothing for the base area of a sprint map (ADR 0044), which is the ground the map lies on;
 /// and its areas and texts, by their boxes, as soft obstacles weighted by colour class ([`PlacementWeights`],
 /// classes as [`full_strength`]). Map primitives only count where they reach into one of `regions`, so the list
 /// stays short on a large map. The numbers themselves are added per number by [`place_on_sheet`].
@@ -370,7 +371,7 @@ pub fn obstacles(
         .collect();
     let near = |r: &Rect| regions.iter().any(|g| touches(g, r));
     for p in &page.primitives {
-        if p.north_line {
+        if p.north_line || p.base {
             continue;
         }
         let Some((min, max)) = shape_bounds(&p.shape) else {

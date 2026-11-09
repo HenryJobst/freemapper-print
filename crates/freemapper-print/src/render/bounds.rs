@@ -72,12 +72,14 @@ pub(crate) fn shape_bounds(shape: &Shape) -> Option<Bounds> {
     }
 }
 
-/// The box all of `primitives` paint in, `None` when they paint nothing.
+/// The box all of `primitives` paint in, `None` when they paint nothing. The base area of a sprint map
+/// ([`Primitive::base`]) does not count: it is the map plus a margin, not the map.
 pub(crate) fn painted_bounds<'a>(
     primitives: impl IntoIterator<Item = &'a Primitive>,
 ) -> Option<Bounds> {
     primitives
         .into_iter()
+        .filter(|p| !p.base)
         .filter_map(|p| shape_bounds(&p.shape))
         .reduce(union)
 }

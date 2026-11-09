@@ -713,6 +713,68 @@ mod tests {
     }
 
     #[test]
+    fn walkable_area_keeps_the_lower_purple_in_place() {
+        // Rule R19 (ADR 0034) places the lower purple by the full-strength colours alone. The walkable area of a
+        // freemapper sprint map is a new colour behind all others (priority 32 on Lübeck's 32 colours) and a
+        // rectangle far beyond the map: neither may move the purple, the numbers or the frame.
+        use crate::print::base_fixture::{base_part, with_walkable_area};
+        let (_dir, project, map, courses) = course_project(A4);
+        let mut based = map.clone();
+        based.symbol_set = with_walkable_area(&map.symbol_set);
+        let part = base_part(
+            &based.symbol_set,
+            (-1_000_000, -1_000_000),
+            (1_200_000, 900_000),
+        );
+        based.parts.insert(0, part);
+        let layout = layout_for(&project.project, "Kurz").0;
+        let draw = |m: &MapDocument| {
+            render_course_sheet(
+                &project,
+                m,
+                &courses,
+                course(&courses, "Kurz"),
+                layout,
+                &LogoCache::new(),
+            )
+            .unwrap()
+        };
+        let (plain, plain_report) = draw(&map);
+        let (page, report) = draw(&based);
+        let walkable = page
+            .colours
+            .iter()
+            .find(|c| c.name.contains("walkable area"))
+            .unwrap();
+        assert_eq!(walkable.priority, 32);
+        assert_eq!(page.centre_mm, plain.centre_mm);
+        assert_eq!(page.overprint, plain.overprint);
+        assert!(page.overprint.below_priority.is_some());
+        assert_eq!(report.notes, plain_report.notes);
+        // The map is the same, with the base area added under it.
+        let key =
+            |p: &crate::render::draw::Primitive| (p.priority, p.shape.clone(), p.class, p.symbol);
+        let map_of = |page: &RenderedPage| -> Vec<_> {
+            page.primitives
+                .iter()
+                .filter(|p| !p.base)
+                .map(key)
+                .collect()
+        };
+        assert_eq!(map_of(&page), map_of(&plain));
+        // The PDF writer paints the lower purple before the first primitive at or above the deepest full-strength
+        // colour: the base area lies before it, so the course stays visible over it.
+        let below = page.overprint.below_priority.unwrap();
+        let split = page
+            .primitives
+            .iter()
+            .position(|p| p.priority <= below)
+            .unwrap();
+        assert!(page.primitives[..split].iter().any(|p| p.base));
+        assert!(page.primitives[split..].iter().all(|p| !p.base));
+    }
+
+    #[test]
     fn frame_centred_on_course() {
         let (page, report, courses) = sheet(A4, "Kurz");
         let gf = report.print.geometry_factor;

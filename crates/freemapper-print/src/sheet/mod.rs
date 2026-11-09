@@ -20,7 +20,7 @@ use crate::course::{CourseNote, FitNote};
 use crate::courses::Stale;
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
-use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
+use crate::print::{BASE_PART, PrintError, PrintOptions, PrintReport, render_page};
 use crate::project::{
     AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject, NorthLines, SheetLang,
 };
@@ -518,7 +518,7 @@ fn place_element(
 }
 
 /// `map` without the parts the layout hides, by exact name (case counts). A name that matches no
-/// part gives [`SheetNote::UnknownPart`].
+/// part gives [`SheetNote::UnknownPart`]. The part `base` stays.
 fn without_hidden_parts<'a>(
     map: &'a MapDocument,
     layout: &LayoutSpec,
@@ -532,7 +532,8 @@ fn without_hidden_parts<'a>(
             });
         }
     }
-    let hidden = |name: &String| layout.hide_parts.contains(name);
+    // The base area is the map's ground and always printed (ADR 0044); `load` refuses to hide it.
+    let hidden = |name: &String| layout.hide_parts.contains(name) && name != BASE_PART;
     if !map.parts.iter().any(|p| hidden(&p.name)) {
         return Cow::Borrowed(map);
     }
@@ -864,6 +865,23 @@ mod tests {
         layout.hide_parts = vec!["peripheral information".into()];
         let (page, report) = sheet(&map, &layout);
         assert_eq!(page.primitives.len(), 1);
+        assert_eq!(without_missing(&report.notes), []);
+    }
+
+    #[test]
+    fn base_part_stays_when_a_layout_hides_it() {
+        // `load` refuses `hide_parts = ["base"]`; a layout built in code keeps the base area too.
+        let set = crate::print::base_fixture::sprint_set();
+        let mut map = doc(4000, vec![("default part", vec![line((50_000, 0))])]);
+        map.symbol_set = set.clone();
+        map.parts.insert(
+            0,
+            crate::print::base_fixture::base_part(&set, (-10_000, -10_000), (60_000, 10_000)),
+        );
+        let mut layout = a4();
+        layout.hide_parts = vec![crate::print::BASE_PART.into()];
+        let (page, report) = sheet(&map, &layout);
+        assert!(page.primitives.iter().any(|p| p.base));
         assert_eq!(without_missing(&report.notes), []);
     }
 
@@ -1833,6 +1851,42 @@ mod tests {
         let (_, never) = sheet(&no_lines_map(), &a4());
         assert_eq!(report.print.overflow_mm, never.print.overflow_mm);
         assert_eq!(report.print.page_mm, never.print.page_mm);
+    }
+
+    #[test]
+    fn base_area_does_not_widen_north_line_bounds() {
+        // A sprint map without 601 objects on the walkable-area palette, with and without freemapper's base
+        // rectangle, far larger than the map and off-centre.
+        let set = crate::print::base_fixture::sprint_set();
+        let map_with = |base: bool| {
+            let mut map = no_lines_map();
+            map.symbol_set = set.clone();
+            if base {
+                let part = crate::print::base_fixture::base_part(
+                    &set,
+                    (-900_000, -300_000),
+                    (400_000, 700_000),
+                );
+                map.parts.insert(0, part);
+            }
+            map
+        };
+        let (plain, plain_report) = sheet(&map_with(false), &auto());
+        let (based, based_report) = sheet(&map_with(true), &auto());
+        let xs = map_xs(&plain);
+        assert!(xs.len() >= 5, "{xs:?}");
+        assert_eq!(map_xs(&based), xs);
+        assert_eq!(added(&based_report), Some(xs.len()));
+        assert_eq!(based.centre_mm, plain.centre_mm);
+        assert_eq!(
+            based_report.print.overflow_mm,
+            plain_report.print.overflow_mm
+        );
+        assert_eq!(based_report.print.overflow_mm, None);
+        // The base area is still on the page, under the lines.
+        let base = based.primitives.iter().position(|p| p.base).unwrap();
+        let line = based.primitives.iter().position(|p| p.north_line).unwrap();
+        assert!(base < line);
     }
 
     #[test]
