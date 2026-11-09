@@ -457,22 +457,27 @@ tells you that too. The correction still applies, and you decide whether it stil
 Before it prints, the program fits the course to the map, and it stops when the fit looks wrong. A course on the
 wrong map or upside down would send runners to the wrong place. These checks run:
 
-- **The y axis.** Purple Pen, Condes and OCAD write the y axis upwards, OOM counts downwards. Nothing in the file
-  says which one applies. The program tries both readings and takes the one that puts every control on the map.
-  With latitude and longitude in the file and a georeferenced map, the coordinates decide. If both readings fit
-  and nothing decides, the program takes "up" and warns, because a course near the middle of the map fits both
-  ways. Look at a sheet, then confirm the axis in the project file:
+- **The y axis.** Purple Pen, Condes and OCAD write the y axis upwards, OOM counts downwards. Purple Pen always
+  writes it upwards, so the program reads a `.ppen` that way. If the course does not fit the map like that, the
+  fit stops; it never prints a Purple Pen course mirrored. An IOF XML file does not say which axis it uses. The
+  program tries both readings and takes the one that puts every control on the map. With latitude and longitude
+  in the file and a georeferenced map, the coordinates decide. If both readings fit and nothing decides, the
+  program takes "up" and warns, because a course near the middle of the map fits both ways. Look at a sheet, then
+  confirm the axis in the project file:
 
   ```toml
   [sources]
   course_y_axis = "up"      # or "down"
   ```
 
-  A file that was written downwards and fits both ways prints upside down until you set it. That is the one
-  case where the program asks you to look.
+  An IOF XML file that was written downwards and fits both ways prints upside down until you set it. That is the
+  one case where the program asks you to look. A Purple Pen project needs no `course_y_axis`. If you set
+  `"down"` for a `.ppen` anyway, the program follows it and warns, because the course then prints mirrored.
 - **The map scale.** If the course file names a map scale, it must equal the scale of the map. If it differs, the
   fit stops with "the course file is drawn for 1:…, the map is 1:…". Export the courses from the course-setting
   program for the map's scale. The program never rescales positions. A file without a map scale gets an Info line.
+  A map that states no scale of its own stops the fit with "the course file is drawn for 1:…, and the map states
+  no scale"; set the scale in OOM.
 - **The georeference.** If the map is georeferenced in UTM and a control has both a map position and latitude and
   longitude, the program compares them. A control more than 20 m from where its latitude and longitude put it
   stops the fit with "control … lies … m from where its lat/lng put it". Latitude and longitude from a GNSS reading
@@ -508,8 +513,11 @@ sheet is the layout the course is assigned to, with these changes:
   frame is expected on a course sheet and is only an Info line. A control that lies outside the frame or across its
   edge is a note.
 - The program draws the course over the map in purple (35/85/0/0 CMYK in the rule profile) and with the symbol sizes
-  that the rule profile sets for the map kind, from ISSprOM 2019-2 and ISOM 2017-2. They grow with the symbol
-  factor like every other symbol, so 133 % at 1:3000 means bigger circles too.
+  that the rule profile sets for the map kind, from ISSprOM 2019-2 and ISOM 2017-2. These are the sizes at the base
+  scale (1:4000 sprint, 1:15000 forest). On the sheet they take the size the standard sets for the print scale,
+  the course factor: 133 % at 1:3000 on a sprint map, 150 % at 1:10000 on a forest map. That does not depend on the
+  scale the map file is drawn at. A forest map drawn at 1:10000 gets 7.5 mm circles at 1:10000 and 5.0 mm circles
+  at 1:15000. The summary line names the symbol factor, which is for the map's own symbols.
 - The purple has two layers, as the IOF's "Printing and Colour Definitions" (Rev. 4) require. The lower purple
   holds the start, the controls, the legs, the finish, forbidden lines and crossing points. It lies below black,
   brown and blue 100 %, so the map's black detail stays readable over the circle. The upper purple holds the control
@@ -569,7 +577,8 @@ looks at four levels, and the more specific one wins:
 
 1. Automatic placement. It applies only to a numbered control for which the course file gives no position.
 2. The course file. Purple Pen stores the position per course, relative to the control. For a `.ppen`, the
-   program converts the offset at the course's print scale. For IOF XML, it takes `MapTextPosition`.
+   program converts the offset at the course's print scale and with Purple Pen's setting for scaling course
+   objects ("Scale sizes of items"). For IOF XML, it takes `MapTextPosition`.
 3. A correction for the layout: a `[[numbers]]` table with `layout`.
 4. A correction for the sheet of one course: a `[[numbers]]` table with `course`.
 
@@ -583,13 +592,14 @@ direction = 161.0
 gap_mm = 0.5
 ```
 
-The gap is the shortest distance in print mm between the outer edge of the circle line and the number's box. It
-grows with the symbol factor like the circle, so a number keeps its look at every print scale. A `gap_mm` lies
+The gap is the shortest distance in mm at the base scale between the outer edge of the circle line and the
+number's box. It grows with the course factor like the circle, so a number keeps its look at every print scale. A `gap_mm` lies
 above 0 and at most 10 mm. Without it, the correction keeps the gap of the level below. `numbers accept` also writes
 a `[numbers.base_seen]` table with the position the file had when you made the correction.
 
 The rule profile sets the range in which a gap should lie. In `iof-print` it is 0.5 to 5 mm. A number outside the
-range prints where it is, and `check` warns.
+range prints where it is, and `check` warns. A profile rule with only a minimum makes automatic placement keep to
+that gap, as freemapper-courseplan does; `check` then accepts any larger gap up to 10 mm.
 
 When the program places a number itself, it follows four rules. The user rules of orienteering come first:
 
@@ -605,6 +615,10 @@ against the overprint, the sheet elements, the edge of the map frame and the map
 on one of them, the note names what it covers (map symbols by their code) and proposes a direction and a gap.
 Where no place is free, the proposal is the least covered one.
 
+The search has a limit per sheet: 2 million candidate positions, and 200 million for all sheets of one course
+file, shared equally. Real courses stay far below it. A sheet that reaches it says so in a note; the numbers the
+search did not get to stay where their level puts them, and their conflicts come without a proposal.
+
 To take a proposal:
 
 ```sh
@@ -616,8 +630,15 @@ prints on the course's layout (level 3). Exactly one of the two is needed. Witho
 command takes the proposal from `check`. With both, it writes your values. If `check` has no proposal because the
 number has no conflict, the command stops and asks for the two values.
 
+The proposal was found on the sheet of the course you name. With `--layout-wide` and no values of your own, the
+command draws every other course on that layout that prints the number with the correction added, and writes it
+only when none of them gets a conflict there. Otherwise it names those courses and stops with exit code 2. Use
+`--sheet` for the one course, or give `--direction` and `--gap` for all of them.
+
 `numbers accept` appends a `[[numbers]]` table to the end of the project file as text. Everything before it stays
-as it is, comments included. It then loads the file again, and if that fails, it restores the old content. It
+as it is, comments included. The new lines end like the file's (CRLF or LF), a link to the project file stays a
+link, and the file keeps its permissions. It then loads the file again, and if that fails, it restores the old
+content. It
 refuses a second correction for the same control and scope. To change one, edit the file. Afterwards run `check`
 to see the result.
 
@@ -654,19 +675,21 @@ freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck
 anything. For a `.ppen` it then creates one layout per print scale in the file, an assignment for every course, a
 description box in the top-right corner of the map frame, and `map_frame.crop = true`. A course without a print
 scale takes the map scale. For IOF XML it creates one layout at the map scale and no description box, because the
-format has none. In both cases the title block starts with `{event} · {course}`, so that each sheet names its
-course. `init` says where each value came from.
+format has none. Each layout id names its print scale, such as `a4-4000`. In both cases the title block starts
+with `{event} · {course}`, so that each sheet names its course. `init` says where each value came from and names
+the course file as the project file does, relative to the project folder.
 
-Treat the file as a start. `init` looks for the smallest A4 or A3 sheet on which the whole map fits, and a course
-sheet does not need that. Change paper and passe-partout to your liking, then run `check`. If the first `check`
-reports the assumed y axis, confirm it as described above.
+Treat the file as a start. `init` picks paper and passe-partout for the layout as a sheet of its own; whether
+each course fits the frame shows in `check`. Change paper and passe-partout to your liking, then run `check`. For
+an IOF XML file the first `check` may report the assumed y axis; confirm it as described above.
 
 ### Checking courses
 
-`check` goes through every course instead of every layout. For each it prints one line with the layout, the paper,
-the print scale, the map scale and the factors, followed by the notes. Notes about the course file itself, from
-reading and fitting it, come once before the first course. The last line reads "Checked 3 courses, no notes." or
-"Courses with notes: 1 of 3." The exit code is 0 when nothing needs your attention (Info lines do not count) and
+`check` goes through every course. For each it prints one line with the layout, the paper, the print scale, the
+map scale and the factors, followed by the notes. Then it checks each layout as a sheet without course, as
+`export --layout` writes it. Notes about the course file itself, from reading and fitting it, come once before the
+first course. The last line reads "Checked 3 courses and 2 layout sheets, no notes." or "With notes: 1 of 3
+courses, 0 of 2 layout sheets." The exit code is 0 when nothing needs your attention (Info lines do not count) and
 1 otherwise. A script can run `check` before `export`.
 
 The notes and what to do are in chapter 10.
@@ -825,8 +848,9 @@ the exit code.
 
 | Note (shortened) | Meaning and fix |
 |---|---|
-| "Info: the course file's y axis points up; the program turned it to match the map." | For information only. Purple Pen and most course-setting programs write it that way. |
-| "the course fits the map with its y axis pointing up and pointing down, and nothing in the file decides …" | The course lies where both readings fit, so the program assumed "up". Look at a sheet. If the course is right, confirm it with `course_y_axis = "up"` under `[sources]`, and if it is upside down, set `"down"`. |
+| "Info: the course file's y axis points up; the program turned it to match the map." | For information only. Most course-setting programs write it that way. |
+| "the course fits the map with its y axis pointing up and pointing down, and nothing in the file decides …" | Only for IOF XML. The course lies where both readings fit, so the program assumed "up". Look at a sheet. If the course is right, confirm it with `course_y_axis = "up"` under `[sources]`, and if it is upside down, set `"down"`. |
+| "the project file sets course_y_axis = "down" under [sources], but Purple Pen always writes the y axis pointing up …" | The course prints mirrored. If the file comes from Purple Pen, delete the line. |
 | "Info: the course file states no map scale, so it was not compared with the map's scale." | The file has no scale to compare. Nothing to do, but check that you linked the right map. |
 | "Info: … a map position and latitude and longitude. They differ by … m at most." | The check against latitude and longitude passed. |
 | "Info: latitude and longitude were not checked, because …" | The reason follows: the map is not georeferenced, its coordinate system is not UTM, no control has both a map position and latitude and longitude, or the project file switched the check off. |
@@ -862,6 +886,8 @@ Notes about one course sheet:
 | "Info: the text … uses …, but the course file has no value for course …, so it prints empty." | The file has no length or climb for the course. Enter them in the course-setting program, or leave the placeholder out of the text. |
 | "Info: the text … uses …, which is only filled on course sheets. On this sheet it stays empty." | A shared text with `{course}` or the like prints on a sheet without course. Hide the text on that layout with `hide_shared`. |
 | "on the sheet of course … the number of control … covers …. It is printed there all the same. …" | The number lies on the overprint, a sheet element, the edge of the frame or a point or line symbol of the map. The note proposes a free direction and gap. Take it with `numbers accept` (see chapter 8). |
+| "… The sheet reached its search limit, so there is no proposal. …" | The number has a conflict, but the search for places had stopped. Set a position with `numbers accept --direction … --gap …`. |
+| "on the sheet of course … the search for number positions reached its limit. …" | The course has hundreds of controls close together. The numbers the search did not get to stay where their level puts them. Look at the sheet and correct numbers by hand. |
 | "… the number of control … is … mm from its circle. The rule profile allows … to … mm." | The gap from the file or a correction lies outside the range of the rule profile. The number is printed that way. Change it under `[[numbers]]`. |
 
 ### Errors with the course file
@@ -880,6 +906,7 @@ course file", followed by the reason. The reasons from reading the file are in E
 The reasons from the fit are the errors of the section on coordinates in chapter 8:
 
 - "the course file is drawn for 1:…, the map is 1:…; export the courses for the map's scale"
+- "the course file is drawn for 1:…, and the map states no scale; set the map's scale in the map file"
 - "only … of … controls lie on the map; the course file belongs to another map, uses another origin or another y axis"
 - "control … lies … m from where its lat/lng put it (20 m allowed); the course file does not match the map's georeferencing"
 - "controls … have only lat/lng and cannot be placed: …"
@@ -893,6 +920,9 @@ Errors of `export` and `numbers accept` about names:
 - "there is no proposal for control … on the sheet of course …: its number has no conflict. Give --direction and
   --gap …": nothing to correct. Give both values if you want to move the number anyway.
 - "the project file has a correction for control … for … already. Edit the file to change it …": edit the entry.
+- "the proposal for control … comes from the sheet of course … and is not free for every course on layout …":
+  `--layout-wide` would move a conflict to the courses it names. Use `--sheet`, or give `--direction` and
+  `--gap`.
 - "--direction needs a finite number, and --gap must be above 0 and at most … mm".
 - "the project … does not load with the new correction, so it was left as it was": the program restored the file.
   Report this, as it should not happen.
