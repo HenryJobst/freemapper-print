@@ -22,7 +22,7 @@ use quick_xml::events::BytesStart;
 
 use super::CourseError;
 use super::model::*;
-use super::xml::{Handler, Notes, attr, drive, local, number};
+use super::xml::{Handler, Notes, attr, bounded, drive, local, number};
 
 /// Parses the bytes of an IOF XML 3.0 `CourseData` file.
 pub fn read_iof_xml(bytes: &[u8]) -> Result<RawEvent, CourseError> {
@@ -283,7 +283,7 @@ impl State {
             }
             ("Control", "Id") => {
                 if let Some(c) = self.control.as_mut() {
-                    c.code = text.to_string();
+                    c.code = bounded(text, MAX_CODE_LEN, "control code")?;
                 }
             }
             ("RaceCourseData", "Control") if in_race_after => {
@@ -307,14 +307,14 @@ impl State {
             }
             ("Course", "Name") => {
                 if let Some(c) = self.course.as_mut() {
-                    c.course.name = text.to_string();
+                    c.course.name = bounded(text, MAX_NAME_LEN, "course name")?;
                 }
             }
             ("Course", "CourseFamily") => {
                 if let Some(c) = self.course.as_mut()
                     && !text.is_empty()
                 {
-                    c.course.family = Some(text.to_string());
+                    c.course.family = Some(bounded(text, MAX_NAME_LEN, "course family")?);
                 }
             }
             ("Course", "Length") => {
@@ -331,7 +331,7 @@ impl State {
                 if let Some(c) = self.cc.as_mut()
                     && c.codes.len() < 2
                 {
-                    c.codes.push(text.to_string());
+                    c.codes.push(bounded(text, MAX_CODE_LEN, "control code")?);
                 }
             }
             ("CourseControl", "Score") => {

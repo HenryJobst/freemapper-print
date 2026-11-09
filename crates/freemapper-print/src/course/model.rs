@@ -16,6 +16,13 @@ pub const MAX_POINTS_PER_PATH: usize = 10_000;
 /// Most points one read returns in total: leg bends, leg and circle gap ranges, and special object points,
 /// counted over all courses (a leg or control shared by many courses counts once per course).
 pub const MAX_TOTAL_POINTS: usize = 2_000_000;
+/// Longest control code, in characters.
+pub const MAX_CODE_LEN: usize = 64;
+/// Longest course or course family name, in characters.
+pub const MAX_NAME_LEN: usize = 200;
+/// Most bytes of codes and names one read returns in total, counted per copy (a code shared by many stops
+/// counts once per stop).
+pub const MAX_TOTAL_TEXT_BYTES: usize = 16 * 1024 * 1024;
 /// Most special objects in one file.
 pub const MAX_SPECIALS: usize = 10_000;
 /// Most notes kept; further ones are dropped and one `NotesTruncated` is added.
@@ -187,9 +194,10 @@ pub struct Stop {
     /// Where the file puts the number text, relative to the circle centre (IOF XML `MapTextPosition`).
     /// Converted to `number` once circle and box sizes are known.
     pub number_text_at: Option<Offset>,
-    /// Angle ranges `(start, stop)` in degrees where the circle is not drawn, counter-clockwise from the
-    /// file's x axis in the file's axis direction (Purple Pen: y up). Like Purple Pen, `stop` lies in 0..360
-    /// and `start` below it, so a range across east starts negative.
+    /// Angle ranges `(start, stop)` in degrees where the circle is not drawn, in the file's frame: measured
+    /// from +x towards +y (Purple Pen: y up, so counter-clockwise). Like Purple Pen, `stop` lies in 0..360
+    /// and `start` below it, so a range across +x starts negative. When the fit flips y, `(a, b)` becomes
+    /// `(-b, -a)`; `map_points` does not do this.
     pub circle_gaps: Vec<(f64, f64)>,
 }
 
@@ -252,7 +260,8 @@ pub enum Special<P> {
     },
     /// Text in a box. `pt` is the box's top-left corner as the file gives it (Purple Pen: the corner with
     /// the smallest x and the largest y, y up); `size_mm` is the font height, or the box height when the file
-    /// leaves the font height to the box.
+    /// leaves the font height to the box (an approximation: Purple Pen fits auto-sized text, possibly several
+    /// lines, into the box).
     Text {
         pt: P,
         text: String,

@@ -7,7 +7,7 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
 use super::CourseError;
-use super::model::{CourseNote, MAX_COURSE_FILE_BYTES, MAX_NOTES};
+use super::model::{CourseNote, MAX_COURSE_FILE_BYTES, MAX_NOTES, MAX_TOTAL_TEXT_BYTES};
 
 /// Receives the elements and the text of a document.
 pub(super) trait Handler {
@@ -110,5 +110,41 @@ impl Notes {
 
     pub(super) fn into_vec(self) -> Vec<CourseNote> {
         self.list
+    }
+}
+
+/// `text` if it has at most `max` characters, else a `Limit` error naming `what`.
+pub(super) fn bounded(text: &str, max: usize, what: &str) -> Result<String, CourseError> {
+    if text.chars().count() > max {
+        return Err(CourseError::Limit(format!(
+            "{what} longer than {max} characters"
+        )));
+    }
+    Ok(text.to_string())
+}
+
+/// The bytes of codes and names one read may still copy into its result (`MAX_TOTAL_TEXT_BYTES`).
+pub(super) struct TextBudget {
+    left: usize,
+}
+
+impl Default for TextBudget {
+    fn default() -> Self {
+        TextBudget {
+            left: MAX_TOTAL_TEXT_BYTES,
+        }
+    }
+}
+
+impl TextBudget {
+    /// A copy of `s`, paid from the budget.
+    pub(super) fn copy(&mut self, s: &str) -> Result<String, CourseError> {
+        self.left = self.left.checked_sub(s.len()).ok_or_else(|| {
+            CourseError::Limit(format!(
+                "more than {} MiB of codes and names in the result",
+                MAX_TOTAL_TEXT_BYTES / (1024 * 1024)
+            ))
+        })?;
+        Ok(s.to_string())
     }
 }

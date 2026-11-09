@@ -1,9 +1,10 @@
 //! Purple Pen `.ppen` reader (M3 Task 4).
 
 use freemapper_print::course::model::{
-    ControlKind, CourseFilter, CourseKind, CourseNote, MAX_CONTROLS, MAX_COURSE_FILE_BYTES,
-    MAX_COURSES, MAX_NOTES, MAX_POINTS_PER_PATH, MAX_SPECIALS, MAX_STOPS_PER_COURSE,
-    MAX_TOTAL_POINTS, MAX_XML_DEPTH, Offset, RawPoint, SourceFormat, Special,
+    ControlKind, CourseFilter, CourseKind, CourseNote, MAX_CODE_LEN, MAX_CONTROLS,
+    MAX_COURSE_FILE_BYTES, MAX_COURSES, MAX_NAME_LEN, MAX_NOTES, MAX_POINTS_PER_PATH, MAX_SPECIALS,
+    MAX_STOPS_PER_COURSE, MAX_TOTAL_POINTS, MAX_TOTAL_TEXT_BYTES, MAX_XML_DEPTH, Offset, RawPoint,
+    SourceFormat, Special,
 };
 use freemapper_print::course::{CourseError, RawEvent, read_ppen};
 
@@ -597,13 +598,29 @@ fn bad_input_is_an_error_not_a_panic() {
     assert!(read_ppen(&ppen(&TWO.replace("x=\"10\"", "x=\"NaN\""))).is_err());
     let no_loc = TWO.replace("<location x=\"10\" y=\"5\"/>", "");
     assert!(read_ppen(&ppen(&no_loc)).is_err());
-    // Nested elements that should not nest.
-    for body in [
-        "<control id=\"1\" kind=\"normal\"><control id=\"2\" kind=\"normal\"/></control>",
-        "<course id=\"1\" kind=\"normal\"><course id=\"2\" kind=\"normal\"/></course>",
-        "<special-object id=\"1\" kind=\"water\"><special-object id=\"2\" kind=\"water\"/></special-object>",
+    // Nested elements that should not nest are noted and skipped.
+    for (body, name) in [
+        (
+            "<control id=\"1\" kind=\"normal\"><code>1</code><control id=\"2\" kind=\"normal\"/></control>",
+            "control",
+        ),
+        (
+            "<course id=\"1\" kind=\"normal\"><course id=\"2\" kind=\"normal\"/></course>",
+            "course",
+        ),
+        (
+            "<special-object id=\"1\" kind=\"water\"><location x=\"0\" y=\"0\"/>\
+             <special-object id=\"2\" kind=\"water\"/></special-object>",
+            "special-object",
+        ),
     ] {
-        let _ = read_ppen(&ppen(body));
+        let ev = read_ppen(&ppen(body));
+        assert!(ev.is_ok(), "{name}");
+        let ev = ev.unwrap();
+        assert!(
+            ev.notes.contains(&CourseNote::UnknownElement(name.into())),
+            "{name}"
+        );
     }
     // A special without a location.
     let no_pt = "<special-object id=\"1\" kind=\"water\"><courses all=\"true\"/></special-object>";
@@ -805,6 +822,194 @@ fn shared_legs_and_gaps_cannot_multiply_points() {
     assert_eq!(total, MAX_TOTAL_POINTS);
     assert!(matches!(
         read_ppen(&shared(n + 1, &gaps, "")),
+        Err(CourseError::Limit(_))
+    ));
+}
+
+#[test]
+fn variation_loop_reaches_variations_without_loop_error() {
+    // As in Purple Pen's variations.ppen: course-control 4 is the loop exit and continues to 5; the loop
+    // branches 25 and 26 lead back to 4 (variation-end).
+    let body = "<control id=\"1\" kind=\"start\"><location x=\"0\" y=\"0\"/></control>\
+         <control id=\"4\" kind=\"normal\"><code>34</code><location x=\"1\" y=\"0\"/></control>\
+         <control id=\"6\" kind=\"normal\"><code>36</code><location x=\"1\" y=\"1\"/></control>\
+         <control id=\"7\" kind=\"normal\"><code>37</code><location x=\"2\" y=\"1\"/></control>\
+         <control id=\"9\" kind=\"finish\"><location x=\"3\" y=\"0\"/></control>\
+         <course id=\"1\" kind=\"normal\" order=\"1\"><name>Loop</name><first course-control=\"1\"/></course>\
+         <course-control id=\"1\" control=\"1\"><next course-control=\"4\"/></course-control>\
+         <course-control id=\"4\" control=\"4\" variation=\"loop\" variation-end=\"4\"><next course-control=\"5\"/>\
+           <variation course-control=\"4\"/><variation course-control=\"25\"/><variation course-control=\"26\"/></course-control>\
+         <course-control id=\"25\" control=\"4\" variation=\"loop\" variation-end=\"4\"><next course-control=\"15\"/>\
+           <variation course-control=\"4\"/><variation course-control=\"25\"/><variation course-control=\"26\"/></course-control>\
+         <course-control id=\"26\" control=\"4\" variation=\"loop\" variation-end=\"4\"><next course-control=\"17\"/>\
+           <variation course-control=\"4\"/><variation course-control=\"25\"/><variation course-control=\"26\"/></course-control>\
+         <course-control id=\"15\" control=\"6\"><next course-control=\"4\"/></course-control>\
+         <course-control id=\"17\" control=\"7\"><next course-control=\"4\"/></course-control>\
+         <course-control id=\"5\" control=\"9\"/>";
+    let ev = read_ppen(&ppen(body)).unwrap();
+    assert!(ev.courses.is_empty());
+    assert!(ev.notes.contains(&CourseNote::Variations("Loop".into())));
+    // Entered through a branch, the chain comes back to the loop control: still a variation, no loop error.
+    let via_branch = body.replace(
+        "<first course-control=\"1\"/>",
+        "<first course-control=\"15\"/>",
+    );
+    let ev = read_ppen(&ppen(&via_branch)).unwrap();
+    assert!(ev.notes.contains(&CourseNote::Variations("Loop".into())));
+}
+
+#[test]
+fn numbering_labels_and_points_noted() {
+    let body = TWO
+        .replace(
+            "<first course-control=\"1\"/>",
+            "<first course-control=\"1\" control-number=\"5\"/><labels label-kind=\"sequence-and-code\"/>",
+        )
+        .replace(
+            "<course-control id=\"2\" control=\"2\"/>",
+            "<course-control id=\"2\" control=\"2\" points=\"30\"/>",
+        );
+    let ev = read_ppen(&ppen(&body)).unwrap();
+    for n in [
+        "course:control-number",
+        "course:label-kind",
+        "course-control:points",
+    ] {
+        assert!(
+            ev.notes.contains(&CourseNote::UnknownElement(n.into())),
+            "{n}"
+        );
+    }
+    // The defaults give no note: sequence for a normal course, code for a score course.
+    let plain = TWO.replace(
+        "<first course-control=\"1\"/>",
+        "<first course-control=\"1\" control-number=\"1\"/><labels label-kind=\"sequence\"/>",
+    );
+    let score = format!(
+        "{TWO}<course id=\"3\" kind=\"score\" order=\"3\"><name>S</name><labels label-kind=\"code\"/></course>"
+    );
+    for b in [plain, score] {
+        let ev = read_ppen(&ppen(&b)).unwrap();
+        assert!(
+            !ev.notes
+                .iter()
+                .any(|n| matches!(n, CourseNote::UnknownElement(s) if s.starts_with("course"))),
+            "{:?}",
+            ev.notes
+        );
+    }
+}
+
+#[test]
+fn code_and_name_lengths_limited() {
+    let with_code = |code: &str| TWO.replace("<code>31</code>", &format!("<code>{code}</code>"));
+    // Characters, not bytes: 64 umlauts are 128 bytes.
+    let ev = read_ppen(&ppen(&with_code(&"ü".repeat(MAX_CODE_LEN)))).unwrap();
+    assert_eq!(ev.courses[0].stops[1].control.chars().count(), MAX_CODE_LEN);
+    assert!(matches!(
+        read_ppen(&ppen(&with_code(&"ü".repeat(MAX_CODE_LEN + 1)))),
+        Err(CourseError::Limit(_))
+    ));
+    let with_name = |name: &str| TWO.replace("<name>A</name>", &format!("<name>{name}</name>"));
+    assert!(read_ppen(&ppen(&with_name(&"ä".repeat(MAX_NAME_LEN)))).is_ok());
+    assert!(matches!(
+        read_ppen(&ppen(&with_name(&"ä".repeat(MAX_NAME_LEN + 1)))),
+        Err(CourseError::Limit(_))
+    ));
+}
+
+/// `n` courses that all start at the same chain of `MAX_STOPS_PER_COURSE` visits of one control whose code
+/// has `MAX_CODE_LEN` bytes. Course names have 4 bytes.
+fn shared_chain(n: usize) -> Vec<u8> {
+    let mut body = format!(
+        "<control id=\"1\" kind=\"normal\"><code>{}</code><location x=\"1\" y=\"1\"/></control>",
+        "c".repeat(MAX_CODE_LEN)
+    );
+    for i in 1..=MAX_STOPS_PER_COURSE {
+        let next = if i < MAX_STOPS_PER_COURSE {
+            format!("<next course-control=\"{}\"/>", i + 1)
+        } else {
+            String::new()
+        };
+        body.push_str(&format!(
+            "<course-control id=\"{i}\" control=\"1\">{next}</course-control>"
+        ));
+    }
+    for i in 0..n {
+        body.push_str(&format!(
+            "<course id=\"{i}\" kind=\"normal\" order=\"{}\"><name>{i:04}</name><first course-control=\"1\"/></course>",
+            i + 1
+        ));
+    }
+    ppen(&body)
+}
+
+#[test]
+fn shared_chain_with_long_code_is_bounded() {
+    // Copied text: the control's code once, and per course 500 stop codes plus a 4-byte name.
+    let per_course = MAX_STOPS_PER_COURSE * MAX_CODE_LEN + 4;
+    let n = (MAX_TOTAL_TEXT_BYTES - MAX_CODE_LEN) / per_course;
+    assert!(n < MAX_COURSES);
+    let ev = read_ppen(&shared_chain(n)).unwrap();
+    let bytes: usize = ev.controls.iter().map(|c| c.code.len()).sum::<usize>()
+        + ev.courses
+            .iter()
+            .map(|c| c.name.len() + c.stops.iter().map(|s| s.control.len()).sum::<usize>())
+            .sum::<usize>();
+    assert_eq!(bytes, MAX_CODE_LEN + n * per_course);
+    assert!(bytes <= MAX_TOTAL_TEXT_BYTES);
+    assert!(matches!(
+        read_ppen(&shared_chain(n + 1)),
+        Err(CourseError::Limit(_))
+    ));
+}
+
+/// `MAX_COURSES` courses with names of `MAX_NAME_LEN` bytes and `m` specials that list every course twice.
+fn named_specials(m: usize) -> Vec<u8> {
+    let mut body = String::new();
+    for i in 0..MAX_COURSES {
+        body.push_str(&format!(
+            "<course id=\"{i}\" kind=\"normal\" order=\"{}\"><name>{i:0>width$}</name></course>",
+            i + 1,
+            width = MAX_NAME_LEN
+        ));
+    }
+    let list: String = (0..2 * MAX_COURSES)
+        .map(|i| format!("<course course=\"{}\"/>", i % MAX_COURSES))
+        .collect();
+    for j in 0..m {
+        body.push_str(&format!(
+            "<special-object id=\"{j}\" kind=\"water\"><location x=\"1\" y=\"1\"/><courses>{list}</courses></special-object>"
+        ));
+    }
+    ppen(&body)
+}
+
+#[test]
+fn specials_with_long_names_are_bounded() {
+    // Copied text: every course name once, and per special every name once (duplicates dropped).
+    let names = MAX_COURSES * MAX_NAME_LEN;
+    let m = (MAX_TOTAL_TEXT_BYTES - names) / names;
+    let ev = read_ppen(&named_specials(m)).unwrap();
+    assert_eq!(ev.specials.len(), m);
+    let bytes: usize = ev.courses.iter().map(|c| c.name.len()).sum::<usize>()
+        + ev.specials
+            .iter()
+            .map(|s| match s {
+                Special::Water {
+                    courses: CourseFilter::Only(v),
+                    ..
+                } => {
+                    assert_eq!(v.len(), MAX_COURSES);
+                    v.iter().map(String::len).sum::<usize>()
+                }
+                other => panic!("{other:?}"),
+            })
+            .sum::<usize>();
+    assert_eq!(bytes, names * (m + 1));
+    assert!(bytes <= MAX_TOTAL_TEXT_BYTES);
+    assert!(matches!(
+        read_ppen(&named_specials(m + 1)),
         Err(CourseError::Limit(_))
     ));
 }

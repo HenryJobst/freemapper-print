@@ -36,6 +36,16 @@
 //! - Special objects map to [`Special`]; see `special()`. The courses of a special are `courses/@all` or a
 //!   list of course ids; id 0 is the all-controls view and has no course of its own.
 //!
+//! - Notes for settings the overprint cannot honour: `first/@control-number` other than 1
+//!   (`course:control-number`), `labels/@label-kind` other than sequence (normal) or code (score)
+//!   (`course:label-kind`), `course-control/@points` other than 0 (`course-control:points`), and partly
+//!   flagged legs.
+//! - Limits: those of the IOF reader (ADR 0019), `MAX_CODE_LEN` and `MAX_NAME_LEN` per code and name, at most
+//!   `MAX_COURSES` distinct course ids per special. Legs, controls and a special's course list are shared,
+//!   so every copy into the result is paid from two budgets for the whole read: `MAX_TOTAL_POINTS` (bends,
+//!   leg and circle gap ranges, special points) and `MAX_TOTAL_TEXT_BYTES` (codes and names). A variation
+//!   course is skipped before anything is copied.
+//!
 //! Elements Purple Pen writes but the overprint does not need (punch patterns, print areas, labels, relay
 //! settings and the like) are skipped silently; any other element is noted once by name.
 
@@ -45,7 +55,7 @@ use quick_xml::events::BytesStart;
 
 use super::CourseError;
 use super::model::*;
-use super::xml::{Handler, Notes, attr, drive, local, number};
+use super::xml::{Handler, Notes, TextBudget, attr, bounded, drive, local, number};
 
 /// Parses the bytes of a Purple Pen `.ppen` file.
 pub fn read_ppen(bytes: &[u8]) -> Result<RawEvent, CourseError> {
@@ -240,7 +250,9 @@ struct PSpecial {
     kind: String,
     locations: Vec<RawPoint>,
     all: bool,
+    /// Distinct course ids, in file order.
     courses: Vec<i64>,
+    course_set: HashSet<i64>,
     text: String,
     font_height: Option<f64>,
 }
@@ -583,8 +595,28 @@ impl State {
             }
             ("course", "first") => {
                 let first = need_int(e, "course-control", "first")?;
+                // The model numbers every course from 1.
+                if int(e, "control-number", "first")?.is_some_and(|n| n != 1) {
+                    self.notes
+                        .add(CourseNote::UnknownElement("course:control-number".into()));
+                }
                 if let Some(c) = self.course.as_mut() {
                     c.first = Some(first);
+                }
+            }
+            ("course", "labels") => {
+                // Purple Pen labels a normal course by sequence number and a score course by code; the
+                // overprint always prints sequence numbers.
+                let default = match self.course.as_ref().map(|c| c.kind) {
+                    Some(CourseKind::Score) => "code",
+                    _ => "sequence",
+                };
+                if attr(e, "label-kind")?
+                    .as_deref()
+                    .is_some_and(|k| k.trim() != default)
+                {
+                    self.notes
+                        .add(CourseNote::UnknownElement("course:label-kind".into()));
                 }
             }
             ("course", "options") => {
@@ -606,6 +638,11 @@ impl State {
                 self.cc_count += 1;
                 let id = need_int(e, "id", "course-control")?;
                 let variation = attr(e, "variation")?.is_some_and(|v| !v.trim().is_empty());
+                // Score points are not printed.
+                if int(e, "points", "course-control")?.is_some_and(|p| p != 0) {
+                    self.notes
+                        .add(CourseNote::UnknownElement("course-control:points".into()));
+                }
                 self.cc = Some((
                     id,
                     PCc {
@@ -686,6 +723,7 @@ impl State {
                     locations: Vec::new(),
                     all: true,
                     courses: Vec::new(),
+                    course_set: HashSet::new(),
                     text: String::new(),
                     font_height: None,
                 });
@@ -713,7 +751,9 @@ impl State {
             }
             ("courses", "course") => {
                 let id = need_int(e, "course", "course")?;
-                if let Some(s) = self.special.as_mut() {
+                if let Some(s) = self.special.as_mut()
+                    && s.course_set.insert(id)
+                {
                     if s.courses.len() >= MAX_COURSES {
                         return Err(CourseError::Limit(format!(
                             "more than {MAX_COURSES} courses for one special object"
@@ -734,7 +774,7 @@ impl State {
             ("event", "title") => self.title = Some(text.to_string()),
             ("control", "code") => {
                 if let Some(c) = self.control.as_mut() {
-                    c.code = Some(text.to_string());
+                    c.code = Some(bounded(text, MAX_CODE_LEN, "control code")?);
                 }
             }
             ("control", "description") => {
@@ -798,7 +838,7 @@ impl State {
             }
             ("course", "name") => {
                 if let Some(c) = self.course.as_mut() {
-                    c.name = text.to_string();
+                    c.name = bounded(text, MAX_NAME_LEN, "course name")?;
                 }
             }
             (ROOT, "course") => {
@@ -960,11 +1000,12 @@ impl State {
             .iter()
             .map(|c| (c.id, c.name.clone()))
             .collect();
+        let mut text = TextBudget::default();
         let mut courses = Vec::new();
         for &ci in &order {
             let pc = &self.courses[ci];
-            let mut stops = Vec::new();
-            let mut ids = Vec::new();
+            // First the chain alone, so that a variation course is skipped before anything is copied.
+            let mut chain: Vec<(&PCc, usize)> = Vec::new();
             let mut seen = HashSet::new();
             let mut variations = false;
             let mut next = pc.first;
@@ -975,7 +1016,7 @@ impl State {
                         pc.name
                     )));
                 }
-                if stops.len() >= MAX_STOPS_PER_COURSE {
+                if chain.len() >= MAX_STOPS_PER_COURSE {
                     return Err(CourseError::Limit(format!(
                         "more than {MAX_STOPS_PER_COURSE} stops in a course"
                     )));
@@ -986,37 +1027,46 @@ impl State {
                         pc.name
                     ))
                 })?;
+                if cc.variation {
+                    // A fork or loop: the `next` links of its branches lead back into the chain, so the
+                    // walk stops here (QueryEvent.EnumCourseControlsAndSplitStartsToJoin follows them).
+                    variations = true;
+                    break;
+                }
                 let &i = index.get(&cc.control).ok_or_else(|| {
                     CourseError::Xml(format!(
                         "course {} uses control id {}, which is not defined",
                         pc.name, cc.control
                     ))
                 })?;
-                let c = &self.controls[i];
-                if c.position.is_none() {
+                if self.controls[i].position.is_none() {
                     return Err(CourseError::Xml(format!(
                         "control {} has no location",
                         codes[i]
                     )));
                 }
-                variations |= cc.variation;
+                chain.push((cc, i));
+                next = cc.next;
+            }
+            if variations {
+                self.notes.add(CourseNote::Variations(text.copy(&pc.name)?));
+                continue;
+            }
+            let mut stops = Vec::with_capacity(chain.len());
+            let mut ids = Vec::with_capacity(chain.len());
+            for (cc, i) in chain {
+                let c = &self.controls[i];
                 let gaps = rules.gaps_at(c, self.gap_key(pc));
                 spend(&mut budget, gaps.len())?;
-                let gaps = gaps.to_vec();
                 stops.push(Stop {
-                    control: codes[i].clone(),
+                    control: text.copy(&codes[i])?,
                     kind: (cc.map_exchange && c.kind == PKind::Normal)
                         .then_some(ControlKind::MapExchange),
                     number: None,
                     number_text_at: cc.number_at,
-                    circle_gaps: gaps,
+                    circle_gaps: gaps.to_vec(),
                 });
                 ids.push(i);
-                next = cc.next;
-            }
-            if variations {
-                self.notes.add(CourseNote::Variations(pc.name.clone()));
-                continue;
             }
             let mut legs = Vec::new();
             for w in ids.windows(2) {
@@ -1045,7 +1095,7 @@ impl State {
                 });
             }
             courses.push(Course {
-                name: pc.name.clone(),
+                name: text.copy(&pc.name)?,
                 family: None,
                 kind: pc.kind,
                 legs,
@@ -1059,11 +1109,13 @@ impl State {
         let mut controls = Vec::with_capacity(self.controls.len());
         let mut any_description = false;
         for (c, code) in std::mem::take(&mut self.controls).into_iter().zip(codes) {
+            text.copy(&code)?;
             let kind = match c.kind {
                 PKind::Normal => ControlKind::Control,
                 PKind::Start => ControlKind::Start,
                 PKind::MapIssue => {
-                    self.notes.add(CourseNote::MapIssueAsStart(code.clone()));
+                    self.notes
+                        .add(CourseNote::MapIssueAsStart(text.copy(&code)?));
                     ControlKind::Start
                 }
                 PKind::Finish => ControlKind::Finish,
@@ -1087,7 +1139,7 @@ impl State {
         let mut specials = Vec::new();
         for s in std::mem::take(&mut self.specials) {
             spend(&mut budget, s.locations.len())?;
-            if let Some(sp) = self.special(s, &names) {
+            if let Some(sp) = self.special(s, &names, &mut text)? {
                 specials.push(sp);
             }
         }
@@ -1108,26 +1160,51 @@ impl State {
     }
 
     /// One special object, or `None` with a note for kinds the model has no variant for.
-    fn special(&mut self, s: PSpecial, names: &HashMap<i64, String>) -> Option<Special<RawPoint>> {
+    fn special(
+        &mut self,
+        s: PSpecial,
+        names: &HashMap<i64, String>,
+        text: &mut TextBudget,
+    ) -> Result<Option<Special<RawPoint>>, CourseError> {
+        const KNOWN: &[&str] = &[
+            "first-aid",
+            "water",
+            "forbidden-route",
+            "boundary",
+            "line",
+            "out-of-bounds",
+            "dangerous-area",
+            "white-out",
+            "text",
+        ];
+        let Some(first) = s.locations.first().copied() else {
+            return Ok(None);
+        };
+        let unknown = match s.kind.as_str() {
+            "descriptions" => Some("special:descriptions ignored (layout decides)".to_string()),
+            "text" if s.locations.len() < 2 => Some("special:text without a box".to_string()),
+            k if !KNOWN.contains(&k) => Some(format!("special:{k}")),
+            _ => None,
+        };
+        if let Some(what) = unknown {
+            self.notes.add(CourseNote::UnknownElement(what));
+            return Ok(None);
+        }
         let courses = if s.all {
             CourseFilter::All
         } else {
-            let mut only: Vec<String> = Vec::new();
+            let mut ids = HashSet::new();
+            let mut only = Vec::new();
             for id in &s.courses {
-                if let Some(n) = names.get(id)
-                    && !only.contains(n)
+                if ids.insert(*id)
+                    && let Some(n) = names.get(id)
                 {
-                    only.push(n.clone());
+                    only.push(text.copy(n)?);
                 }
             }
             CourseFilter::Only(only)
         };
-        let first = s.locations.first().copied()?;
-        let mut unknown = |what: String| {
-            self.notes.add(CourseNote::UnknownElement(what));
-            None
-        };
-        Some(match s.kind.as_str() {
+        Ok(Some(match s.kind.as_str() {
             "first-aid" => Special::FirstAid { pt: first, courses },
             "water" => Special::Water { pt: first, courses },
             "forbidden-route" => Special::ForbiddenRoute {
@@ -1158,9 +1235,9 @@ impl State {
                 }
             }
             "text" => {
-                let Some(second) = s.locations.get(1) else {
-                    return unknown("special:text without a box".into());
-                };
+                let second = s.locations.get(1).copied().unwrap_or(first);
+                // Without a font height Purple Pen sizes the text, possibly several lines, to fit the box;
+                // the box height is only an approximation of the letter height.
                 Special::Text {
                     pt: RawPoint {
                         x_mm: first.x_mm.min(second.x_mm),
@@ -1173,11 +1250,9 @@ impl State {
                     courses,
                 }
             }
-            "descriptions" => {
-                return unknown("special:descriptions ignored (layout decides)".into());
-            }
-            other => return unknown(format!("special:{other}")),
-        })
+            // Every other kind returned above with a note.
+            _ => return Ok(None),
+        }))
     }
 }
 

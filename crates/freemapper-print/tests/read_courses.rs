@@ -1,8 +1,8 @@
 //! IOF XML 3.0 `CourseData` reader (M3 Task 2).
 
 use freemapper_print::course::model::{
-    ControlKind, CourseKind, CourseNote, MAX_CONTROLS, MAX_COURSE_FILE_BYTES, MAX_COURSES,
-    MAX_NOTES, MAX_STOPS_PER_COURSE, MAX_XML_DEPTH,
+    ControlKind, CourseKind, CourseNote, MAX_CODE_LEN, MAX_CONTROLS, MAX_COURSE_FILE_BYTES,
+    MAX_COURSES, MAX_NAME_LEN, MAX_NOTES, MAX_STOPS_PER_COURSE, MAX_XML_DEPTH,
 };
 use freemapper_print::course::{CourseError, read_iof_xml};
 
@@ -289,4 +289,25 @@ fn unknown_element_noted() {
             .contains(&CourseNote::UnknownElement("Gadget".into()))
     );
     assert!(ev.notes.contains(&CourseNote::NoDescriptions));
+}
+
+#[test]
+fn code_and_name_lengths_limited() {
+    let body = |code: &str, name: &str, family: &str| {
+        wrap(&format!(
+            "<Control><Id>{code}</Id><MapPosition x=\"1\" y=\"1\"/></Control>\
+             <Course><Name>{name}</Name><CourseFamily>{family}</CourseFamily>\
+             <CourseControl><Control>{code}</Control></CourseControl></Course>"
+        ))
+    };
+    let (code, name) = ("ü".repeat(MAX_CODE_LEN), "ä".repeat(MAX_NAME_LEN));
+    let ev = read_iof_xml(&body(&code, &name, &name)).unwrap();
+    assert_eq!(ev.courses[0].stops[0].control, code);
+    for bad in [
+        body(&"ü".repeat(MAX_CODE_LEN + 1), &name, &name),
+        body(&code, &"ä".repeat(MAX_NAME_LEN + 1), &name),
+        body(&code, &name, &"ä".repeat(MAX_NAME_LEN + 1)),
+    ] {
+        assert!(matches!(read_iof_xml(&bad), Err(CourseError::Limit(_))));
+    }
 }
