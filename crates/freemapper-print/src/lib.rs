@@ -155,10 +155,20 @@ mod boundaries {
         out
     }
 
-    /// The paths of `forbidden` modules that `text` reaches, see [`reached`].
+    /// The external core paths that `course`, `render` and `omap` must not use: after stage 2 they live in core,
+    /// where `rules` and the file writing of freemapper-print do not exist.
+    const FORBIDDEN_EXTERNAL: [&str; 2] = ["freemapper_rules::", "freemapper_fs::"];
+
+    /// The paths of `forbidden` modules that `text` reaches, see [`reached`], and the external paths of
+    /// [`FORBIDDEN_EXTERNAL`] that it names.
     fn forbidden_in(text: &str, forbidden: &[&str]) -> Vec<String> {
         let mut seen = reached(text);
         seen.retain(|n| forbidden.contains(&n.as_str()));
+        for external in FORBIDDEN_EXTERNAL {
+            if text.contains(external) {
+                seen.push(external.trim_end_matches("::").to_string());
+            }
+        }
         seen.sort();
         seen.dedup();
         seen
@@ -189,6 +199,8 @@ mod boundaries {
             "use super::super::numbers::x;",
             "use super::super::super::project::P;",
             "let x = crate::numbers::f();",
+            "use freemapper_rules::Rules;",
+            "let r = freemapper_fs::write_inside(a, b, c);",
         ] {
             assert!(!forbidden_in(bad, &f).is_empty(), "accepted: {bad}");
         }
@@ -206,6 +218,8 @@ mod boundaries {
             "use super::super::draw::{Primitive, Other};",
             "use super::project::X; use super::numbers;",
             "use std::{project::X};",
+            "use freemapper_text::Texts;",
+            "use freemapper_georef::Crs;",
         ] {
             let hits = forbidden_in(good, &f);
             assert!(hits.is_empty(), "rejected: {good}: {hits:?}");
@@ -213,10 +227,13 @@ mod boundaries {
     }
 
     #[test]
-    fn course_uses_only_omap_and_rules() {
+    fn course_does_not_know_the_stage_1_modules() {
         let found = uses(
             "course",
             &[
+                "rules",
+                "output",
+                "scale",
                 "project",
                 "courses",
                 "sheet",
@@ -237,6 +254,9 @@ mod boundaries {
         let found = uses(
             "render",
             &[
+                "rules",
+                "output",
+                "scale",
                 "overprint",
                 "sheet",
                 "project",
@@ -246,6 +266,30 @@ mod boundaries {
                 "export",
                 "describe",
                 "print",
+            ],
+        );
+        assert!(found.is_empty(), "{found:#?}");
+    }
+
+    #[test]
+    fn omap_knows_no_other_module() {
+        let found = uses(
+            "omap",
+            &[
+                "course",
+                "courses",
+                "describe",
+                "export",
+                "numbers",
+                "output",
+                "overprint",
+                "placement",
+                "print",
+                "project",
+                "render",
+                "rules",
+                "scale",
+                "sheet",
             ],
         );
         assert!(found.is_empty(), "{found:#?}");
