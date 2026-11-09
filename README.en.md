@@ -7,30 +7,66 @@ ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in
 OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on paper.
 
+What it does already (version 0.1.0):
+
+- print a finished OOM map (`.omap`) as a vector PDF at the exact print scale, on A4 or A3;
+- print at another scale with the symbol sizes the standard sets (for example 1:3000 for the youngest classes,
+  symbols at 133 %);
+- always print the map's north lines.
+
 Planned:
 
-- the map from OOM (`.omap`) at the exact print scale as a vector PDF, OCAD maps later;
-- courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Purple Pen, Condes, OCAD
-  course setting), with course overprint and control descriptions;
-- passe-partout, title, club and sponsor logos, and a scale check bar to measure against;
-- masks for window and corridor orienteering, in variants assigned to single courses;
-- several layouts per event, for example 1:4000 for the older classes and 1:3000 for the youngest, each with
-  the symbol sizes the standard sets for its scale;
-- use through an editor in the browser, the command line or an AI assistant (MCP).
+- one project file per event with several layouts: passe-partout, title, club and sponsor logos, a scale check bar
+  to measure against and a footer with the project address; north lines added when the map has none (M2, in
+  progress);
+- courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Purple Pen, Condes, OCAD course
+  setting), with course overprint and control descriptions (M3);
+- masks for window and corridor orienteering, in variants assigned to single courses (M4);
+- use through an AI assistant (MCP, M5) and an editor in the browser (M6), OCAD maps later.
 
-North lines come from the map and are always printed. Where a map has none, the program is to add them as the
-standard sets from M2 on.
+The program needs no OCAD and runs on macOS, Linux and Windows. Messages and help come in German and English
+from M2.
 
-The program needs no OCAD and runs on macOS, Linux and Windows.
+## Examples
+
+Finished examples are in [`examples/`](examples/README.en.md). Click the picture to open the example with its
+PDFs.
+
+<a href="examples/luebeck-scales/README.en.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
+alt="The same sprint map of Lübeck old town at 1:4000 and 1:3000"></a>
+
+**Lübeck at two scales** ([`luebeck-scales`](examples/luebeck-scales/README.en.md)): the same sprint map at 1:4000
+on A4 and at 1:3000 on A3. At 1:3000 every symbol grows to 133 % as ISSprOM requires. Each milestone adds
+examples: a competition with two layouts and logos (M2), courses from Purple Pen (M3), window and corridor
+orienteering (M4).
 
 ## Status
 
-Since milestone M1, freemapper-print prints a finished OOM map at the exact scale as a vector PDF
-(`freemapper-print render`). Layouts with title and logos follow in M2, courses from Purple Pen in M3, and masks
-for window and corridor orienteering in M4. The rest is in the
+The current version is [v0.1.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.1.0) of
+8 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+(`freemapper-print render`). M2 is in progress: project file, layouts and sheet elements. Courses from Purple Pen
+(M3) and masks for window and corridor orienteering (M4) follow. The first version targets club training in towns
+and parks: sprint maps on A4, printed at home or in a copy shop. More in the
 [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the [glossary](docs/glossary.md) and the
-[architecture decisions](docs/adr/README.md). The first version targets club training in towns and parks: sprint
-maps on A4, printed at home or in a copy shop.
+[architecture decisions](docs/adr/README.md).
+
+## Installation
+
+freemapper-print is a single program without an installer:
+
+1. Download the archive for your system from the
+   [release page](https://github.com/HenryJobst/freemapper-print/releases/latest):
+   - Windows: `freemapper-print-…-windows-x86_64.zip`
+   - macOS with Apple chip (M1 and newer): `freemapper-print-…-macos-arm64.tar.gz`
+   - macOS with Intel processor: `freemapper-print-…-macos-x86_64.tar.gz`
+   - Linux: `freemapper-print-…-linux-x86_64.tar.gz` (ARM computers: `linux-arm64`)
+2. Unpack the archive. The folder contains `freemapper-print` or `freemapper-print.exe`.
+3. On the first start the system warns because the program is not signed. On Windows choose "More info", then
+   "Run anyway". On macOS click "Open Anyway" in "System Settings › Privacy & Security", or run
+   `xattr -d com.apple.quarantine freemapper-print` in Terminal in the unpacked folder. On Linux, run
+   `chmod +x freemapper-print` if needed.
+4. Check in a terminal in the unpacked folder: `./freemapper-print --version` (Windows:
+   `.\freemapper-print.exe --version`).
 
 ## Building from source (for developers)
 

@@ -32,6 +32,8 @@ before changing code.
   branch; merge with `--no-ff` into main; run them again on main; push to both remotes; watch CI on GitHub;
   then remove the worktree and branch and run `cargo clean` (target/ grows to tens of GB).
   Delete temporary builds in the session scratchpad too (reviewers' probe builds reach gigabytes).
+- Before every push, check that README.md and README.en.md are current (status, version, what works,
+  installation, usage) and fix them in the same push.
 - Commits: Conventional Commits with a scope (`feat(render): …`, `fix(omap): …`, `docs(adr): …`), English
   subject, small logical units.
 - Release when the user asks: bump `[workspace.package] version`, `cargo update -w`, turn "Unveröffentlicht"/
