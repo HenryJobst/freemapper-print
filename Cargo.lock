@@ -274,6 +274,7 @@ dependencies = [
 name = "freemapper-print"
 version = "0.3.0"
 dependencies = [
+ "freemapper-rules",
  "fs4",
  "image",
  "miniz_oxide 0.9.1",
@@ -300,6 +301,15 @@ dependencies = [
  "freemapper-print",
  "freemapper-text",
  "tempfile",
+]
+
+[[package]]
+name = "freemapper-rules"
+version = "0.2.0"
+source = "git+https://github.com/HenryJobst/freemapper-core?tag=v0.2.0#ae442f5967491d054d489f34f5d721b136d96172"
+dependencies = [
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

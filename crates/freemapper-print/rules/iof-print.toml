@@ -1,12 +1,13 @@
-# Base rule profile: print rules from the IOF map specifications. Format: freemapper-courseplan's
-# ADR 0025, adapted in ADR 0031 and rules/README.md; src/rules.rs reads it.
+# Base rule profile: print rules from the IOF map specifications. Format: freemapper-rules (core
+# ADR 0011, after freemapper-courseplan ADR 0025), adapted in ADR 0031 and rules/README.md;
+# src/rules.rs reads it with its SCHEMA.
 #
 # Every value is given at the base scale of its map kind (sprint 1:4000, forest 1:15000,
 # schoolyard 1:1000). The program enlarges course symbols with the size factor of the print scale,
 # the course factor (ADR 0018, ADR 0034).
 #
 # Rule keys and the values they read:
-#   scale_table        rows: documented table (rules::TABLE_VALUES):
+#   scale_table        rows: documented table (rules::SCHEMA, `tables`):
 #                      [{ scale, size_factor, standard }, ...], one row per scale denominator
 #                      a map of the kind may be drawn and printed at, ascending. size_factor is
 #                      the symbol size relative to the base scale; standard = false marks a
