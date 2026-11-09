@@ -678,18 +678,34 @@ pub fn save_new(path: &Path, project: &Project) -> Result<(), ProjectError> {
     save_new_with_comments(path, project, &[])
 }
 
-/// `text` as TOML comment lines, one `# ` per line of the text.
+/// Longest comment line [`comment_lines`] writes, `# ` included, unless one word is longer.
+const COMMENT_WIDTH: usize = 100;
+
+/// `text` as TOML comment lines: each line of the text wrapped at word boundaries to at most
+/// [`COMMENT_WIDTH`] characters, each output line starting with `# `; an empty line becomes `#`.
 fn comment_lines(text: &str) -> String {
-    text.lines()
-        .map(|l| {
-            let l = l.trim_end();
-            if l.is_empty() {
-                "#\n".to_string()
-            } else {
-                format!("# {l}\n")
+    let mut out = String::new();
+    for l in text.lines() {
+        let mut line = String::new();
+        for word in l.split_whitespace() {
+            if !line.is_empty()
+                && 2 + line.chars().count() + 1 + word.chars().count() > COMMENT_WIDTH
+            {
+                let _ = writeln!(out, "# {line}");
+                line.clear();
             }
-        })
-        .collect()
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        }
+        if line.is_empty() {
+            out.push_str("#\n");
+        } else {
+            let _ = writeln!(out, "# {line}");
+        }
+    }
+    out
 }
 
 /// The table a header line opens: `map` for `[map]`, `shared` for `[[shared]]`, `shared.anchor`
@@ -1544,6 +1560,26 @@ mod tests {
         // `/` on every system, also where the native separator is `\`.
         let text = rel("/x/event", "/x/maps/sub/m.omap");
         assert_eq!(text.to_str(), Some("../maps/sub/m.omap"));
+    }
+
+    #[test]
+    fn long_comments_wrap_at_100_characters() {
+        let text = "word ".repeat(60);
+        let out = comment_lines(&format!("{text}\n\nshort"));
+        let lines: Vec<&str> = out.lines().collect();
+        assert!(lines.len() > 3, "{out}");
+        assert!(lines.iter().all(|l| l.chars().count() <= 100), "{out}");
+        assert!(lines.iter().all(|l| l.starts_with('#')), "{out}");
+        // The words survive in order, the blank line too.
+        let words: Vec<&str> = lines
+            .iter()
+            .flat_map(|l| l.trim_start_matches('#').split_whitespace())
+            .collect();
+        assert_eq!(words.len(), 61);
+        assert!(lines.contains(&"#") && lines.last() == Some(&"# short"));
+        // A word longer than a line stays whole.
+        let long = "x".repeat(150);
+        assert_eq!(comment_lines(&long), format!("# {long}\n"));
     }
 
     #[test]

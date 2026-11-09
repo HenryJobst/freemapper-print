@@ -6,10 +6,10 @@ use toml::value::Date;
 
 use crate::project::{LoadedProject, SheetLang};
 
-/// The grouping space of scale denominators: U+202F, the narrow no-break space.
 /// Longest text between braces that counts as a placeholder name.
 const MAX_NAME_CHARS: usize = 40;
 
+/// The grouping space of scale denominators: U+202F, the narrow no-break space.
 const THIN_SPACE: char = '\u{202f}';
 
 /// What each placeholder stands for on one sheet.
