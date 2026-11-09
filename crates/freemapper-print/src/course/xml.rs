@@ -109,6 +109,15 @@ impl Notes {
         self.list.push(n);
     }
 
+    /// Adds `n` (once) even after the list was cut short: for a course left out and for the notes a reader adds at
+    /// the end, about the file as a whole. There is at most one such note per course and a few more, so the list
+    /// stays bounded by the course limit.
+    pub(crate) fn add_final(&mut self, n: CourseNote) {
+        if self.seen.insert(n.clone()) {
+            self.list.push(n);
+        }
+    }
+
     pub(crate) fn into_vec(self) -> Vec<CourseNote> {
         self.list
     }

@@ -535,6 +535,11 @@ fn variations_left_out_and_noted() {
     let names: Vec<_> = ev.courses.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, ["Plain"]);
     assert!(ev.notes.contains(&CourseNote::Variations("Forked".into())));
+    // Even after the notes were cut short, a course left out is named.
+    let noise: String = (0..1500).map(|i| format!("<gadget{i}/>")).collect();
+    let ev = read_ppen(&ppen(&format!("{noise}{body}"))).unwrap();
+    assert!(ev.notes.contains(&CourseNote::NotesTruncated));
+    assert!(ev.notes.contains(&CourseNote::Variations("Forked".into())));
 }
 
 #[test]

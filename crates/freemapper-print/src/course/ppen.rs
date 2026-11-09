@@ -48,7 +48,8 @@
 //!   course is skipped before anything is copied.
 //!
 //! Elements Purple Pen writes but the overprint does not need (punch patterns, print areas, relay settings
-//! and the like) are skipped silently (`labels` is read for the note above); any other element is noted once by name.
+//! and the like) are skipped silently (`labels` is read for the note above); any other element is noted once
+//! by name.
 
 use std::collections::{HashMap, HashSet};
 
@@ -1081,7 +1082,9 @@ impl State {
                 next = cc.next;
             }
             if variations {
-                self.notes.add(CourseNote::Variations(text.copy(&pc.name)?));
+                // A course left out must always be named, also after the list was cut short.
+                self.notes
+                    .add_final(CourseNote::Variations(text.copy(&pc.name)?));
                 continue;
             }
             let mut stops = Vec::with_capacity(chain.len());
@@ -1187,7 +1190,7 @@ impl State {
             }
         }
         if !any_description {
-            self.notes.add(CourseNote::NoDescriptions);
+            self.notes.add_final(CourseNote::NoDescriptions);
         }
         Ok(CourseEvent {
             controls,

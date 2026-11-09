@@ -123,13 +123,20 @@ fn malformed_nesting_is_an_error_not_a_panic() {
     );
     let ev = read_iof_xml(xml.as_bytes()).unwrap();
     assert!(ev.controls.is_empty());
-    // Course inside Course, CourseControl inside CourseControl, Control inside Control.
-    for body in [
-        "<Course><Course><Name>x</Name></Course></Course>",
-        "<Course><CourseControl><CourseControl/></CourseControl></Course>",
-        "<Control><Control/></Control>",
+    // Course inside Course, CourseControl inside CourseControl, Control inside Control: errors that name it.
+    for (body, what) in [
+        ("<Course><Course><Name>x</Name></Course></Course>", "Course"),
+        (
+            "<Course><CourseControl><CourseControl/></CourseControl></Course>",
+            "CourseControl",
+        ),
+        ("<Control><Control/></Control>", "Control"),
     ] {
-        let _ = read_iof_xml(&wrap(body));
+        let err = read_iof_xml(&wrap(body)).unwrap_err().to_string();
+        assert!(
+            err.contains(&format!("<{what}> opened inside another <{what}>")),
+            "{err}"
+        );
     }
     // Wrong root and RaceCourseData outside the root.
     assert!(read_iof_xml(b"<Other/>").is_err());
@@ -144,9 +151,39 @@ fn notes_are_deduplicated_and_capped() {
     for i in 0..(MAX_NOTES + 500) {
         body.push_str(&format!("<Gadget{i}/>"));
     }
+    // A course left out and the notes about the whole file still come after the cut.
+    body.push_str(
+        "<Control><Id>A</Id><MapPosition x=\"1\" y=\"1\"/></Control>\
+         <Control><Id>B</Id><MapPosition x=\"2\" y=\"2\"/></Control>\
+         <Course><Name>Alt</Name><CourseControl><Control>A</Control><Control>B</Control></CourseControl></Course>",
+    );
     let ev = read_iof_xml(&wrap(&body)).unwrap();
-    assert_eq!(ev.notes.len(), MAX_NOTES + 1);
-    assert_eq!(ev.notes.last(), Some(&CourseNote::NotesTruncated));
+    assert_eq!(ev.notes.len(), MAX_NOTES + 3);
+    assert_eq!(ev.notes[MAX_NOTES], CourseNote::NotesTruncated);
+    assert_eq!(
+        ev.notes[MAX_NOTES + 1..],
+        [
+            CourseNote::AlternativeControls("Alt".into()),
+            CourseNote::NoDescriptions
+        ]
+    );
+}
+
+#[test]
+fn unknown_course_control_type_is_noted() {
+    let xml = wrap(
+        "<Control><Id>A</Id><MapPosition x=\"1\" y=\"1\"/></Control>\
+         <Course><Name>c</Name><CourseControl type=\"Teleport\"><Control>A</Control></CourseControl></Course>",
+    );
+    let ev = read_iof_xml(&xml).unwrap();
+    assert_eq!(ev.courses[0].stops[0].kind, None);
+    assert!(
+        ev.notes.contains(&CourseNote::UnknownElement(
+            "CourseControl type Teleport".into()
+        )),
+        "{:?}",
+        ev.notes
+    );
 }
 
 #[test]

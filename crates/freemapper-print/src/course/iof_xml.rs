@@ -157,13 +157,15 @@ impl State {
         {
             self.note(CourseNote::UnknownElement(name.clone()));
         }
-        let open_twice =
-            |what: &str| CourseError::Xml(format!("<{what}> opened inside another <{what}>"));
+        // A `Control`, `Course` or `CourseControl` inside another one is malformed: it would otherwise be read as
+        // part of the outer one.
+        if parent == name && matches!(name.as_str(), "Control" | "Course" | "CourseControl") {
+            return Err(CourseError::Xml(format!(
+                "<{name}> opened inside another <{name}>"
+            )));
+        }
         match (parent.as_str(), name.as_str()) {
             ("RaceCourseData", "Control") if in_race => {
-                if self.control.is_some() {
-                    return Err(open_twice("Control"));
-                }
                 if self.controls.len() >= MAX_CONTROLS {
                     return Err(CourseError::Limit(format!(
                         "more than {MAX_CONTROLS} controls"
@@ -202,9 +204,6 @@ impl State {
                 }
             }
             ("RaceCourseData", "Course") if in_race => {
-                if self.course.is_some() {
-                    return Err(open_twice("Course"));
-                }
                 if self.course_count >= MAX_COURSES {
                     return Err(CourseError::Limit(format!(
                         "more than {MAX_COURSES} courses"
@@ -228,9 +227,6 @@ impl State {
                 });
             }
             ("Course", "CourseControl") if self.course.is_some() => {
-                if self.cc.is_some() {
-                    return Err(open_twice("CourseControl"));
-                }
                 if let Some(c) = self.course.as_ref()
                     && c.course.stops.len() >= MAX_STOPS_PER_COURSE
                 {
@@ -240,7 +236,12 @@ impl State {
                 }
                 let kind = match attr(e, "type")?.as_deref() {
                     None => None,
-                    Some(t) => kind_of(t),
+                    Some(t) => kind_of(t).or_else(|| {
+                        self.note(CourseNote::UnknownElement(format!(
+                            "CourseControl type {t}"
+                        )));
+                        None
+                    }),
                 };
                 self.cc = Some(CcB {
                     codes: Vec::new(),
@@ -374,7 +375,9 @@ impl State {
             ("RaceCourseData", "Course") if in_race_after => {
                 let c = self.course.take().ok_or_else(|| missing("Course"))?;
                 if c.alternatives {
-                    self.note(CourseNote::AlternativeControls(c.course.name));
+                    // A course left out must always be named, also after the list was cut short.
+                    self.notes
+                        .add_final(CourseNote::AlternativeControls(c.course.name));
                 } else {
                     self.courses.push(c.course);
                 }
@@ -420,12 +423,14 @@ impl State {
                 }
             }
         }
+        // Notes about the file as a whole come through even after the list was cut short.
         for (family, variants) in families {
             if variants.len() > 1 {
-                self.note(CourseNote::Forked { family, variants });
+                self.notes
+                    .add_final(CourseNote::Forked { family, variants });
             }
         }
-        self.note(CourseNote::NoDescriptions);
+        self.notes.add_final(CourseNote::NoDescriptions);
         Ok(CourseEvent {
             controls: self.controls,
             courses: self.courses,
