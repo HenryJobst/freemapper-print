@@ -42,6 +42,10 @@ const MAX_ENTITIES: u64 = 64;
 /// Longest `style` attribute, entities expanded, and most declarations in it (counted as
 /// colons), and most bytes of `style` attributes in the file: `simplecss` works out a line and
 /// column for every declaration, from the start of the value.
+///
+/// Counting colons over-counts: a colon inside a value (`url(data:…)`, a quoted font name)
+/// counts as a declaration too. That errs on the safe side; a plain logo has a handful of
+/// declarations per element and stays far below 64.
 const MAX_STYLE_BYTES: u64 = 2048;
 const MAX_STYLE_DECLARATIONS: u64 = 64;
 const MAX_CSS_BYTES: u64 = 256 * 1024;
@@ -118,6 +122,9 @@ fn editor_namespace(ns: &str) -> bool {
 
 /// Attributes that `usvg` looks up by local name in every namespace (`node.attribute(..)` in its
 /// parser), so they must not appear in a namespace it otherwise passes over.
+///
+/// Written by hand from usvg 0.49's parser, like [`read_namespace`] and [`ALLOWED`]: re-check
+/// them against `usvg`'s `svgtree` on every `usvg` upgrade (ADR 0026).
 const READ_IN_ANY_NAMESPACE: &[&str] = &["id", "style"];
 
 /// An attribute as `usvg`'s `parse_svg_element` reads it: by local name, in the namespaces it
