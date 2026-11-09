@@ -1555,6 +1555,34 @@ mod tests {
     }
 
     #[test]
+    fn older_maps_keep_their_sheet_tagged_north_lines() {
+        // freemapper before v0.5.0 put its north lines in "peripheral information", tagged as
+        // sheet objects. They still count as the map's own lines and are drawn.
+        let tagged = |x: i32| MapObject {
+            coords: vec![MapCoord::new(x, 0), MapCoord::new(x, 50_000)],
+            tags: vec![("freemapper:source".into(), "sheet".into())],
+            ..object_of("601", (0, 50_000))
+        };
+        let map = doc(
+            4000,
+            vec![
+                ("default part", vec![line((50_000, 0))]),
+                ("peripheral information", vec![tagged(0), tagged(30_000)]),
+            ],
+        );
+        let (page, report) = sheet(&map, &auto());
+        assert_eq!(added(&report), None);
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::NorthLinesWithoutSymbol { .. }))
+        );
+        assert_eq!(map_xs(&page).len(), 2);
+        assert!(sheet_xs(&page).is_empty());
+    }
+
+    #[test]
     fn variant_of_601_counts_as_north_line() {
         let map = doc(
             4000,
