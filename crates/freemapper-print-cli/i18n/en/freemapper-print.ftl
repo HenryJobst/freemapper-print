@@ -328,6 +328,7 @@ error-read-courses = could not read the course file { $path }
 error-numbers-no-course-file = numbers accept needs a course file, and the project names none under [sources] courses
 error-unknown-control = the course "{ $course }" has no control { $control }; its controls are { $known }
 error-numbers-no-proposal = there is no proposal for control { $control } on the sheet of course "{ $course }": its number has no conflict. Give --direction and --gap to set a position yourself.
+error-numbers-layout-conflict = the proposal for control { $control } (direction { $direction }° with a gap of { $gap } mm) comes from the sheet of course "{ $course }" and is not free for every course on layout { $layout }: it has a conflict on the sheets of { $courses }. Use --sheet for the sheet of course "{ $course }" alone, or give a position for all with --direction and --gap. The project file was left unchanged.
 error-numbers-exists = the project file has a correction for control { $control } for { $scope } already. Edit the file to change it; numbers accept only adds new ones.
 error-numbers-value = --direction needs a finite number, and --gap must be above 0 and at most { $max } mm
 numbers-accepted = Added a correction for the number of control { $control } for { $scope } to { $path }: direction { $direction }° with a gap of { $gap } mm. Run check to see the result.

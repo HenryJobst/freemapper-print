@@ -846,6 +846,25 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         gap_mm: Some(gap),
         base_seen,
     };
+    // A proposal for the whole layout must suit every course there that prints this number with it (ruling
+    // R39): it was searched on one sheet only.
+    if args.layout_wide && args.direction.is_none() {
+        let blocked = layout_conflicts(texts, &loaded, &map, &courses, &layout.id, &correction)?;
+        if !blocked.is_empty() {
+            return Err(usage(
+                "error-numbers-layout-conflict",
+                args!(
+                    "control" => printable(&args.control),
+                    "layout" => printable(&layout.id),
+                    "courses" => quoted_list(texts, &blocked),
+                    "course" => printable(&course.name),
+                    "direction" => short_decimal(texts, direction, 1),
+                    "gap" => short_decimal(texts, gap, 2),
+                ),
+            )
+            .into());
+        }
+    }
     project::append_correction(&loaded.path, &correction).map_err(|err| {
         // A file that no longer loads has been put back as it was.
         let lead_in = match err {
@@ -871,6 +890,45 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         )
     );
     Ok(0)
+}
+
+/// The courses printed with layout `layout_id` whose sheet, with the layout-wide `correction` added, has a
+/// conflict at its control. Courses with a correction of their own for the control are left out: theirs wins.
+fn layout_conflicts(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    map: &MapDocument,
+    courses: &LoadedCourses,
+    layout_id: &str,
+    correction: &project::NumberCorrection,
+) -> anyhow::Result<Vec<String>> {
+    let mut trial = loaded.clone();
+    trial.project.numbers.push(correction.clone());
+    let logos = LogoCache::new();
+    let mut blocked = Vec::new();
+    for c in &courses.event.courses {
+        let on_layout = freemapper_print::courses::layout_for(&loaded.project, &c.name)
+            .0
+            .id
+            == layout_id;
+        let visits = c.stops.iter().any(|s| s.control == correction.control);
+        let own = loaded.project.numbers.iter().any(|n| {
+            n.control == correction.control && n.course.as_deref() == Some(c.name.as_str())
+        });
+        if !on_layout || !visits || own {
+            continue;
+        }
+        let (_, report) = course_sheet_report(&trial, map, courses, c, &logos)
+            .map_err(|err| export_error(texts, err))?;
+        let conflict = report
+            .notes
+            .iter()
+            .any(|n| matches!(n, SheetNote::NumberConflict(k) if k.control == correction.control));
+        if conflict {
+            blocked.push(c.name.clone());
+        }
+    }
+    Ok(blocked)
 }
 
 /// What `check` prints for one layout, and whether the layout needs a look. A layout that cannot

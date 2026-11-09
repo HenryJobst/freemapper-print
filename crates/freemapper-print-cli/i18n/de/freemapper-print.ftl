@@ -331,6 +331,7 @@ error-read-courses = die Bahndatei { $path } ließ sich nicht lesen
 error-numbers-no-course-file = numbers accept braucht eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
 error-unknown-control = die Bahn „{ $course }“ hat keinen Posten { $control }; ihre Posten sind { $known }
 error-numbers-no-proposal = für Posten { $control } auf dem Blatt der Bahn „{ $course }“ gibt es keinen Vorschlag, denn seine Nummer hat keinen Konflikt. Mit --direction und --gap setzen Sie eine Lage selbst.
+error-numbers-layout-conflict = der Vorschlag für Posten { $control } (Richtung { $direction }° mit { $gap } mm Abstand) stammt vom Blatt der Bahn „{ $course }“ und ist auf dem Layout { $layout } nicht für jede Bahn frei: Er hat einen Konflikt auf den Blättern von { $courses }. Nehmen Sie --sheet für das Blatt der Bahn „{ $course }“ allein, oder geben Sie mit --direction und --gap eine Lage für alle selbst an. Die Projektdatei blieb unverändert.
 error-numbers-exists = die Projektdatei hat für Posten { $control } schon eine Korrektur für { $scope }. Ändern Sie sie in der Datei; numbers accept legt nur neue an.
 error-numbers-value = --direction braucht eine endliche Zahl, und --gap muss größer als 0 und höchstens { $max } mm sein
 numbers-accepted = Korrektur für die Nummer von Posten { $control } für { $scope } in { $path } eingetragen: Richtung { $direction }° mit einem Abstand von { $gap } mm. Mit check sehen Sie das Ergebnis.

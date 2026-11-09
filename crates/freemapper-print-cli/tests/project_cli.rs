@@ -1303,3 +1303,94 @@ fn check_reports_y_up_and_stale() {
     assert!(err.contains("Bahn „Weg“"), "{err}");
     assert!(err.contains("Posten 99 für Bahn „Kurz“"), "{err}");
 }
+
+#[test]
+fn numbers_accept_layout_wide_needs_a_proposal_free_for_every_course() {
+    // Ruling R39. Eng2 visits 31 too, with control 33 where Eng's proposal for 31 (direction 307.9°) puts the
+    // number: layout-wide, the proposal would move a conflict onto Eng2's sheet.
+    let (ws, path, old) = numbers_workspace();
+    let xml = std::fs::read_to_string(LUEBECK_NUMBERS).unwrap().replace(
+        "    </Course>\n",
+        "    </Course>\n    <Course>\n      <Name>Eng2</Name>\n      \
+         <CourseControl type=\"Start\"><Control>S1</Control></CourseControl>\n      \
+         <CourseControl type=\"Control\"><Control>31</Control></CourseControl>\n      \
+         <CourseControl type=\"Control\"><Control>33</Control></CourseControl>\n      \
+         <CourseControl type=\"Finish\"><Control>F1</Control></CourseControl>\n    </Course>\n",
+    );
+    let xml = xml.replace(
+        "    <Control type=\"Finish\">",
+        "    <Control type=\"Control\"><Id>33</Id><MapPosition x=\"23.5\" y=\"-35\" unit=\"mm\"/></Control>\n    \
+         <Control type=\"Finish\">",
+    );
+    std::fs::write(ws.event().join("c.xml"), xml).unwrap();
+    let p = path.to_str().unwrap();
+    let accept = |lang: &str, scope: &str| {
+        run(
+            lang,
+            &[
+                "numbers",
+                "accept",
+                p,
+                "--course",
+                "Eng",
+                "--control",
+                "31",
+                scope,
+            ],
+        )
+    };
+    for lang in ["en", "de"] {
+        let o = accept(lang, "--layout-wide");
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains("Eng2") && err.contains("--sheet"), "{err}");
+        assert!(err.contains("--direction"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    }
+    // For the sheet alone it is taken.
+    let o = accept("en", "--sheet");
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    // With values of its own, layout-wide is the user's call.
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng2",
+            "--control",
+            "31",
+            "--layout-wide",
+            "--direction",
+            "120",
+            "--gap",
+            "0.5",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}
+
+#[test]
+fn numbers_accept_layout_wide_takes_a_proposal_free_everywhere() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "numbers",
+            "accept",
+            p,
+            "--course",
+            "Eng",
+            "--control",
+            "31",
+            "--layout-wide",
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.numbers[0].layout.as_deref(), Some("a3"));
+    let o = run("en", &["check", p]);
+    assert!(!stderr(&o).contains("covers the symbol"), "{}", stderr(&o));
+}
