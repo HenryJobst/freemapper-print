@@ -50,7 +50,7 @@ module. freemapper-print had English-only messages in `main.rs`.
   same variables in every language.
 - Ruling R3: English `note-missing-scale-or-contour` has a select on `$count` with two identical variants, because
   German uses `$count` and the check refuses a message whose variables differ. The output is the same as before.
-- Test gap, accepted: `every_id_used_in_code_exists` scans `main.rs` only, the one CLI source that uses ids. A new
-  source file with ids must be added to it.
+- `every_id_used_in_code_exists` scans every `.rs` file under the CLI crate's `src/`, so a new source file with
+  ids is covered without a change to the test.
 
 Source: user decision 2026-11-08 (suite rule); freemapper-courseplan ADR 0022.

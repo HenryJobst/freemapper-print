@@ -197,12 +197,36 @@ mod tests {
     #[test]
     fn every_id_used_in_code_exists() {
         let ids = TEXTS.message_ids("en");
-        let sources = [include_str!("main.rs")];
-        for source in sources {
-            for id in freemapper_text::ids_in_source(source, ID_PREFIXES) {
-                assert!(ids.contains(&id), "main.rs uses unknown message id {id}");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut scanned = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            scanned += 1;
+            for id in freemapper_text::ids_in_source(&source, ID_PREFIXES) {
+                assert!(
+                    ids.contains(&id),
+                    "{} uses unknown message id {id}",
+                    path.display()
+                );
             }
         }
+        assert!(
+            scanned >= 2,
+            "expected the CLI sources under {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn missing_id_returns_the_id() {
+        assert_eq!(
+            Texts::new(&Lang::english()).plain("no-such-message"),
+            "no-such-message"
+        );
     }
 
     #[test]
