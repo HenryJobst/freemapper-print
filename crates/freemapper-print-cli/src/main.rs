@@ -151,21 +151,7 @@ macro_rules! args {
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
-    let kind = match args.kind {
-        Some(kind) => kind.into(),
-        None => {
-            if let Err(err) = read_sidecar(&args.map) {
-                eprintln!(
-                    "{}",
-                    texts.get(
-                        "note-sidecar",
-                        Some(&args!("error" => printable(&err.to_string())))
-                    )
-                );
-            }
-            infer_kind(&map, &args.map).context(texts.plain("error-kind-unknown"))?
-        }
-    };
+    let kind = detect_kind(texts, &map, &args.map, args.kind)?;
     let parent = match args.out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
@@ -251,21 +237,45 @@ fn metres(texts: &Texts, value: f64) -> String {
     }
 }
 
+/// The map kind: `arg`, else `map_kind` in `freemapper.toml` next to the map, else inferred from
+/// the symbol set and scale (ADR 0021). A `freemapper.toml` that cannot be read or parsed gets a
+/// note that says so; without any kind the error asks for `--kind`.
+fn detect_kind(
+    texts: &Texts,
+    map: &MapDocument,
+    path: &Path,
+    arg: Option<KindArg>,
+) -> anyhow::Result<MapKind> {
+    if let Some(kind) = arg {
+        return Ok(kind.into());
+    }
+    if let Err(err) = read_sidecar(path) {
+        eprintln!(
+            "{}",
+            texts.get(
+                "note-sidecar",
+                Some(&args!("error" => printable(&err.to_string())))
+            )
+        );
+    }
+    infer_kind(map, path).context(texts.plain("error-kind-unknown"))
+}
+
 fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
+    if let Some(title) = &args.title
+        && title.chars().any(|c| c.is_control() || is_format(c))
+    {
+        return Err(UsageError(texts.plain("error-title-control")).into());
+    }
     let map = read_map(texts, &args.map)?;
-    let kind: MapKind = match args.kind {
-        Some(kind) => kind.into(),
-        // As the M1 `render` reads it, but without guessing from the symbol set: the kind is
-        // written into the project and stays.
-        None => match read_sidecar(&args.map) {
-            Ok(Some(kind)) => kind,
-            Ok(None) => bail!(texts.plain("error-init-kind-unknown")),
-            Err(err) => {
-                return Err(anyhow::Error::new(err).context(texts.plain("error-init-kind-unknown")));
-            }
-        },
-    };
+    let kind = detect_kind(texts, &map, &args.map, args.kind)?;
     let shown = args.folder.join(project::FILE_NAME);
+    if shown.exists() {
+        bail!(texts.get(
+            "error-project-exists",
+            Some(&args!("path" => shown.display().to_string()))
+        ));
+    }
     let folder_error = || {
         texts.get(
             "error-create-folder",
@@ -292,13 +302,14 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         SheetLang::En
     };
     let map_scale = map.georef.scale_denominator;
-    let new = project::starter(
+    let starter = project::starter(
         &title,
         project::relative_path(&dir, &map_path),
         kind,
         map_scale,
         sheet_lang,
     );
+    let (new, fits) = project::fit_starter(starter, &dir, &map);
     let kind_word = texts.plain(kind_word_id(kind));
     let contour = new.map.contour_interval_m;
     let contour_comment = match contour {
@@ -336,18 +347,39 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
         }
     }
     let path = shown.display().to_string();
+    let layout = &new.layouts[0];
     eprintln!(
         "{}",
         texts.get(
             "init-written",
             Some(&args!(
                 "path" => path.clone(),
-                "layout" => project::STARTER_LAYOUT_ID,
+                "layout" => layout.id.clone(),
+                "paper" => paper_name(layout.paper),
+                "margin" => metres(texts, layout.map_frame.margin_mm),
                 "scale" => map_scale.to_string(),
                 "kind" => kind_word.clone(),
             ))
         )
     );
+    if !fits {
+        eprintln!(
+            "{}",
+            texts.get(
+                "init-no-fit",
+                Some(&args!("scale" => map_scale.to_string()))
+            )
+        );
+        let loaded = LoadedProject {
+            path: file.clone(),
+            dir: dir.clone(),
+            project: new.clone(),
+        };
+        let (lines, _) = check_lines(texts, &loaded, &map, layout);
+        for line in lines {
+            eprintln!("{line}");
+        }
+    }
     eprintln!(
         "{}",
         match contour {
@@ -362,26 +394,45 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
+/// What `check` prints for one layout, and whether the layout needs a look. A layout that cannot
+/// be drawn gives its error line and counts as needing a look.
+fn check_lines(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    map: &MapDocument,
+    layout: &LayoutSpec,
+) -> (Vec<String>, bool) {
+    // The PDF is made in memory only: the font check needs it.
+    match sheet_pdf(loaded, map, layout) {
+        Ok((_, report)) => {
+            let head = summary_line(
+                texts,
+                "check-summary",
+                ("layout", printable(&layout.id)),
+                layout.paper,
+                &report.print,
+                map.georef.scale_denominator,
+            );
+            layout_lines(texts, head, layout, &report, loaded.project.map.kind)
+        }
+        Err(err) => {
+            let message = printable(&format!("{:#}", export_error(texts, err)));
+            (
+                vec![texts.get("error-line", Some(&args!("message" => message)))],
+                true,
+            )
+        }
+    }
+}
+
 fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     let loaded = load_project(texts, &args.project)?;
     let map = read_map(texts, &loaded.map_path())?;
-    let map_scale = map.georef.scale_denominator;
-    let kind = loaded.project.map.kind;
     let total = loaded.project.layouts.len();
     let mut with_notes = 0;
+    // Every layout is checked, also after one that cannot be drawn.
     for layout in &loaded.project.layouts {
-        // The PDF is made in memory only: the font check needs it.
-        let (_, report) =
-            sheet_pdf(&loaded, &map, layout).map_err(|err| export_error(texts, err))?;
-        let head = summary_line(
-            texts,
-            "check-summary",
-            ("layout", printable(&layout.id)),
-            layout.paper,
-            &report.print,
-            map_scale,
-        );
-        let (lines, has_notes) = layout_lines(texts, head, layout, &report, kind);
+        let (lines, has_notes) = check_lines(texts, &loaded, &map, layout);
         for line in lines {
             eprintln!("{line}");
         }
@@ -627,7 +678,7 @@ fn report_lines(
 }
 
 /// The lines about one sheet: `head`, the notes of its print report, then its sheet notes. Also
-/// whether any of them asks the user to look (every note but [`SheetNote::NorthLinesAdded`]).
+/// whether any of them asks the user to look ([`SheetReport::needs_attention`]).
 fn layout_lines(
     texts: &Texts,
     head: String,
@@ -642,11 +693,7 @@ fn layout_lines(
         layout.orientation != Orientation::Auto,
         kind,
     );
-    let has_notes = !print.is_empty()
-        || report
-            .notes
-            .iter()
-            .any(|n| !matches!(n, SheetNote::NorthLinesAdded { .. }));
+    let has_notes = report.needs_attention();
     let mut lines = vec![head];
     lines.extend(print);
     lines.extend(report.notes.iter().map(|n| sheet_note_line(texts, n)));

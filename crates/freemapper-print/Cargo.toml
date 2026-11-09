@@ -7,6 +7,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+# Test hooks for the CLI's integration tests: a fake free-space value from the environment and
+# the live-page counter of the export loop. Enabled only through freemapper-print-cli's
+# dev-dependencies, so release binaries never read the variable.
+test-hooks = []
+
 [dependencies]
 fs4.workspace = true
 image.workspace = true

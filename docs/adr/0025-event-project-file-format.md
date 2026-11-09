@@ -33,20 +33,33 @@ source, shared sheet elements and layouts.
   device name, at most 200 bytes. Two ids that differ only in upper and lower case are an error, because their
   PDFs would be one file on macOS and Windows.
 - `footer` is the id the default footer has in sheet notes, so no element may take it.
-- `init` takes the map kind from `--kind`, else from `map_kind` in `freemapper.toml` next to the map. It does not
-  infer the kind from the symbol set as `render` does (ADR 0021): the kind is stored in the project, and a wrong
-  guess would stay. Without either source `init` stops and asks for `--kind`.
-- `init` writes the map path relative to the project file (canonical paths on both sides), the event title from
-  `--title` or the map's file name, the sheet language from the program language, and one A4 layout `a4` with the
-  map scale written out. Its shared elements are a title block with `{event}` and
-  `1:{print_scale} · {contour_interval}` and a scale check bar, both in corners of the map frame. Copyright and
+- `init` finds the map kind as `render` does (ADR 0021): `--kind`, else `map_kind` in `freemapper.toml` next to
+  the map, else the symbol set name and scale. A `freemapper.toml` that cannot be read or parsed gets a note that
+  says so. Only when the whole chain finds nothing does `init` stop and ask for `--kind`.
+- `init` refuses a `--title` with control or invisible formatting characters (usage error). As a second guard,
+  `save_new_with_comments` reads the commented text back and writes the file without comments if it does not give
+  the same project, because a multi-line string can fool the line-based comment placement.
+- `init` writes the map path relative to the project file (canonical paths on both sides, `/` between the parts
+  on every system), the event title from `--title` or the map's file name, the sheet language from the program
+  language, and one layout with the map scale written out. Its shared elements are a title block with `{event}`
+  and `1:{print_scale} · {contour_interval}` and a scale check bar, both in corners of the map frame. Copyright and
   credit lines stay with the default footer: it moves inside the frame on a white box when the passe-partout is too
-  narrow, while an element hung on the page cannot and would cover the map.
+  narrow, while an element hung on the page cannot and would cover the map. A comment in the file says how to move
+  them with elements.
+- `fit_starter` picks paper and passe-partout through the same drawing as `check`, with auto orientation: A4 with
+  8 mm, A4 with a wider passe-partout in 1 mm steps up to 25 mm (tried only while the footer is the one problem),
+  A3 with 8 mm, A3 the same way. It keeps the first candidate whose only notes are added north lines and, for
+  schoolyard maps, the missing contour interval. So the starter passes `check` whenever an A4 or A3 starter can
+  (Lübeck: A3 with 14 mm). Otherwise the file keeps A4 with 8 mm, and `init` prints the notes `check` will report.
 - The proposed contour interval (sprint 2.5 m, forest 5 m, schoolyard none) gets a comment in the file, in the
-  program language, telling the user to confirm it; `init` prints the same hint. `save_new_with_comments` adds such
-  comments to the serializer's output. An empty `[print]` table is left out.
-- On a map that does not fit the A4 frame at its scale (Lübeck, 10 mm too tall), `check` reports the overflow for
-  the generated project. That is the intended signal; `init` does not switch to A3 on its own.
+  program language, telling the user to confirm it; `init` prints the same hint. An empty `[print]` table is left
+  out.
+- The case check on layout ids compares lower-case forms without Unicode normalisation (no extra dependency). Ids
+  with combining accents (U+0300 to U+036F) are refused instead, so `é` written as e plus accent cannot slip past
+  it. Other canonically equivalent spellings are not caught; such ids are unlikely in a hand-written file.
+- The test hooks (a fake free-space value from `FREEMAPPER_PRINT_TEST_FREE_SPACE`, the live-page counter of the
+  export loop) exist only with the library feature `test-hooks`, which only the CLI's dev-dependencies enable.
+  Release binaries do not contain them.
 
 ## Consequences
 

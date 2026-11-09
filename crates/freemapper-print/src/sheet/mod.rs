@@ -33,6 +33,18 @@ pub struct SheetReport {
     pub notes: Vec<SheetNote>,
 }
 
+impl SheetReport {
+    /// Whether the user should look at the sheet: any note of the print report, or any sheet
+    /// note but [`SheetNote::NorthLinesAdded`], which only informs. `check` fails on this.
+    pub fn needs_attention(&self) -> bool {
+        self.print.has_notes()
+            || self
+                .notes
+                .iter()
+                .any(|n| !matches!(n, SheetNote::NorthLinesAdded { .. }))
+    }
+}
+
 /// Something about a sheet the user should know. None of them stops the export.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SheetNote {

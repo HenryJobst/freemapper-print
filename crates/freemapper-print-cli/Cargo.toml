@@ -19,6 +19,7 @@ fluent-bundle.workspace = true
 unic-langid.workspace = true
 
 [dev-dependencies]
+freemapper-print = { workspace = true, features = ["test-hooks"] }
 fluent-syntax.workspace = true
 tempfile.workspace = true
 

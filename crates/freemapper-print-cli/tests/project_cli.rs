@@ -155,7 +155,9 @@ fn init_writes_project() {
     assert_eq!(p.map.kind, MapKind::Sprint);
     assert_eq!(p.map.contour_interval_m, Some(2.5));
     assert_eq!(p.layouts.len(), 1);
-    assert_eq!(p.layouts[0].id, "a4");
+    // Lübeck does not fit A4 at 1:4000; A3 with room for the footer does.
+    assert_eq!(p.layouts[0].id, "a3");
+    assert_eq!(p.layouts[0].paper, freemapper_print::print::Paper::A3);
     assert_eq!(p.layouts[0].print_scale, Some(4000));
     let title = p.shared.iter().find(|e| e.id == "title").unwrap();
     assert_eq!(
@@ -239,10 +241,46 @@ fn init_schoolyard_proposes_no_contour_interval() {
     assert!(stderr(&o).contains("contour_interval_m"), "{}", stderr(&o));
 }
 
+/// A copy of Lübeck at 1:25000, whose kind the program cannot infer.
+fn uninferable_map(ws: &Workspace) -> PathBuf {
+    let text = std::fs::read_to_string(LUEBECK).unwrap();
+    let copy = ws.dir.path().join("maps/odd.omap");
+    std::fs::write(
+        &copy,
+        text.replace(
+            "<georeferencing scale=\"4000\"",
+            "<georeferencing scale=\"25000\"",
+        ),
+    )
+    .unwrap();
+    copy
+}
+
 #[test]
-fn init_asks_for_kind() {
+fn init_on_luebeck_passes_check() {
     let ws = Workspace::new(LUEBECK);
-    for (lang, word) in [("en", "--kind"), ("de", "--kind")] {
+    // No --kind and no freemapper.toml: the kind comes from the map file, as for render.
+    let o = run(
+        "en",
+        &[
+            "init",
+            ws.event().to_str().unwrap(),
+            "--map",
+            ws.map.to_str().unwrap(),
+        ],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    let p = project::load(&ws.project_file()).unwrap().project;
+    assert_eq!(p.map.kind, MapKind::Sprint);
+    assert!(stderr(&o).contains("A3"), "{}", stderr(&o));
+    let o = run("en", &["check", ws.event().to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}
+
+#[test]
+fn init_refuses_control_characters_in_the_title() {
+    let ws = Workspace::new(LUEBECK);
+    for (lang, word) in [("en", "line breaks"), ("de", "Zeilenumbrüche")] {
         let o = run(
             lang,
             &[
@@ -250,8 +288,60 @@ fn init_asks_for_kind() {
                 ws.event().to_str().unwrap(),
                 "--map",
                 ws.map.to_str().unwrap(),
+                "--kind",
+                "sprint",
+                "--title",
+                "Lauf\n[map]\ncontour_interval_m = 9",
             ],
         );
+        assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+        assert!(stderr(&o).contains(word), "{lang}: {}", stderr(&o));
+        assert!(!ws.project_file().exists());
+    }
+}
+
+#[test]
+fn init_names_a_broken_freemapper_toml() {
+    let ws = Workspace::new(LUEBECK);
+    let map = uninferable_map(&ws);
+    std::fs::write(
+        ws.dir.path().join("maps/freemapper.toml"),
+        "map_kind = 12\n",
+    )
+    .unwrap();
+    let o = run(
+        "en",
+        &[
+            "init",
+            ws.event().to_str().unwrap(),
+            "--map",
+            map.to_str().unwrap(),
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("freemapper.toml is not valid") && err.contains("--kind"),
+        "{err}"
+    );
+    assert!(!ws.project_file().exists());
+}
+
+#[test]
+fn init_asks_for_kind() {
+    let ws = Workspace::new(LUEBECK);
+    let map = uninferable_map(&ws);
+    for (lang, word) in [("en", "cannot tell the map kind"), ("de", "Kartenart")] {
+        let o = run(
+            lang,
+            &[
+                "init",
+                ws.event().to_str().unwrap(),
+                "--map",
+                map.to_str().unwrap(),
+            ],
+        );
+        assert!(stderr(&o).contains("--kind"), "{}", stderr(&o));
         assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
         assert!(stderr(&o).contains(word), "{}", stderr(&o));
         assert!(!ws.project_file().exists());
@@ -326,6 +416,22 @@ fn check_fails_on_a_broken_project() {
     let o = run("en", &["check", path.to_str().unwrap()]);
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("paperr"), "{}", stderr(&o));
+}
+
+#[test]
+fn check_goes_on_after_a_layout_that_cannot_be_drawn() {
+    let ws = Workspace::new(LUEBECK);
+    let rest = "[[layouts]]\nid = \"bad\"\nprint_scale = 10000\n[[layouts]]\nid = \"good\"\n";
+    let path = ws.write_project("sprint", "contour_interval_m = 2.5", rest);
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    let bad = err
+        .find("could not draw layout bad")
+        .expect("error for bad");
+    let good = err.find("Layout good:").expect("good is checked too");
+    assert!(bad < good, "{err}");
+    assert!(err.contains("Layouts with notes: 2 of 2."), "{err}");
 }
 
 #[test]
@@ -439,8 +545,13 @@ fn export_one_layout() {
         "contour_interval_m = 5.0",
         &layouts(&[("a", "A4", "auto"), ("b", "A3", "portrait")]),
     );
-    let o = run("en", &["export", path.to_str().unwrap(), "--layout", "b"]);
-    assert!(o.status.success(), "{}", stderr(&o));
+    let o = run("de", &["export", path.to_str().unwrap(), "--layout", "b"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(
+        err.contains("b.pdf geschrieben") && err.contains("„Tatsächliche Größe“"),
+        "{err}"
+    );
     let out = ws.event().join("out");
     assert_eq!(files_in(&out), ["b.pdf"]);
     assert_page_mm(&out.join("b.pdf"), 297.0, 420.0);

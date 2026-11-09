@@ -321,6 +321,7 @@ mod tests {
             "needed",
             "available",
             "known",
+            "margin",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

@@ -39,9 +39,11 @@ pub enum OutputError {
     },
 }
 
-/// Test hook: when this environment variable holds a number, [`write_pdf_file`] takes it as the
-/// free space in bytes instead of asking the volume. The CLI tests use it to fake a full disk in
-/// the binary they run.
+/// Test hook (feature `test-hooks`): when this environment variable holds a number,
+/// [`write_pdf_file`] takes it as the free space in bytes instead of asking the volume. The CLI
+/// tests use it to fake a full disk in the binary they run. Builds without the feature never read
+/// it.
+#[cfg(any(test, feature = "test-hooks"))]
 #[doc(hidden)]
 pub const FAKE_FREE_SPACE_ENV: &str = "FREEMAPPER_PRINT_TEST_FREE_SPACE";
 
@@ -51,9 +53,12 @@ pub const FAKE_FREE_SPACE_ENV: &str = "FREEMAPPER_PRINT_TEST_FREE_SPACE";
 /// [`DISK_RESERVE_BYTES`] free. If the free space cannot be determined, the check is skipped and a
 /// full disk is still caught while writing.
 pub fn write_pdf_file(path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
+    #[cfg(any(test, feature = "test-hooks"))]
     let fake = std::env::var(FAKE_FREE_SPACE_ENV)
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok());
+    #[cfg(not(any(test, feature = "test-hooks")))]
+    let fake: Option<u64> = None;
     write_checked(
         path,
         bytes,

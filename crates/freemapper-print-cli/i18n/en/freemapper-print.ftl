@@ -22,7 +22,7 @@ help-orientation = Page orientation. Auto picks the one that cuts off less of th
 help-kind = Map kind. Needed only when the program cannot tell it from freemapper.toml or the map file.
 help-show-sheet-objects = Also draw freemapper's information block: title, scale, scale bar and credits. It scales with the map at another print scale, so its scale text can be wrong then.
 init-about = Create the project file of an event for a map.
-init-after-content = The new file has one A4 layout at the map scale, a title block, a scale check bar and a proposed contour interval to confirm.
+init-after-content = The new file has one layout at the map scale, on A4 or else A3, whichever shows the map without notes, a title block, a scale check bar and a proposed contour interval to confirm. The map kind comes from --kind, from freemapper.toml next to the map, or from the map file.
 init-after-exit-codes = Exit codes: 0 on success, 1 when the map cannot be read, the map kind is unknown or the project file exists already, 2 when the command line is wrong.
 help-init-folder = Folder for the new freemapper-print.toml. Created if missing.
 help-init-map = The OOM map file (.omap). The project file stores its path relative to itself.
@@ -49,7 +49,7 @@ error-write = could not write the PDF
 error-load-project = could not load the project { $path }
 error-project-exists = { $path } exists already; init does not overwrite it
 error-create-folder = could not create the folder { $path }
-error-init-kind-unknown = no freemapper.toml next to the map names the map kind; pass --kind sprint, --kind schoolyard or --kind forest
+error-title-control = --title must not contain line breaks, tabs or other control or invisible formatting characters
 error-unknown-layout = the project has no layout { $id }; its layouts are { $known }
 error-out-dir-missing = the folder { $path } for the PDFs does not exist; create it first
 error-sheet = could not draw layout { $layout }
@@ -102,7 +102,8 @@ reminder-actual-size = Print at actual size: 100 %, with "fit to page" switched 
 
 ## Project commands: init, check, export
 
-init-written = Wrote { $path } with one A4 layout, { $layout }, at 1:{ $scale } for { $kind } maps.
+init-written = Wrote { $path } with one layout, { $layout }: { $paper }, passe-partout { $margin } mm, print scale 1:{ $scale }, for { $kind } maps.
+init-no-fit = No A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so the project keeps A4. check reports this:
 init-contour-hint = The project proposes a contour interval of { $value } m, common for { $kind } maps. Look it up on the map and confirm it, or change map.contour_interval_m.
 init-no-contour-hint = Schoolyard maps get no proposed contour interval. If the map has contours, set map.contour_interval_m; until then check reports it as missing.
 init-next = Run freemapper-print check { $path } next.

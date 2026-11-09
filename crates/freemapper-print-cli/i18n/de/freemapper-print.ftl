@@ -22,7 +22,7 @@ help-orientation = Ausrichtung der Seite: portrait (Hochformat) oder landscape (
 help-kind = Kartenart. Nur nötig, wenn das Programm sie weder aus freemapper.toml noch aus der Kartendatei erkennt.
 help-show-sheet-objects = Zeichnet auch den Informationsblock von freemapper: Titel, Maßstab, Maßstabsleiste und Namensnennung. Er skaliert mit der Karte, bei einem anderen Druckmaßstab kann sein Maßstabstext deshalb falsch sein.
 init-about = Legt die Projektdatei einer Veranstaltung für eine Karte an.
-init-after-content = Die neue Datei hat ein A4-Layout im Kartenmaßstab, einen Titelblock, eine Kontrollstrecke und einen Vorschlag für die Äquidistanz, den Sie prüfen und bestätigen.
+init-after-content = Die neue Datei hat ein Layout im Kartenmaßstab, auf A4 oder sonst A3, je nachdem, wo die Karte ohne Hinweise Platz findet, einen Titelblock, eine Kontrollstrecke und einen Vorschlag für die Äquidistanz, den Sie prüfen und bestätigen. Die Kartenart kommt aus --kind, aus der freemapper.toml neben der Karte oder aus der Kartendatei.
 init-after-exit-codes = Exit-Codes: 0 bei Erfolg, 1, wenn die Karte nicht gelesen werden kann, die Kartenart unbekannt ist oder die Projektdatei schon existiert, 2, wenn die Befehlszeile falsch ist.
 help-init-folder = Ordner für die neue freemapper-print.toml. Fehlt er, wird er angelegt.
 help-init-map = Die OOM-Kartendatei (.omap). Die Projektdatei speichert ihren Pfad relativ zu sich selbst.
@@ -40,20 +40,20 @@ help-out-dir = Ordner für die PDFs. Er muss existieren. Ohne Angabe gilt der Or
 
 error-line = Fehler: { $message }
 error-unknown-lang = unbekannte Sprache „{ $lang }“; verfügbar: { $available }
-error-read-map = die Karte { $path } konnte nicht gelesen werden
-error-kind-unknown = die Kartenart lässt sich aus der Datei nicht erkennen; --kind sprint, --kind schoolyard oder --kind forest angeben
-error-out-folder-missing = der Ordner { $path } für das PDF existiert nicht; zuerst anlegen
+error-read-map = Die Karte { $path } konnte nicht gelesen werden
+error-kind-unknown = Die Kartenart lässt sich aus der Datei nicht erkennen; --kind sprint, --kind schoolyard oder --kind forest angeben
+error-out-folder-missing = Der Ordner { $path } für das PDF existiert nicht; zuerst anlegen
 error-out-is-map = --out zeigt auf die Kartendatei { $path }; einen PDF-Pfad wählen, damit die Karte unversehrt bleibt
-error-print = die Karte konnte nicht gedruckt werden
-error-write = das PDF konnte nicht geschrieben werden
-error-load-project = das Projekt { $path } konnte nicht geladen werden
+error-print = Die Karte konnte nicht gedruckt werden
+error-write = Das PDF konnte nicht geschrieben werden
+error-load-project = Das Projekt { $path } konnte nicht geladen werden
 error-project-exists = { $path } gibt es schon; init überschreibt die Datei nicht
-error-create-folder = der Ordner { $path } konnte nicht angelegt werden
-error-init-kind-unknown = keine freemapper.toml neben der Karte nennt die Kartenart; --kind sprint, --kind schoolyard oder --kind forest angeben
-error-unknown-layout = das Projekt hat kein Layout { $id }; vorhanden sind { $known }
-error-out-dir-missing = der Ordner { $path } für die PDFs existiert nicht; zuerst anlegen
+error-create-folder = Der Ordner { $path } konnte nicht angelegt werden
+error-title-control = --title darf keine Zeilenumbrüche, Tabulatoren oder anderen Steuer- oder unsichtbaren Formatzeichen enthalten
+error-unknown-layout = Das Projekt hat kein Layout { $id }; vorhanden sind { $known }
+error-out-dir-missing = Der Ordner { $path } für die PDFs existiert nicht; zuerst anlegen
 error-sheet = Layout { $layout } konnte nicht gezeichnet werden
-error-disk-full = nicht genug Speicherplatz für { $path }: nötig sind { $needed } MB samt 50 MB Reserve, frei sind { $available } MB
+error-disk-full = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, frei sind { $available } MB
 error-write-file = { $path } konnte nicht geschrieben werden
 
 ## Hinweise und Warnungen nach dem Druck
@@ -74,8 +74,8 @@ hint-other-orientation = die andere Ausrichtung
 hint-scale-larger = einen Druckmaßstab mit größerer Zahl
 hint-scale-example = einen Druckmaßstab mit größerer Zahl, zum Beispiel 1:{ $next }
 hint-scale-example-non-standard = einen Druckmaßstab mit größerer Zahl, zum Beispiel 1:{ $next } (nicht normgerecht, nur fürs Training)
-warning-overflow = Warnung: die Karte passt nicht auf die Seite. Sie ist { $cut } für den bedruckbaren Bereich. Versuchen Sie { $hints } oder { $last }.
-warning-overflow-single = Warnung: die Karte passt nicht auf die Seite. Sie ist { $cut } für den bedruckbaren Bereich. Versuchen Sie { $last }.
+warning-overflow = Warnung: Die Karte passt nicht auf die Seite. Sie ist { $cut } für den bedruckbaren Bereich. Versuchen Sie { $hints } oder { $last }.
+warning-overflow-single = Warnung: Die Karte passt nicht auf die Seite. Sie ist { $cut } für den bedruckbaren Bereich. Versuchen Sie { $last }.
 note-skipped = Hinweis: { $count ->
         [one] 1 Objekt wird
        *[other] { $count } Objekte werden
@@ -96,20 +96,21 @@ note-dropped-pattern = Hinweis: { $count ->
         [one] 1 Objekt wird
        *[other] { $count } Objekte werden
     } ohne Flächenmuster gezeichnet, dessen Abstand unter 0,05 mm liegt oder keine Zahl ist.
-note-fonts = Hinweis: die Schrift Arimo ersetzt { $names }.
-note-missing-glyphs = Hinweis: die eingebettete Schrift kann diese Zeichen nicht darstellen, deshalb fehlen sie im PDF: { $chars }
+note-fonts = Hinweis: Die Schrift Arimo ersetzt { $names }.
+note-missing-glyphs = Hinweis: Die eingebettete Schrift kann diese Zeichen nicht darstellen, deshalb fehlen sie im PDF: { $chars }
 reminder-actual-size = In Originalgröße drucken: 100 % („Tatsächliche Größe“), „An Seite anpassen“ ausgeschaltet. Jede andere Größe zerstört den Maßstab.
 
 ## Projektbefehle: init, check, export
 
-init-written = { $path } geschrieben, mit einem A4-Layout { $layout } im Maßstab 1:{ $scale } für { $kind }.
+init-written = { $path } geschrieben, mit einem Layout { $layout }: { $paper }, Passepartout { $margin } mm, Druckmaßstab 1:{ $scale }, für { $kind }.
+init-no-fit = Weder auf A4 noch auf A3 zeigt ein Blatt die Karte im Maßstab 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt das Projekt bei A4. check meldet Folgendes:
 init-contour-hint = Das Projekt schlägt eine Äquidistanz von { $value } m vor, üblich für { $kind }. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
 init-no-contour-hint = Für Schulhofkarten schlägt das Projekt keine Äquidistanz vor. Hat die Karte Höhenlinien, tragen Sie map.contour_interval_m ein; bis dahin meldet check sie als fehlend.
 init-next = Als Nächstes freemapper-print check { $path } aufrufen.
 # Kommentare in der neuen Projektdatei.
 init-comment-contour = Vorschlag für { $kind }. An der Karte prüfen und bestätigen.
 init-comment-no-contour = Für Schulhofkarten gibt es keinen Vorschlag. Hat die Karte Höhenlinien, contour_interval_m mit der Äquidistanz in Metern ergänzen.
-init-comment-footer = Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt, wenn das Passepartout breit genug ist, sonst in ihm. Ein Element copyright_line oder credit_line verschiebt sie.
+init-comment-footer = Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt, wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder credit_line verschiebt sie.
 check-summary = Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.
 check-clean = { $count ->
         [one] 1 Layout
@@ -120,28 +121,28 @@ check-with-notes = Layouts mit Hinweisen: { $count } von { $total }.
 ## Blatthinweise
 
 list-and = { $first } und { $last }
-note-element-outside-page = Hinweis: das Element { $id } ragt über den Blattrand und wird dort abgeschnitten.
-note-footer-outside-page = Hinweis: die Fußzeile mit Quellenangaben und Namensnennung ragt über den Blattrand und wird dort abgeschnitten.
-note-element-overlaps-map = Hinweis: das Element { $id } hängt am Blatt und deckt einen Teil des Kartenausschnitts ab, die Karte darunter ist nicht zu sehen.
-note-footer-overlaps-map = Hinweis: das Passepartout ist zu schmal für die Fußzeile mit Quellenangaben und Namensnennung. Sie steht deshalb auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil der Karte ab. Ein breiteres margin_mm oder ein Element copyright_line oder credit_line verschiebt sie.
-note-larger-than-a3 = Hinweis: das Papier ist größer als A3, das nehmen die meisten Bürodrucker nicht.
-note-missing-scale-or-contour = Hinweis: im Layout { $layout } { $count ->
+note-element-outside-page = Hinweis: Das Element { $id } ragt über den Blattrand und wird dort abgeschnitten.
+note-footer-outside-page = Hinweis: Die Fußzeile mit Quellenangaben und Namensnennung ragt über den Blattrand und wird dort abgeschnitten.
+note-element-overlaps-map = Hinweis: Das Element { $id } hängt am Blatt und deckt einen Teil des Kartenausschnitts ab, die Karte darunter ist nicht zu sehen.
+note-footer-overlaps-map = Hinweis: Das Passepartout ist zu schmal für die Fußzeile mit Quellenangaben und Namensnennung. Sie steht deshalb auf einem weißen Kasten im Kartenausschnitt und deckt einen Teil der Karte ab. Ein breiteres margin_mm oder ein Element copyright_line oder credit_line verschiebt sie.
+note-larger-than-a3 = Hinweis: Das Papier ist größer als A3, das nehmen die meisten Bürodrucker nicht.
+note-missing-scale-or-contour = Hinweis: Im Layout { $layout } { $count ->
         [one] fehlt
        *[other] fehlen
     } { $missing }.
 missing-print-scale-text = ein Text mit { $name } für den Druckmaßstab
 missing-contour-text = ein Text mit { $name } für die Äquidistanz
 missing-contour-value = ein Wert für { $name }, die Äquidistanz in Metern
-note-north-lines-added = Hinweis: die Karte hat keine Nordlinien, deshalb { $count ->
+note-north-lines-added = Hinweis: Die Karte hat keine Nordlinien, deshalb { $count ->
         [one] wurde 1 Linie
        *[other] wurden { $count } Linien
     } ergänzt. Sie laufen ohne Unterbrechung über den Kartenausschnitt. Sie an kleinen Objekten wie Steinen oder Wegenden zu unterbrechen, ist Aufgabe des Kartografen in OOM.
-note-north-lines-without-symbol = Hinweis: die Karte hat weder Nordlinien noch ein brauchbares Liniensymbol 601, deshalb { $count ->
+note-north-lines-without-symbol = Hinweis: Die Karte hat weder Nordlinien noch ein brauchbares Liniensymbol 601, deshalb { $count ->
         [one] wurde 1 schlichte schwarze Linie
        *[other] wurden { $count } schlichte schwarze Linien
     } über die Karte gezeichnet.
 note-copyright-truncated = Hinweis: Layout { $layout } zeigt { $shown } von { $total } Quellenangaben. Eine weitere Zeile zählt die übrigen.
-note-logo-skipped = Hinweis: das Logo { $id } fehlt auf dem Blatt: { $reason }
-note-logo-simplified = Hinweis: das Logo { $id } wird vereinfacht gezeichnet: { $reason }
-note-unknown-placeholder = Hinweis: der Text { $id } enthält { $name }. Das ist kein Platzhalter und wird so gedruckt, wie es dasteht.
+note-logo-skipped = Hinweis: Das Logo { $id } fehlt auf dem Blatt: { $reason }
+note-logo-simplified = Hinweis: Das Logo { $id } wird vereinfacht gezeichnet: { $reason }
+note-unknown-placeholder = Hinweis: Der Text { $id } enthält { $name }. Das ist kein Platzhalter und wird so gedruckt, wie es dasteht.
 note-unknown-part = Hinweis: Layout { $layout } blendet den Kartenteil { $name } aus, die Karte hat aber keinen Teil dieses Namens. Groß- und Kleinschreibung zählt.

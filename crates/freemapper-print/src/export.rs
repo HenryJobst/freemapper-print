@@ -134,6 +134,7 @@ struct TrackedPage {
 impl TrackedPage {
     fn new(page: RenderedPage) -> Self {
         let items = page.primitives.len() + page.sheet.len();
+        #[cfg(any(test, feature = "test-hooks"))]
         live_pages::add(items);
         TrackedPage { page, items }
     }
@@ -141,12 +142,16 @@ impl TrackedPage {
 
 impl Drop for TrackedPage {
     fn drop(&mut self) {
+        #[cfg(any(test, feature = "test-hooks"))]
         live_pages::remove(self.items);
+        #[cfg(not(any(test, feature = "test-hooks")))]
+        let _ = self.items;
     }
 }
 
-/// Test hook: how many rendered pages [`sheet_pdf`] holds on this thread, and the most at once.
-/// The counts are per thread, so tests running side by side do not mix.
+/// Test hook (feature `test-hooks`): how many rendered pages [`sheet_pdf`] holds on this thread,
+/// and the most at once. The counts are per thread, so tests running side by side do not mix.
+#[cfg(any(test, feature = "test-hooks"))]
 #[doc(hidden)]
 pub mod live_pages {
     use std::cell::Cell;

@@ -543,6 +543,12 @@ fn file_name_problem(id: &str) -> Option<&'static str> {
         Some(
             "must not start with a dot, end with a dot or start or end with a space, because it names the PDF file",
         )
+    } else if id.chars().any(|c| ('\u{300}'..='\u{36f}').contains(&c)) {
+        // Without NFC normalisation, `é` as e plus a combining accent would not clash with the
+        // one-character `é` in the case check, though macOS treats both names as one file.
+        Some(
+            "contains a combining accent; write the accented letter as one character, because it names the PDF file",
+        )
     } else if RESERVED.contains(&id.to_lowercase().as_str()) {
         Some("is a device name on Windows and cannot name the PDF file")
     } else if id.len() > 200 {
@@ -685,7 +691,12 @@ pub fn save_new_with_comments(
         "# freemapper-print event project file, format {FORMAT}"
     );
     let _ = writeln!(text, "# Paths are relative to this file.\n");
-    text.push_str(&add_comments(&body, comments));
+    // The comment scanner reads the serializer's output line by line. A multi-line string (a
+    // title with a line break) could fool it into putting a comment inside the string, so the
+    // result must read back as the same project; otherwise the file goes without comments.
+    let commented = add_comments(&body, comments);
+    let same = toml::from_str::<Project>(&commented).is_ok_and(|back| &back == project);
+    text.push_str(if same { &commented } else { &body });
     use std::io::Write as _;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
@@ -705,8 +716,9 @@ pub fn save_new_with_comments(
         .map_err(|source| ProjectError::Io { file, source })
 }
 
-/// `to` relative to the directory `from`, both absolute: `../maps/m.omap`. `to` itself when the
-/// two share no root (another drive on Windows).
+/// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
+/// parts on every system, so that the project file moves between Windows, macOS and Linux. `to`
+/// itself when the two share no root (another drive on Windows).
 pub fn relative_path(from: &Path, to: &Path) -> PathBuf {
     let from: Vec<_> = from.components().collect();
     let to_parts: Vec<_> = to.components().collect();
@@ -718,22 +730,28 @@ pub fn relative_path(from: &Path, to: &Path) -> PathBuf {
     if common == 0 {
         return to.to_path_buf();
     }
-    let mut rel = PathBuf::new();
-    for _ in common..from.len() {
-        rel.push("..");
-    }
-    for part in &to_parts[common..] {
-        rel.push(part);
-    }
-    rel
+    let parts: Vec<String> = std::iter::repeat_n("..".to_string(), from.len() - common)
+        .chain(
+            to_parts[common..]
+                .iter()
+                .map(|p| p.as_os_str().to_string_lossy().into_owned()),
+        )
+        .collect();
+    PathBuf::from(parts.join("/"))
 }
 
-/// The id of the layout [`starter`] writes.
-pub const STARTER_LAYOUT_ID: &str = "a4";
+/// The layout id for `paper`: `a4`, `a3`.
+pub fn starter_layout_id(paper: Paper) -> &'static str {
+    match paper {
+        Paper::A4 => "a4",
+        Paper::A3 => "a3",
+    }
+}
 
-/// The project `init` writes: `title`, the map at `map` (relative to the project file) of `kind`,
-/// the contour interval [`MapKind::proposed_contour_interval_m`] proposes, and one A4 layout at
-/// the map scale `map_scale` with two shared elements. The title block, with a white box in the
+/// The project `init` starts from: `title`, the map at `map` (relative to the project file) of
+/// `kind`, the contour interval [`MapKind::proposed_contour_interval_m`] proposes, and one A4
+/// layout at the map scale `map_scale` with two shared elements; [`fit_starter`] then picks paper
+/// and passe-partout. The title block, with a white box in the
 /// top-left corner of the map frame, shows the event and `1:{print_scale} · {contour_interval}`.
 /// The scale check bar sits in the bottom-right corner of the frame. The copyright and credit
 /// lines are left to the default footer, which moves inside the frame when the passe-partout is
@@ -787,7 +805,7 @@ pub fn starter(
             ),
         ],
         layouts: vec![LayoutSpec {
-            id: STARTER_LAYOUT_ID.into(),
+            id: starter_layout_id(Paper::A4).into(),
             paper: Paper::A4,
             orientation: Orientation::Auto,
             print_scale: Some(map_scale),
@@ -798,6 +816,80 @@ pub fn starter(
             hide_shared: vec![],
         }],
     }
+}
+
+/// Widest passe-partout (mm) [`fit_starter`] tries to make room for the footer.
+const MAX_STARTER_MARGIN_MM: u32 = 25;
+
+/// Whether the starter sheet in `report` is ready: no note but added north lines, and the missing
+/// contour interval value when the starter proposes none (schoolyard).
+fn starter_is_clean(project: &Project, report: &crate::sheet::SheetReport) -> bool {
+    use crate::sheet::SheetNote;
+    !report.print.has_notes()
+        && report.notes.iter().all(|n| match n {
+            SheetNote::NorthLinesAdded { .. } => true,
+            SheetNote::MissingScaleOrContour { missing, .. } => {
+                project.map.contour_interval_m.is_none()
+                    && missing.iter().all(|m| m == "map.contour_interval_m")
+            }
+            _ => false,
+        })
+}
+
+/// Whether every note that keeps `report` from being clean is about the default footer, so a
+/// wider passe-partout could help.
+fn only_footer_in_the_way(project: &Project, report: &crate::sheet::SheetReport) -> bool {
+    use crate::sheet::{FOOTER_ID, SheetNote};
+    let mut rest = report.clone();
+    rest.notes.retain(|n| {
+        !matches!(n,
+            SheetNote::ElementOverlapsMap { id } | SheetNote::ElementOutsidePage { id }
+                if id == FOOTER_ID)
+    });
+    rest.notes.len() < report.notes.len() && starter_is_clean(project, &rest)
+}
+
+/// The starter on the first sheet that shows `map` without notes (only added north lines and,
+/// for schoolyard maps, the contour interval left to the user may remain): A4 with the default
+/// 8 mm passe-partout, A4 with a passe-partout wide enough for the footer below the map frame
+/// (tried in 1 mm steps up to 25 mm), then A3 the same way; always with auto orientation and
+/// through the same drawing as `check`. `dir` is the project folder. The second value is false
+/// when no candidate fits: the project then keeps A4 with 8 mm, and `check` will list its notes.
+pub fn fit_starter(
+    starter: Project,
+    dir: &Path,
+    map: &crate::omap::MapDocument,
+) -> (Project, bool) {
+    let mut candidate = LoadedProject {
+        path: dir.join(FILE_NAME),
+        dir: dir.to_path_buf(),
+        project: starter,
+    };
+    for paper in [Paper::A4, Paper::A3] {
+        for margin in 8..=MAX_STARTER_MARGIN_MM {
+            let layout = &mut candidate.project.layouts[0];
+            layout.id = starter_layout_id(paper).into();
+            layout.paper = paper;
+            layout.orientation = Orientation::Auto;
+            layout.map_frame.margin_mm = f64::from(margin);
+            let layout = candidate.project.layouts[0].clone();
+            let Ok((_, report)) = crate::export::sheet_pdf(&candidate, map, &layout) else {
+                break;
+            };
+            if starter_is_clean(&candidate.project, &report) {
+                return (candidate.project, true);
+            }
+            // A wider passe-partout only shrinks the frame, so it helps the footer alone.
+            if !only_footer_in_the_way(&candidate.project, &report) {
+                break;
+            }
+        }
+    }
+    let layout = &mut candidate.project.layouts[0];
+    layout.id = starter_layout_id(Paper::A4).into();
+    layout.paper = Paper::A4;
+    layout.map_frame.margin_mm = MapFrameSpec::default().margin_mm;
+    (candidate.project, false)
 }
 
 #[cfg(test)]
@@ -1145,7 +1237,8 @@ mod tests {
     #[test]
     fn layout_id_must_name_a_file() {
         for id in [
-            "a/b", "a\\\\b", "..", ".hidden", "end.", " a", "a:b", "x*", "CON", "lpt1", "a\\u0001",
+            "a/b", "a\\\\b", "e\u{301}", "..", ".hidden", "end.", " a", "a:b", "x*", "CON", "lpt1",
+            "a\\u0001",
         ] {
             let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"{id}\"\n"));
             let msg = load(&path).unwrap_err().to_string();
@@ -1158,6 +1251,80 @@ mod tests {
             let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"{id}\"\n"));
             assert!(load(&path).is_ok(), "{id}");
         }
+    }
+
+    #[test]
+    fn comments_that_would_break_the_file_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("m.omap"), "x").unwrap();
+        let path = dir.path().join(FILE_NAME);
+        // A title whose lines look like a table header and a key fools the line scanner.
+        let p = starter(
+            "Lauf\n[map]\ncontour_interval_m = 9",
+            "m.omap".into(),
+            MapKind::Sprint,
+            4000,
+            SheetLang::De,
+        );
+        let comments = [KeyComment {
+            table: "map",
+            key: Some("contour_interval_m"),
+            text: "confirm",
+        }];
+        save_new_with_comments(&path, &p, &comments).unwrap();
+        assert_eq!(load(&path).unwrap().project, p);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("# confirm"), "{text}");
+        // A plain title keeps the comment.
+        std::fs::remove_file(&path).unwrap();
+        let p = starter(
+            "Lauf",
+            "m.omap".into(),
+            MapKind::Sprint,
+            4000,
+            SheetLang::De,
+        );
+        save_new_with_comments(&path, &p, &comments).unwrap();
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("# confirm")
+        );
+    }
+
+    #[test]
+    fn starter_fits_luebeck_on_a3() {
+        let map_path = fixture_dir().join("../../maps/luebeck.omap");
+        let map = crate::omap::read::read_map_file(&map_path).unwrap();
+        let p = starter("T", map_path.clone(), MapKind::Sprint, 4000, SheetLang::De);
+        let (fitted, fits) = fit_starter(p, &fixture_dir(), &map);
+        assert!(fits);
+        let l = &fitted.layouts[0];
+        assert_eq!((l.id.as_str(), l.paper), ("a3", Paper::A3));
+        assert!(l.map_frame.margin_mm > 8.0, "{}", l.map_frame.margin_mm);
+        // The forest sample fits A4 as it is.
+        let map_path = fixture_dir().join("../../maps/forest-sample.omap");
+        let map = crate::omap::read::read_map_file(&map_path).unwrap();
+        let p = starter("T", map_path, MapKind::Forest, 10000, SheetLang::De);
+        let (fitted, fits) = fit_starter(p, &fixture_dir(), &map);
+        assert!(fits);
+        let l = &fitted.layouts[0];
+        assert_eq!((l.paper, l.map_frame.margin_mm), (Paper::A4, 8.0));
+    }
+
+    #[test]
+    fn starter_without_fit_keeps_a4() {
+        let map_path = fixture_dir().join("../../maps/luebeck.omap");
+        let map = crate::omap::read::read_map_file(&map_path).unwrap();
+        // 1:5000 is no standard sprint scale: a note on every paper.
+        let p = starter("T", map_path, MapKind::Sprint, 5000, SheetLang::De);
+        let (fitted, fits) = fit_starter(p, &fixture_dir(), &map);
+        assert!(!fits);
+        let l = &fitted.layouts[0];
+        assert_eq!(
+            (l.id.as_str(), l.paper, l.map_frame.margin_mm),
+            ("a4", Paper::A4, 8.0)
+        );
     }
 
     #[test]
@@ -1194,6 +1361,9 @@ mod tests {
         );
         assert_eq!(rel("/x/event", "/x/event/m.omap"), Path::new("m.omap"));
         assert_eq!(rel("/x/a/b", "/y/m.omap"), Path::new("../../../y/m.omap"));
+        // `/` on every system, also where the native separator is `\`.
+        let text = rel("/x/event", "/x/maps/sub/m.omap");
+        assert_eq!(text.to_str(), Some("../maps/sub/m.omap"));
     }
 
     #[test]
@@ -1245,7 +1415,7 @@ mod tests {
         assert!(text.contains("kind = \"schoolyard\"\n# set it\n"), "{text}");
         let loaded = load(&path).unwrap();
         assert_eq!(loaded.project, p);
-        assert_eq!(loaded.project.layouts[0].id, STARTER_LAYOUT_ID);
+        assert_eq!(loaded.project.layouts[0].id, "a4");
         assert_eq!(loaded.project.layouts[0].print_scale, Some(1000));
     }
 

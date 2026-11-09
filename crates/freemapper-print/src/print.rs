@@ -129,6 +129,22 @@ pub struct PrintReport {
     pub missing_glyphs: Vec<char>,
 }
 
+impl PrintReport {
+    /// Whether the report has anything to tell beyond the scales and factors: a non-standard
+    /// scale, overflow, objects left out or cut, replaced fonts or missing glyphs.
+    pub fn has_notes(&self) -> bool {
+        self.non_standard_scale
+            || self.overflow_mm.is_some_and(|(x, y)| x > 0.0 || y > 0.0)
+            || self.skipped_objects > 0
+            || self.unknown_type_objects > 0
+            || self.truncated_objects > 0
+            || self.objects_not_drawn_page_limit > 0
+            || self.dropped_pattern_objects > 0
+            || !self.substituted_fonts.is_empty()
+            || !self.missing_glyphs.is_empty()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PrintError {
     #[error(transparent)]
