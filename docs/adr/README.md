@@ -80,3 +80,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0037](0037-control-description-box.md) | Control description box | Accepted | 2026-11-09 |
 | [0038](0038-number-positions-and-the-placement-module.md) | Number positions and the placement module | Accepted | 2026-11-09 |
 | [0039](0039-module-boundaries-for-freemapper-core.md) | Module boundaries for freemapper-core | Accepted | 2026-11-09 |
+| [0040](0040-m3-closing-rulings.md) | M3 closing rulings: German state names and the slow probe | Accepted | 2026-11-09 |

@@ -24,6 +24,13 @@ Pen's code (`EventDB.cs`, `petergolde/PurplePen` at `201417f9`) defines it; not 
   as a whole: `MAX_TOTAL_POINTS` points and `MAX_TOTAL_TEXT_BYTES` of codes and names, besides the ADR 0019
   limits and `MAX_CODE_LEN`/`MAX_NAME_LEN` per string (both readers).
 
+## Addendum: IOF XML variants and alternatives (ruling R5)
+
+- Each IOF `Course` prints as its own sheet, because relay variants are real courses. Courses that share a
+  `CourseFamily` get the Info note `Forked(family, variants)`; nothing is merged.
+- A `CourseControl` with several `Control` children (alternative controls) leaves its course out with the
+  note `AlternativeControls(course)`. Alternatives stay unsupported until someone asks for them.
+
 ## Consequences
 
 Forked `.ppen` events need the IOF XML export. The renderer turns circle gaps with the fit's axis, draws a

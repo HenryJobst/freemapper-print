@@ -26,7 +26,8 @@ profiles. `course::load` read the project file and called `numbers::changed_base
 - Unit tests in `lib.rs` read the source files and fail on a forbidden path: `course/` must not name
   `crate::project`, `courses`, `sheet`, `numbers`, `export`, `render`, `overprint`, `placement`, `describe` or
   `print`; `render/` must not name `crate::overprint`, `sheet`, `project`, `course`, `courses`, `numbers`,
-  `export`, `describe` or `print`. The test of `placement` (ADR 0038) stays as it is.
+  `export`, `describe` or `print`. The test of `placement` (ADR 0038) stays as it is. The check also sees grouped imports (`crate::{project::P}`,
+  nested groups too) and `super::super::<module>` paths that name a forbidden module.
 
 ## Consequences
 
