@@ -297,12 +297,21 @@ fn project_file(arg: &Path) -> PathBuf {
 
 fn load_project(texts: &Texts, arg: &Path) -> anyhow::Result<LoadedProject> {
     let path = project_file(arg);
-    project::load(&path).with_context(|| {
-        texts.get(
-            "error-load-project",
-            Some(&args!("path" => path.display().to_string())),
-        )
-    })
+    project::load(&path)
+        .map_err(|err| match err {
+            // A rule of this program rather than a typo, so it is said in the user's language (ADR 0044).
+            project::ProjectError::BasePartHidden { file, field } => anyhow!(texts.get(
+                "error-base-part-hidden",
+                Some(&args!("path" => file, "field" => field)),
+            )),
+            other => anyhow::Error::new(other),
+        })
+        .with_context(|| {
+            texts.get(
+                "error-load-project",
+                Some(&args!("path" => path.display().to_string())),
+            )
+        })
 }
 
 /// Metres with the decimal separator of the language and no needless `.0`: `2.5`, `5`.

@@ -247,6 +247,15 @@ the map part holding the map's own north lines with `hide_parts` gets no added o
 name the map does not have gives a note. freemapper's information block (title, scale, scale bar) never prints
 on a layout's sheet; the sheet elements take its place.
 
+### The base area of sprint maps
+
+Newer sprint maps from freemapper lie on a base area: one area in the colour "walkable area", a light brown like
+that of paved areas, in the map part `base`. It belongs to the map and always prints, cut at the map frame. It
+cannot be switched off, and the program refuses `hide_parts = ["base"]` with an error. As it reaches a little beyond
+the map, it does not count for the centre of the map frame, the overflow, the added north lines or the placement
+of control numbers. Print such maps in colour: in greyscale the light brown is hard to tell from paper white and
+from paved areas. Schoolyard maps have no base area.
+
 ## 7. Title, logos and other sheet elements
 
 Sheet elements stand on the sheet but are not part of the map. Shared elements go under `[[shared]]` and appear
@@ -842,7 +851,8 @@ a line that starts with "Info:" does not.
 
 Errors in the project file stop `check` and `export`. The message names file, line and column and the key, for
 example ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm` ``. For a
-missing key the line is that of the table it belongs in. These messages are in English for now.
+missing key the line is that of the table it belongs in. These messages are in English for now, except the one
+about `hide_parts = ["base"]` (see "The base area of sprint maps" in chapter 6), which comes in German too.
 
 ### Notes about courses
 

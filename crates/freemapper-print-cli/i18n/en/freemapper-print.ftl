@@ -48,6 +48,7 @@ error-out-folder-missing = the folder { $path } for the PDF does not exist; crea
 error-out-is-map = --out points at the map file { $path }; choose a PDF path so the map stays safe
 error-print = could not print the map
 error-load-project = could not load the project { $path }
+error-base-part-hidden = { $path }: field `{ $field }`: the map part "base" is the base area of a sprint map (walkable area) and is always printed; remove "base" from hide_parts
 error-project-exists = { $path } exists already; init does not overwrite it
 error-create-folder = could not create the folder { $path }
 error-title-control = --title must not contain line breaks, tabs or other control or invisible formatting characters

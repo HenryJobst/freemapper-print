@@ -256,6 +256,16 @@ Nordlinien der Karte liegen, ergänzt das Programm keine.
 zählt. Ein Name, den die Karte nicht hat, gibt einen Hinweis. Den Informationsblock von freemapper (Titel,
 Maßstab, Maßstabsleiste) druckt ein Layout ohnehin nie, die Blattelemente treten an seine Stelle.
 
+### Die Grundfläche von Sprintkarten
+
+Neuere Sprintkarten von freemapper liegen auf einer Grundfläche: einer Fläche in der Farbe „belaufbare Fläche“,
+einem hellen Braun wie bei befestigten Flächen, im Kartenteil `base`. Sie gehört zur Karte und wird immer
+gedruckt, beschnitten am Kartenausschnitt. Abschalten lässt sie sich nicht, `hide_parts = ["base"]` lehnt das
+Programm mit einer Fehlermeldung ab. Weil sie etwas über die Karte hinausreicht, zählt sie nicht für die Mitte des
+Kartenausschnitts, den Überstand, die ergänzten Nordlinien und die Lage der Postennummern. Drucken Sie solche
+Karten farbig: In Graustufen ist das helle Braun kaum von Papierweiß und von befestigten Flächen zu
+unterscheiden. Schulhofkarten haben keine Grundfläche.
+
 ## 7. Titel, Logos und andere Blattelemente
 
 Blattelemente stehen auf dem Blatt, gehören aber nicht zur Karte. Gemeinsame Elemente stehen unter
@@ -881,7 +891,8 @@ Exit-Code 1 enden; eine Zeile, die mit „Zur Information:“ beginnt, nicht.
 Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Datei, Zeile, Spalte und den
 Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm`
 ``. Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört. Diese Texte kommen aus der Bibliothek
-und sind vorerst Englisch.
+und sind vorerst Englisch. Nur die Meldung zu `hide_parts = ["base"]` (siehe „Die Grundfläche von Sprintkarten“ in
+Kapitel 6) kommt schon auf Deutsch.
 
 ### Hinweise zu den Bahnen
 

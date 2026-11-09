@@ -27,6 +27,14 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   than an hour from the project's `out` folder.
 - A missing `--out-dir` is still reported as before (the folder must exist).
 
+### Added
+
+- The base area of newer freemapper sprint maps: one area in the colour "walkable area" in the map part `base`,
+  under the whole map. freemapper-print always prints it, cut at the map frame. It does not count for the centre
+  of the map frame, the overflow, the added north lines or the placement of control numbers, because it reaches
+  beyond the map. The program refuses `hide_parts = ["base"]` with a message in German or English (ADR 0044).
+  Print such maps in colour: in greyscale the light brown is hard to tell from paper white and paved areas.
+
 ## [0.3.0] - 2026-11-09
 
 ### Added

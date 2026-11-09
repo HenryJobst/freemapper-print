@@ -420,6 +420,13 @@ pub enum ProjectError {
         field: String,
         id: String,
     },
+    /// `hide_parts` names the part `base`, the walkable area under a sprint map, which is always printed (ADR
+    /// 0044). Its own variant, so that the program can say it in the user's language.
+    #[error(
+        "{file}: field `{field}`: the map part \"base\" is the base area of a sprint map (walkable area) and \
+         is always printed; remove \"base\" from hide_parts"
+    )]
+    BasePartHidden { file: String, field: String },
     #[error("{file}: field `sources.map`: the map file {map} does not exist")]
     MissingMap { file: String, map: String },
     #[error("{file}: field `layouts`: the project needs at least one layout")]
@@ -526,6 +533,10 @@ fn with_line(err: ProjectError, text: &str) -> ProjectError {
             file: located(file, &field),
             field,
             id,
+        },
+        ProjectError::BasePartHidden { file, field } => ProjectError::BasePartHidden {
+            file: located(file, &field),
+            field,
         },
         ProjectError::MissingMap { file, map } => ProjectError::MissingMap {
             file: located(file, "sources.map"),
@@ -973,6 +984,16 @@ fn file_name_problem(id: &str) -> Option<&'static str> {
 
 fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError> {
     non_empty(file, format!("layouts[{i}].id"), &l.id)?;
+    if let Some(j) = l
+        .hide_parts
+        .iter()
+        .position(|p| p == crate::print::BASE_PART)
+    {
+        return Err(ProjectError::BasePartHidden {
+            file: file.to_string(),
+            field: format!("layouts[{i}].hide_parts[{j}]"),
+        });
+    }
     if let Some(problem) = file_name_problem(&l.id) {
         return Err(invalid(file, format!("layouts[{i}].id"), problem));
     }
@@ -1785,6 +1806,29 @@ mod tests {
             msg.contains("hide_shared[0]") && msg.contains("nope"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn base_part_cannot_be_hidden() {
+        // The walkable area under a sprint map is always printed (ADR 0044); the error points at the name in line 13.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n[[layouts]]\nid = \"b\"\nhide_parts = [\"peripheral information\", \"base\"]\n"
+        ));
+        let err = load(&path).unwrap_err();
+        assert!(
+            matches!(&err, ProjectError::BasePartHidden { file, field }
+                if file.ends_with(&format!("{FILE_NAME}:13:41"))
+                    && field == "layouts[1].hide_parts[1]"),
+            "{err:?}"
+        );
+        assert!(err.to_string().contains("always printed"), "{err}");
+        // Other parts, and a part whose name only resembles it, stay hideable.
+        for parts in ["[\"peripheral information\"]", "[\"Base\", \"base 2\"]"] {
+            let (_d, path) = temp_project(&format!(
+                "{HEAD}\n[[layouts]]\nid = \"a\"\nhide_parts = {parts}\n"
+            ));
+            assert!(load(&path).is_ok(), "{parts}");
+        }
     }
 
     /// Loads a project with one shared element given as TOML lines and one layout; returns the error text.

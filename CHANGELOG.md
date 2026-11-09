@@ -28,6 +28,15 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   `out`-Ordner des Projekts, die älter als eine Stunde sind.
 - Ein fehlender `--out-dir` wird wie bisher gemeldet (der Ordner muss vorher existieren).
 
+### Hinzugefügt
+
+- Die Grundfläche neuerer Sprintkarten von freemapper: eine Fläche in der Farbe „belaufbare Fläche“ im Kartenteil
+  `base` unter der ganzen Karte. freemapper-print druckt sie immer mit, beschnitten am Kartenausschnitt. Für die
+  Mitte des Kartenausschnitts, den Überstand, die ergänzten Nordlinien und die Lage der Postennummern zählt sie
+  nicht, denn sie reicht über die Karte hinaus. `hide_parts = ["base"]` lehnt das Programm ab, mit einer Meldung
+  auf Deutsch oder Englisch (ADR 0044). Solche Karten farbig drucken: In Graustufen ist das helle Braun kaum von
+  Papierweiß und befestigten Flächen zu unterscheiden.
+
 ## [0.3.0] - 2026-11-09
 
 ### Hinzugefügt

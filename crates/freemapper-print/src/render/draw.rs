@@ -91,6 +91,10 @@ pub struct Primitive {
     pub class: SymbolClass,
     /// Drawn by a magnetic north line (symbol 601 or 601.x), which never counts as covered map detail.
     pub north_line: bool,
+    /// Drawn by the base area under a sprint map (the tag `freemapper:source=base`). It is painted like any
+    /// other primitive but stays out of the box the map paints in, so it moves neither the page centre nor the
+    /// overflow nor the north lines, and it never counts as covered map detail.
+    pub base: bool,
     /// Index of the map object that drew it among the objects of its page, so that the primitives of one
     /// object can count once.
     pub object: u32,
@@ -99,14 +103,15 @@ pub struct Primitive {
 }
 
 impl Primitive {
-    /// A primitive of class [`SymbolClass::Area`], not a north line, object 0 and symbol 0. The drawing code sets the
-    /// class, the page the rest.
+    /// A primitive of class [`SymbolClass::Area`], neither a north line nor the base area, object 0 and symbol 0.
+    /// The drawing code sets the class, the page the rest.
     pub fn new(priority: i32, shape: Shape) -> Self {
         Primitive {
             priority,
             shape,
             class: SymbolClass::Area,
             north_line: false,
+            base: false,
             object: 0,
             symbol: 0,
         }

@@ -42,6 +42,14 @@ pub const MAX_UNITS_PER_PAGE: usize = 500_000;
 /// The tag freemapper puts on the objects of a map's peripheral information.
 const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
 
+/// The tag freemapper puts on the base area of a sprint map (ADR 0044, freemapper ADR 0069): one area in the
+/// colour "walkable area" under the whole map. It is always drawn and never counts for the page centre, the
+/// overflow or the north-line bounds.
+pub(crate) const BASE_TAG: (&str, &str) = ("freemapper:source", "base");
+
+/// The map part freemapper puts the base area in. A layout cannot hide it (ADR 0044).
+pub const BASE_PART: &str = "base";
+
 /// Micrometres (OOM map units) per millimetre.
 const UM_PER_MM: f64 = 1000.0;
 
@@ -80,7 +88,8 @@ pub struct PrintOptions {
     pub paper: Paper,
     pub orientation: Orientation,
     /// The map point (in the file's map coordinates) that lands at the centre of the page; `None`
-    /// takes the centre of the box everything drawn paints in. A point far outside the map moves
+    /// takes the centre of the box everything drawn paints in, the base area of a sprint map left
+    /// out (ADR 0044). A point far outside the map moves
     /// the map off the page: the overflow then counts from the page edge to the far side of the
     /// map and can exceed the map's own size.
     pub centre: Option<MapCoord>,
@@ -108,8 +117,8 @@ pub struct PrintReport {
     /// scale): the symbols keep their base size, and the print is meant for training only.
     pub non_standard_scale: bool,
     /// How far (mm) the box the drawn primitives paint in (line widths, symbols and texts
-    /// included) reaches beyond the clip rectangle in x and in y, both sides together; `None`
-    /// when everything fits.
+    /// included, the base area of a sprint map not) reaches beyond the clip rectangle in x and in
+    /// y, both sides together; `None` when everything fits.
     pub overflow_mm: Option<(f64, f64)>,
     /// Objects not drawn because their symbol is unknown or hidden (`is_hidden` in the file).
     /// Sheet objects left out by [`PrintOptions::show_sheet_objects`] do not count.
@@ -212,8 +221,10 @@ fn render_page_within(
         }
         let mut drawn = primitives_within(object, &symbols, page_left.min(MAX_UNITS_PER_OBJECT));
         let north_line = is_north_line(&map.symbol_set, object);
+        let base = is_base_object(object);
         for p in &mut drawn.primitives {
             p.north_line = north_line;
+            p.base = base;
             p.object = u32::try_from(index).unwrap_or(u32::MAX);
             p.symbol = object.symbol_id;
         }
@@ -235,6 +246,7 @@ fn render_page_within(
     // objects keep their order within a colour.
     primitives.sort_by_key(|p| std::cmp::Reverse(p.priority));
 
+    // The base area stays out of the bounds: it is the map plus a margin (ADR 0044).
     let bounds = painted_bounds(&primitives);
     let centre = match (options.centre, bounds) {
         (Some(c), _) => (
@@ -321,10 +333,16 @@ fn render_symbols(set: &SymbolSet, factor: f64) -> Result<RenderSymbols, OmapErr
 }
 
 fn is_sheet_object(object: &MapObject) -> bool {
-    object
-        .tags
-        .iter()
-        .any(|(k, v)| k == SHEET_TAG.0 && v == SHEET_TAG.1)
+    has_tag(object, SHEET_TAG)
+}
+
+/// Part of freemapper's base area, by its tag (ADR 0044).
+fn is_base_object(object: &MapObject) -> bool {
+    has_tag(object, BASE_TAG)
+}
+
+fn has_tag(object: &MapObject, (key, value): (&str, &str)) -> bool {
+    object.tags.iter().any(|(k, v)| k == key && v == value)
 }
 
 /// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
@@ -484,6 +502,7 @@ fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
 mod tests {
     use super::*;
     use crate::omap::{MapGeoref, MapPart};
+    use crate::render::bounds::shape_bounds;
     use crate::render::draw::FillRule;
 
     fn map(scale: u32, set: SymbolSet, objects: Vec<MapObject>) -> MapDocument {
@@ -1298,5 +1317,163 @@ mod tests {
                 rule: FillRule::EvenOdd,
             }
         );
+    }
+
+    // --- The base area of sprint maps (ADR 0044) ---
+
+    /// A small sprint map near the origin on the walkable-area palette: an edge line from (0, 0) to `to`
+    /// and a building, with freemapper's base rectangle when `base` is set. The rectangle is far larger
+    /// than the map and lies off-centre, so it would move the centre and the overflow if it counted.
+    fn sprint_map(to: (i32, i32), base: bool) -> MapDocument {
+        let set = base_fixture::sprint_set();
+        let building = area(set.id_for_code("521").unwrap(), 20_000, 10_000);
+        let mut doc = map(
+            4000,
+            set.clone(),
+            vec![line(set.id_for_code("501.1").unwrap(), to), building],
+        );
+        if base {
+            let part = base_fixture::base_part(&set, (-900_000, -300_000), (400_000, 700_000));
+            doc.parts.insert(0, part);
+        }
+        doc
+    }
+
+    #[test]
+    fn base_area_does_not_move_the_page_centre() {
+        for (to, orientation) in [
+            ((60_000, 40_000), Orientation::Auto),
+            // 250 mm wide: overflows a portrait A4 by 50.1 mm, and only by that.
+            ((250_000, 150_000), Orientation::Portrait),
+        ] {
+            let plain = render(&sprint_map(to, false), &options(orientation));
+            let based = render(&sprint_map(to, true), &options(orientation));
+            assert_eq!(based.0.centre_mm, plain.0.centre_mm);
+            assert_eq!(based.0.page_mm, plain.0.page_mm);
+            assert_eq!(based.0.clip, plain.0.clip);
+            assert_eq!(based.1.overflow_mm, plain.1.overflow_mm);
+        }
+        let (_, report) = render(
+            &sprint_map((250_000, 150_000), true),
+            &options(Orientation::Portrait),
+        );
+        // The line's 250 mm and its stroke ends on 200 mm of frame; the base area adds nothing.
+        let (dx, dy) = report.overflow_mm.unwrap();
+        assert!((50.0..50.2).contains(&dx) && dy == 0.0, "{dx} {dy}");
+    }
+
+    #[test]
+    fn base_area_does_not_count_under_the_footer() {
+        // The footer sits in the bottom-left corner of the frame, on the base area but off the map.
+        let footer_notes = |base: bool| {
+            let mut doc = sprint_map((60_000, 40_000), base);
+            doc.notes = "© Test".into();
+            render_with_footer(&doc, &options(Orientation::Portrait), SheetLang::En)
+                .unwrap()
+                .2
+        };
+        assert_eq!(footer_notes(true), footer_notes(false));
+        assert!(
+            !footer_notes(true)
+                .iter()
+                .any(|n| matches!(n, SheetNote::FooterOverlapsMap { .. }))
+        );
+    }
+
+    #[test]
+    fn base_area_is_still_painted() {
+        let doc = sprint_map((60_000, 40_000), true);
+        let base_id = doc.symbol_set.id_for_code("990").unwrap();
+        let (page, report) = render(&doc, &options(Orientation::Auto));
+        let walkable = page
+            .colours
+            .iter()
+            .find(|c| c.name == "Lower brown 30% for walkable area")
+            .expect("the colour is read like any other");
+        assert_eq!(walkable.priority, 32);
+        let base: Vec<usize> = (0..page.primitives.len())
+            .filter(|&i| page.primitives[i].base)
+            .collect();
+        assert!(!base.is_empty(), "the base area is drawn");
+        for &i in &base {
+            let p = &page.primitives[i];
+            assert_eq!((p.priority, p.symbol), (32, base_id), "{p:?}");
+        }
+        // Only the base object is flagged.
+        assert!(
+            page.primitives
+                .iter()
+                .all(|p| p.base == (p.symbol == base_id))
+        );
+        // Painted first: before every primitive of a lower priority number.
+        let last_base = *base.last().unwrap();
+        let first_other = page
+            .primitives
+            .iter()
+            .position(|p| p.priority < 32)
+            .unwrap();
+        assert!(last_base < first_other, "{last_base} {first_other}");
+        // It reaches far beyond the frame; the page clips it there like every map primitive.
+        let (min, max) = shape_bounds(&page.primitives[base[0]].shape).unwrap();
+        let frame = page.clip;
+        assert!(min.0 < frame.min.0 && min.1 < frame.min.1);
+        assert!(max.0 > frame.max.0 && max.1 > frame.max.1);
+        assert_eq!(frame, frame_box(page.page_mm, PAGE_MARGIN_MM));
+        assert_eq!(report.overflow_mm, None);
+        // The PDF paints it in its CMYK, clipped to the frame.
+        let (pdf, _) = write_pdf(&page, &PdfMeta::new("base")).unwrap();
+        let content = String::from_utf8_lossy(&crate::render::pdf::content_of(&pdf)).into_owned();
+        let clip = content.find("re\nW").expect("the frame clip");
+        let fill = content
+            .find("0.06 0.23 0.33 0 k")
+            .expect("the walkable area colour");
+        assert!(clip < fill, "{content:.400}");
+    }
+}
+
+/// Maps with freemapper's base area for tests (ADR 0044): the colour and symbol as freemapper's
+/// `SymbolSet::with_walkable_area` appends them (its ADR 0069), and the base rectangle in its own part.
+#[cfg(test)]
+pub(crate) mod base_fixture {
+    use crate::omap::{MapObject, MapObjectKind, MapPart, SymbolSet, closed_ring};
+
+    /// freemapper's colour of the walkable area, the mix of "Lower brown 30%".
+    const COLOUR: &str = r#"<color priority="{priority}" name="Lower brown 30% for walkable area" c="0.06" m="0.23" y="0.33" k="0" opacity="1"><spotcolors knockout="true"><component factor="0.3" spotcolor="8"/></spotcolors><cmyk method="custom"/><rgb method="cmyk" r="0.94" g="0.77" b="0.67"/></color>"#;
+
+    /// freemapper's symbol 990 in the colour `{priority}`.
+    const SYMBOL: &str = r#"<symbol type="4" id="@" code="990" name="Walkable area (base fill)"><area_symbol inner_color="{priority}" min_area="0" patterns="0"/></symbol>"#;
+
+    /// `set` with the walkable-area colour appended behind all others (priority 32 on ISSprOM 2019) and
+    /// symbol 990 in it. Existing priorities and ids stay.
+    pub(crate) fn with_walkable_area(set: &SymbolSet) -> SymbolSet {
+        let count = set.colors_xml.matches("<color ").count();
+        let colour = COLOUR.replace("{priority}", &count.to_string());
+        let closing = set.colors_xml.rfind("</colors>").unwrap();
+        let mut with = set.clone();
+        with.colors_xml = format!("{}{colour}\n</colors>", &set.colors_xml[..closing]).replacen(
+            &format!(r#"<colors count="{count}""#),
+            &format!(r#"<colors count="{}""#, count + 1),
+            1,
+        );
+        with.with_additions(&SYMBOL.replace("{priority}", &count.to_string()))
+    }
+
+    /// ISSprOM 2019 with the walkable area: the palette of a freemapper sprint map.
+    pub(crate) fn sprint_set() -> SymbolSet {
+        with_walkable_area(&SymbolSet::issprom_2019())
+    }
+
+    /// The part `base` with one 990 rectangle from `min` to `max` (µm), tagged as freemapper tags it.
+    pub(crate) fn base_part(set: &SymbolSet, min: (i32, i32), max: (i32, i32)) -> MapPart {
+        MapPart {
+            name: super::BASE_PART.into(),
+            objects: vec![MapObject {
+                symbol_id: set.id_for_code("990").unwrap(),
+                kind: MapObjectKind::Path,
+                coords: closed_ring(&[min, (max.0, min.1), max, (min.0, max.1)]),
+                tags: vec![(super::BASE_TAG.0.into(), super::BASE_TAG.1.into())],
+                pattern: None,
+            }],
+        }
     }
 }

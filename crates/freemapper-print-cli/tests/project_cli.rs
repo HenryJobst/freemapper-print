@@ -430,6 +430,35 @@ fn check_reports_notes() {
 }
 
 #[test]
+fn hiding_the_base_part_is_refused_in_both_languages() {
+    // The base area of a sprint map is always printed (ADR 0044): line 11, column 15 is "base".
+    let ws = Workspace::new(LUEBECK);
+    let path = ws.write_project(
+        "sprint",
+        "",
+        "[[layouts]]\nid = \"a\"\nhide_parts = [\"base\"]\n",
+    );
+    let location = format!("{}:11:15", path.display());
+    for (lang, words) in [
+        (
+            "en",
+            "is the base area of a sprint map (walkable area) and is always printed",
+        ),
+        (
+            "de",
+            "ist die Grundfläche der Sprintkarte (belaufbare Fläche) und wird immer gedruckt",
+        ),
+    ] {
+        let o = run(lang, &["check", path.to_str().unwrap()]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{err}");
+        assert!(err.contains(&location), "{lang}: {err}");
+        assert!(err.contains("layouts[0].hide_parts[0]"), "{lang}: {err}");
+        assert!(err.contains(words), "{lang}: {err}");
+    }
+}
+
+#[test]
 fn check_fails_on_a_broken_project() {
     let ws = Workspace::new(LUEBECK);
     let path = ws.write_project("sprint", "", "[[layouts]]\nid = \"a\"\npaperr = \"A4\"\n");
