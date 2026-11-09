@@ -176,7 +176,12 @@ pub(super) fn place_text_element(
             }
         }
         ElementKind::CreditLine => Block {
-            lines: plain_lines(&[credit_text(ctx)], spec.size_pt.unwrap_or(FOOTER_PT)),
+            // Never smaller than the footer: the project loader refuses less, and a spec built
+            // by hand gets the same floor.
+            lines: plain_lines(
+                &[credit_text(ctx)],
+                spec.size_pt.unwrap_or(FOOTER_PT).max(FOOTER_PT),
+            ),
             padding_mm: 0.0,
             white_box: false,
         },
@@ -198,7 +203,8 @@ pub(super) fn place_text_element(
 
 /// The footer parts no element moved, in their default place: the copyright lines above the
 /// credit line, one block (design §5.2). Every sheet has the credit line; it cannot be switched
-/// off, and a `credit_line` element only moves it.
+/// off, and a `credit_line` element only moves it. `with_credit` is false when such an element
+/// placed it wholly on the page.
 ///
 /// Below the map frame, left-aligned with it, the last baseline 4 mm above the paper edge. If the
 /// passe-partout is too narrow for that (under 6.5 mm, or too narrow for all the lines), inside
@@ -207,6 +213,7 @@ pub(super) fn place_text_element(
 /// The caller checks the box it covers like an element's ([`FOOTER_ID`]).
 pub(super) fn default_footer(
     ctx: &SheetContext<'_>,
+    with_credit: bool,
     notes: &mut Vec<SheetNote>,
 ) -> Option<PlacedElement> {
     let has = |kind| layout_elements(ctx.project, ctx.layout).any(|e| e.kind == kind);
@@ -214,7 +221,7 @@ pub(super) fn default_footer(
     if !has(ElementKind::CopyrightLine) {
         text.extend(copyright_lines(ctx, FOOTER_PT * MM_PER_PT, notes));
     }
-    if !has(ElementKind::CreditLine) {
+    if with_credit {
         text.push(credit_text(ctx));
     }
     if text.is_empty() {

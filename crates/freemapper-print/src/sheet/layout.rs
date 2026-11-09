@@ -82,6 +82,14 @@ pub fn frame_border(frame: PaperBox, border_mm: f64) -> Option<SheetItem> {
     })
 }
 
+/// Whether `rect` lies wholly inside `outer` (with room for rounding).
+pub fn inside(rect: PaperBox, outer: PaperBox) -> bool {
+    rect.min.0 >= outer.min.0 - EPSILON_MM
+        && rect.min.1 >= outer.min.1 - EPSILON_MM
+        && rect.max.0 <= outer.max.0 + EPSILON_MM
+        && rect.max.1 <= outer.max.1 + EPSILON_MM
+}
+
 /// The notes for an element `id` hung on `to` that covers `rect`: [`SheetNote::ElementOutsidePage`]
 /// when any of it lies outside the page, [`SheetNote::ElementOverlapsMap`] when it hangs on the
 /// page and covers part of the map frame. An element hung on the map frame is meant to sit on
@@ -94,11 +102,7 @@ pub fn bounds_notes(
     frame: PaperBox,
 ) -> Vec<SheetNote> {
     let mut notes = Vec::new();
-    let outside = rect.min.0 < page.min.0 - EPSILON_MM
-        || rect.min.1 < page.min.1 - EPSILON_MM
-        || rect.max.0 > page.max.0 + EPSILON_MM
-        || rect.max.1 > page.max.1 + EPSILON_MM;
-    if outside {
+    if !inside(rect, page) {
         notes.push(SheetNote::ElementOutsidePage { id: id.into() });
     }
     let overlaps = |a: (f64, f64), b: (f64, f64)| a.0.max(b.0) + EPSILON_MM < a.1.min(b.1);

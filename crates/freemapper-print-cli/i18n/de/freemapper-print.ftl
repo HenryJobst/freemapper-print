@@ -146,3 +146,4 @@ note-logo-skipped = Hinweis: Das Logo { $id } fehlt auf dem Blatt: { $reason }
 note-logo-simplified = Hinweis: Das Logo { $id } wird vereinfacht gezeichnet: { $reason }
 note-unknown-placeholder = Hinweis: Der Text { $id } enthält { $name }. Das ist kein Platzhalter und wird so gedruckt, wie es dasteht.
 note-unknown-part = Hinweis: Layout { $layout } blendet den Kartenteil { $name } aus, die Karte hat aber keinen Teil dieses Namens. Groß- und Kleinschreibung zählt.
+note-credit-line-moved = Hinweis: Das Element { $id } läge mit der Namensnennung nicht ganz auf dem Blatt. Die Namensnennung bleibt deshalb in der Fußzeile unten links.

@@ -777,6 +777,10 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-unknown-part",
             Some(&args!("layout" => printable(layout), "name" => printable(name))),
         ),
+        SheetNote::CreditLineMoved { id } => texts.get(
+            "note-credit-line-moved",
+            Some(&args!("id" => printable(id))),
+        ),
     }
 }
 
@@ -1175,6 +1179,10 @@ mod tests {
                     name: s("courses"),
                 },
                 vec!["L1", "courses"],
+            ),
+            (
+                SheetNote::CreditLineMoved { id: s("credit") },
+                vec!["credit"],
             ),
         ];
         for lang in text::available() {

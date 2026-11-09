@@ -13,6 +13,9 @@ use crate::scale::MapKind;
 /// The only format version this program reads and writes.
 pub const FORMAT: u32 = 1;
 
+/// Smallest size (pt) of a `credit_line` element: the credit line must stay readable (ADR 0025).
+pub const MIN_CREDIT_PT: f64 = 5.0;
+
 /// Default file name of a project file.
 pub const FILE_NAME: &str = "freemapper-print.toml";
 
@@ -495,6 +498,13 @@ fn check_element(file: &str, at: &str, e: &ElementSpec) -> Result<(), ProjectErr
     }
     if let Some(v) = e.size_pt {
         positive(file, format!("{at}.size_pt"), v)?;
+        if e.kind == ElementKind::CreditLine && v < MIN_CREDIT_PT {
+            return Err(invalid(
+                file,
+                format!("{at}.size_pt"),
+                "must be at least 5 for the credit line, so that it stays readable",
+            ));
+        }
     }
     if logo {
         if e.file.is_none() {
@@ -1131,6 +1141,21 @@ mod tests {
             };
             assert!(msg.contains(field), "{field}: {msg}");
         }
+    }
+
+    #[test]
+    fn credit_line_at_least_five_pt() {
+        let msg = err_for("", &shared("credit_line", "size_pt = 4.9"), "");
+        assert!(
+            msg.contains("shared[0].size_pt") && msg.contains("at least 5"),
+            "{msg}"
+        );
+        assert!(msg.contains(FILE_NAME), "{msg}");
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n{}",
+            shared("credit_line", "size_pt = 5.0")
+        ));
+        assert!(load(&path).is_ok());
     }
 
     #[test]

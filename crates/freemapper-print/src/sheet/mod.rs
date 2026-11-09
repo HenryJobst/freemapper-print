@@ -87,6 +87,9 @@ pub enum SheetNote {
     UnknownPlaceholder { id: String, name: String },
     /// `hide_parts` of the layout names a map part the map does not have.
     UnknownPart { layout: String, name: String },
+    /// The `credit_line` element would not lie wholly on the page, so the credit line stays in
+    /// the default footer (ADR 0029).
+    CreditLineMoved { id: String },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -168,19 +171,33 @@ pub fn render_sheet(
         page: page_box,
         frame,
     };
+    // The credit line goes on top of everything else, so no element can hide it.
+    let mut credit_lines = Vec::new();
     for spec in layout_elements(project, layout) {
-        if let Some(placed) = place_element(&ctx, spec, &mut notes) {
-            notes.extend(layout::bounds_notes(
-                &spec.id,
-                spec.anchor.to,
-                placed.rect,
-                page_box,
-                frame,
-            ));
-            page.sheet.extend(placed.items);
+        let Some(placed) = place_element(&ctx, spec, &mut notes) else {
+            continue;
+        };
+        if spec.kind == ElementKind::CreditLine {
+            if layout::inside(placed.rect, page_box) {
+                credit_lines.push((spec, placed));
+            } else {
+                notes.push(SheetNote::CreditLineMoved {
+                    id: spec.id.clone(),
+                });
+            }
+            continue;
         }
+        notes.extend(layout::bounds_notes(
+            &spec.id,
+            spec.anchor.to,
+            placed.rect,
+            page_box,
+            frame,
+        ));
+        page.sheet.extend(placed.items);
     }
-    if let Some(footer) = text::default_footer(&ctx, &mut notes) {
+    let credit_in_footer = credit_lines.is_empty();
+    if let Some(footer) = text::default_footer(&ctx, credit_in_footer, &mut notes) {
         // Hung on the page, so that a footer inside the frame counts as covering the map.
         notes.extend(layout::bounds_notes(
             text::FOOTER_ID,
@@ -190,6 +207,17 @@ pub fn render_sheet(
             frame,
         ));
         page.sheet.extend(footer.items);
+    }
+    for (spec, credit) in credit_lines {
+        // Wholly on the page; over the map is the user's choice, noted as for any element.
+        notes.extend(layout::bounds_notes(
+            &spec.id,
+            spec.anchor.to,
+            credit.rect,
+            page_box,
+            frame,
+        ));
+        page.sheet.extend(credit.items);
     }
     let missing = text::missing_scale_or_contour(&ctx);
     if !missing.is_empty() {
@@ -974,6 +1002,95 @@ mod tests {
         assert!(t[0].0.starts_with("Erstellt mit freemapper-print"));
         assert_eq!(t[0].2, pt_mm(7.0));
         assert!(t[0].1.0 > 100.0, "{:?}", t[0]);
+    }
+
+    #[test]
+    fn credit_line_off_the_page_falls_back_to_the_footer() {
+        let mut spec = text_element("credit", ElementKind::CreditLine, &[], Corner::BottomRight);
+        spec.anchor.offset_mm = [5000.0, 5000.0];
+        let mut layout = a4();
+        layout.elements = vec![spec];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, report) = sheet_of(&lp, &empty_map());
+        let t = footer_texts(&page);
+        assert_eq!(t.len(), 1);
+        assert!(t[0].0.starts_with("Erstellt mit freemapper-print"));
+        // The default place: below the frame, left-aligned with it.
+        assert_eq!(t[0].1, (8.0, 293.0));
+        assert!(report.notes.contains(&SheetNote::CreditLineMoved {
+            id: "credit".into()
+        }));
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::ElementOutsidePage { .. })),
+            "{:?}",
+            report.notes
+        );
+    }
+
+    #[test]
+    fn credit_line_partly_off_the_page_falls_back_too() {
+        let mut spec = text_element("credit", ElementKind::CreditLine, &[], Corner::TopLeft);
+        spec.anchor.offset_mm = [-3.0, 2.0];
+        let mut layout = a4();
+        layout.elements = vec![spec];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, report) = sheet_of(&lp, &empty_map());
+        assert_eq!(footer_texts(&page)[0].1, (8.0, 293.0));
+        assert!(report.notes.contains(&SheetNote::CreditLineMoved {
+            id: "credit".into()
+        }));
+    }
+
+    #[test]
+    fn tiny_credit_line_drawn_at_five_pt() {
+        // The project loader refuses less than 5 pt; a spec built by hand is drawn at 5 pt.
+        let mut spec = text_element("credit", ElementKind::CreditLine, &[], Corner::BottomRight);
+        spec.size_pt = Some(0.001);
+        let mut layout = a4();
+        layout.elements = vec![spec];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &empty_map());
+        assert_eq!(footer_texts(&page)[0].2, pt_mm(5.0));
+    }
+
+    #[test]
+    fn credit_line_painted_after_every_other_item() {
+        // A white-box text listed after the credit line and lying over it: the credit line still
+        // comes last in the paint order.
+        let credit = text_element("credit", ElementKind::CreditLine, &[], Corner::BottomLeft);
+        let mut cover = text_element(
+            "cover",
+            ElementKind::Text,
+            &["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],
+            Corner::BottomLeft,
+        );
+        cover.size_pt = Some(20.0);
+        let mut layout = a4();
+        layout.elements = vec![credit, cover];
+        let lp = project(MapKind::Sprint, Vec::new(), &layout);
+        let (page, _) = sheet_of(&lp, &empty_map());
+        let last = page.sheet.last().unwrap();
+        let SheetItem::Shape {
+            shape: Shape::Text { text, .. },
+            ..
+        } = last
+        else {
+            panic!("{last:?}")
+        };
+        assert!(text.starts_with("Erstellt mit freemapper-print"), "{text}");
+        // The default footer is painted last as well, after a covering element.
+        let lp = project(MapKind::Sprint, Vec::new(), &a4());
+        let (page, _) = sheet_of(&lp, &empty_map());
+        assert!(matches!(
+            page.sheet.last(),
+            Some(SheetItem::Shape {
+                shape: Shape::Text { text, .. },
+                ..
+            }) if text.starts_with("Erstellt mit")
+        ));
     }
 
     #[test]
