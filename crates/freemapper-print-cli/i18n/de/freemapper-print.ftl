@@ -145,7 +145,7 @@ note-missing-scale-or-contour = Hinweis: Im Layout { $layout } { $count ->
 missing-print-scale-text = ein Text mit { $name } für den Druckmaßstab
 missing-contour-text = ein Text mit { $name } für die Äquidistanz
 missing-contour-value = ein Wert für { $name }, die Äquidistanz in Metern
-note-north-lines-added = Hinweis: Die Karte hat keine Nordlinien, deshalb { $count ->
+note-north-lines-added = Zur Information: Die Karte hat keine Nordlinien, deshalb { $count ->
         [one] wurde 1 Linie
        *[other] wurden { $count } Linien
     } ergänzt. Sie laufen ohne Unterbrechung über den Kartenausschnitt. Sie an kleinen Objekten wie Steinen oder Wegenden zu unterbrechen, ist Aufgabe des Kartografen in OOM.
@@ -201,4 +201,4 @@ note-footer-covers-element = Hinweis: Die Fußzeile { $content ->
 error-disk-full-unknown = nicht genug Speicherplatz für { $path }: Nötig sind { $needed } MB samt 50 MB Reserve, wie viel frei ist, meldet der Datenträger nicht
 note-copyright-line-cut = Hinweis: Die Quellenangabe „{ $line }“ ist breiter als der Kartenausschnitt und wird mit „…“ gekürzt. Kürzen Sie sie in den Kartennotizen oder in print.copyright.
 hint-crop = Für ein Blatt, das nur einen Teil der Karte zeigt, wählt map_frame.centre_map_mm den Teil, und map_frame.crop = true kennzeichnet den Schnitt als gewollt.
-note-map-cropped = Hinweis: Die Karte ist { $cut } für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+note-map-cropped = Zur Information: Die Karte ist { $cut } für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).

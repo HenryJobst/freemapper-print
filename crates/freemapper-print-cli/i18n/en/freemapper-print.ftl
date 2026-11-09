@@ -142,7 +142,7 @@ note-missing-scale-or-contour = Note: layout { $layout } lacks { $missing }.
 missing-print-scale-text = a text with { $name } for the print scale
 missing-contour-text = a text with { $name } for the contour interval
 missing-contour-value = a value for { $name }, the contour interval in metres
-note-north-lines-added = Note: the map has no north lines, so { $count ->
+note-north-lines-added = Info: the map has no north lines, so { $count ->
         [one] 1 line was
        *[other] { $count } lines were
     } added. They run unbroken across the map frame. Breaking them at small features such as boulders or path ends is the mapper's job in OOM.
@@ -198,4 +198,4 @@ note-footer-covers-element = Note: the footer with { $content ->
 error-disk-full-unknown = not enough disk space for { $path }: it needs { $needed } MB including a 50 MB reserve, and the disk does not say how much is free
 note-copyright-line-cut = Note: the copyright line "{ $line }" is wider than the map frame and is cut short, ending in "…". Shorten it in the map notes or in print.copyright.
 hint-crop = For a sheet that shows only part of the map, map_frame.centre_map_mm picks the part and map_frame.crop = true marks the cut as intended.
-note-map-cropped = Note: the map is { $cut } for the map frame and is cut there on purpose (map_frame.crop = true).
+note-map-cropped = Info: the map is { $cut } for the map frame and is cut there on purpose (map_frame.crop = true).

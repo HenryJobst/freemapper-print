@@ -42,13 +42,7 @@ impl SheetReport {
     /// note but [`SheetNote::NorthLinesAdded`] and [`SheetNote::MapCropped`], which only inform.
     /// `check` fails on this.
     pub fn needs_attention(&self) -> bool {
-        self.print.has_notes()
-            || self.notes.iter().any(|n| {
-                !matches!(
-                    n,
-                    SheetNote::NorthLinesAdded { .. } | SheetNote::MapCropped { .. }
-                )
-            })
+        self.print.has_notes() || self.notes.iter().any(|n| !n.is_info())
     }
 }
 
@@ -127,6 +121,17 @@ pub enum SheetNote {
     /// The `credit_line` element would not lie wholly on the page, so the credit line stays in
     /// the default footer (ADR 0029).
     CreditLineMoved { id: String },
+}
+
+impl SheetNote {
+    /// Whether the note only informs: it does not count toward `check`'s exit code, and the CLI
+    /// marks it "Info:" instead of "Note:".
+    pub fn is_info(&self) -> bool {
+        matches!(
+            self,
+            SheetNote::NorthLinesAdded { .. } | SheetNote::MapCropped { .. }
+        )
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

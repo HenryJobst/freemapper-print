@@ -1404,8 +1404,15 @@ mod tests {
         for lang in text::available() {
             let texts = Texts::new(&lang);
             let mut seen = std::collections::HashSet::new();
+            let (info, note_word) = match lang.code().as_str() {
+                "de" => ("Zur Information: ", "Hinweis: "),
+                _ => ("Info: ", "Note: "),
+            };
             for (note, fields) in &notes {
                 let line = sheet_note_line(&texts, note);
+                // Notes that do not count toward the exit code say so in their prefix.
+                let prefix = if note.is_info() { info } else { note_word };
+                assert!(line.starts_with(prefix), "{line}");
                 assert!(!line.starts_with("note-"), "{line}");
                 assert!(seen.insert(line.clone()), "two notes share {line}");
                 for f in fields {
