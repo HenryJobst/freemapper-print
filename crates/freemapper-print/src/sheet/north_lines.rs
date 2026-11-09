@@ -4,6 +4,8 @@
 //! puts them together. All map positions here are millimetres of the map at its own scale; a
 //! north line is vertical there, because OOM draws the map oriented to magnetic north.
 
+use std::collections::HashMap;
+
 use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, MapPart, SymbolSet};
 use crate::print::is_north_line;
 use crate::render::page::PaperBox;
@@ -65,30 +67,81 @@ pub(super) fn symbol_id<'a>(
     best.map(|(_, id)| id)
 }
 
-/// Half the widest line `id` paints (mm), at symbol factor `factor`. A combined symbol takes
-/// its widest part; a symbol that cannot be read gives 0.
-pub(super) fn half_width_mm(set: &SymbolSet, id: u32, factor: f64) -> f64 {
-    fn widest(symbol: &Symbol, all: &RenderSymbols, depth: u8) -> f64 {
+/// The most symbols one width walk looks at, and the deepest nesting it follows. A hostile file
+/// can declare combined symbols with thousands of references to other combined symbols.
+const MAX_VISITS: usize = 4096;
+const MAX_DEPTH: u8 = 8;
+
+/// State of one walk over combined symbols: each symbol id is measured once (memo), and the walk
+/// stops looking at new symbols after [`MAX_VISITS`]; it then reports the widest seen so far.
+struct Walk<'a> {
+    all: &'a RenderSymbols,
+    memo: HashMap<u32, f64>,
+    visits: usize,
+}
+
+impl Walk<'_> {
+    fn widest(&mut self, symbol: &Symbol, depth: u8) -> f64 {
+        self.visits += 1;
+        if self.visits > MAX_VISITS {
+            return 0.0;
+        }
         match symbol {
             Symbol::Line(def) => {
                 let border = def.border.as_ref().map_or(0.0, |b| b.width + b.shift.abs());
                 def.width.max(border)
             }
-            Symbol::Combined(parts) if depth < 4 => parts
-                .iter()
-                .filter_map(|p| match p {
-                    SymbolPart::Ref(id) => all.symbols.get(id),
-                    SymbolPart::Inline(s) => Some(&**s),
-                })
-                .map(|s| widest(s, all, depth + 1))
-                .fold(0.0, f64::max),
+            Symbol::Combined(parts) if depth < MAX_DEPTH => {
+                let mut widest = 0.0_f64;
+                for part in parts {
+                    let w = match part {
+                        SymbolPart::Ref(id) => self.widest_of(*id, depth + 1),
+                        SymbolPart::Inline(s) => self.widest(s, depth + 1),
+                    };
+                    widest = widest.max(w);
+                    if self.visits > MAX_VISITS {
+                        break;
+                    }
+                }
+                widest
+            }
             _ => 0.0,
         }
     }
+
+    fn widest_of(&mut self, id: u32, depth: u8) -> f64 {
+        if let Some(w) = self.memo.get(&id) {
+            return *w;
+        }
+        let Some(symbol) = self.all.symbols.get(&id) else {
+            return 0.0;
+        };
+        // 0 while it is being measured, so a reference cycle ends.
+        self.memo.insert(id, 0.0);
+        let w = self.widest(symbol, depth);
+        self.memo.insert(id, w);
+        w
+    }
+}
+
+/// The width (µm) of the widest line `id` paints, and how many symbols the walk looked at.
+fn widest_um(all: &RenderSymbols, id: u32) -> (f64, usize) {
+    let mut walk = Walk {
+        all,
+        memo: HashMap::new(),
+        visits: 0,
+    };
+    let w = walk.widest_of(id, 0);
+    (w, walk.visits)
+}
+
+/// Half the widest line `id` paints (mm), at symbol factor `factor`. A combined symbol takes
+/// its widest part; a symbol that cannot be read gives 0.
+pub(super) fn half_width_mm(set: &SymbolSet, id: u32, factor: f64) -> f64 {
     let Ok(all) = RenderSymbols::from_set(set) else {
         return 0.0;
     };
-    let width_um = all.symbols.get(&id).map_or(0.0, |s| widest(s, &all, 0));
+    let (width_um, _) = widest_um(&all, id);
     // Width in µm as the symbol file has it.
     (width_um / 1000.0 * factor / 2.0).max(0.0)
 }
@@ -204,6 +257,50 @@ mod tests {
         assert!(w > 0.03 && w < 0.2, "{w}");
         assert!((half_width_mm(&set, id, 2.0) - 2.0 * w).abs() < 1e-12);
         assert!(draws_a_line(&set, id));
+    }
+
+    #[test]
+    fn combined_symbol_walk_is_bounded() {
+        use std::collections::HashSet;
+        // Id 0 refers to 1000 combined symbols (1..=1000), each referring to the same 1000
+        // other combined symbols (1001..=2000), each referring to 1000 more, and so on: about
+        // 1e12 visits without a memo.
+        let layers = 6_u32;
+        let width = 1000_u32;
+        let mut symbols = HashMap::new();
+        for layer in 0..layers {
+            let ids: Vec<u32> = if layer == 0 {
+                vec![0]
+            } else {
+                (0..width).map(|i| layer * width + i).collect()
+            };
+            for id in ids {
+                let next = (layer + 1) * width;
+                let parts = (0..width).map(|i| SymbolPart::Ref(next + i)).collect();
+                symbols.insert(id, Symbol::Combined(parts));
+            }
+        }
+        let all = RenderSymbols {
+            colours: Vec::new(),
+            symbols,
+            dropped_patterns: HashSet::new(),
+        };
+        let (w, visits) = widest_um(&all, 0);
+        assert_eq!(w, 0.0);
+        assert!(visits <= MAX_VISITS + 1, "{visits}");
+        // A cycle ends too.
+        let mut cyc = HashMap::new();
+        cyc.insert(
+            1,
+            Symbol::Combined(vec![SymbolPart::Ref(1), SymbolPart::Ref(2)]),
+        );
+        cyc.insert(2, Symbol::Combined(vec![SymbolPart::Ref(1)]));
+        let all = RenderSymbols {
+            colours: Vec::new(),
+            symbols: cyc,
+            dropped_patterns: HashSet::new(),
+        };
+        assert!(widest_um(&all, 1).1 < 10);
     }
 
     #[test]
