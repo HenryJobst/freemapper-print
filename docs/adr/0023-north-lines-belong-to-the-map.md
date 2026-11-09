@@ -28,3 +28,11 @@ credits). freemapper-print hid every sheet object by default, so freemapper maps
   decides by the symbol code.
 
 Source: user decision 2026-11-08 (final fix wave of M1).
+
+## Update 2026-11-09
+
+Since v0.5.0 (its ADR 0043) freemapper puts the north lines at the start of "default part" with the tag
+`freemapper:source=north-lines`; "peripheral information" holds only the information block. Nothing changes here:
+601 objects print whatever their tag and part. One difference for layouts: hiding "peripheral information" no
+longer hides the north lines of such a map. The test fixture follows v0.5.0; older maps with the lines in
+"peripheral information" print as before.
