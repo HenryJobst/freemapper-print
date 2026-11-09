@@ -146,8 +146,7 @@ Jede Regel nennt ein Dokument aus der `[sources]`-Tabelle ihrer Datei: `source =
 `iof-print.toml` nutzt ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD
 (Control Descriptions) und `fmp`. `fmp` steht für eine Entscheidung von freemapper-print, wo keine Norm eine
 Zahl nennt. Eine solche Regel braucht eine `note`, sonst lehnt das Programm die Datei ab, und sie nennt als
-Abschnitt das ADR. Auch die Annahme, dass
-Schulhofkarten die Sprintwerte nehmen, steht unter `fmp`.
+Abschnitt das ADR. Auch die Annahme, dass Schulhofkarten die Sprintwerte nehmen, steht unter `fmp`.
 
 Die Größen der Bahnsymbole stammen aus dem Text von ISSprOM 2019-2 §4.7 und ISOM 2017-2 §3.7. Purple Pen
 nutzt dieselben Werte (`NormalCourseAppearance`). Für Schulhofkarten nimmt das Profil die Sprintwerte an;
@@ -271,8 +270,8 @@ scale. Every table needs a row for the base scale of its kind with `size_factor 
 Every rule names a document from its file's `[sources]` table: `source = { doc, section }`. `iof-print.toml`
 uses ISSprOM, ISOM, IOF-SCHOOL, IOF-PCD (Printing and Colour Definitions), IOF-CD (Control Descriptions) and
 `fmp`. `fmp` stands for a decision of freemapper-print where no standard gives a number. Such a rule needs a
-`note`, or the file is rejected, and names the ADR as its section. The assumption that schoolyard maps take the sprint values is cited
-under `fmp` too.
+`note`, or the file is rejected, and names the ADR as its section. The assumption that schoolyard maps take
+the sprint values is cited under `fmp` too.
 
 The course symbol sizes come from the text of ISSprOM 2019-2 §4.7 and ISOM 2017-2 §3.7. Purple Pen uses the
 same values (`NormalCourseAppearance`). For schoolyard maps the profile assumes the sprint values, and the

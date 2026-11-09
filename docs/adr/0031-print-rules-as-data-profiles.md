@@ -111,7 +111,9 @@ size of control descriptions and weights for placing control numbers.
 - A golden snapshot (`tests/fixtures/rules/resolved.txt`), made with the old loader, holds every resolved
   value of the base set and the test overlays. One test case per refusal the old tests had checks variant
   and rule id. Refusals the old tests never covered (`print_scales` not a list, `[4000.0]`, `rows = []`,
-  `enabled = "yes"`) are not pinned by a case here; core tests them. Both pass unchanged after the switch, and the example PDFs are byte-identical.
+  `enabled = "yes"`) are not pinned by a case here; core tests them. The structural refusals (TOML syntax,
+  `[profile]` fields, the type of `enabled`, the shape of a scale row) live in core now and are covered there.
+  Both pass unchanged after the switch, and the example PDFs are byte-identical.
 
 - Ruling R4: the `Incomplete` text for a missing base-scale row keeps the old wording and names no rule id, so
   nothing observable changes in this switch. Three tests for it assert the variant only.
