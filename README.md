@@ -229,6 +229,10 @@ wichtigsten Optionen:
 Passt die Karte nicht auf die Seite, schreibt das Programm das PDF trotzdem und meldet, wie viele Millimeter
 fehlen. Es nennt auch Objekte, die es nicht oder nur vereinfacht gezeichnet hat.
 
+Die Grundfläche einer Sprintkarte von freemapper (Kartenteil `base`) gehört zur Karte und steht immer im PDF. Für
+den Überstand zählt sie nicht, denn sie reicht über die Karte hinaus. Solche Karten am besten farbig drucken:
+In Graustufen ist ihr helles Braun kaum vom Papier zu unterscheiden.
+
 Drucken Sie das PDF in Originalgröße (100 %, „Tatsächliche Größe“) und schalten Sie „An Seite anpassen“
 aus. Sonst stimmt der Maßstab nicht. Das Handbuch erklärt das Drucken im Kapitel
 [Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).

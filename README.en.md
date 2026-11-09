@@ -219,6 +219,10 @@ This writes the sprint map as a PDF on an A3 page at 1:3000, without title or sc
 If the map does not fit on the page, the program writes the PDF anyway and says how many millimetres are
 missing. It also lists objects it did not draw, or drew in simplified form.
 
+The base area of a freemapper sprint map (map part `base`) belongs to the map and is always in the PDF. It does
+not count for the overflow, because it reaches beyond the map. Print such maps in colour; in greyscale its light
+brown is hard to tell from paper.
+
 Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. The manual
 explains printing in the chapter
 [Printing](docs/manual/en.md#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop).
