@@ -134,8 +134,9 @@ Datei, und gibt je Layout eine Zeile mit Papier, Ausrichtung, Maßstab und Fakto
 Zum Schluss steht „1 Layout geprüft, keine Hinweise.“ oder „Layouts mit Hinweisen: 1 von 2.“
 
 Der Exit-Code ist 0, wenn kein Layout etwas zu melden hat, und 1, wenn eines einen Hinweis hat oder sich nicht
-zeichnen lässt. Ergänzte Nordlinien und ein gewollter Beschnitt (`map_frame.crop`) zählen nicht als Hinweis. So kann ein Skript `check` vor `export` setzen.
-Ein Hinweis hält den Export nicht auf. Manche Hinweise sind gewollt, etwa der Überstand einer Karte, die größer
+zeichnen lässt. Zeilen, die mit „Zur Information:“ beginnen, für ergänzte Nordlinien und einen gewollten
+Beschnitt (`map_frame.crop`), zählen nicht. So kann ein Skript `check` vor `export` setzen. Ein Hinweis hält den
+Export nicht auf. Manche Hinweise sind gewollt, etwa der Überstand einer Karte, die größer
 ist als das Blatt. Kapitel 10 erklärt jeden Hinweis.
 
 ### Die PDFs schreiben: `export`
@@ -263,9 +264,10 @@ Jedes Element hat:
 | `anchor.corner` | eine von neun Stellen: `top_left`, `top`, `top_right`, `left`, `centre`, `right`, `bottom_left`, `bottom`, `bottom_right` |
 | `anchor.offset_mm` | `[x, y]`, Abstand in mm von dieser Stelle nach innen |
 
-Jeder Abstand liegt zwischen -2000 und 2000 mm. Er zählt von einer linken oder oberen Kante nach rechts oder unten, von einer rechten oder unteren
-nach links oder oben, von einer Mitte nach rechts oder unten. Das Element liegt innen an seiner Stelle:
-`top_right` mit `[2, 2]` setzt seine rechte obere Ecke 2 mm links und 2 mm unter die rechte obere Ecke.
+Jeder Abstand liegt zwischen -2000 und 2000 mm. Er zählt von einer linken oder oberen Kante nach rechts oder unten,
+von einer rechten oder unteren nach links oder oben, von einer Mitte nach rechts oder unten. Das Element liegt
+innen an seiner Stelle: `top_right` mit `[2, 2]` setzt seine rechte obere Ecke 2 mm links und 2 mm unter die rechte
+obere Ecke.
 
 Ein Element am Kartenausschnitt liegt auf der Karte und deckt sie ab, das ist gewollt. Ein Element am Blatt,
 das in den Kartenausschnitt ragt, bekommt einen Hinweis. Ebenso ein Element, das über den Blattrand ragt.
@@ -282,9 +284,9 @@ lines = ["{event}", "{date} · {organiser}", "1:{print_scale} · Äquidistanz {c
 anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
 ```
 
-Ein Titelblock setzt die erste Zeile fett in 14 pt (`size_pt` ändert das, bis 200) und die übrigen in 9 pt. Ein `text`
-setzt alle Zeilen in 9 pt oder in `size_pt`. Beide stehen auf einem weißen Kasten mit 1 mm Rand;
-`box_white = false` lässt ihn weg. Die Schrift ist Arimo, dieselbe wie für Kartentexte.
+Ein Titelblock setzt die erste Zeile fett in 14 pt (`size_pt` ändert das, bis 200) und die übrigen in 9 pt. Ein
+`text` setzt alle Zeilen in 9 pt oder in `size_pt`. Beide stehen auf einem weißen Kasten mit 1 mm Rand; `box_white
+= false` lässt ihn weg. Die Schrift ist Arimo, dieselbe wie für Kartentexte.
 
 In den Zeilen setzt das Programm diese Platzhalter ein:
 
@@ -315,8 +317,8 @@ width_mm = 35.0
 anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
 ```
 
-`width_mm` ist die Breite auf dem Papier, höchstens 2000; die Höhe folgt aus dem Seitenverhältnis. Das Programm nimmt PNG, JPEG
-und SVG:
+`width_mm` ist die Breite auf dem Papier, höchstens 2000; die Höhe folgt aus dem Seitenverhältnis. Das Programm
+nimmt PNG, JPEG und SVG:
 
 - **PNG und JPEG** bleiben Pixelbilder, ein PNG behält seine Transparenz. Für den Druck sollte das Bild etwa
   300 Pixel je Zoll haben, für 35 mm Breite also rund 400 Pixel.
@@ -369,19 +371,21 @@ hat (Kapitel 9).
 
 ### Fußzeile: Quellenangaben und Namensnennung
 
-Jedes Blatt hat unten links eine Fußzeile in 5 pt. Oben stehen die Quellenangaben, eine je Zeile, aus
-`print.copyright` oder aus den Kartennotizen. Darunter steht die Namensnennung „Erstellt mit freemapper-print –
-https://github.com/HenryJobst/freemapper-print“ (auf englischen Blättern „Created with …“). Die Namensnennung
-lässt sich nicht abschalten.
+Jedes Blatt hat unten links eine Fußzeile in 5 pt, auf einem weißen Kasten, damit nichts darunter sie verdeckt;
+unter dem Kartenausschnitt ist der Kasten weiß auf weißem Papier. Oben stehen die Quellenangaben, eine je Zeile,
+aus `print.copyright` oder aus den Kartennotizen. Darunter steht die Namensnennung „Erstellt mit freemapper-print –
+https://github.com/HenryJobst/freemapper-print“ (auf englischen Blättern „Created with …“). Die Namensnennung lässt
+sich nicht abschalten.
 
 Die Fußzeile steht unter dem Kartenausschnitt, wenn sie dort ganz Platz hat. Sonst steht sie links unten im
-Kartenausschnitt auf einem weißen Kasten, und `check` meldet, dass sie einen Teil der Karte abdeckt, und nennt
-jedes Element, das der Kasten abdeckt. Abhilfe: ein breiteres Passepartout (`margin_mm`) oder weniger Zeilen in
+Kartenausschnitt, und `check` meldet, dass sie einen Teil der Karte abdeckt. An beiden Stellen nennt `check`
+jedes Element, das die Fußzeile abdeckt. Abhilfe: ein breiteres Passepartout (`margin_mm`) oder weniger Zeilen in
 `print.copyright`. Mehr als sechs Zeilen Quellenangaben zeigt das Programm nicht: fünf und eine sechste, die den
 Rest zählt. Eine Zeile, die breiter ist als der Kartenausschnitt, kürzt es mit „…“, und `check` nennt sie.
 
 Ein Element `copyright_line` oder `credit_line` holt diesen Teil aus der Fußzeile und setzt ihn an seinen eigenen
-Anker, in 5 pt oder `size_pt`. Es verschiebt die Zeilen nur; die Namensnennung bleibt auf dem Blatt. Ein
+Anker, in 5 pt oder `size_pt`. Es verschiebt die Zeilen nur; die Namensnennung bleibt auf dem Blatt, auf einem
+eigenen weißen Kasten. Ein
 `credit_line` braucht mindestens 5 pt. Läge es nicht ganz auf dem Blatt, bleibt die Namensnennung in der
 Fußzeile, und `check` meldet das. Die Namensnennung wird nach allem anderen auf dem Blatt gezeichnet, kein
 Element kann sie verdecken.
@@ -401,14 +405,14 @@ ohne Projektdatei gibt es `render`:
 freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
 ```
 
-Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 3000` druckt in 1:3000. Zum Drucken wählen
-Sie A4 oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm
-die Ausrichtung, die weniger von der Karte abschneidet. `render` lässt rundum 5 mm frei und druckt weder
-Titel noch Kontrollstrecke. Die Fußzeile druckt es aber: die Quellenangaben aus den Kartennotizen und die
-Namensnennung in der Programmsprache, auf einem weißen Kasten unten links im Druckbereich. Unter der Karte ist
-dafür bei 5 mm Rand kein Platz. Deckt der Kasten einen Teil der Karte ab, meldet `render` das; ein Projekt mit
-breiterem Passepartout setzt die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren,
-danach folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
+Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 3000` druckt in 1:3000. Zum Drucken wählen Sie A4
+oder A3 (`--paper`) und, wenn nötig, die Ausrichtung (`--orientation`). Bei `auto` nimmt das Programm die
+Ausrichtung, die weniger von der Karte abschneidet. `render` lässt rundum 5 mm frei und druckt weder Titel noch
+Kontrollstrecke. Die Fußzeile druckt es aber: die Quellenangaben aus den Kartennotizen und die Namensnennung in der
+Programmsprache, auf einem weißen Kasten unten links im Druckbereich. Unter der Karte ist dafür bei 5 mm Rand kein
+Platz. Deckt der Kasten einen Teil der Karte ab, meldet `render` das; ein Projekt mit breiterem Passepartout setzt
+die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren, danach
+folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
 
 ### In Originalgröße drucken
 
@@ -427,10 +431,10 @@ Warnung: Die Karte passt nicht auf die Seite. Sie ist 4,0 mm zu hoch für den be
 
 Die Zahl sagt, um wie viele Millimeter die Karte hinausragt, oben und unten zusammen. Gemessen wird an dem, was
 tatsächlich gedruckt würde, also mit Linienbreiten, Punktsymbolen und Texten. Die Karte wird nicht verkleinert,
-denn das würde den Maßstab verfälschen. Sie können ein größeres Papier nehmen (A3), einen Druckmaßstab mit
-größerer Zahl oder in einem Layout mit `centre_map_mm` den Ausschnitt wählen und den Schnitt mit
-`map_frame.crop = true` als gewollt kennzeichnen (Kapitel 6). Haben Sie die Ausrichtung selbst gewählt, nennt die Meldung auch die andere. Das PDF entsteht auch bei einem Überstand, damit Sie nachsehen
-können, was fehlt.
+denn das würde den Maßstab verfälschen. Sie können ein größeres Papier nehmen (A3), einen Druckmaßstab mit größerer
+Zahl oder in einem Layout mit `centre_map_mm` den Ausschnitt wählen und den Schnitt mit `map_frame.crop = true` als
+gewollt kennzeichnen (Kapitel 6). Haben Sie die Ausrichtung selbst gewählt, nennt die Meldung auch die andere. Das
+PDF entsteht auch bei einem Überstand, damit Sie nachsehen können, was fehlt.
 
 ### Wie groß die Symbole sind
 
@@ -502,15 +506,15 @@ Diese Hinweise kommen von `render`, `check` und `export`:
 ## 10. Meldungen und was zu tun ist
 
 Dieses Kapitel erklärt die Hinweise zu den Blättern eines Layouts. Die Hinweise zum Druck der Karte selbst
-stehen in Kapitel 9. Keiner hält den Export auf, aber jeder außer „Nordlinien ergänzt“ und „mit Absicht
-beschnitten“ lässt `check` mit Exit-Code 1 enden.
+stehen in Kapitel 9. Keiner hält den Export auf. Jede Zeile, die mit „Hinweis:“ beginnt, lässt `check` mit
+Exit-Code 1 enden; eine Zeile, die mit „Zur Information:“ beginnt, nicht.
 
 | Hinweis (gekürzt) | Bedeutung und Abhilfe |
 |---|---|
 | „Die Karte passt nicht auf die Seite. Sie ist … zu hoch/zu breit …“ | Die Karte ist größer als der Kartenausschnitt und wird abgeschnitten. A3, ein anderer Maßstab, ein schmaleres Passepartout oder `centre_map_mm` für den gewünschten Ausschnitt. Ist der Schnitt gewollt, `map_frame.crop = true` setzen. |
-| „Die Karte ist … für den Kartenausschnitt und wird dort mit Absicht beschnitten“ | Nur zur Information: Das Layout hat `map_frame.crop = true`. |
+| „Zur Information: Die Karte ist … für den Kartenausschnitt und wird dort mit Absicht beschnitten“ | Nur zur Information: Das Layout hat `map_frame.crop = true`. |
 | „Das Passepartout ist zu schmal für die Fußzeile …“ | Die Fußzeile steht auf weißem Kasten in der Karte. `margin_mm` erhöhen, `print.copyright` kürzen oder die Zeilen mit `copyright_line`/`credit_line` woanders hinsetzen. |
-| „Die Fußzeile … deckt einen Teil des Elements … ab“ | Der weiße Kasten der Fußzeile überdeckt ein Element unten links im Kartenausschnitt. Das Element versetzen oder `margin_mm` so erhöhen, dass die Fußzeile unter den Ausschnitt passt. |
+| „Die Fußzeile … unten links deckt einen Teil des Elements … ab“ | Die Fußzeile mit ihrem weißen Kasten überdeckt ein Element unten links, unter oder im Kartenausschnitt. Das Element versetzen oder die Zeilen der Fußzeile mit einem Element `copyright_line` oder `credit_line` verschieben. Der Hinweis nennt, was die Fußzeile enthält: Quellenangaben, Namensnennung oder beides. |
 | „Das Element … läge mit der Namensnennung nicht ganz auf dem Blatt“ | Das Element `credit_line` würde über den Blattrand ragen, deshalb bleibt die Namensnennung in der Fußzeile. Anker, Abstand und `size_pt` prüfen. |
 | „Die Fußzeile … ragt über den Blattrand“ | Die Fußzeile reicht über das Blatt hinaus. Passepartout und Quellenangaben prüfen. |
 | „Das Element … ragt über den Blattrand“ | Anker oder Abstand des Elements prüfen; ein Logo eventuell schmaler machen. |
@@ -518,7 +522,7 @@ beschnitten“ lässt `check` mit Exit-Code 1 enden.
 | „Das Papier ist größer als A3“ | Nur bei Papierformaten über A3; derzeit kennt das Programm nur A4 und A3. |
 | „Im Layout … fehlt ein Text mit {print_scale} …“ | Maßstab oder Äquidistanz stehen auf keinem Blattelement, oder `map.contour_interval_m` fehlt. Einen Titelblock oder Text mit dem Platzhalter ergänzen, den Wert eintragen. |
 | „Layout … hat keine Kontrollstrecke“ | Das Layout zeigt kein Element `scale_check_bar`. Eines ergänzen (gemeinsam oder im Layout), damit ein Lineal am Ausdruck zeigt, ob der Drucker skaliert hat. |
-| „Die Karte hat keine Nordlinien, deshalb wurden … Linien ergänzt“ | Nur zur Information, siehe Kapitel 6. `north_lines = "never"` schaltet das ab. |
+| „Zur Information: Die Karte hat keine Nordlinien, deshalb wurden … Linien ergänzt“ | Nur zur Information, siehe Kapitel 6. `north_lines = "never"` schaltet das ab. |
 | „… weder Nordlinien noch ein brauchbares Liniensymbol 601 …“ | Die Karte hat kein Symbol für Nordlinien. Das Programm zieht schwarze Linien von 0,14 mm über die Karte; sie liegen über allem. Besser: Nordlinien in OOM zeichnen. |
 | „Layout … zeigt … von … Quellenangaben“ | Mehr als sechs Quellenzeilen. In `print.copyright` zusammenfassen. |
 | „Die Quellenangabe ‚…‘ ist breiter als der Kartenausschnitt und wird mit ‚…‘ gekürzt“ | Die Zeile in den Kartennotizen oder in `print.copyright` kürzen oder auf zwei Zeilen verteilen. |
@@ -528,6 +532,6 @@ beschnitten“ lässt `check` mit Exit-Code 1 enden.
 | „Layout … blendet den Kartenteil … aus, die Karte hat aber keinen Teil dieses Namens“ | Namen in `hide_parts` genau so schreiben wie in OOM, mit Groß- und Kleinschreibung. |
 
 Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Datei, Zeile, Spalte und den
-Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm` ``.
-Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört.
-Diese Texte kommen aus der Bibliothek und sind vorerst Englisch.
+Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm`
+``. Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört. Diese Texte kommen aus der Bibliothek
+und sind vorerst Englisch.

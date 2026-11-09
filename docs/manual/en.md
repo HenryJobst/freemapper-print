@@ -131,10 +131,10 @@ freemapper-print check citysprint
 line per layout with paper, orientation, scale and factors, followed by the notes. It ends with "Checked 1
 layout, no notes." or "Layouts with notes: 1 of 2."
 
-The exit code is 0 when no layout has anything to report, and 1 when one has a note or cannot be drawn. Added
-north lines and an intended crop (`map_frame.crop`) do not count as a note. A script can therefore run `check` before `export`. A note never stops the
-export. Some notes are expected, such as the overflow of a map larger than the sheet. Chapter 10 explains each
-note.
+The exit code is 0 when no layout has anything to report, and 1 when one has a note or cannot be drawn. Lines that
+start with "Info:", for added north lines and an intended crop (`map_frame.crop`), do not count. A script can
+therefore run `check` before `export`. A note never stops the export. Some notes are expected, such as the overflow
+of a map larger than the sheet. Chapter 10 explains each note.
 
 ### Writing the PDFs: `export`
 
@@ -256,8 +256,8 @@ Every element has:
 | `anchor.offset_mm` | `[x, y]`, distance in mm from that position inward |
 
 Each offset lies between -2000 and 2000 mm. From a left or top edge the offset counts right or down, from a right
-or bottom edge left or up, from a middle right or down. The element sits on the inner side of its position: `top_right` with `[2, 2]` puts its top-right
-corner 2 mm left of and 2 mm below the top-right corner.
+or bottom edge left or up, from a middle right or down. The element sits on the inner side of its position:
+`top_right` with `[2, 2]` puts its top-right corner 2 mm left of and 2 mm below the top-right corner.
 
 An element hung on the map frame lies on the map and covers it, as intended. An element hung on the page that
 reaches into the map frame gets a note, and so does an element that reaches past the page edge.
@@ -275,8 +275,8 @@ anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
 ```
 
 A title block sets its first line in 14 pt bold (`size_pt` changes that, up to 200) and the others in 9 pt. A
-`text` sets all lines in 9 pt or in `size_pt`. Both stand on a white box with a 1 mm margin; `box_white = false` leaves it
-out. The font is Arimo, the same as for map texts.
+`text` sets all lines in 9 pt or in `size_pt`. Both stand on a white box with a 1 mm margin; `box_white = false`
+leaves it out. The font is Arimo, the same as for map texts.
 
 The program fills in these placeholders:
 
@@ -307,7 +307,8 @@ width_mm = 35.0
 anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
 ```
 
-`width_mm` is the width on paper, at most 2000; the height follows from the aspect ratio. The program takes PNG, JPEG and SVG:
+`width_mm` is the width on paper, at most 2000; the height follows from the aspect ratio. The program takes PNG,
+JPEG and SVG:
 
 - **PNG and JPEG** stay pixel images, and a PNG keeps its transparency. For print the image should have about
   300 pixels per inch, so around 400 pixels for 35 mm.
@@ -358,21 +359,22 @@ distance (5, 10, 20, 50, 100, 200, 250, 500 or 1000 m) that is at most 50 mm lon
 
 ### Footer: copyright and credit lines
 
-Every sheet has a footer in 5 pt at the bottom left. At the top come the copyright lines, one per line, from
+Every sheet has a footer in 5 pt at the bottom left, on a white box, so that nothing drawn under it hides
+it; below the map frame the box is white on white paper. At the top come the copyright lines, one per line, from
 `print.copyright` or from the map notes. Below them is the credit line "Created with freemapper-print –
 https://github.com/HenryJobst/freemapper-print" ("Erstellt mit …" on German sheets). The credit line cannot be
 switched off.
 
-The footer goes below the map frame when all of it fits there. Otherwise it goes inside the map frame at the
-bottom left on a white box, and `check` reports that it covers part of the map, and names any element the box
-covers. To fix that, widen the passe-partout (`margin_mm`) or shorten `print.copyright`. The program shows at
-most six copyright lines: five and a sixth that counts the rest. A line wider than the map frame is cut with
-"…", and `check` names it.
+The footer goes below the map frame when all of it fits there. Otherwise it goes inside the map frame at the bottom
+left, and `check` reports that it covers part of the map. In either place `check` names any element the footer
+covers. To fix that, widen the passe-partout (`margin_mm`) or shorten `print.copyright`. The program shows at most
+six copyright lines: five and a sixth that counts the rest. A line wider than the map frame is cut with "…", and
+`check` names it.
 
 A `copyright_line` or `credit_line` element takes that part out of the footer and puts it at its own anchor, in
-5 pt or `size_pt`. It only moves the lines; the credit line stays on the sheet. A `credit_line` must be at least
-5 pt. If it would not lie wholly on the page, the credit line stays in the footer, and `check` says so. The
-credit line is drawn after everything else on the sheet, so no element can cover it.
+5 pt or `size_pt`. It only moves the lines; the credit line stays on the sheet, on its own white box. A `credit_line`
+must be at least 5 pt. If it would not lie wholly on the page, the credit line stays in the footer, and `check`
+says so. The credit line is drawn after everything else on the sheet, so no element can cover it.
 
 ## 9. Printing at the right scale at home and in a copy shop
 
@@ -414,10 +416,11 @@ Warning: the map does not fit on the page. It is 4.0 mm too tall for the printab
 ```
 
 The number says by how many millimetres the map extends beyond it, both sides together. It is measured on what
-would actually print, with line widths, point symbols and texts. The map is not shrunk, because that would
-falsify the scale. You can take larger paper (A3), a print scale with a larger number, or in a layout choose the
-part of the map with `centre_map_mm` and mark the cut as intended with `map_frame.crop = true` (chapter 6). If
-you chose the orientation yourself, the message also names the other one. The PDF is written even with an overflow, so you can see what is missing.
+would actually print, with line widths, point symbols and texts. The map is not shrunk, because that would falsify
+the scale. You can take larger paper (A3), a print scale with a larger number, or in a layout choose the part of
+the map with `centre_map_mm` and mark the cut as intended with `map_frame.crop = true` (chapter 6). If you chose
+the orientation yourself, the message also names the other one. The PDF is written even with an overflow, so you
+can see what is missing.
 
 ### How large the symbols are
 
@@ -485,15 +488,15 @@ These notes come from `render`, `check` and `export`:
 ## 10. Messages and what to do
 
 This chapter explains the notes about the sheets of a layout. The notes about printing the map itself are in
-chapter 9. None of them stops the export, but each one except "lines were added" and "cut there on purpose"
-makes `check` end with exit code 1.
+chapter 9. None of them stops the export. Each line that starts with "Note:" makes `check` end with exit code 1;
+a line that starts with "Info:" does not.
 
 | Note (shortened) | Meaning and fix |
 |---|---|
 | "the map does not fit on the page. It is … too tall/too wide …" | The map is larger than the map frame and is cut. A3, another scale, a narrower passe-partout, or `centre_map_mm` for the part you want. If the cut is intended, set `map_frame.crop = true`. |
-| "the map is … for the map frame and is cut there on purpose" | For information only: the layout has `map_frame.crop = true`. |
+| "Info: the map is … for the map frame and is cut there on purpose" | For information only: the layout has `map_frame.crop = true`. |
 | "the passe-partout is too narrow for the footer …" | The footer sits on a white box inside the map. Raise `margin_mm`, shorten `print.copyright`, or place the lines elsewhere with `copyright_line`/`credit_line`. |
-| "the footer … covers part of the element …" | The footer's white box overlaps an element in the bottom-left corner of the map frame. Move the element, or widen `margin_mm` so the footer goes below the frame. |
+| "the footer … at the bottom left covers part of the element …" | The footer and its white box overlap an element in the bottom-left corner, below or inside the map frame. Move the element, or move the footer lines with a `copyright_line` or `credit_line` element. The note names what the footer holds: copyright lines, the credit line or both. |
 | "the credit line element … would not lie wholly on the page" | The `credit_line` element would reach past the page edge, so the credit line stays in the footer. Check its anchor, offset and `size_pt`. |
 | "the footer … reaches past the page edge" | The footer extends beyond the sheet. Check the passe-partout and the copyright lines. |
 | "the element … reaches past the page edge" | Check the element's anchor and offset; make a logo narrower if needed. |
@@ -501,7 +504,7 @@ makes `check` end with exit code 1.
 | "the paper is larger than A3" | Only for paper larger than A3; the program knows only A4 and A3 so far. |
 | "layout … lacks a text with {print_scale} …" | No sheet element shows the scale or the contour interval, or `map.contour_interval_m` is missing. Add a title block or text with the placeholder, or set the value. |
 | "layout … has no scale check bar" | The layout shows no `scale_check_bar` element. Add one (shared or in the layout), so a ruler on the printout shows whether the printer scaled it. |
-| "the map has no north lines, so … lines were added" | For information only, see chapter 6. `north_lines = "never"` turns it off. |
+| "Info: the map has no north lines, so … lines were added" | For information only, see chapter 6. `north_lines = "never"` turns it off. |
 | "… neither north lines nor a usable line symbol 601 …" | The map has no symbol for north lines. The program draws plain black 0.14 mm lines over the map, on top of everything. Better: draw north lines in OOM. |
 | "layout … shows … of … copyright lines" | More than six copyright lines. Merge them in `print.copyright`. |
 | "the copyright line '…' is wider than the map frame and is cut short" | Shorten the line in the map notes or in `print.copyright`, or split it in two. |
