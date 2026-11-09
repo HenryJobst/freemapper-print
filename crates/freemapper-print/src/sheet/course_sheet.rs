@@ -10,7 +10,7 @@ use crate::course::{
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
 use crate::numbers::{place_on_sheet, resolve};
 use crate::omap::{MapCoord, MapDocument};
-use crate::overprint::{applies, control_count, overprint};
+use crate::overprint::{applies, control_count, on_map, overprint};
 use crate::print::Orientation;
 use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
 use crate::render::page::{Pt, RenderedPage};
@@ -124,7 +124,8 @@ pub fn render_course_sheet(
         .iter()
         .map(|n| (n.resolved.control.clone(), n.centre))
         .collect();
-    page.overprint = overprint(course, event, &centres, to_page, &sizes, sf).on_map(
+    page.overprint = on_map(
+        overprint(course, event, &centres, to_page, &sizes, sf),
         project.rules.purple_cmyk(),
         &page.colours,
         &page.primitives,

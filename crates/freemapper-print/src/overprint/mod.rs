@@ -11,69 +11,33 @@ use crate::course::{
     Control, ControlKind, Course, CourseFilter, CourseKind, FittedEvent, Special, Stop,
 };
 use crate::omap::MapCoord;
-use crate::render::page::{DirectColour, Primitive, Pt, RenderColour, Shape};
+pub use crate::render::page::Overprint;
+use crate::render::page::{DirectColour, Primitive, Pt, RenderColour};
 use crate::rules::CourseSymbolSizes;
 
-/// The course colour of IOF Rev. 4, CMYK 35/85/0/0, until a rule set gives its own
-/// ([`Overprint::on_map`]).
+/// The course colour of IOF Rev. 4, CMYK 35/85/0/0, until a rule set gives its own ([`on_map`]).
 pub const IOF_PURPLE: [f64; 4] = [0.35, 0.85, 0.0, 0.0];
 
-/// The overprint of one course on one page. Empty on pages without a course, so they stay as before.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Overprint {
-    /// Lower purple: start, controls, legs, finish, out-of-bounds boundaries, forbidden routes, crossing
-    /// points, first aid and water. Painted below full-strength black, brown and blue.
-    pub lower: Vec<Shape>,
-    /// Upper purple: control numbers, map exchanges, out-of-bounds and dangerous areas, marked routes and
-    /// texts. Painted over all map primitives.
-    pub upper: Vec<Shape>,
-    /// The priority before whose first primitive the lower layer is painted ([`full_strength_priority`]).
-    /// `None` paints it after all map primitives, just before the upper layer.
-    pub below_priority: Option<i32>,
-    pub colour: DirectColour,
-    /// A limit ([`MAX_REPEATS`]) left out hatch lines, dashes or crosses.
-    pub cut: bool,
-}
-
-impl Default for Overprint {
-    fn default() -> Self {
-        Overprint {
-            lower: Vec::new(),
-            upper: Vec::new(),
-            below_priority: None,
-            colour: DirectColour { cmyk: IOF_PURPLE },
-            cut: false,
-        }
-    }
-}
-
-impl Overprint {
-    /// Nothing to paint.
-    pub fn is_empty(&self) -> bool {
-        self.lower.is_empty() && self.upper.is_empty()
-    }
-
-    /// The overprint in `purple` (the rule set's course colour), with its lower layer placed among the
-    /// page's map `primitives` by [`full_strength_priority`] of the `colours` they paint in. Colours no
-    /// primitive uses do not count: map symbol sets carry the course purple itself as their topmost
-    /// colour, and it would put the lower layer over everything.
-    pub fn on_map(
-        self,
-        purple: [f64; 4],
-        colours: &[RenderColour],
-        primitives: &[Primitive],
-    ) -> Self {
-        let used: BTreeSet<i32> = primitives.iter().map(|p| p.priority).collect();
-        let painted: Vec<RenderColour> = colours
-            .iter()
-            .filter(|c| used.contains(&c.priority))
-            .cloned()
-            .collect();
-        Overprint {
-            colour: DirectColour { cmyk: purple },
-            below_priority: full_strength_priority(&painted),
-            ..self
-        }
+/// The overprint `o` in `purple` (the rule set's course colour), with its lower layer placed among the page's
+/// map `primitives` by [`full_strength_priority`] of the `colours` they paint in. Colours no primitive uses do
+/// not count: map symbol sets carry the course purple itself as their topmost colour, and it would put the
+/// lower layer over everything.
+pub fn on_map(
+    o: Overprint,
+    purple: [f64; 4],
+    colours: &[RenderColour],
+    primitives: &[Primitive],
+) -> Overprint {
+    let used: BTreeSet<i32> = primitives.iter().map(|p| p.priority).collect();
+    let painted: Vec<RenderColour> = colours
+        .iter()
+        .filter(|c| used.contains(&c.priority))
+        .cloned()
+        .collect();
+    Overprint {
+        colour: DirectColour { cmyk: purple },
+        below_priority: full_strength_priority(&painted),
+        ..o
     }
 }
 
@@ -138,7 +102,7 @@ pub fn full_strength(name: &str, cmyk: [f64; 4]) -> Option<FullStrength> {
 
 /// The priority before whose primitives the lower purple goes (ADR 0034): the highest priority number,
 /// painted first, among the colours with a [`canonical`] name. Only when no colour has one, the highest
-/// among the colours [`by_cmyk`]. Pass the colours the page paints ([`Overprint::on_map`]). Duplicates
+/// among the colours [`by_cmyk`]. Pass the colours the page paints ([`on_map`]). Duplicates
 /// deeper in the order ("Black for open land") then lie under the purple, and so do the fills painted
 /// between them and the canonical colour; `None` when no colour is full strength.
 pub fn full_strength_priority(colours: &[RenderColour]) -> Option<i32> {
@@ -380,7 +344,7 @@ pub(crate) fn applies(filter: &CourseFilter, course: &str) -> bool {
 /// without an entry gets no number). [`crate::numbers::place_on_sheet`] gives the centres. `to_page` maps a map coordinate to page mm (the map frame and the page
 /// share the y direction); sizes are `sizes` × `symbol_factor`, leg gaps and offsets scale with the
 /// geometry factor `to_page` applies. Returns `below_priority` unset and the IOF purple:
-/// [`Overprint::on_map`] sets both for a page.
+/// [`on_map`] sets both for a page.
 pub fn overprint(
     course: &Course<MapCoord>,
     event: &FittedEvent,
@@ -396,7 +360,10 @@ pub fn overprint(
         to_page(MapCoord::new(1000, 0)),
     );
     let mut budget = symbols::Budget::new(MAX_REPEATS);
-    let mut o = Overprint::default();
+    let mut o = Overprint {
+        colour: DirectColour { cmyk: IOF_PURPLE },
+        ..Overprint::default()
+    };
     let placed = placed_stops(course, event, &to_page);
     let at = |i: usize| placed.get(i).and_then(Option::as_ref);
     // The page points of leg `i`: from its first stop through its bends to its second.

@@ -4,7 +4,7 @@ use super::*;
 use crate::course::model::Offset;
 use crate::course::{CourseEvent, CourseFilter, CourseSource, Leg, SourceFormat, Special, Stop};
 use crate::render::draw::FillRule;
-use crate::render::page::{PaperBox, Primitive, RenderedPage};
+use crate::render::page::{PaperBox, Primitive, RenderedPage, Shape};
 use crate::render::pdf::{PdfMeta, content_of, write_pdf};
 use crate::scale::{MapKind, geometry_factor, symbol_factor};
 
@@ -814,7 +814,12 @@ fn luebeck_lower_purple_under_black_over_every_fill() {
     let painted: std::collections::BTreeSet<i32> =
         page.primitives.iter().map(|p| p.priority).collect();
     assert_eq!(painted.into_iter().collect::<Vec<_>>(), [2, 10, 14, 15, 16]);
-    let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
+    let o = on_map(
+        Overprint::default(),
+        IOF_PURPLE,
+        &page.colours,
+        &page.primitives,
+    );
     assert_eq!(o.below_priority, Some(2));
     let below = o.below_priority.unwrap();
     for (priority, what) in [
@@ -842,7 +847,12 @@ fn forest_lower_purple_right_under_brown() {
             (7, "Brown".to_string()),
         ]
     );
-    let o = Overprint::default().on_map(IOF_PURPLE, &page.colours, &page.primitives);
+    let o = on_map(
+        Overprint::default(),
+        IOF_PURPLE,
+        &page.colours,
+        &page.primitives,
+    );
     // Painted canonical colours: Black (1) and Brown (7); Blue (5) paints nothing. The lower purple goes
     // right under Brown, over the greens and yellows, and under Brown 50% (2) and Black below light
     // browns (3).
@@ -944,7 +954,8 @@ fn course_page(colours: Vec<RenderColour>) -> RenderedPage {
     let (c, ev) = three_stops();
     let numbers = file_numbers(&c, &ev, page_of(1.0), &sizes(), 1.0);
     let primitives = vec![square(9), square(2), square(1)];
-    let o = overprint(&c, &ev, &numbers, page_of(1.0), &sizes(), 1.0).on_map(
+    let o = on_map(
+        overprint(&c, &ev, &numbers, page_of(1.0), &sizes(), 1.0),
         IOF_PURPLE,
         &colours,
         &primitives,
