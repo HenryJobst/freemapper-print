@@ -43,8 +43,10 @@ is replaced. A failed write removes its partial file.
   `export`; `--out-dir` with a folder outside the project still works. Every example PDF is byte-identical.
 - Cost if wrong: users re-link their project file, and use `--out-dir` for an output folder on another drive.
 
-- Known gap: the handle for the permission check is opened without `O_NONBLOCK`. A FIFO swapped in between the
-  look and the open would block; that needs a hostile local writer. `O_NONBLOCK` on Unix follows.
+- The handle for the permission check is opened with `O_NONBLOCK`, so a FIFO swapped in between the look and
+  the open cannot block it. `libc` is no direct dependency, so the flag is the numeric constant for macOS, the
+  BSDs and Linux (not MIPS or SPARC); on other Unix targets the open stays blocking. The identity check follows
+  the open as before.
 - Dependencies: ADR 0042 records the tag pin and the owners.
 
 Source: core ADR 0009 (freemapper ADR 0060); core-switch plan Task 3; ruling R1; Task 3 review.

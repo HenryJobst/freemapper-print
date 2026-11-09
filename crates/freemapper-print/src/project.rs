@@ -1231,6 +1231,31 @@ fn open_for_attributes(path: &Path) -> std::io::Result<std::fs::File> {
     }
     #[cfg(not(windows))]
     options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // A FIFO swapped in after the check must not block the open. `libc` is no direct
+        // dependency, so the flag is the numeric constant per target.
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd",
+            target_os = "dragonfly"
+        ))]
+        options.custom_flags(0x0004);
+        #[cfg(all(
+            any(target_os = "linux", target_os = "android"),
+            not(any(
+                target_arch = "mips",
+                target_arch = "mips64",
+                target_arch = "sparc",
+                target_arch = "sparc64"
+            ))
+        ))]
+        options.custom_flags(0x0800);
+    }
     options.open(path)
 }
 
