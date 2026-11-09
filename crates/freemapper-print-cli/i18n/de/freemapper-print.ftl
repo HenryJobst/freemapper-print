@@ -48,6 +48,7 @@ error-out-folder-missing = Der Ordner { $path } für das PDF existiert nicht; zu
 error-out-is-map = --out zeigt auf die Kartendatei { $path }; einen PDF-Pfad wählen, damit die Karte unversehrt bleibt
 error-print = Die Karte konnte nicht gedruckt werden
 error-load-project = Das Projekt { $path } konnte nicht geladen werden
+error-base-part-hidden = { $path }: Feld `{ $field }`: Der Kartenteil „base“ ist die Grundfläche der Sprintkarte (belaufbare Fläche) und wird immer gedruckt; „base“ aus hide_parts entfernen
 error-project-exists = { $path } gibt es schon; init überschreibt die Datei nicht
 error-create-folder = Der Ordner { $path } konnte nicht angelegt werden
 error-title-control = --title darf keine Zeilenumbrüche, Tabulatoren oder anderen Steuer- oder unsichtbaren Formatzeichen enthalten
