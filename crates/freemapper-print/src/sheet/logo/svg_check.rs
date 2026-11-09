@@ -816,8 +816,9 @@ pub(super) fn pre_scan(bytes: &[u8]) -> Result<Scan<'_>, String> {
     }
     Ok(Scan { entities })
 }
-/// Checks an SVG logo before `usvg` resolves it. The error is the reason the logo is left out.
-pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<(), String> {
+/// Checks an SVG logo before `usvg` resolves it and returns its work count, the size `usvg` will
+/// build (at most [`MAX_WORK`]). The error is the reason the logo is left out.
+pub(super) fn check_svg(doc: &roxmltree::Document<'_>) -> Result<u64, String> {
     let links = ids(doc)?;
     // The elements inside a clip path, found in one pass in document order (parents first), so
     // no element walks its ancestors.
@@ -1065,7 +1066,7 @@ fn parts<'a, 'input>(node: Node<'a, 'input>, links: &Links<'a, 'input>) -> Vec<N
 fn check_work<'a, 'input>(
     doc: &'a roxmltree::Document<'input>,
     links: &Links<'a, 'input>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let too_complex = || "too complex once `use` and clip paths are resolved".to_string();
     let looped = || unsupported("a `use` that refers to itself");
     let parts = |node| parts(node, links);
@@ -1147,5 +1148,5 @@ fn check_work<'a, 'input>(
     if all.work.saturating_add(taken) > MAX_WORK || all.shapes.saturating_mul(most) > MAX_WORK {
         return Err(too_complex());
     }
-    Ok(())
+    Ok(all.work.saturating_add(taken))
 }

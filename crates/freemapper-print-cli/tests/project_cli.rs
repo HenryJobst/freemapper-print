@@ -8,7 +8,7 @@ use freemapper_print::export::{export_layouts, live_pages, select_layouts};
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::project::{self, FILE_NAME};
 use freemapper_print::scale::MapKind;
-use freemapper_print::sheet::render_sheet;
+use freemapper_print::sheet::{LogoCache, render_sheet};
 
 const LUEBECK: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -510,7 +510,7 @@ fn export_twenty_layouts() {
         .layouts
         .iter()
         .map(|l| {
-            let (page, _) = render_sheet(&loaded, &map, l).unwrap();
+            let (page, _) = render_sheet(&loaded, &map, l, &LogoCache::new()).unwrap();
             page.primitives.len() + page.sheet.len()
         })
         .max()

@@ -23,6 +23,7 @@ use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem
 use crate::render::symbols::{Cap, Join};
 
 pub use layout::anchor_point;
+pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
 pub use text::FOOTER_ID;
 
 /// What a sheet shows and what the user should know about it.
@@ -113,6 +114,10 @@ pub struct SheetContext<'a> {
     pub page: PaperBox,
     /// The map frame on the page.
     pub frame: PaperBox,
+    /// The logos of the export or `check` run, decoded once.
+    pub logos: &'a LogoCache,
+    /// What the logos of this sheet have used of its budget.
+    pub logo_budget: &'a LogoBudget,
 }
 
 /// An element as drawn: its sheet items in paint order and the box they cover on the page.
@@ -128,11 +133,13 @@ pub struct PlacedElement {
 ///
 /// The map kind comes from the project, the symbols scale as ADR 0018 sets. Map parts named in
 /// `hide_parts` are left out; sheet objects (`freemapper:source=sheet`) are not drawn, the sheet
-/// elements take their place, while north lines always are (ADR 0023).
+/// elements take their place, while north lines always are (ADR 0023). Logos come from `logos`,
+/// which the sheets of one run share.
 pub fn render_sheet(
     project: &LoadedProject,
     map: &MapDocument,
     layout: &LayoutSpec,
+    logos: &LogoCache,
 ) -> Result<(RenderedPage, SheetReport), SheetError> {
     let mut notes = Vec::new();
     if layout::larger_than_a3(layout.paper) {
@@ -163,6 +170,7 @@ pub fn render_sheet(
     page.sheet
         .extend(layout::frame_border(frame, layout.map_frame.border_mm));
 
+    let logo_budget = LogoBudget::default();
     let ctx = SheetContext {
         project,
         map: &map,
@@ -170,6 +178,8 @@ pub fn render_sheet(
         print: &print,
         page: page_box,
         frame,
+        logos,
+        logo_budget: &logo_budget,
     };
     // The credit line goes on top of everything else, so no element can hide it.
     let mut credit_lines = Vec::new();
@@ -487,7 +497,13 @@ mod tests {
     }
 
     fn sheet(map: &MapDocument, layout: &LayoutSpec) -> (RenderedPage, SheetReport) {
-        render_sheet(&project(MapKind::Sprint, Vec::new(), layout), map, layout).unwrap()
+        render_sheet(
+            &project(MapKind::Sprint, Vec::new(), layout),
+            map,
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -594,18 +610,18 @@ mod tests {
         let mut layout = a4();
         layout.print_scale = Some(7500);
         let lp = project(MapKind::Forest, Vec::new(), &layout);
-        let (_, report) = render_sheet(&lp, &map, &layout).unwrap();
+        let (_, report) = render_sheet(&lp, &map, &layout, &LogoCache::new()).unwrap();
         assert_eq!(report.print.print_scale, 7500);
         assert!((report.print.geometry_factor - 4.0 / 3.0).abs() < 1e-12);
         assert!((report.print.symbol_factor - 4.0 / 3.0).abs() < 1e-12);
         assert!(!report.print.non_standard_scale);
         // Without a print scale the map scale applies.
-        let (_, report) = render_sheet(&lp, &map, &a4()).unwrap();
+        let (_, report) = render_sheet(&lp, &map, &a4(), &LogoCache::new()).unwrap();
         assert_eq!(report.print.print_scale, 10000);
         assert_eq!(report.print.symbol_factor, 1.0);
         // The kind comes from the project: 1:7500 is no sprint scale.
         let sprint = project(MapKind::Sprint, Vec::new(), &layout);
-        let err = render_sheet(&sprint, &map, &layout).unwrap_err();
+        let err = render_sheet(&sprint, &map, &layout, &LogoCache::new()).unwrap_err();
         assert!(
             matches!(err, SheetError::Print(PrintError::Scale(_))),
             "{err}"
@@ -619,7 +635,7 @@ mod tests {
         let lp = crate::project::load(&dir.join(crate::project::FILE_NAME)).unwrap();
         let map = crate::omap::read::read_map_file(&lp.map_path()).unwrap();
         let layout = &lp.project.layouts[0];
-        let (page, report) = render_sheet(&lp, &map, layout).unwrap();
+        let (page, report) = render_sheet(&lp, &map, layout, &LogoCache::new()).unwrap();
         assert_eq!(page.clip, crate::print::frame_box(page.page_mm, 8.0));
         assert_eq!(report.print.print_scale, 4000);
         assert!(matches!(
@@ -734,7 +750,7 @@ mod tests {
     }
 
     pub(super) fn sheet_of(lp: &LoadedProject, map: &MapDocument) -> (RenderedPage, SheetReport) {
-        render_sheet(lp, map, &lp.project.layouts[0]).unwrap()
+        render_sheet(lp, map, &lp.project.layouts[0], &LogoCache::new()).unwrap()
     }
 
     pub(super) fn empty_map() -> MapDocument {

@@ -8,10 +8,11 @@
 //! limits below bound the work (ADR 0019), and a file that breaks one is left out with a
 //! [`SheetNote::LogoSkipped`].
 
-use std::collections::BTreeSet;
+use std::cell::Cell;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{Cursor, Read};
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use image::{ImageFormat, ImageReader, Limits};
 use usvg::roxmltree;
@@ -66,8 +67,229 @@ pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> DirectColour {
     }
 }
 
-/// Draws a `logo` element at its anchor, `width_mm` wide. A logo that does not load gives a
-/// [`SheetNote::LogoSkipped`] and draws nothing.
+/// Most logo pixels on one sheet, all raster logos together, each counted as often as it is
+/// placed (ADR 0026). Two logos of the largest size fit.
+pub const MAX_PAGE_LOGO_PIXELS: u64 = 50_000_000;
+/// Most SVG work on one sheet, all SVG logos together, each counted as often as it is placed: the
+/// size of the logo as [`svg_check`] counts it plus the points its curves flatten into (ADR 0026).
+pub const MAX_PAGE_SVG_UNITS: u64 = 1_000_000;
+
+/// The logos of one export or `check` run, each distinct file read and decoded once (ADR 0026).
+/// Sheets share the decoded image, so the PDF embeds it once per page however often it is placed.
+///
+/// A file that cannot be used is remembered with its reason. Decoded logos are dropped when
+/// keeping another would hold more than two sheets' worth ([`MAX_PAGE_LOGO_PIXELS`],
+/// [`MAX_PAGE_SVG_UNITS`]); what a page already holds stays alive there.
+#[derive(Debug)]
+pub struct LogoCache {
+    entries: Mutex<Entries>,
+    limits: LogoLimits,
+    #[cfg(any(test, feature = "test-hooks"))]
+    decodes: std::sync::atomic::AtomicUsize,
+}
+
+/// The per-sheet budgets of a [`LogoCache`].
+#[derive(Debug, Clone, Copy)]
+struct LogoLimits {
+    page_pixels: u64,
+    page_svg_units: u64,
+}
+
+#[derive(Debug, Default)]
+struct Entries {
+    by_path: HashMap<PathBuf, Entry>,
+    /// Pixels and SVG work of the decoded logos held.
+    held_pixels: u64,
+    held_svg: u64,
+}
+
+#[derive(Debug)]
+enum Entry {
+    Failed(String),
+    Known { cost: Cost, logo: Option<Logo> },
+}
+
+/// What placing a logo once costs against the sheet's budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Cost {
+    Pixels(u64),
+    /// [`svg_check`]'s work count; the flattened points are added when it is placed.
+    SvgWork(u64),
+}
+
+impl Default for LogoCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LogoCache {
+    pub fn new() -> Self {
+        Self::with_limits(MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS)
+    }
+
+    /// A cache with other per-sheet budgets, for tests.
+    fn with_limits(page_pixels: u64, page_svg_units: u64) -> Self {
+        LogoCache {
+            entries: Mutex::new(Entries::default()),
+            limits: LogoLimits {
+                page_pixels,
+                page_svg_units,
+            },
+            #[cfg(any(test, feature = "test-hooks"))]
+            decodes: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    /// How many files this cache has decoded (feature `test-hooks`).
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
+    pub fn decodes(&self) -> usize {
+        self.decodes.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Counts one decoded raster file or parsed SVG (feature `test-hooks`).
+    fn count_decode(&self) {
+        #[cfg(any(test, feature = "test-hooks"))]
+        self.decodes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn entries(&self) -> std::sync::MutexGuard<'_, Entries> {
+        // A panic while the lock was held leaves the map whole: entries are inserted at once.
+        self.entries.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The logo at `path` if `budget` has room for it, decoding it on first use. The error is the
+    /// reason the logo is left out.
+    fn get(&self, path: &Path, budget: &LogoBudget) -> Result<Logo, String> {
+        let known = match self.entries().by_path.get(path) {
+            Some(Entry::Failed(reason)) => return Err(reason.clone()),
+            Some(Entry::Known { cost, logo }) => Some((*cost, logo.clone())),
+            None => None,
+        };
+        if let Some((cost, Some(logo))) = known {
+            budget.take(cost, &self.limits)?;
+            return Ok(logo);
+        }
+        if let Some((cost, None)) = known {
+            budget.fits(cost, &self.limits)?;
+        }
+        // Read the file and find out what it costs before decoding it.
+        let probe = match probe(path) {
+            Ok(probe) => probe,
+            Err(reason) => {
+                self.entries()
+                    .by_path
+                    .insert(path.to_path_buf(), Entry::Failed(reason.clone()));
+                return Err(reason);
+            }
+        };
+        let cost = probe.cost();
+        if matches!(probe, Probe::Svg { .. }) {
+            self.count_decode();
+        }
+        if let Err(reason) = budget.fits(cost, &self.limits) {
+            self.entries()
+                .by_path
+                .insert(path.to_path_buf(), Entry::Known { cost, logo: None });
+            return Err(reason);
+        }
+        if matches!(probe, Probe::Raster { .. }) {
+            self.count_decode();
+        }
+        let logo = match probe.decode() {
+            Ok(logo) => logo,
+            Err(reason) => {
+                self.entries()
+                    .by_path
+                    .insert(path.to_path_buf(), Entry::Failed(reason.clone()));
+                return Err(reason);
+            }
+        };
+        self.keep(path, cost, logo.clone());
+        budget.take(cost, &self.limits)?;
+        Ok(logo)
+    }
+
+    /// Stores a decoded logo, first dropping the decoded ones held when it would not fit beside
+    /// them.
+    fn keep(&self, path: &Path, cost: Cost, logo: Logo) {
+        let mut entries = self.entries();
+        let (pixels, svg) = match cost {
+            Cost::Pixels(n) => (n, 0),
+            Cost::SvgWork(n) => (0, n),
+        };
+        let over = entries.held_pixels + pixels > 2 * self.limits.page_pixels
+            || entries.held_svg + svg > 2 * self.limits.page_svg_units;
+        if over {
+            for entry in entries.by_path.values_mut() {
+                if let Entry::Known { logo, .. } = entry {
+                    *logo = None;
+                }
+            }
+            entries.held_pixels = 0;
+            entries.held_svg = 0;
+        }
+        entries.held_pixels += pixels;
+        entries.held_svg += svg;
+        entries.by_path.insert(
+            path.to_path_buf(),
+            Entry::Known {
+                cost,
+                logo: Some(logo),
+            },
+        );
+    }
+}
+
+/// What the logos of one sheet have used of its budgets so far.
+#[derive(Debug, Default)]
+pub struct LogoBudget {
+    pixels: Cell<u64>,
+    svg_units: Cell<u64>,
+}
+
+impl LogoBudget {
+    /// Whether `cost` still fits; the error is the reason the logo is left out.
+    fn fits(&self, cost: Cost, limits: &LogoLimits) -> Result<(), String> {
+        match cost {
+            Cost::Pixels(n) if self.pixels.get().saturating_add(n) > limits.page_pixels => {
+                Err(PIXEL_BUDGET.into())
+            }
+            Cost::SvgWork(n) if self.svg_units.get().saturating_add(n) > limits.page_svg_units => {
+                Err(SVG_BUDGET.into())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// [`fits`](Self::fits), then counts `cost` as used.
+    fn take(&self, cost: Cost, limits: &LogoLimits) -> Result<(), String> {
+        self.fits(cost, limits)?;
+        match cost {
+            Cost::Pixels(n) => self.pixels.set(self.pixels.get() + n),
+            Cost::SvgWork(n) => self.svg_units.set(self.svg_units.get() + n),
+        }
+        Ok(())
+    }
+
+    /// Counts `points` flattened SVG points as used; the error when they break the budget.
+    fn take_points(&self, points: usize, limits: &LogoLimits) -> Result<(), String> {
+        let used = self.svg_units.get().saturating_add(points as u64);
+        if used > limits.page_svg_units {
+            return Err(SVG_BUDGET.into());
+        }
+        self.svg_units.set(used);
+        Ok(())
+    }
+}
+
+const PIXEL_BUDGET: &str = "more than 50 megapixels of logos on this sheet";
+const SVG_BUDGET: &str = "more SVG logo work on this sheet than its budget of 1 000 000 units";
+
+/// Draws a `logo` element at its anchor, `width_mm` wide. A logo that does not load, or does not
+/// fit into the sheet's budget, gives a [`SheetNote::LogoSkipped`] and draws nothing.
 pub(super) fn place_logo(
     ctx: &SheetContext<'_>,
     spec: &ElementSpec,
@@ -84,7 +306,7 @@ pub(super) fn place_logo(
     };
     let path = ctx.project.resolve(file);
     let shown = path.display();
-    let logo = match load(&path) {
+    let logo = match ctx.logos.get(&path, ctx.logo_budget) {
         Ok(logo) => logo,
         Err(reason) => {
             notes.push(skipped(format!("{shown}: {reason}")));
@@ -103,12 +325,13 @@ pub(super) fn place_logo(
         max: (top_left.0 + size.0, top_left.1 + size.1),
     };
     let items = match logo {
-        Logo::Raster(image) => vec![SheetItem::Image {
-            rect,
-            image: Arc::new(image),
-        }],
+        Logo::Raster(image) => vec![SheetItem::Image { rect, image }],
         Logo::Vector(tree) => match svg_items(&tree, rect) {
-            Ok((items, simplified)) => {
+            Ok((items, simplified, points)) => {
+                if let Err(reason) = ctx.logo_budget.take_points(points, &ctx.logos.limits) {
+                    notes.push(skipped(format!("{shown}: {reason}")));
+                    return None;
+                }
                 notes.extend(simplified.into_iter().map(|r| SheetNote::LogoSimplified {
                     id: spec.id.clone(),
                     reason: r.into(),
@@ -124,10 +347,11 @@ pub(super) fn place_logo(
     Some(PlacedElement { items, rect })
 }
 
-/// A logo as read, before it is placed.
+/// A logo as decoded, shared by every place that draws it.
+#[derive(Debug, Clone)]
 enum Logo {
-    Raster(RasterImage),
-    Vector(Box<usvg::Tree>),
+    Raster(Arc<RasterImage>),
+    Vector(Arc<usvg::Tree>),
 }
 
 impl Logo {
@@ -143,14 +367,58 @@ impl Logo {
     }
 }
 
-/// Reads and decodes the logo at `path`; the error is the reason it is left out.
-fn load(path: &Path) -> Result<Logo, String> {
+/// A logo file read and checked. A PNG or JPEG is not decoded yet; an SVG is parsed already,
+/// since its work count needs the parsed XML.
+enum Probe {
+    Raster {
+        bytes: Vec<u8>,
+        format: ImageFormat,
+        pixels: u64,
+    },
+    Svg {
+        tree: Arc<usvg::Tree>,
+        work: u64,
+    },
+}
+
+impl Probe {
+    fn cost(&self) -> Cost {
+        match self {
+            Probe::Raster { pixels, .. } => Cost::Pixels(*pixels),
+            Probe::Svg { work, .. } => Cost::SvgWork(*work),
+        }
+    }
+
+    fn decode(self) -> Result<Logo, String> {
+        match self {
+            Probe::Raster { bytes, format, .. } => {
+                decode_raster(&bytes, format).map(|i| Logo::Raster(Arc::new(i)))
+            }
+            Probe::Svg { tree, .. } => Ok(Logo::Vector(tree)),
+        }
+    }
+}
+
+/// Reads the logo at `path` and checks what it costs: the size in the header of a PNG or JPEG
+/// (no pixel decoded), the work count of an SVG (parsed). The error is the reason it is left out.
+fn probe(path: &Path) -> Result<Probe, String> {
     let bytes = read_file(path)?;
     match image::guess_format(&bytes) {
         Ok(format @ (ImageFormat::Png | ImageFormat::Jpeg)) => {
-            decode_raster(&bytes, format).map(Logo::Raster)
+            let (width, height) = raster_size(&bytes, format)?;
+            Ok(Probe::Raster {
+                bytes,
+                format,
+                pixels: u64::from(width) * u64::from(height),
+            })
         }
-        _ if looks_like_xml(&bytes) => parse_svg(&bytes),
+        _ if looks_like_xml(&bytes) => {
+            let (tree, work) = parse_svg(&bytes)?;
+            Ok(Probe::Svg {
+                tree: Arc::new(tree),
+                work,
+            })
+        }
         _ => Err("not a PNG, JPEG or SVG file".into()),
     }
 }
@@ -187,12 +455,12 @@ fn looks_like_xml(bytes: &[u8]) -> bool {
         .is_some_and(|&b| b == b'<')
 }
 
-/// A PNG or JPEG as RGB with its alpha channel, if it has one. The size in the header is checked
-/// before any pixel is decoded, and the decoder runs with a memory limit.
-fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, String> {
-    let reader = || ImageReader::with_format(Cursor::new(bytes), format);
-    let cannot = |e: image::ImageError| format!("cannot decode the image ({e})");
-    let (width, height) = reader().into_dimensions().map_err(cannot)?;
+/// The size in the header of a PNG or JPEG, refused when it is over [`MAX_PIXELS`] or
+/// [`MAX_DIMENSION`]. No pixel is decoded.
+fn raster_size(bytes: &[u8], format: ImageFormat) -> Result<(u32, u32), String> {
+    let (width, height) = ImageReader::with_format(Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|e| format!("cannot decode the image ({e})"))?;
     if u64::from(width) * u64::from(height) > MAX_PIXELS {
         return Err(format!(
             "{width} x {height} pixels, more than 25 megapixels"
@@ -203,6 +471,15 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
             "{width} x {height} pixels, wider or higher than 65 535"
         ));
     }
+    Ok((width, height))
+}
+
+/// A PNG or JPEG as RGB with its alpha channel, if it has one. The size in the header is checked
+/// before any pixel is decoded, and the decoder runs with a memory limit.
+fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, String> {
+    let reader = || ImageReader::with_format(Cursor::new(bytes), format);
+    let cannot = |e: image::ImageError| format!("cannot decode the image ({e})");
+    raster_size(bytes, format)?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_DIMENSION);
     limits.max_image_height = Some(MAX_DIMENSION);
@@ -231,10 +508,10 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, Strin
     RasterImage::new(width, height, rgb, alpha).map_err(|e| format!("cannot use the image ({e})"))
 }
 
-/// An SVG parsed into paths. Entities and the allow-list ([`svg_check`]) are checked on the XML
+/// An SVG parsed into paths, with its work count ([`svg_check::check_svg`]). Entities and the allow-list ([`svg_check`]) are checked on the XML
 /// before `usvg` resolves it, so a file that is refused never reaches `usvg`. Embedded images are
 /// never loaded, external files never read.
-fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
+fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "cannot read the SVG (not UTF-8)")?;
     let scan = svg_check::pre_scan(bytes)?;
     check_entities(&scan)?;
@@ -246,7 +523,7 @@ fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     };
     let doc = roxmltree::Document::parse_with_options(text, options)
         .map_err(|e| format!("cannot read the SVG ({e})"))?;
-    svg_check::check_svg(&doc)?;
+    let work = svg_check::check_svg(&doc)?;
     let opt = usvg::Options {
         resources_dir: None,
         image_href_resolver: usvg::ImageHrefResolver {
@@ -257,7 +534,7 @@ fn parse_svg(bytes: &[u8]) -> Result<Logo, String> {
     };
     let tree =
         usvg::Tree::from_xmltree(&doc, &opt).map_err(|e| format!("cannot read the SVG ({e})"))?;
-    Ok(Logo::Vector(Box::new(tree)))
+    Ok((tree, work))
 }
 
 /// Rejects entity references that expand into more than [`MAX_ENTITY_TEXT`] bytes in all. The
@@ -302,13 +579,14 @@ impl Budget {
     }
 }
 
-/// The SVG's paths as sheet items in `rect`, in paint order. Nothing is returned when a limit is
-/// reached, so a logo is drawn whole or not at all. Shapes that reach outside `rect` are clipped
-/// to it, as an SVG viewer clips to the picture.
+/// The SVG's paths as sheet items in `rect`, in paint order, and the count of points its curves
+/// flattened into. Nothing is returned when a limit is reached, so a logo is drawn whole or not
+/// at all. Shapes that reach outside `rect` are clipped to it, as an SVG viewer clips to the
+/// picture.
 fn svg_items(
     tree: &usvg::Tree,
     rect: PaperBox,
-) -> Result<(Vec<SheetItem>, BTreeSet<&'static str>), String> {
+) -> Result<(Vec<SheetItem>, BTreeSet<&'static str>, usize), String> {
     let mut simplified = BTreeSet::new();
     let to_page = ToPage {
         origin: rect.min,
@@ -364,7 +642,7 @@ fn svg_items(
             }
         }
     }
-    Ok((items, simplified))
+    Ok((items, simplified, budget.points))
 }
 
 fn group_items(
@@ -695,6 +973,131 @@ mod tests {
         assert_eq!(alpha[0], 255);
         // Bottom-right pixel: transparent.
         assert_eq!(alpha[31], 0);
+    }
+
+    /// A project whose layout `a4` shows `n` logos of `file`, each 10 mm wide.
+    fn many_logos(file: &Path, n: usize) -> crate::project::LoadedProject {
+        let mut layout = a4();
+        layout.elements = (0..n)
+            .map(|i| ElementSpec {
+                kind: ElementKind::Logo,
+                anchor: Anchor {
+                    to: AnchorTarget::Page,
+                    corner: Corner::TopLeft,
+                    offset_mm: [10.0, 10.0 + 5.0 * i as f64],
+                },
+                file: Some(file.to_path_buf()),
+                width_mm: Some(10.0),
+                ..element(&format!("logo{i}"))
+            })
+            .collect();
+        project(MapKind::Sprint, Vec::new(), &layout)
+    }
+
+    fn images(page: &RenderedPage) -> Vec<Arc<RasterImage>> {
+        page.sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Image { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn budget_skips(report: &SheetReport) -> usize {
+        report
+            .notes
+            .iter()
+            .filter(|n| matches!(n, SheetNote::LogoSkipped { reason, .. } if reason.contains("on this sheet")))
+            .count()
+    }
+
+    #[test]
+    fn one_file_is_decoded_once_per_cache() {
+        let lp = many_logos(&fixture("club.png"), 30);
+        let layout = &lp.project.layouts[0];
+        let cache = LogoCache::new();
+        let map = empty_map();
+        let (page, report) = crate::sheet::render_sheet(&lp, &map, layout, &cache).unwrap();
+        assert_eq!(logo_notes(&report), []);
+        let drawn = images(&page);
+        assert_eq!(drawn.len(), 30);
+        // One decoded image, shared: the PDF embeds it once.
+        assert!(drawn.iter().all(|i| Arc::ptr_eq(i, &drawn[0])));
+        assert_eq!(cache.decodes(), 1);
+        // A second sheet with the same cache decodes nothing.
+        let (page, _) = crate::sheet::render_sheet(&lp, &map, layout, &cache).unwrap();
+        assert!(Arc::ptr_eq(&images(&page)[0], &drawn[0]));
+        assert_eq!(cache.decodes(), 1);
+        // A failure is remembered too.
+        let missing = many_logos(Path::new("/nowhere/nope.png"), 3);
+        let (_, report) =
+            crate::sheet::render_sheet(&missing, &map, &missing.project.layouts[0], &cache)
+                .unwrap();
+        assert_eq!(logo_notes(&report).len(), 3);
+    }
+
+    #[test]
+    fn pixel_budget_skips_logos_past_it() {
+        // club.png has 8 x 4 = 32 pixels: three fit into 100.
+        let lp = many_logos(&fixture("club.png"), 30);
+        let cache = LogoCache::with_limits(100, MAX_PAGE_SVG_UNITS);
+        let (page, report) =
+            crate::sheet::render_sheet(&lp, &empty_map(), &lp.project.layouts[0], &cache).unwrap();
+        assert_eq!(images(&page).len(), 3);
+        assert_eq!(budget_skips(&report), 27);
+        assert_eq!(cache.decodes(), 1);
+        // The budget is per sheet: the next sheet draws three again.
+        let (page, _) =
+            crate::sheet::render_sheet(&lp, &empty_map(), &lp.project.layouts[0], &cache).unwrap();
+        assert_eq!(images(&page).len(), 3);
+    }
+
+    #[test]
+    fn svg_budget_skips_logos_past_it() {
+        let lp = many_logos(&fixture("sponsor.svg"), 5);
+        let layout = &lp.project.layouts[0];
+        let (_, report) =
+            crate::sheet::render_sheet(&lp, &empty_map(), layout, &LogoCache::new()).unwrap();
+        assert_eq!(budget_skips(&report), 0);
+        let cache = LogoCache::with_limits(MAX_PAGE_LOGO_PIXELS, 1);
+        let (page, report) = crate::sheet::render_sheet(&lp, &empty_map(), layout, &cache).unwrap();
+        assert_eq!(budget_skips(&report), 5);
+        assert_eq!(logo_items(&page), []);
+        assert_eq!(cache.decodes(), 1);
+    }
+
+    #[test]
+    fn page_budgets_are_50_megapixels_and_a_million_svg_units() {
+        assert_eq!(MAX_PAGE_LOGO_PIXELS, 50_000_000);
+        assert_eq!(MAX_PAGE_SVG_UNITS, 1_000_000);
+    }
+
+    #[test]
+    fn cache_drops_decoded_logos_past_its_limit() {
+        // Page budget 40 pixels: the cache keeps at most 80, two copies of club.png's 32.
+        let dir = tempfile::tempdir().unwrap();
+        let png = std::fs::read(fixture("club.png")).unwrap();
+        let files: Vec<PathBuf> = ["a.png", "b.png", "c.png"]
+            .iter()
+            .map(|n| write_temp(&dir, n, &png))
+            .collect();
+        let cache = LogoCache::with_limits(40, MAX_PAGE_SVG_UNITS);
+        let draw = |file: &Path| {
+            let lp = many_logos(file, 1);
+            let (page, _) =
+                crate::sheet::render_sheet(&lp, &empty_map(), &lp.project.layouts[0], &cache)
+                    .unwrap();
+            assert_eq!(images(&page).len(), 1);
+        };
+        draw(&files[0]);
+        draw(&files[1]);
+        draw(&files[0]);
+        assert_eq!(cache.decodes(), 2);
+        // The third file does not fit beside them: the decoded ones are dropped first.
+        draw(&files[2]);
+        draw(&files[0]);
+        assert_eq!(cache.decodes(), 4);
     }
 
     #[test]

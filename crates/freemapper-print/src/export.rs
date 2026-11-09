@@ -11,7 +11,7 @@ use crate::output::{OutputError, write_pdf_file};
 use crate::project::{LayoutSpec, LoadedProject};
 use crate::render::page::RenderedPage;
 use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
-use crate::sheet::{SheetError, SheetReport, render_sheet};
+use crate::sheet::{LogoCache, SheetError, SheetReport, render_sheet};
 
 /// A layout id asked for that the project does not have.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -75,14 +75,16 @@ pub fn pdf_path(out_dir: &Path, layout: &LayoutSpec) -> PathBuf {
 }
 
 /// The PDF of one sheet, in memory, and its report with the characters the font lacks. The page
-/// is dropped before this returns. `check` uses it without writing anything.
+/// is dropped before this returns. `check` uses it without writing anything. `logos` holds the
+/// logos of the run, shared by its sheets.
 pub fn sheet_pdf(
     project: &LoadedProject,
     map: &MapDocument,
     layout: &LayoutSpec,
+    logos: &LogoCache,
 ) -> Result<(Vec<u8>, SheetReport), ExportError> {
     let (page, mut report) =
-        render_sheet(project, map, layout).map_err(|error| ExportError::Sheet {
+        render_sheet(project, map, layout, logos).map_err(|error| ExportError::Sheet {
             layout: layout.id.clone(),
             error,
         })?;
@@ -100,7 +102,8 @@ pub fn sheet_pdf(
 
 /// Draws and writes `layouts` one after the other into `out_dir` (which must exist), each through
 /// [`write_pdf_file`], and hands each written layout to `on_layout` before the next is drawn.
-/// Stops at the first layout that fails; the ones before it stay written.
+/// Stops at the first layout that fails; the ones before it stay written. Each logo file is
+/// decoded once for all layouts ([`LogoCache`]).
 pub fn export_layouts<'a>(
     project: &LoadedProject,
     map: &MapDocument,
@@ -108,8 +111,9 @@ pub fn export_layouts<'a>(
     out_dir: &Path,
     mut on_layout: impl FnMut(Exported<'a>),
 ) -> Result<(), ExportError> {
+    let logos = LogoCache::new();
     for &layout in layouts {
-        let (pdf, report) = sheet_pdf(project, map, layout)?;
+        let (pdf, report) = sheet_pdf(project, map, layout, &logos)?;
         let path = pdf_path(out_dir, layout);
         write_pdf_file(&path, &pdf).map_err(|error| ExportError::Write {
             layout: layout.id.clone(),

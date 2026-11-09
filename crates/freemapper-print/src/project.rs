@@ -875,6 +875,7 @@ pub fn fit_starter(
         dir: dir.to_path_buf(),
         project: starter,
     };
+    let logos = crate::sheet::LogoCache::new();
     for paper in [Paper::A4, Paper::A3] {
         for margin in 8..=MAX_STARTER_MARGIN_MM {
             let layout = &mut candidate.project.layouts[0];
@@ -883,7 +884,7 @@ pub fn fit_starter(
             layout.orientation = Orientation::Auto;
             layout.map_frame.margin_mm = f64::from(margin);
             let layout = candidate.project.layouts[0].clone();
-            let Ok((_, report)) = crate::export::sheet_pdf(&candidate, map, &layout) else {
+            let Ok((_, report)) = crate::export::sheet_pdf(&candidate, map, &layout, &logos) else {
                 break;
             };
             if starter_is_clean(&candidate.project, &report) {

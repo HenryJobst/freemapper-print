@@ -15,7 +15,7 @@ use freemapper_print::output::OutputError;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
-use freemapper_print::sheet::{FOOTER_ID, SheetNote, SheetReport};
+use freemapper_print::sheet::{FOOTER_ID, LogoCache, SheetNote, SheetReport};
 
 use text::{Lang, Texts, detect_lang};
 
@@ -400,7 +400,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             dir: dir.clone(),
             project: new.clone(),
         };
-        let (lines, _) = check_lines(texts, &loaded, &map, layout);
+        let (lines, _) = check_lines(texts, &loaded, &map, layout, &LogoCache::new());
         for line in lines {
             eprintln!("{line}");
         }
@@ -426,9 +426,10 @@ fn check_lines(
     loaded: &LoadedProject,
     map: &MapDocument,
     layout: &LayoutSpec,
+    logos: &LogoCache,
 ) -> (Vec<String>, bool) {
     // The PDF is made in memory only: the font check needs it.
-    match sheet_pdf(loaded, map, layout) {
+    match sheet_pdf(loaded, map, layout, logos) {
         Ok((_, report)) => {
             let head = summary_line(
                 texts,
@@ -455,9 +456,11 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &loaded.map_path())?;
     let total = loaded.project.layouts.len();
     let mut with_notes = 0;
+    // One logo cache for all layouts: each logo file is decoded once.
+    let logos = LogoCache::new();
     // Every layout is checked, also after one that cannot be drawn.
     for layout in &loaded.project.layouts {
-        let (lines, has_notes) = check_lines(texts, &loaded, &map, layout);
+        let (lines, has_notes) = check_lines(texts, &loaded, &map, layout, &logos);
         for line in lines {
             eprintln!("{line}");
         }
