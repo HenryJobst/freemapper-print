@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.3.0] - 2026-11-09
+
 ### Hinzugefügt
 
 - Druckregeln als Regelprofil im Format von freemapper-courseplan (ADR 0031). Das eingebettete Profil `iof-print`

@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
 ### Added
 
 - Print rules as a rule profile in freemapper-courseplan's format (ADR 0031). The embedded profile `iof-print`
