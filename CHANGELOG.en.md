@@ -21,15 +21,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   `[[assignments]]` gives a course a layout; a course without one takes the first layout. `[[numbers]]` corrects
   the position of a control number per layout or per course. If the course file no longer has a course or
   control that the project file names, the entry stays and `check` reports it; the other courses still load.
-- One sheet per course. When the project has a course file, `export` writes one PDF per course, on the layout
-  its assignment names, with the course overprint in purple. The file is named after the course; characters a
-  file name cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm`
-  the map frame centres on the course. `--course <NAME>` (repeatable) exports only those courses.
-  `--single-file` writes all courses into one PDF, "<event> - all courses.pdf" on English sheets, one page
-  per course on its own paper. A map larger than the frame is expected on a course sheet and only noted as
-  Info. `--layout` still exports a layout without courses. Texts can use `{course}`, `{length_km}`,
-  `{climb_m}` and `{controls}`. `check` checks every course and reports controls outside the map frame. Projects without a course file
-  export as before (ADR 0035).
+- One sheet per course. When the project has a course file, `export` writes one PDF per course, on the layout its
+  assignment names, with the course overprint in purple. The file is named after the course; characters a file
+  name cannot hold become `-`, and names that differ only in case get ` (2)`. Without `centre_map_mm` the map
+  frame centres on the course. `--course <NAME>` (repeatable) exports only those courses. `--single-file` writes
+  all courses into one PDF, "<event> - all courses.pdf" on English sheets, one page per course on its own paper.
+  A map larger than the frame is expected on a course sheet and only noted as Info. `--layout` still exports a
+  layout without courses. Texts can use `{course}`, `{length_km}`, `{climb_m}` and `{controls}`. `check` checks
+  every course and reports controls outside the map frame. Projects without a course file export as before
+  (ADR 0035).
 - The control description box on course sheets. A layout element of kind `control_descriptions` draws the IOF
   description table of the course from a `.ppen` file: the event title, the course with length and climb, the
   start, one row per control with its number, code and symbols, rows for marked routes and map exchanges with
@@ -42,17 +42,18 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   out), when no control of the course has descriptions, and when the course file uses a symbol the
   description standard does not have (its cell stays empty). On every course sheet `check` also warns when a
   sheet element covers a control, the start or the finish (ADR 0037).
-- Control numbers on course sheets. A number sits where the course file puts it: for Purple Pen at the
-  position per course, converted at the course's print scale, for IOF XML at `MapTextPosition`. A correction in
+- Control numbers on course sheets. A number sits where the course file puts it: for Purple Pen at the position
+  per course, converted at the course's print scale, for IOF XML at `MapTextPosition`. A correction in
   `[[numbers]]` for the layout or the course comes first; its `gap_mm` is above 0 and at most 10 mm. Where the
-  file has no position, freemapper-print places the number itself: behind the control, in line with the
-  incoming leg, and off circles, legs, other numbers, sheet elements and the map's point and line symbols.
-  `check` checks every number. When one lies on the course overprint, on a sheet element, over the edge of
-  the map frame, or on map symbols where a freer place exists, the warning names what it covers and proposes a direction and gap. The number still prints in
-  its place; nothing moves on its own. The rule profile's `number_gap` rule sets a gap of 0.5 to 5 mm, and
-  `check` warns about gaps outside it. When the course file has changed a position that a correction with
-  `base_seen` overrides, `check` reports it. Scoring and search live in a module of their own, which
-  freemapper-courseplan will take over (ADR 0038).
+  file has no position, freemapper-print places the number itself: behind the control, in line with the incoming
+  leg, and off circles, legs, other numbers, sheet elements and the map's point and line symbols. `check` checks
+  every number. When one lies on the course overprint, on a sheet element, over the edge of the map frame, or on
+  a point or line symbol of the map, the warning names what it covers, map symbols by their code, and proposes a
+  direction and gap. Without a free place it says so and proposes the least covered one. The number still prints
+  in its place; nothing moves on its own. The rule profile's `number_gap` rule sets a gap of 0.5 to 5 mm, rounded
+  to 0.01 mm as in freemapper-courseplan, and `check` warns about gaps outside it. When the course file has
+  changed a position that a correction with `base_seen` overrides, `check` reports it. Scoring and search live in
+  a module of their own, which freemapper-courseplan will take over (ADR 0038).
 
 ### Fixed
 
@@ -103,10 +104,11 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   forest 300 m, schoolyard 37.5 m, still unchecked), drawn with the map's own 601 symbol so they lie under walls
   and fences like drawn ones. Gaps at small features remain the mapper's job in OOM. A map without a north-line
   symbol gets plain black 0.14 mm lines and a note.
-- Messages and help in German and English. The language comes from `--lang de|en`, else from
-  `FREEMAPPER_LANG` and the system's language settings. Notes about logos come in the program language too.
-  Errors about the project file, details from the system or an image decoder inside a note (such as the name of
-  an SVG element) and clap's help headings stay English for now. `event.lang` sets the language on the sheet (date, decimal separator, credit line).
+- Messages and help in German and English. The language comes from `--lang de|en`, else from `FREEMAPPER_LANG`
+  and the system's language settings. Notes about logos come in the program language too. Errors about the
+  project file, details from the system or an image decoder inside a note (such as the name of an SVG element)
+  and clap's help headings stay English for now. `event.lang` sets the language on the sheet (date, decimal
+  separator, credit line).
 - Safe writing: before each PDF the program checks that the size of the PDF plus a 50 MB reserve is free. The
   PDF is written as a `.part` file and gets its name only once it is complete. A full disk leaves no
   half-written PDF, and the message names the space needed and the space free. Any other error, and a crash

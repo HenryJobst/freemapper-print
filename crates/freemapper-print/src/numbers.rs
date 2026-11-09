@@ -235,10 +235,12 @@ pub enum Conflict {
     Element(String),
     /// The box reaches past the map frame.
     OutsideFrame,
-    /// Point symbols of the map it covers.
-    PointSymbols(usize),
-    /// Line symbols of the map it covers.
-    LineSymbols(usize),
+    /// `count` map objects of the point (or, with `line`, line) symbol `code` that it covers.
+    MapSymbol {
+        line: bool,
+        code: String,
+        count: usize,
+    },
 }
 
 /// A control number in conflict on a course sheet, and a better position (spec §5.7). A warning: the sheet still
@@ -250,6 +252,8 @@ pub struct NumberConflict {
     pub conflicts: Vec<Conflict>,
     /// The best position the search finds, to enter as a correction.
     pub proposal: NumberPlacement,
+    /// The proposal is free of every conflict. Without a free place it is the least covered one.
+    pub free: bool,
 }
 
 /// One number on the sheet.
@@ -400,7 +404,7 @@ pub fn obstacles(
                     shape,
                     weight: 0.0,
                     tier: Tier::MapSymbol,
-                    label: format!("{kind}{}", p.object),
+                    label: format!("{kind}{}/{}", p.object, p.symbol),
                 }));
             }
             SymbolClass::Area | SymbolClass::Text => out.push(Obstacle {
@@ -508,7 +512,9 @@ fn target(
 /// [`placement::best`] in course order, each placed box an obstacle for the next; the others stay where their
 /// level puts them. Then every number is scored among the course, the sheet `elements`, the map and the other
 /// numbers, within the map frame (`page.clip`), and gets a proposal. A number with an overprint conflict, or
-/// covering map symbols where the proposal covers fewer, gives a [`NumberConflict`]. `gap_rule` is the gap range
+/// covering a point or line symbol of the map (ruling R31), gives a [`NumberConflict`] with the code of each covered
+/// symbol (`symbol_code` of the primitive's symbol id). Proposals are made in stop order, each one's box an obstacle
+/// for the stops after it (ruling R32). `gap_rule` is the gap range
 /// of the rule set, `None` without a `number_gap` rule: the search then tries [`placement::DEFAULT_GAP_MM`] alone,
 /// and with a rule every number the file or a correction places outside the range gives a [`GapOutOfRange`].
 /// `to_page` maps map coordinates to the page; `sf` is the symbol factor. Numbered stops without a map position
@@ -525,6 +531,7 @@ pub fn place_on_sheet(
     sf: f64,
     weights: &PlacementWeights,
     gap_rule: Option<GapRange>,
+    symbol_code: &dyn Fn(u32) -> String,
 ) -> SheetNumbers {
     let gaps = gap_rule.unwrap_or(GapRange::DEFAULT);
     let numbers: Vec<(ResolvedNumber, Target)> = resolved
@@ -592,6 +599,7 @@ pub fn place_on_sheet(
         }
     }
 
+    let mut proposed = boxes.clone();
     let mut out = SheetNumbers {
         numbers: Vec::new(),
         conflicts: Vec::new(),
@@ -610,19 +618,21 @@ pub fn place_on_sheet(
                 max: range.max,
             });
         }
-        let obstacles = for_number(i, &boxes);
         let placed = t.box_at(placements[i]);
-        let score = placement::score(placed, bounds, &obstacles);
+        let score = placement::score(placed, bounds, &for_number(i, &boxes));
         let current = placements[i];
-        let proposal = placement::best(t, bounds, &obstacles, current);
-        let better_cover = proposal.1.covered.len() < score.covered.len();
-        if !score.hard.is_empty() || (!score.covered.is_empty() && better_cover) {
+        // Proposals in stop order: the earlier numbers stand where their proposals put them (ruling R32).
+        let proposal = placement::best(t, bounds, &for_number(i, &proposed), current);
+        // Any covered point or line symbol is a conflict: the user's rule 1 is hard (ruling R31).
+        if !score.is_free() {
             out.conflicts.push(NumberConflict {
                 course: course.name.clone(),
                 control: r.control.clone(),
-                conflicts: conflicts(&score, course, elements),
+                conflicts: conflicts(&score, course, elements, symbol_code),
                 proposal: proposal.0.into(),
+                free: proposal.1.is_free(),
             });
+            proposed[i] = Some(t.box_at(proposal.0));
         }
         out.numbers.push(PlacedNumber {
             resolved: ResolvedNumber {
@@ -648,6 +658,7 @@ fn conflicts(
     score: &Score,
     course: &Course<MapCoord>,
     elements: &[(String, PaperBox)],
+    symbol_code: &dyn Fn(u32) -> String,
 ) -> Vec<Conflict> {
     let code = |stop: usize| {
         course
@@ -680,13 +691,33 @@ fn conflicts(
             out.push(c);
         }
     }
-    let count = |kind: char| score.covered.iter().filter(|l| l.starts_with(kind)).count();
-    let (points, lines) = (count(MAP_POINT), count(MAP_LINE));
-    if points > 0 {
-        out.push(Conflict::PointSymbols(points));
-    }
-    if lines > 0 {
-        out.push(Conflict::LineSymbols(lines));
+    // Covered map objects ("p<object>/<symbol>"), counted per class and symbol in the order first met.
+    for label in &score.covered {
+        let mut chars = label.chars();
+        let kind = chars.next();
+        let Some(symbol) = chars
+            .as_str()
+            .split_once('/')
+            .and_then(|(_, s)| s.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let (line, code) = (kind == Some(MAP_LINE), symbol_code(symbol));
+        match out.iter_mut().find_map(|c| match c {
+            Conflict::MapSymbol {
+                line: l,
+                code: k,
+                count,
+            } if *l == line && *k == code => Some(count),
+            _ => None,
+        }) {
+            Some(count) => *count += 1,
+            None => out.push(Conflict::MapSymbol {
+                line,
+                code,
+                count: 1,
+            }),
+        }
     }
     out
 }

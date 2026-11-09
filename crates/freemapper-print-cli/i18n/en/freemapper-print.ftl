@@ -237,21 +237,23 @@ note-element-covers-course = Note: the element { $id } covers { $count ->
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
-note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } overlaps { $conflicts }. It is printed there all the same. The best position found is direction { $direction }° with a gap of { $gap } mm. To use it, add a correction for the control under [[numbers]] in the project file.
+note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, add a correction for the control under [[numbers]] in the project file.
 note-number-gap-out-of-range = Note: on the sheet of course "{ $course }" the number of control { $control } is { $gap } mm from its circle. The rule profile allows { $min } to { $max } mm. It is printed with this gap all the same; a correction under [[numbers]] in the project file can change it.
 number-conflict-symbol = the symbol of control { $control }
 number-conflict-leg = the leg from { $from } to { $to }
 number-conflict-number = the number of control { $control }
 number-conflict-element = the element { $id }
 number-conflict-outside = the edge of the map frame
-number-conflict-points = { $count ->
-        [one] one point symbol
-       *[other] { $count } point symbols
+number-conflict-point-symbol = { $count ->
+        [one] the point symbol { $code }
+       *[other] { $count } objects of the point symbol { $code }
     } of the map
-number-conflict-lines = { $count ->
-        [one] one line symbol
-       *[other] { $count } line symbols
+number-conflict-line-symbol = { $count ->
+        [one] the line symbol { $code }
+       *[other] { $count } objects of the line symbol { $code }
     } of the map
+number-proposal-free = A free position is direction { $direction }° with a gap of { $gap } mm.
+number-proposal-none = There is no free place; the least covered one is direction { $direction }° with a gap of { $gap } mm.
 
 ## Notes on the course file
 

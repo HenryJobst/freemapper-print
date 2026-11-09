@@ -94,10 +94,12 @@ pub struct Primitive {
     /// Index of the map object that drew it among the objects of its page, so that the primitives of one
     /// object can count once.
     pub object: u32,
+    /// Id of the map object's symbol in the map's symbol set, so that a covered symbol can be named.
+    pub symbol: u32,
 }
 
 impl Primitive {
-    /// A primitive of class [`SymbolClass::Area`], not a north line, object 0. The drawing code sets the
+    /// A primitive of class [`SymbolClass::Area`], not a north line, object 0 and symbol 0. The drawing code sets the
     /// class, the page the rest.
     pub fn new(priority: i32, shape: Shape) -> Self {
         Primitive {
@@ -106,6 +108,7 @@ impl Primitive {
             class: SymbolClass::Area,
             north_line: false,
             object: 0,
+            symbol: 0,
         }
     }
 }

@@ -113,6 +113,11 @@ pub fn render_course_sheet(
             .rules
             .number_gap()
             .map(|(min, max)| crate::placement::GapRange { min, max }),
+        &|id| {
+            map.symbol_set
+                .code_of(id)
+                .map_or_else(|| format!("#{id}"), str::to_string)
+        },
     );
     let centres: Vec<(String, Pt)> = placed
         .numbers

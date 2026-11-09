@@ -1194,22 +1194,34 @@ fn number_conflict_line(texts: &Texts, c: &NumberConflict) -> String {
                 Some(&args!("id" => printable(id))),
             ),
             Conflict::OutsideFrame => texts.plain("number-conflict-outside"),
-            Conflict::PointSymbols(count) => {
-                texts.get("number-conflict-points", Some(&args!("count" => *count)))
-            }
-            Conflict::LineSymbols(count) => {
-                texts.get("number-conflict-lines", Some(&args!("count" => *count)))
-            }
+            Conflict::MapSymbol { line, code, count } => texts.get(
+                if *line {
+                    "number-conflict-line-symbol"
+                } else {
+                    "number-conflict-point-symbol"
+                },
+                Some(&args!("code" => printable(code), "count" => *count)),
+            ),
         })
         .collect();
+    let proposal = texts.get(
+        if c.free {
+            "number-proposal-free"
+        } else {
+            "number-proposal-none"
+        },
+        Some(&args!(
+            "direction" => short_decimal(texts, c.proposal.direction, 1),
+            "gap" => short_decimal(texts, c.proposal.gap_mm, 2),
+        )),
+    );
     texts.get(
         "note-number-conflict",
         Some(&args!(
             "course" => printable(&c.course),
             "control" => printable(&c.control),
             "conflicts" => parts.join(", "),
-            "direction" => short_decimal(texts, c.proposal.direction, 1),
-            "gap" => short_decimal(texts, c.proposal.gap_mm, 2),
+            "proposal" => proposal,
         )),
     )
 }
@@ -2009,17 +2021,44 @@ mod tests {
                         Conflict::Number(s("33")),
                         Conflict::Element(s("title")),
                         Conflict::OutsideFrame,
-                        Conflict::PointSymbols(2),
-                        Conflict::LineSymbols(1),
+                        Conflict::MapSymbol {
+                            line: false,
+                            code: s("204"),
+                            count: 2,
+                        },
+                        Conflict::MapSymbol {
+                            line: true,
+                            code: s("506"),
+                            count: 1,
+                        },
                     ],
                     proposal: freemapper_print::course::NumberPlacement {
                         direction: 112.5,
                         gap_mm: 0.8,
                     },
+                    free: true,
                 }),
                 vec![
-                    "Kurz", "31", "32", "S1", "33", "title", "112", "5°", "0", "8 mm", "2 ",
+                    "Kurz", "31", "32", "S1", "33", "title", "112", "5°", "0", "8 mm", "2 ", "204",
+                    "506",
                 ],
+            ),
+            (
+                SheetNote::NumberConflict(NumberConflict {
+                    course: s("Kurz"),
+                    control: s("32"),
+                    conflicts: vec![Conflict::MapSymbol {
+                        line: true,
+                        code: s("501.1"),
+                        count: 3,
+                    }],
+                    proposal: freemapper_print::course::NumberPlacement {
+                        direction: 45.0,
+                        gap_mm: 0.5,
+                    },
+                    free: false,
+                }),
+                vec!["Kurz", "32", "501", "3 ", "45°"],
             ),
             (
                 SheetNote::NumberGapOutOfRange {

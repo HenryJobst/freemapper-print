@@ -38,10 +38,13 @@ control, so they need turning into a direction and a gap.
   if the box behind, at the smallest gap, comes within half a line width of the outgoing leg, the outer bisector
   is preferred; a blocked place gives way to the free place that deviates least. Score courses and stops
   without legs keep their current direction as preferred, and automatic placement starts at 45°.
-- **Gap range** (ruling R29, courseplan ADR 0032). The rule `iofprint.number.gap` (key `number_gap`) allows 0.5
-  to 5 mm. With several rules the largest minimum and the smallest maximum count; without one the search uses
-  0.5 mm alone. The search tries gaps from the minimum in 0.5 mm steps, the last exactly at the maximum.
-  A rule set whose range is empty, or reaches past 10 mm, cannot be loaded.
+- **Gap range** (rulings R29 and R30, courseplan ADR 0032). The rule `iofprint.number.gap` (key `number_gap`)
+  allows 0.5 to 5 mm. With several rules the largest minimum and the smallest maximum count; without one, or with
+  it switched off, the search uses 0.5 mm alone. A rule with neither value is skipped. A missing minimum is 0.5
+  mm, a missing maximum stays open. Both limits are held to 0.01 to 10 mm, the minimum rounded up and the
+  maximum down to 0.01 mm, and a maximum below the minimum is raised to it. Values that are not finite or not
+  above 0 still stop the profile from loading. The search tries gaps from the minimum in 0.5 mm steps, each
+  rounded to 0.01 mm, the last exactly at the maximum. `check` and placement use the same normalised range.
 - **Ranking** (rulings R20 and R29, courseplan ADR 0031 and 0032). 24 directions,
   `normalize(round((preferred + 15·k)·10)/10)`, the rounded value evaluated and stored, at every gap of the
   range. Candidates rank lexicographically by overprint conflicts, covered map symbols, angle to the preferred
@@ -57,14 +60,18 @@ control, so they need turning into a direction and a gap.
   counts once. North lines (601 and 601.x, not 6011) never count. Areas and map texts are soft: their boxes,
   weighted per mm² by colour class (`placement_weights`, classes by name and CMYK as for the lower purple). Not
   obstacles yet: special objects and masks (M4).
-- **Symbol class.** `Primitive` carries `class: SymbolClass` (point, line, area, text), a north-line flag and the
-  index of its map object, set where the renderer draws. A combined symbol counts by its path, as courseplan's
-  map reader does: closed is an area (a building with its outline), open a line. The PDF writer ignores these
-  fields; the M1 and M2 outputs stay byte-identical (`cmp` on the examples).
+- **Symbol class.** `Primitive` carries `class: SymbolClass` (point, line, area, text), a north-line flag, the
+  index of its map object and its symbol id, set where the renderer draws. A combined symbol counts by its path,
+  as courseplan's map reader does: closed is an area (a building with its outline), open a line. The PDF writer
+  ignores these fields; the M1 and M2 outputs stay byte-identical (`cmp` on the examples).
 - **Check.** Every number on a course sheet is scored and gets a proposal: the best placement among the same
-  obstacles. A warning `NumberConflict` names what the number overlaps and the proposal when it has an overprint
-  conflict, or covers map symbols and the proposal covers fewer. A warning `NumberGapOutOfRange` names a gap
-  from the file or a correction outside the rule's range. The sheet always draws the number where its level puts
+  obstacles. Proposals are made in stop order, and a proposal for a number in conflict becomes an obstacle for
+  the stops after it in place of that number's box, so two numbers are not sent to the same spot (ruling R32). A
+  warning `NumberConflict` names what the number covers and the proposal when it has an overprint conflict or
+  covers any point or line symbol of the map; rule 1 is hard (ruling R31). Map symbols are named by their code
+  and counted per symbol. Without a free candidate the note says so and proposes the least covered one. A
+  warning `NumberGapOutOfRange` names a gap from the file or a correction outside the rule's range; crossing
+  points print no number and are not checked. The sheet always draws the number where its level puts
   it. `Stale::CorrectionOverridesChangedBase` is reported when a correction's `base_seen` matches
   (`base_changed`, 0.5° and 0.05 mm) none of the file's current placements for its control in the courses it
   applies to. A layout correction may stand over several courses with different file positions, and
@@ -83,5 +90,5 @@ rules, and every conflict reaches `check` with a proposal to copy into `[[number
 accept proposals. A Purple Pen file with another item scaling places numbers a little off, and leg gaps and
 special objects do not free or block space for numbers yet.
 
-Source: M3 plan Task 10, controller rulings R4, R12, R14, R20 and R29, freemapper-courseplan ADR 0030, 0031 and
-0032.
+Source: M3 plan Task 10, controller rulings R4, R12, R14, R20 and R29 to R32, freemapper-courseplan ADR 0030,
+0031 and 0032.

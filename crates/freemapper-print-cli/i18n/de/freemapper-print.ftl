@@ -240,21 +240,23 @@ note-element-covers-course = Hinweis: Das Element { $id } deckt { $count ->
 note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
-note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. Die beste gefundene Lage ist Richtung { $direction }° mit { $gap } mm Abstand. Um sie zu nutzen, tragen Sie für den Posten eine Korrektur unter [[numbers]] in die Projektdatei ein.
+note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, tragen Sie für den Posten eine Korrektur unter [[numbers]] in die Projektdatei ein.
 note-number-gap-out-of-range = Hinweis: Auf dem Blatt der Bahn „{ $course }“ steht die Nummer von Posten { $control } { $gap } mm vom Kreis entfernt. Das Regelprofil erlaubt { $min } bis { $max } mm. Sie wird trotzdem mit diesem Abstand gedruckt; eine Korrektur unter [[numbers]] in der Projektdatei kann ihn ändern.
 number-conflict-symbol = das Symbol von Posten { $control }
 number-conflict-leg = die Strecke von { $from } nach { $to }
 number-conflict-number = die Nummer von Posten { $control }
 number-conflict-element = das Element { $id }
 number-conflict-outside = den Rand des Kartenausschnitts
-number-conflict-points = { $count ->
-        [one] ein Punktsymbol
-       *[other] { $count } Punktsymbole
+number-conflict-point-symbol = { $count ->
+        [one] das Punktsymbol { $code }
+       *[other] { $count } Objekte des Punktsymbols { $code }
     } der Karte
-number-conflict-lines = { $count ->
-        [one] ein Liniensymbol
-       *[other] { $count } Liniensymbole
+number-conflict-line-symbol = { $count ->
+        [one] das Liniensymbol { $code }
+       *[other] { $count } Objekte des Liniensymbols { $code }
     } der Karte
+number-proposal-free = Frei ist Richtung { $direction }° mit { $gap } mm Abstand.
+number-proposal-none = Einen freien Platz gibt es nicht; am wenigsten verdeckt Richtung { $direction }° mit { $gap } mm Abstand.
 
 ## Hinweise zur Bahndatei
 

@@ -555,8 +555,8 @@ fn obstacles_of_map_symbols_by_class() {
             (Tier::Overprint, "s1"),
             (Tier::Overprint, "l0"),
             (Tier::Overprint, "e0"),
-            (Tier::MapSymbol, "p7"),
-            (Tier::MapSymbol, "m8"),
+            (Tier::MapSymbol, "p7/0"),
+            (Tier::MapSymbol, "m8/0"),
             (Tier::Soft, ""),
         ]
     );
@@ -623,4 +623,202 @@ fn automatic_gaps_stay_in_the_rule_range() {
     }
     // Without a rule the fixed gap of 0.5 mm.
     assert_eq!(GapRange::DEFAULT.steps(), [placement::DEFAULT_GAP_MM]);
+}
+
+/// The numbers of course `name` placed on a blank 400 mm page holding `primitives`, map mm + 200 on the page,
+/// with the profile's gap range. Covered symbols are named "S<id>".
+fn on_blank_page(
+    project: &LoadedProject,
+    courses: &LoadedCourses,
+    name: &str,
+    primitives: Vec<Primitive>,
+) -> SheetNumbers {
+    let c = course(courses, name);
+    let resolved = resolve(c, &courses.event, project, "a4", 4000);
+    let page = RenderedPage {
+        primitives,
+        clip: PaperBox {
+            min: (0.0, 0.0),
+            max: (400.0, 400.0),
+        },
+        page_mm: (400.0, 400.0),
+        centre_mm: (0.0, 0.0),
+        colours: Vec::new(),
+        sheet: Vec::new(),
+        overprint: Default::default(),
+    };
+    let to_page = |m: MapCoord| {
+        (
+            f64::from(m.x) / 1000.0 + 200.0,
+            f64::from(m.y) / 1000.0 + 200.0,
+        )
+    };
+    place_on_sheet(
+        c,
+        &courses.event,
+        resolved,
+        &page,
+        to_page,
+        &[],
+        &project.rules.course_symbol(project.project.map.kind),
+        1.0,
+        &project.rules.placement_weights(),
+        Some(gap_range(&project.rules)),
+        &|id| format!("S{id}"),
+    )
+}
+
+/// A point symbol primitive of object `object` and symbol `symbol`: a filled square of side `side` at `at`.
+fn point_symbol(at: Pt, side: f64, object: u32, symbol: u32) -> Primitive {
+    let h = side / 2.0;
+    let mut p = Primitive::new(
+        1,
+        Shape::Fill {
+            rings: vec![vec![
+                (at.0 - h, at.1 - h),
+                (at.0 + h, at.1 - h),
+                (at.0 + h, at.1 + h),
+                (at.0 - h, at.1 + h),
+            ]],
+            rule: FillRule::EvenOdd,
+        },
+    );
+    p.class = SymbolClass::Point;
+    p.object = object;
+    p.symbol = symbol;
+    p
+}
+
+#[test]
+fn covered_map_symbol_always_warns_and_names_it() {
+    // Ruling R31: a number on a point symbol is a conflict even where the file put it, and the note names the
+    // symbol and proposes a free place.
+    let (_dir, project, _, courses) = course_project(A4);
+    let blank = on_blank_page(&project, &courses, "Kurz", Vec::new());
+    assert!(blank.conflicts.is_empty(), "{:?}", blank.conflicts);
+    let at = blank.numbers[0].centre;
+    let with = on_blank_page(
+        &project,
+        &courses,
+        "Kurz",
+        vec![point_symbol(at, 0.6, 5, 38)],
+    );
+    let c = &with.conflicts[0];
+    assert_eq!(c.control, "31");
+    assert_eq!(
+        c.conflicts,
+        [Conflict::MapSymbol {
+            line: false,
+            code: "S38".into(),
+            count: 1
+        }]
+    );
+    assert!(c.free, "{c:?}");
+}
+
+#[test]
+fn no_free_place_proposes_the_least_covered() {
+    // A point symbol under the whole course: no candidate is cleaner than the number's own place. The number
+    // still gets a warning (before ruling R31 it got none), marked as having no free place.
+    let (_dir, project, _, courses) = course_project(A4);
+    let everywhere = point_symbol((200.0, 200.0), 390.0, 9, 41);
+    let placed = on_blank_page(&project, &courses, "Kurz", vec![everywhere]);
+    assert_eq!(placed.conflicts.len(), 2, "{:?}", placed.conflicts);
+    for c in &placed.conflicts {
+        assert!(!c.free, "{c:?}");
+        assert!(c.conflicts.contains(&Conflict::MapSymbol {
+            line: false,
+            code: "S41".into(),
+            count: 1
+        }));
+    }
+    for n in &placed.numbers {
+        assert!(n.proposal.1.hard.is_empty() && n.proposal.1.covered.len() == 1);
+    }
+}
+
+#[test]
+fn proposals_in_stop_order_take_different_places() {
+    // Ruling R32. A score course visits 31 twice, and one correction puts both numbers on the same spot. Each
+    // number conflicts with the other; proposed one after the other, they get different free places.
+    let body = format!(
+        "{A4}{}",
+        correction("31", "layout = \"a4\"", 0.0, Some(0.5))
+    );
+    let (_dir, project, map, mut courses) = course_project(&body);
+    for c in &mut courses.event.courses {
+        if c.name == "Kurz" {
+            c.kind = crate::course::CourseKind::Score;
+            let again = c.stops[1].clone();
+            c.stops.insert(2, again);
+            c.stops.remove(3);
+        }
+    }
+    assert_eq!(
+        course(&courses, "Kurz")
+            .stops
+            .iter()
+            .map(|s| s.control.as_str())
+            .collect::<Vec<_>>(),
+        ["S1", "31", "31", "F1"]
+    );
+    let (page, report) = sheet_of(&project, &map, &courses, "Kurz");
+    let conflicts = number_conflicts(&report);
+    assert_eq!(conflicts.len(), 2, "{:?}", report.notes);
+    let gf = report.print.geometry_factor;
+    let sf = report.print.symbol_factor;
+    let c31 = position(&courses, "31");
+    let at = (
+        page.page_mm.0 / 2.0 + f64::from(c31.x) / 1000.0 * gf - page.centre_mm.0,
+        page.page_mm.1 / 2.0 + f64::from(c31.y) / 1000.0 * gf - page.centre_mm.1,
+    );
+    let sizes = project.rules.course_symbol(project.project.map.kind);
+    let size = number_size("31", sizes.number_height_mm * sf);
+    let boxes: Vec<Rect> = conflicts
+        .iter()
+        .map(|c| {
+            assert!(c.free, "{c:?}");
+            let p = Placement::from(c.proposal);
+            placement::number_box(
+                at,
+                r_outer(&sizes, sf),
+                size,
+                Placement {
+                    gap_mm: p.gap_mm * sf,
+                    ..p
+                },
+            )
+        })
+        .collect();
+    assert!(!boxes[0].overlaps(&boxes[1]), "{boxes:?}");
+}
+
+#[test]
+fn crossing_points_have_no_gap_check() {
+    // A crossing point prints no number, so a correction for it with a gap outside the range is not checked.
+    let body = format!(
+        "{A4}{}",
+        correction("32", "course = \"Kurz\"", 0.0, Some(0.3))
+    );
+    let (_dir, project, map, mut courses) = course_project(&body);
+    for c in &mut courses.event.controls {
+        if c.code == "32" {
+            c.kind = crate::course::ControlKind::CrossingPoint;
+        }
+    }
+    for c in &mut courses.event.courses {
+        for stop in c.stops.iter_mut().filter(|s| s.control == "32") {
+            stop.kind = Some(crate::course::ControlKind::CrossingPoint);
+        }
+    }
+    let (_, report) = sheet_of(&project, &map, &courses, "Kurz");
+    assert!(
+        !report.notes.iter().any(|n| matches!(
+            n,
+            SheetNote::NumberGapOutOfRange { control, .. } if control == "32"
+        )),
+        "{:?}",
+        report.notes
+    );
+    assert!(number_conflicts(&report).iter().all(|c| c.control != "32"));
 }

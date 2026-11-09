@@ -215,6 +215,7 @@ fn render_page_within(
         for p in &mut drawn.primitives {
             p.north_line = north_line;
             p.object = u32::try_from(index).unwrap_or(u32::MAX);
+            p.symbol = object.symbol_id;
         }
         page_left = page_left.saturating_sub(drawn.units);
         truncated_objects += usize::from(drawn.cut);

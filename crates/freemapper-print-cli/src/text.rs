@@ -347,6 +347,7 @@ mod tests {
             "to",
             "min",
             "max",
+            "proposal",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

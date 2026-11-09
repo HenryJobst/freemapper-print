@@ -24,6 +24,8 @@
 pub const DEFAULT_GAP_MM: f64 = 0.5;
 /// Step (mm) between the gaps [`best`] tries.
 pub const GAP_STEP_MM: f64 = 0.5;
+/// The smallest and the largest gap (mm) a [`GapRange`] may hold (ruling R30, courseplan ADR 0032).
+pub const GAP_LIMITS_MM: (f64, f64) = (0.01, 10.0);
 /// Step (degrees) between the candidate directions.
 pub const CANDIDATE_STEP_DEG: f64 = 15.0;
 /// Number of candidate directions: steps of 15 degrees once around.
@@ -492,15 +494,36 @@ impl GapRange {
         max: DEFAULT_GAP_MM,
     };
 
-    /// The gaps [`best`] tries: from `min` in steps of [`GAP_STEP_MM`], the last one exactly `max`.
-    pub fn steps(&self) -> Vec<f64> {
-        let mut out = Vec::new();
-        let mut gap = self.min;
-        while gap < self.max - EPS && out.len() < 1000 {
-            out.push(gap);
-            gap += GAP_STEP_MM;
+    /// The range from rule limits (ruling R30, courseplan ADR 0032): a missing minimum is
+    /// [`DEFAULT_GAP_MM`], a missing maximum stays open up to the largest gap; both are held to
+    /// [`GAP_LIMITS_MM`], the minimum rounded up and the maximum down to 0.01 mm, and a maximum below the minimum
+    /// is raised to it.
+    pub fn from_limits(min: Option<f64>, max: Option<f64>) -> GapRange {
+        let (lo, hi) = GAP_LIMITS_MM;
+        let clamp = |v: f64| if v.is_nan() { lo } else { v.clamp(lo, hi) };
+        let min = (clamp(min.unwrap_or(DEFAULT_GAP_MM)) * 100.0 - 1e-6).ceil() / 100.0;
+        let max = (clamp(max.unwrap_or(hi)) * 100.0 + 1e-6).floor() / 100.0;
+        GapRange {
+            min,
+            max: max.max(min),
         }
-        out.push(self.max.max(self.min));
+    }
+
+    /// The gaps [`best`] tries: from `min` in steps of [`GAP_STEP_MM`], the last one exactly `max`, each rounded
+    /// to 0.01 mm.
+    pub fn steps(&self) -> Vec<f64> {
+        let round = |v: f64| (v * 100.0).round() / 100.0;
+        let mut out = Vec::new();
+        let mut k = 0.0;
+        loop {
+            let gap = round(self.min + GAP_STEP_MM * k);
+            if gap >= self.max - EPS || out.len() >= 1000 {
+                break;
+            }
+            out.push(gap);
+            k += 1.0;
+        }
+        out.push(round(self.max.max(self.min)));
         out
     }
 

@@ -73,6 +73,20 @@ fn gap_steps_run_from_min_to_exactly_max() {
     assert_eq!((steps[0], steps[9]), (0.5, 5.0));
     assert_eq!(GapRange { min: 0.5, max: 1.2 }.steps(), [0.5, 1.0, 1.2]);
     assert_eq!(GapRange::DEFAULT.steps(), [DEFAULT_GAP_MM]);
+    // Every step comes out rounded to 0.01 mm (0.8 + 0.5 is 1.3, not 1.3000000000000003).
+    let steps = GapRange { min: 0.8, max: 5.0 }.steps();
+    assert_eq!(steps, [0.8, 1.3, 1.8, 2.3, 2.8, 3.3, 3.8, 4.3, 4.8, 5.0]);
+    // Ruling R30: limits are rounded inwards, held to 0.01..10 mm, a missing minimum is 0.5, a missing maximum
+    // open, and a maximum below the minimum is raised to it.
+    let r = GapRange::from_limits(Some(0.123), Some(3.456));
+    assert_eq!((r.min, r.max), (0.13, 3.45));
+    let r = GapRange::from_limits(None, Some(12.0));
+    assert_eq!((r.min, r.max), (0.5, 10.0));
+    let r = GapRange::from_limits(Some(0.004), None);
+    assert_eq!((r.min, r.max), (0.01, 10.0));
+    let r = GapRange::from_limits(Some(3.0), Some(1.0));
+    assert_eq!((r.min, r.max), (3.0, 3.0));
+    assert_eq!(r.steps(), [3.0]);
     assert!(
         PROFILE_GAPS.contains(5.0) && !PROFILE_GAPS.contains(0.3) && !PROFILE_GAPS.contains(5.1)
     );

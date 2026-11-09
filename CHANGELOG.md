@@ -25,14 +25,14 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   übrigen Bahnen werden trotzdem gelesen.
 - Ein Blatt je Bahn. Hat das Projekt eine Bahndatei, schreibt `export` je Bahn ein PDF auf dem Layout, das ihre
   Zuordnung nennt, mit dem Bahnaufdruck in Violett. Die Datei heißt wie die Bahn; Zeichen, die in keinem
-  Dateinamen stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung
-  unterscheiden, bekommen ` (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert.
-  `--course <NAME>` (mehrfach möglich) exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein
-  PDF, „<Veranstaltung> - alle Bahnen.pdf“ auf deutschen Blättern, eine Seite je Bahn in ihrem Papierformat.
-  Dass die Karte über den Kartenausschnitt hinausreicht, ist auf einem Bahnblatt erwartet und nur eine
-  Information. `--layout` exportiert weiter
-  ein Layout ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und `{controls}` nutzen. `check`
-  prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Projekte ohne Bahndatei exportieren wie bisher (ADR 0035).
+  Dateinamen stehen dürfen, werden zu `-`, und Namen, die sich nur in Groß- und Kleinschreibung unterscheiden,
+  bekommen ` (2)`. Ohne `centre_map_mm` wird der Kartenausschnitt auf die Bahn zentriert. `--course <NAME>`
+  (mehrfach möglich) exportiert nur diese Bahnen. `--single-file` schreibt alle Bahnen in ein PDF,
+  „<Veranstaltung> - alle Bahnen.pdf“ auf deutschen Blättern, eine Seite je Bahn in ihrem Papierformat. Dass die
+  Karte über den Kartenausschnitt hinausreicht, ist auf einem Bahnblatt erwartet und nur eine Information.
+  `--layout` exportiert weiter ein Layout ohne Bahnen. Texte können `{course}`, `{length_km}`, `{climb_m}` und
+  `{controls}` nutzen. `check` prüft jede Bahn und meldet Posten außerhalb des Kartenausschnitts. Projekte ohne
+  Bahndatei exportieren wie bisher (ADR 0035).
 - Die Postenbeschreibung auf Bahnblättern. Ein Layout-Element vom Typ `control_descriptions` zeichnet die
   IOF-Postenbeschreibung der Bahn aus einer `.ppen`-Datei: Veranstaltung, Bahn mit Länge und Steigung, Start,
   je Posten eine Zeile mit Nummer, Code und Symbolen, Zeilen für ausgeflaggte Strecken und Kartenwechsel mit
@@ -46,17 +46,19 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   und wenn die Bahndatei ein Symbol nutzt, das der Beschreibungsstandard nicht kennt (sein Kästchen bleibt
   leer). Auf jedem Bahnblatt warnt `check` außerdem, wenn ein Blattelement einen Posten, den Start oder das
   Ziel verdeckt (ADR 0037).
-- Postennummern auf Bahnblättern. Eine Nummer steht, wo die Bahndatei sie hinsetzt: bei Purple Pen die Lage
-  je Bahn, umgerechnet im Druckmaßstab der Bahn, bei IOF-XML `MapTextPosition`. Eine Korrektur in `[[numbers]]`
-  für das Layout oder für die Bahn geht vor; ihr Abstand `gap_mm` liegt über 0 und höchstens bei 10 mm. Hat die
-  Datei keine Lage, setzt freemapper-print die Nummer selbst: hinter den Posten, in Verlängerung der
-  hereinführenden Strecke, und nicht auf Kreise, Strecken, andere Nummern, Blattelemente sowie Punkt- und
-  Liniensymbole der Karte. `check` prüft jede Nummer. Liegt sie auf dem Bahnaufdruck, einem Blattelement, über
-  dem Rand des Kartenausschnitts oder auf Kartensymbolen, wo es einen freieren Platz gibt, nennt die Warnung, was sie verdeckt, und schlägt Richtung und Abstand vor.
-  Gedruckt wird die Nummer trotzdem an ihrer Stelle, verschoben wird nichts. Das Regelprofil legt mit der Regel
-  `number_gap` 0,5 bis 5 mm Abstand fest; `check` warnt bei Abständen außerhalb. Hat die Bahndatei eine Lage
-  geändert, über der eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und Suche sitzen in
-  einem eigenen Modul, das freemapper-courseplan übernehmen wird (ADR 0038).
+- Postennummern auf Bahnblättern. Eine Nummer steht, wo die Bahndatei sie hinsetzt: bei Purple Pen die Lage je
+  Bahn, umgerechnet im Druckmaßstab der Bahn, bei IOF-XML `MapTextPosition`. Eine Korrektur in `[[numbers]]` für
+  das Layout oder für die Bahn geht vor; ihr Abstand `gap_mm` liegt über 0 und höchstens bei 10 mm. Hat die Datei
+  keine Lage, setzt freemapper-print die Nummer selbst: hinter den Posten, in Verlängerung der hereinführenden
+  Strecke, und nicht auf Kreise, Strecken, andere Nummern, Blattelemente sowie Punkt- und Liniensymbole der
+  Karte. `check` prüft jede Nummer. Liegt sie auf dem Bahnaufdruck, einem Blattelement, über dem Rand des
+  Kartenausschnitts oder auf einem Punkt- oder Liniensymbol der Karte, nennt die Warnung, was sie verdeckt,
+  Kartensymbole mit ihrem Code, und schlägt Richtung und Abstand vor. Gibt es keinen freien Platz, sagt sie das
+  und schlägt den am wenigsten verdeckten vor. Gedruckt wird die Nummer trotzdem an ihrer Stelle, verschoben wird
+  nichts. Das Regelprofil legt mit der Regel `number_gap` 0,5 bis 5 mm Abstand fest, wie in freemapper-courseplan
+  auf 0,01 mm gerundet; `check` warnt bei Abständen außerhalb. Hat die Bahndatei eine Lage geändert, über der
+  eine Korrektur mit `base_seen` steht, meldet `check` das. Bewertung und Suche sitzen in einem eigenen Modul,
+  das freemapper-courseplan übernehmen wird (ADR 0038).
 
 ### Behoben
 
@@ -90,10 +92,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - Fußzeile auf jedem Blatt: die Quellenangaben der Karte (oder aus `print.copyright`), eine je Zeile, und
   darunter die Namensnennung „Erstellt mit freemapper-print“ mit der Adresse des Projekts. Die Namensnennung
   lässt sich nicht abschalten: Ein Element `credit_line` verschiebt sie nur, wenn es mindestens 5 pt groß ist und
-  ganz auf dem Blatt liegt, und sie liegt auf weißem Kasten über allem anderen. Auch die ganze Fußzeile steht
-  auf weißem Kasten, ein dunkles Element darunter kann sie nicht verdecken. Sie steht unter dem
-  Kartenausschnitt, wenn sie dort ganz Platz hat, sonst in der Karte, und `check` meldet das und jedes Element,
-  das sie abdeckt, und nennt, was die Fußzeile enthält. Höchstens sechs Quellenzeilen erscheinen, eine zu lange wird gekürzt und gemeldet.
+  ganz auf dem Blatt liegt, und sie liegt auf weißem Kasten über allem anderen. Auch die ganze Fußzeile steht auf
+  weißem Kasten, ein dunkles Element darunter kann sie nicht verdecken. Sie steht unter dem Kartenausschnitt,
+  wenn sie dort ganz Platz hat, sonst in der Karte, und `check` meldet das und jedes Element, das sie abdeckt,
+  und nennt, was die Fußzeile enthält. Höchstens sechs Quellenzeilen erscheinen, eine zu lange wird gekürzt und
+  gemeldet.
 - Logos als PNG, JPEG oder SVG, so breit wie `width_mm`. PNG und JPEG behalten ihre Transparenz. Ein SVG wird
   in CMYK gedruckt und bleibt in jeder Größe scharf; Verläufe erscheinen in ihrer ersten Farbe, Transparenz
   deckend, und das Programm meldet jede Vereinfachung. Zum Schutz vor Dateien, die Minuten rechnen oder
@@ -111,11 +114,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   37,5 m, noch ungeprüft), mit dem Symbol 601 der Karte, sodass sie wie gezeichnete unter Mauern und Zäunen
   liegen. Lücken an kleinen Objekten setzt weiter der Kartograf in OOM. Ohne Nordlinien-Symbol gibt es schwarze
   Linien von 0,14 mm und einen Hinweis.
-- Meldungen und Hilfe auf Deutsch und Englisch. Die Sprache kommt aus `--lang de|en`, sonst aus
-  `FREEMAPPER_LANG` und der Spracheinstellung des Systems. Auch die Hinweise zu Logos kommen in der
-  Programmsprache. Fehlermeldungen zur Projektdatei, Einzelheiten vom System oder einem Bilddecoder in einem
-  Hinweis (etwa der Name eines SVG-Elements) und die Überschriften der Hilfe bleiben vorerst Englisch. Die Sprache auf dem Blatt (Datum, Dezimalzeichen,
-  Namensnennung) stellt `event.lang` ein.
+- Meldungen und Hilfe auf Deutsch und Englisch. Die Sprache kommt aus `--lang de|en`, sonst aus `FREEMAPPER_LANG`
+  und der Spracheinstellung des Systems. Auch die Hinweise zu Logos kommen in der Programmsprache.
+  Fehlermeldungen zur Projektdatei, Einzelheiten vom System oder einem Bilddecoder in einem Hinweis (etwa der
+  Name eines SVG-Elements) und die Überschriften der Hilfe bleiben vorerst Englisch. Die Sprache auf dem Blatt
+  (Datum, Dezimalzeichen, Namensnennung) stellt `event.lang` ein.
 - Sicheres Schreiben: Vor jedem PDF prüft das Programm, ob die Größe des PDFs und 50 MB Reserve frei sind. Das
   PDF entsteht als `.part`-Datei und bekommt seinen Namen erst, wenn es vollständig geschrieben ist. Ein voller
   Datenträger hinterlässt kein halbes PDF, und die Meldung nennt den nötigen und den freien Platz. Auch ein
