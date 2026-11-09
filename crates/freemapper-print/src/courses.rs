@@ -111,9 +111,11 @@ pub enum CourseLoadError {
         "course file {file}: unknown file type; use `.ppen` (Purple Pen) or `.xml` (IOF XML 3.0)"
     )]
     UnknownType { file: String },
-    #[error("course file {file}: {source}")]
+    /// The reader's error is the `source`, not part of the message, so that a chain prints it once.
+    #[error("course file {file}")]
     Read { file: String, source: CourseError },
-    #[error("course file {file}: {source}")]
+    /// The fit's error is the `source`, not part of the message.
+    #[error("course file {file}")]
     Fit { file: String, source: FitError },
 }
 

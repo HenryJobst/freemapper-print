@@ -113,6 +113,14 @@ fn fit_options_come_from_the_sources() {
         ),
         "{err}"
     );
+    // The fit's message comes once, as the source, not also in the message: a chain prints both.
+    let mut chain = err.to_string();
+    let mut source = std::error::Error::source(&err);
+    while let Some(s) = source {
+        chain = format!("{chain}: {s}");
+        source = s.source();
+    }
+    assert_eq!(chain.matches("only lat/lng").count(), 1, "{chain}");
 }
 
 #[test]

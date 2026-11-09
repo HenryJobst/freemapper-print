@@ -775,8 +775,10 @@ fn limits_enforced() {
         .map(|i| format!("<gadget{i}/>"))
         .collect();
     let ev = read_ppen(&ppen(&many)).unwrap();
-    assert_eq!(ev.notes.len(), MAX_NOTES + 1);
-    assert_eq!(ev.notes.last(), Some(&CourseNote::NotesTruncated));
+    // The closing note about the whole file still comes after the cut.
+    assert_eq!(ev.notes.len(), MAX_NOTES + 2);
+    assert_eq!(ev.notes[MAX_NOTES], CourseNote::NotesTruncated);
+    assert_eq!(ev.notes.last(), Some(&CourseNote::NoDescriptions));
 }
 
 /// `n` courses over the same two controls, each with its own course-controls, at print scale 1:10000.
