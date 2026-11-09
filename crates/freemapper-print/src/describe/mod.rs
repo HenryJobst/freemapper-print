@@ -247,9 +247,10 @@ fn distance_text(metres: f64) -> String {
 }
 
 /// The stops of `course` in the order of their rows: file order, and for a score course the order of Purple
-/// Pen's `CourseView.CreateScoreCourseView`: by control kind (start, map exchange, control; the enum order of
-/// `ControlPointKind`, map issue points read as starts), then by points (not read, so equal), then controls by
-/// code ([`compare_codes`]), then file order.
+/// Pen's `CourseView.CreateScoreCourseView` (commit 201417f): by control kind (start, map exchange, control; the
+/// enum order of `ControlPointKind`, map issue points read as starts), then by points (not read, so equal), then
+/// by code ([`compare_codes`]), then by control id. Purple Pen gives starts and map exchanges no code, so they
+/// compare equal there and go by control id; the position of the control in the file stands in for its id.
 fn order(course: &Course<MapCoord>, event: &FittedEvent, score: bool) -> Vec<usize> {
     let mut order: Vec<usize> = (0..course.stops.len()).collect();
     if !score {
@@ -257,29 +258,33 @@ fn order(course: &Course<MapCoord>, event: &FittedEvent, score: bool) -> Vec<usi
     }
     let control = |i: usize| {
         let code = &course.stops[i].control;
-        event.controls.iter().find(|c| &c.code == code)
+        event.controls.iter().position(|c| &c.code == code)
     };
-    let rank = |i: usize| match control(i).map(|c| c.kind) {
+    let rank = |i: usize| match control(i).map(|k| event.controls[k].kind) {
         Some(ControlKind::Start) => 0,
         Some(ControlKind::MapExchange) => 1,
         Some(ControlKind::Control) => 2,
         _ => 3,
     };
     order.sort_by(|&a, &b| {
-        rank(a).cmp(&rank(b)).then_with(|| {
-            if rank(a) == 2 && rank(b) == 2 {
-                compare_codes(&course.stops[a].control, &course.stops[b].control)
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        })
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| {
+                if rank(a) == 2 && rank(b) == 2 {
+                    compare_codes(&course.stops[a].control, &course.stops[b].control)
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
+            .then_with(|| control(a).cmp(&control(b)))
     });
     order
 }
 
-/// Purple Pen's `Util.CompareCodes`: codes that are whole numbers (digits only, within `i32`) come first in
-/// numeric order, then the others in text order. Purple Pen compares those by the current culture; this
-/// compares them by Unicode code points.
+/// Purple Pen's `Util.CompareCodes` (commit 201417f): codes that are whole numbers come first in numeric order,
+/// then the others in text order. A whole number is what `int.TryParse` with `NumberStyles.None` takes: digits
+/// only, no sign or spaces, within `i32`. Purple Pen compares the others by the current culture; this compares
+/// them by Unicode code points.
 pub fn compare_codes(a: &str, b: &str) -> std::cmp::Ordering {
     let int = |s: &str| {
         if !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit()) {
@@ -1193,6 +1198,9 @@ pub(crate) mod tests {
         assert_eq!(compare_codes("A1", "B"), Less);
         assert_eq!(compare_codes("+5", "4"), Greater);
         assert_eq!(compare_codes("99999999999", "1"), Greater);
+        // NumberStyles.None: leading zeros are fine, spaces are not.
+        assert_eq!(compare_codes("031", "31"), Equal);
+        assert_eq!(compare_codes(" 5", "40"), Greater);
         let mut ev = seven();
         let codes = ["101", "31", "A1", "9", "32", "B2", "40"];
         for (c, code) in ev.controls[1..8].iter_mut().zip(codes) {
@@ -1226,6 +1234,37 @@ pub(crate) mod tests {
                 text("A1"),
                 text("B2")
             ]
+        );
+    }
+
+    #[test]
+    fn score_start_rows_keep_the_file_order_of_their_controls() {
+        // Purple Pen gives a start no code: two starts compare equal by code and then go by control id, the order
+        // in which the file defines them, not the order of the course.
+        let mut ev = seven();
+        let mut second = ev.controls[0].clone();
+        second.code = "STA2".into();
+        second.description.as_mut().unwrap().columns[3] = Some("1.3".into());
+        ev.controls.push(second);
+        let course = &mut ev.courses[0];
+        course.kind = CourseKind::Score;
+        let mut stop = course.stops[0].clone();
+        stop.control = "STA2".into();
+        course.stops.insert(0, stop);
+        course.legs.insert(0, course.legs[0].clone());
+        let b = description_box(&ev.courses[0], &ev, 6.0, SheetLang::De, &header(), 4000);
+        let starts: Vec<Option<Cell>> = b.rows[2..4]
+            .iter()
+            .map(|r| match r {
+                Row::Control(c) => Some(c[5].clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            starts,
+            [Some(Cell::Empty), Some(Cell::Symbol("1.3".into()))],
+            "{:?}",
+            &b.rows[2..4]
         );
     }
 
