@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::omap::enlarge::enlarge_symbols;
 use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, OmapError, SymbolSet};
+use crate::project::SheetLang;
 use crate::render::bounds::{Bounds, painted_bounds};
 use crate::render::draw::{MAX_UNITS_PER_OBJECT, Primitive, Shape, primitives_within};
 use crate::render::fonts::substituted;
@@ -18,6 +19,7 @@ use crate::render::page::{PaperBox, RenderedPage};
 use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
 use crate::render::symbols::{RenderSymbols, Symbol};
 use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
+use crate::sheet::SheetNote;
 
 /// White margin on each side of the page for the `render` command; the map is clipped to the page
 /// minus this margin (mm). A layout sets its own ([`PrintOptions::frame_margin_mm`]).
@@ -273,16 +275,31 @@ fn render_page_within(
     Ok((page, report))
 }
 
-/// The office PDF of `map`: [`render_page`] written by [`write_pdf`].
+/// [`render_page`] with the default footer of the `render` command: the copyright lines from the
+/// map notes and the visible credit line in `lang` ([`crate::sheet::add_map_footer`]). The map
+/// stays where [`render_page`] puts it. The notes are about the footer.
+pub fn render_with_footer(
+    map: &MapDocument,
+    options: &PrintOptions,
+    lang: SheetLang,
+) -> Result<(RenderedPage, PrintReport, Vec<SheetNote>), PrintError> {
+    let (mut page, report) = render_page(map, options)?;
+    let notes = crate::sheet::add_map_footer(&mut page, map, lang);
+    Ok((page, report, notes))
+}
+
+/// The office PDF of `map`: [`render_with_footer`] written by [`write_pdf`], with the notes about
+/// the footer.
 pub fn print_map(
     map: &MapDocument,
     options: &PrintOptions,
     title: &str,
-) -> Result<(Vec<u8>, PrintReport), PrintError> {
-    let (page, mut report) = render_page(map, options)?;
+    lang: SheetLang,
+) -> Result<(Vec<u8>, PrintReport, Vec<SheetNote>), PrintError> {
+    let (page, mut report, notes) = render_with_footer(map, options, lang)?;
     let (pdf, info) = write_pdf(&page, &PdfMeta::new(title))?;
     report.missing_glyphs = info.missing_glyphs.into_iter().collect();
-    Ok((pdf, report))
+    Ok((pdf, report, notes))
 }
 
 /// The symbols of `set` with every dimension multiplied by `factor`.
@@ -728,8 +745,81 @@ mod tests {
             pattern: None,
         };
         let doc = map(4000, set, vec![text]);
-        let (_, report) = print_map(&doc, &options(Orientation::Portrait), "Glyphs").unwrap();
+        let (_, report, _) = print_map(
+            &doc,
+            &options(Orientation::Portrait),
+            "Glyphs",
+            SheetLang::En,
+        )
+        .unwrap();
         assert_eq!(report.missing_glyphs, ['✈']);
+    }
+
+    fn texts_of(page: &RenderedPage) -> Vec<(String, (f64, f64))> {
+        use crate::render::page::{Shape, SheetItem};
+        page.sheet
+            .iter()
+            .filter_map(|i| match i {
+                SheetItem::Shape {
+                    shape: Shape::Text { text, origin, .. },
+                    ..
+                } => Some((text.clone(), *origin)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn render_gets_the_default_footer() {
+        let mut doc = map(
+            4000,
+            SymbolSet::issprom_2019(),
+            vec![line(edge(), (190_000, 280_000))],
+        );
+        doc.notes = "© OpenStreetMap contributors, ODbL\nCC BY 4.0".into();
+        let opts = options(Orientation::Portrait);
+        let (plain, plain_report) = render(&doc, &opts);
+        let (page, report, notes) = render_with_footer(&doc, &opts, SheetLang::En).unwrap();
+        // The map does not move: same primitives, frame, centre and report.
+        assert_eq!(page.primitives, plain.primitives);
+        assert_eq!(page.clip, plain.clip);
+        assert_eq!(page.centre_mm, plain.centre_mm);
+        assert_eq!(report, plain_report);
+        let t = texts_of(&page);
+        let names: Vec<&str> = t.iter().map(|x| x.0.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "© OpenStreetMap contributors, ODbL",
+                "CC BY 4.0",
+                crate::CREDIT_LINE_EN
+            ]
+        );
+        // The 5 mm margin is too narrow: on a white box in the bottom-left corner of the frame.
+        assert!(matches!(
+            page.sheet[0],
+            crate::render::page::SheetItem::Shape {
+                colour: crate::render::page::DirectColour::WHITE,
+                ..
+            }
+        ));
+        assert!(t.iter().all(|x| x.1.0 > 5.0 && x.1.1 < 292.0), "{t:?}");
+        // The line runs through the bottom-left corner: the footer covers part of it.
+        assert_eq!(
+            notes,
+            [crate::sheet::SheetNote::ElementOverlapsMap {
+                id: crate::sheet::FOOTER_ID.into()
+            }]
+        );
+        // German, and nothing to note when the map keeps clear of the corner.
+        let small = map(
+            4000,
+            SymbolSet::issprom_2019(),
+            vec![line(edge(), (10_000, 0))],
+        );
+        let (page, _, notes) = render_with_footer(&small, &opts, SheetLang::De).unwrap();
+        assert_eq!(texts_of(&page)[0].0, crate::CREDIT_LINE_DE);
+        assert_eq!(notes, []);
     }
 
     /// A sprint set plus `999.1`, an area with a hatch `spacing` µm apart.

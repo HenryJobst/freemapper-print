@@ -182,11 +182,11 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
         .file_stem()
         .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned());
     // Library errors keep their English text for now (ADR 0024); the lead-in is translated.
-    let (pdf, report) =
-        print_map(&map, &options, &title).with_context(|| texts.plain("error-print"))?;
+    let (pdf, report, footer_notes) = print_map(&map, &options, &title, sheet_lang(texts))
+        .with_context(|| texts.plain("error-print"))?;
     freemapper_print::output::write_pdf_file(&args.out, &pdf)
         .with_context(|| texts.plain("error-write"))?;
-    for line in report_lines(
+    let mut lines = report_lines(
         texts,
         &report,
         args.paper,
@@ -194,10 +194,39 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
         kind,
         map.georef.scale_denominator,
         &args.out,
-    ) {
+    );
+    // The footer notes go before the closing reminder.
+    let reminder = lines.pop();
+    lines.extend(footer_notes.iter().map(|n| render_note_line(texts, n)));
+    lines.extend(reminder);
+    for line in lines {
         eprintln!("{line}");
     }
     Ok(0)
+}
+
+/// The sheet language that goes with the program language: German for `de`, else English.
+fn sheet_lang(texts: &Texts) -> SheetLang {
+    if texts.lang().code() == "de" {
+        SheetLang::De
+    } else {
+        SheetLang::En
+    }
+}
+
+/// The message for a note about `render`'s footer. `render` has no layout and no passe-partout
+/// to widen, so two notes get their own text.
+fn render_note_line(texts: &Texts, note: &SheetNote) -> String {
+    match note {
+        SheetNote::ElementOverlapsMap { id } if id == FOOTER_ID => {
+            texts.plain("note-render-footer-on-map")
+        }
+        SheetNote::CopyrightTruncated { total, shown, .. } => texts.get(
+            "note-render-copyright-truncated",
+            Some(&args!("total" => *total, "shown" => *shown)),
+        ),
+        other => sheet_note_line(texts, other),
+    }
 }
 
 fn read_map(texts: &Texts, path: &Path) -> anyhow::Result<MapDocument> {
@@ -296,11 +325,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             .file_stem()
             .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
     });
-    let sheet_lang = if texts.lang().code() == "de" {
-        SheetLang::De
-    } else {
-        SheetLang::En
-    };
+    let sheet_lang = sheet_lang(texts);
     let map_scale = map.georef.scale_denominator;
     let starter = project::starter(
         &title,

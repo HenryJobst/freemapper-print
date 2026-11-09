@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use freemapper_print::omap::read::read_map_file;
-use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map, render_page};
+use freemapper_print::print::{Orientation, Paper, PrintOptions, render_page};
 use freemapper_print::render::page::{RenderedPage, Shape};
+use freemapper_print::render::pdf::{PdfMeta, write_pdf};
 use freemapper_print::scale::infer_kind;
 
 /// Rasterisation resolution (dpi).
@@ -209,7 +210,7 @@ fn paper_for(map: &Path) -> (String, PrintOptions) {
         };
         for orientation in order {
             options.orientation = orientation;
-            let (_, report) = print_map(&doc, &options, "t").unwrap();
+            let (_, report) = render_page(&doc, &options).unwrap();
             if report.overflow_mm.is_none() {
                 let label = if orientation == Orientation::Landscape {
                     "landscape"
@@ -252,7 +253,9 @@ fn matches_oom_within_tolerance() {
         };
 
         let doc = read_map_file(&map).unwrap();
-        let (pdf, _) = print_map(&doc, &options, fixture).unwrap();
+        // The map alone, without the footer of `render`: OOM's export has none.
+        let (page, _) = render_page(&doc, &options).unwrap();
+        let (pdf, _) = write_pdf(&page, &PdfMeta::new(fixture)).unwrap();
         let ours_pdf = work.path().join(format!("{name}-ours.pdf"));
         std::fs::write(&ours_pdf, pdf).unwrap();
 

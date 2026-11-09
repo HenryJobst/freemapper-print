@@ -17,7 +17,7 @@ use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{PrintError, PrintOptions, PrintReport, render_page};
 use crate::project::{
-    AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject, NorthLines,
+    AnchorTarget, ElementKind, ElementSpec, LayoutSpec, LoadedProject, NorthLines, SheetLang,
 };
 use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem};
 use crate::render::symbols::{Cap, Join};
@@ -228,6 +228,40 @@ pub fn render_sheet(
     }
 
     Ok((page, SheetReport { print, notes }))
+}
+
+/// Adds the default footer to `page`, a page drawn without a project (the `render` command): the
+/// copyright lines from `map.notes` and the credit line in `lang`, placed against the page's frame
+/// as on a sheet (ADR 0029). With `render`'s 5 mm margin it sits on a white box in the bottom-left
+/// corner of the frame. The map does not move. Notes: [`SheetNote::CopyrightTruncated`] (with the
+/// layout `""`), and [`SheetNote::ElementOverlapsMap`] for [`FOOTER_ID`] when the box covers part
+/// of what the map draws.
+pub fn add_map_footer(
+    page: &mut RenderedPage,
+    map: &MapDocument,
+    lang: SheetLang,
+) -> Vec<SheetNote> {
+    let mut notes = Vec::new();
+    let page_box = PaperBox {
+        min: (0.0, 0.0),
+        max: page.page_mm,
+    };
+    if let Some(footer) = text::map_footer(&map.notes, lang, page_box, page.clip, &mut notes) {
+        let drawn = crate::render::bounds::painted_bounds(&page.primitives);
+        let covers = drawn.is_some_and(|(min, max)| {
+            footer.rect.min.0 < max.0
+                && min.0 < footer.rect.max.0
+                && footer.rect.min.1 < max.1
+                && min.1 < footer.rect.max.1
+        });
+        if covers {
+            notes.push(SheetNote::ElementOverlapsMap {
+                id: FOOTER_ID.into(),
+            });
+        }
+        page.sheet.extend(footer.items);
+    }
+    notes
 }
 
 /// The elements `layout` shows, in paint order: the shared ones it does not hide, then its own.

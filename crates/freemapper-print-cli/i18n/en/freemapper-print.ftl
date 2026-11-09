@@ -144,3 +144,5 @@ note-logo-simplified = Note: the logo { $id } is drawn simplified: { $reason }
 note-unknown-placeholder = Note: the text { $id } contains { $name }, which is no placeholder, so it is printed as written.
 note-unknown-part = Note: layout { $layout } hides the map part { $name }, but the map has no part of that name. Upper and lower case count.
 note-credit-line-moved = Note: the credit line element { $id } would not lie wholly on the page, so the credit line stays in the footer at the bottom left.
+note-render-footer-on-map = Note: the footer with the copyright and credit lines sits on a white box in the bottom-left corner of the printable area and covers part of the map. In a project (init, then export) it can go below the map frame.
+note-render-copyright-truncated = Note: the footer shows { $shown } of { $total } copyright lines. One more line counts the rest.

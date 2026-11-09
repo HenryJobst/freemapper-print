@@ -5,6 +5,7 @@ use std::process::{Command, Output};
 
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map};
+use freemapper_print::project::SheetLang;
 use freemapper_print::scale::{MapKind, infer_kind};
 
 const LUEBECK: &str = concat!(
@@ -58,7 +59,7 @@ fn overflow_expected(
         show_sheet_objects: false,
         frame_margin_mm: None,
     };
-    print_map(&doc, &options, "t")
+    print_map(&doc, &options, "t", SheetLang::En)
         .unwrap()
         .1
         .overflow_mm
@@ -78,6 +79,11 @@ fn renders_luebeck_a4() {
     assert!(err.contains("A4"), "{err}");
     assert!(err.contains("symbol factor"), "{err}");
     assert!(err.contains("actual size"), "{err}");
+    // The footer with the copyright and credit lines sits in the corner of the map.
+    assert!(
+        err.contains("footer with the copyright and credit lines sits on a white box"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -191,7 +197,7 @@ fn overflow_amount_matches_the_library() {
         show_sheet_objects: false,
         frame_margin_mm: None,
     };
-    let (x, y) = print_map(&doc, &options, "t")
+    let (x, y) = print_map(&doc, &options, "t", SheetLang::En)
         .unwrap()
         .1
         .overflow_mm

@@ -205,12 +205,8 @@ pub(super) fn place_text_element(
 /// credit line, one block (design §5.2). Every sheet has the credit line; it cannot be switched
 /// off, and a `credit_line` element only moves it. `with_credit` is false when such an element
 /// placed it wholly on the page.
-///
-/// Below the map frame, left-aligned with it, the last baseline 4 mm above the paper edge. If the
-/// passe-partout is too narrow for that (under 6.5 mm, or too narrow for all the lines), inside
-/// the frame at its bottom left on a white box, inset by half the frame line.
-///
-/// The caller checks the box it covers like an element's ([`FOOTER_ID`]).
+/// Placed by [`footer_block`]. The caller checks the box it covers like an element's
+/// ([`FOOTER_ID`]).
 pub(super) fn default_footer(
     ctx: &SheetContext<'_>,
     with_credit: bool,
@@ -224,34 +220,64 @@ pub(super) fn default_footer(
     if with_credit {
         text.push(credit_text(ctx));
     }
-    if text.is_empty() {
+    footer_block(&text, ctx.page, ctx.frame, ctx.layout.map_frame.border_mm)
+}
+
+/// The footer of `lines` (copyright lines, then the credit line) at 5 pt: below `frame`,
+/// left-aligned with it, the last baseline 4 mm above the paper edge; or, when the passe-partout
+/// below the frame is under 6.5 mm or too narrow for all the lines, inside the frame at its bottom
+/// left on a white box, inset by half the frame line `border_mm` (ADR 0029). `None` for no lines.
+/// Sheets and the `render` command share it.
+pub(super) fn footer_block(
+    lines: &[String],
+    page: PaperBox,
+    frame: PaperBox,
+    border_mm: f64,
+) -> Option<PlacedElement> {
+    if lines.is_empty() {
         return None;
     }
     let mut block = Block {
-        lines: plain_lines(&text, FOOTER_PT),
+        lines: plain_lines(lines, FOOTER_PT),
         padding_mm: 0.0,
         white_box: false,
     };
-    let margin = ctx.page.max.1 - ctx.frame.max.1;
+    let margin = page.max.1 - frame.max.1;
     let (_, h) = block.size();
     // The last baseline: the block's bottom less the descent part of the last line.
     let size = block.lines.last().map_or(0.0, |l| l.size_mm);
-    let bottom = ctx.page.max.1 - FOOTER_BASELINE_MM + (size * LINE_SPACING - ASCENT * size);
+    let bottom = page.max.1 - FOOTER_BASELINE_MM + (size * LINE_SPACING - ASCENT * size);
     // Below the frame only if the whole block fits there, not just the last line.
-    if margin >= FOOTER_MIN_MARGIN_MM && bottom - h >= ctx.frame.max.1 {
-        Some(block.place((ctx.frame.min.0, bottom - h)))
+    if margin >= FOOTER_MIN_MARGIN_MM && bottom - h >= frame.max.1 {
+        Some(block.place((frame.min.0, bottom - h)))
     } else {
         block.padding_mm = FOOTER_BOX_PADDING_MM;
         block.white_box = true;
         // The frame line is centred on the frame edge: keep the box off its inner half.
-        let half_border = ctx.layout.map_frame.border_mm / 2.0;
+        let half_border = border_mm / 2.0;
         let anchor = Anchor {
             to: AnchorTarget::MapFrame,
             corner: Corner::BottomLeft,
             offset_mm: [half_border, half_border],
         };
-        Some(block.place_on(&anchor, ctx))
+        let top_left = layout::anchor_point(&anchor, page, frame, block.size());
+        Some(block.place(top_left))
     }
+}
+
+/// The footer of a page drawn without a project (the `render` command): the copyright lines from
+/// the map notes and the credit line in `lang`, against the page's frame, with no frame line.
+/// Notes about the lines name the layout `""`.
+pub(crate) fn map_footer(
+    map_notes: &str,
+    lang: SheetLang,
+    page: PaperBox,
+    frame: PaperBox,
+    notes: &mut Vec<SheetNote>,
+) -> Option<PlacedElement> {
+    let mut lines = copyright_lines_of(map_notes, lang, "", frame, FOOTER_PT * MM_PER_PT, notes);
+    lines.push(crate::credit_line(lang).to_string());
+    footer_block(&lines, page, frame, 0.0)
 }
 
 fn values(ctx: &SheetContext<'_>) -> PlaceholderValues {
@@ -283,6 +309,25 @@ fn copyright_lines(
         .copyright
         .as_deref()
         .unwrap_or(&ctx.map.notes);
+    copyright_lines_of(
+        source,
+        ctx.project.project.event.lang,
+        &ctx.layout.id,
+        ctx.frame,
+        size_mm,
+        notes,
+    )
+}
+
+/// [`copyright_lines`] of the text `source`, for the sheet of `layout` in `lang` with `frame`.
+fn copyright_lines_of(
+    source: &str,
+    lang: SheetLang,
+    layout: &str,
+    frame: PaperBox,
+    size_mm: f64,
+    notes: &mut Vec<SheetNote>,
+) -> Vec<String> {
     let mut lines: Vec<String> = source
         .lines()
         .map(str::trim)
@@ -294,17 +339,17 @@ fn copyright_lines(
         let shown = MAX_COPYRIGHT_LINES - 1;
         lines.truncate(shown);
         let rest = total - shown;
-        lines.push(match ctx.project.project.event.lang {
+        lines.push(match lang {
             SheetLang::De => format!("… und {rest} weitere Quellen"),
             SheetLang::En => format!("… and {rest} more sources"),
         });
         notes.push(SheetNote::CopyrightTruncated {
-            layout: ctx.layout.id.clone(),
+            layout: layout.to_string(),
             total,
             shown,
         });
     }
-    let limit = ctx.frame.max.0 - ctx.frame.min.0 - 2.0 * FOOTER_BOX_PADDING_MM;
+    let limit = frame.max.0 - frame.min.0 - 2.0 * FOOTER_BOX_PADDING_MM;
     lines
         .into_iter()
         .map(|l| cut_to_width(l, size_mm, limit))

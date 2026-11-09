@@ -26,18 +26,22 @@ direction and only fits on A3.
 At 1:4000 the map is 4.0 mm too tall for the printable area of A4. The program warns and still writes the PDF.
 That is intended here. At 1:3000 on A3 the whole map fits.
 
+The footer sits on a white box at the bottom left: the copyright lines from the map notes and the credit line
+"Erstellt mit freemapper-print" (the PDFs are made with German texts). The 5 mm margin is too narrow for it,
+so it covers a corner of the map, and `render` says so.
+
 ## Checked
 
 - Stroke widths read from the PDF content: symbol 506 is 0.27 mm in `luebeck-4000-a4.pdf` and 0.36 mm in
   `luebeck-3000-a3.pdf`, and every other line grows to 133 % as well.
 - Page sizes: 297 × 210 mm and 420 × 297 mm (`/MediaBox` in the PDF).
-- The preview viewed: both maps complete, water blue, page frames grey.
+- The preview viewed: both maps complete, water blue, page frames grey, footer at the bottom left.
 
 ## Regenerate
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
-freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
+freemapper-print --lang de render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
+freemapper-print --lang de render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
 ```
 
 The preview comes from `pdftoppm` and ImageMagick, working in a temporary folder. On macOS `FONT` is the path
