@@ -60,11 +60,12 @@ rm -r "$tmp"
 
 ## Drucken
 
-Drucken Sie mit 100 % ("Tatsächliche Größe"), und schalten Sie "An Seite anpassen" aus. Jede andere Größe
+Drucken Sie mit 100 % („Tatsächliche Größe“), und schalten Sie „An Seite anpassen“ aus. Jede andere Größe
 verfälscht den Maßstab.
 
 ## Herkunft
 
-Karte von [freemapper](https://github.com/HenryJobst/freemapper) (Commit `a0cc8ef`, GPL-3.0-or-later),
-Datenquellen in den Kartennotizen (`<notes>`), erzeugt mit
-[freemapper-print](https://github.com/HenryJobst/freemapper-print).
+Karte aus dem Beispiel `schleswig-holstein-luebeck` von [freemapper](https://github.com/HenryJobst/freemapper),
+Version 0.5.0 (Commit `e8b6db9`), unverändert. Kartendaten © OpenStreetMap-Mitwirkende (ODbL) und
+© GeoBasis-DE/LVermGeo SH (CC BY 4.0, Quelle verändert); die Kartennotizen (`<notes>`) nennen die Quellen. Die
+PDFs sind mit [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.

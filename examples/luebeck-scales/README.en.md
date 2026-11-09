@@ -63,6 +63,7 @@ Print at 100 % ("actual size") with "fit to page" switched off. Any other size b
 
 ## Credits
 
-Map from [freemapper](https://github.com/HenryJobst/freemapper) (commit `a0cc8ef`, GPL-3.0-or-later), data
-sources in the map notes (`<notes>`), rendered with
-[freemapper-print](https://github.com/HenryJobst/freemapper-print).
+Map from the example `schleswig-holstein-luebeck` of [freemapper](https://github.com/HenryJobst/freemapper),
+version 0.5.0 (commit `e8b6db9`), unchanged. Map data © OpenStreetMap contributors (ODbL) and
+© GeoBasis-DE/LVermGeo SH (CC BY 4.0, source modified); the map notes (`<notes>`) name the sources. The PDFs
+were made with [freemapper-print](https://github.com/HenryJobst/freemapper-print).
