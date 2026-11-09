@@ -2,6 +2,10 @@
 
 [Deutsche Version](README.md) · [User manual](docs/manual/en.md) · [Glossary](docs/glossary.md) · [Changes](CHANGELOG.en.md)
 
+<!-- claude-cost:start -->
+<!-- claude-cost:end -->
+[What the number means](docs/ai-cost/README.md#english)
+
 freemapper-print turns a finished orienteering map and the courses from a course-setting program into
 ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in

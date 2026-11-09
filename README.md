@@ -2,6 +2,10 @@
 
 [English version](README.en.md) · [Handbuch](docs/manual/de.md) · [Glossar](docs/glossary.md) · [Änderungen](CHANGELOG.md)
 
+<!-- claude-cost:start -->
+<!-- claude-cost:end -->
+[Was die Zahl bedeutet](docs/ai-cost/README.md)
+
 freemapper-print macht aus einer fertigen OL-Karte und den Bahnen aus einem Bahnlegungsprogramm die
 druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
