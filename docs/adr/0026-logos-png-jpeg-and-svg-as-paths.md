@@ -143,8 +143,9 @@ The limits above bound one file. The final review used one 25 MP PNG in 30 logo 
 element read and decoded the file again, and the PDF embedded it 30 times (14.3 s, 2.86 GB).
 
 - A `LogoCache` lives for one `export` or `check` run and is passed into `render_sheet`. It reads and decodes
-  each distinct resolved path once and keeps the image as `Arc<RasterImage>` and the SVG as a parsed tree, so all
-  placements share one image and the PDF embeds it once. It remembers failures too. When keeping another logo
+  each distinct resolved path once (`.` and `..` resolved lexically, so two spellings share an entry) and keeps
+  the image as `Arc<RasterImage>` and the SVG as a parsed tree, so all placements share one image and the PDF
+  embeds it once. It remembers failures too. When keeping another logo
   would hold more than two sheets' worth, it drops the decoded logos first; a page keeps alive what it uses.
 - A sheet has a budget: 50 megapixels of raster logos and 1 000 000 units of SVG work, each logo counted as often
   as it is placed. SVG work is the size `check_svg` counts plus the points the curves flatten into. The size of a

@@ -27,7 +27,10 @@ Source: freemapper ADR 0020; brainstorming 2026-11-08.
 - The Lübeck map in the test fixtures and in `examples/` comes from freemapper v0.5.0 (commit `e8b6db9`), the
   newest stable tag. Lübeck's map objects did not change from v0.4.0 (`b4b3e05`); the north-line tags and the
   candidate tags did. The colour and priority notes of freemapper's `oom-render-reference.md` moved along.
+- Example logos are made for the example and clearly fictional: a club "OL-Verein Musterstadt" (SVG, flag and
+  letters as paths) and a sponsor "Beispiel-Sponsor GmbH" (PNG with alpha), with no likeness to real clubs,
+  companies or brands, dedicated to the public domain under CC0 1.0. The script that draws the PNG lies next to it.
 - M2 adds no schoolyard example, because freemapper v0.5.0 has no schoolyard map, and no Viktoriapark example,
   because freemapper is about to regenerate that map. Both wait for M3 or later; `examples/README` says so.
 
-Source: ledger rulings of 2026-11-08 and 2026-11-09 (fixture source, examples of Task 11).
+Source: ledger rulings of 2026-11-08 and 2026-11-09 (fixture source, fictional CC0 logos, examples of Task 11).

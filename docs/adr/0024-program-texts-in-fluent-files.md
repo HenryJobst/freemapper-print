@@ -27,6 +27,8 @@ module. freemapper-print had English-only messages in `main.rs`.
 - What the library reports to the user comes as values, not English sentences: sheet notes and their reasons are
   enums (`LogoSkipReason`, `LogoSimplification`, `MissingItem`), and the CLI gives each variant a message. Only
   details from the operating system, a decoder or the SVG check (an element name, a limit) stay as they come.
+- A sheet note that does not count toward `check`'s exit code (`SheetNote::is_info`) starts with "Info:" /
+  „Zur Information:“, every other with "Note:" / „Hinweis:“.
 
 ## Consequences
 
