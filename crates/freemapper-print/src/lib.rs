@@ -22,6 +22,7 @@ pub mod sheet;
 // The map model, the course model and the number placement come from freemapper-core (ADR 0043), under the
 // module names they had here.
 pub use freemapper_course as course;
+pub use freemapper_course::description_symbols;
 pub use freemapper_course::placement;
 pub use freemapper_omap as omap;
 
@@ -295,6 +296,7 @@ mod boundaries {
             .unwrap();
         for line in [
             "pub use freemapper_course as course;",
+            "pub use freemapper_course::description_symbols;",
             "pub use freemapper_course::placement;",
             "pub use freemapper_omap as omap;",
         ] {

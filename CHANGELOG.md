@@ -14,7 +14,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
-- Die gemeinsamen Bausteine kommen jetzt aus freemapper-core v0.5.1 (Purple-Pen-Schreiber, Objekt-IDs). Die Ausgabe bleibt unverändert.
+- Die Beschreibungssymbole aus Purple Pen kommen aus freemapper-core v0.6.0 (ADR 0049); die Ausgabe bleibt gleich.
+- Die gemeinsamen Bausteine kommen jetzt aus freemapper-core v0.6.0 (Purple-Pen-Schreiber, Objekt-IDs). Die Ausgabe bleibt unverändert.
 - Abdeckflächen aus Purple Pen heißen `whiteout-<n>` mit Purple Pens eigener Nummer statt der Stelle in der Datei, so ändert Löschen oder Umsortieren die Bedeutung anderer nicht. Projektdateien mit `whiteout-1` und so weiter prüfen Sie mit `check` (ADR 0048).
 
 ## [0.5.0] - 2026-11-10

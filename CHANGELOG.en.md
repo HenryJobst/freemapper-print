@@ -14,7 +14,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
-- The shared crates now come from freemapper-core v0.5.1 (Purple Pen writer, object ids). Output is unchanged.
+- The description symbols from Purple Pen come from freemapper-core v0.6.0 (ADR 0049); output is unchanged.
+- The shared crates now come from freemapper-core v0.6.0 (Purple Pen writer, object ids). Output is unchanged.
 - White-out areas from Purple Pen are named `whiteout-<n>` with Purple Pen's own number instead of the place in the file, so deleting or reordering one no longer changes what another means. Check project files that name `whiteout-1` and so on with `check` (ADR 0048).
 
 ## [0.5.0] - 2026-11-10
