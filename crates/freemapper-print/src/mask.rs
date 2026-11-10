@@ -606,24 +606,6 @@ fn inside_by(n: usize, at: impl Fn(usize) -> Pt, (px, py): Pt) -> bool {
     odd
 }
 
-/// The rings of `mask` in the internal frame (y down), polygon by polygon, the outline first and then its holes.
-/// Repeated points and a closing point equal to the first are dropped. The orientation is normalised by the sign
-/// of [`signed_area`]: outlines negative (clockwise, read with the numbers in a y-up frame), holes positive.
-pub fn masked_rings(mask: &Mask) -> Vec<Vec<Pt>> {
-    let mut out = Vec::new();
-    for polygon in &mask.polygons {
-        for (r, ring) in polygon.rings().enumerate() {
-            let mut pts = cleaned(ring).0;
-            let area = signed_area(&pts);
-            if (r == 0 && area > 0.0) || (r > 0 && area < 0.0) {
-                pts.reverse();
-            }
-            out.push(pts);
-        }
-    }
-    out
-}
-
 /// Whether `pt` (internal frame) lies in the masked area of `mask`: inside an outline and in none of its holes.
 /// Points on a ring are undefined.
 pub fn contains(mask: &Mask, pt: Pt) -> bool {
@@ -638,18 +620,6 @@ pub fn polygon_contains(polygon: &MaskPolygon, pt: Pt) -> bool {
 /// [`inside`] for a ring as written (y up), as [`contains`] reads it.
 pub(crate) fn ring_contains(points: &[[f64; 2]], pt: Pt) -> bool {
     inside_written(points, pt)
-}
-
-/// Twice the signed area of a ring (shoelace sum); positive is counter-clockwise when the numbers are read in a
-/// y-up frame.
-pub fn signed_area(ring: &[Pt]) -> f64 {
-    let n = ring.len();
-    (0..n)
-        .map(|i| {
-            let (a, b) = (ring[i], ring[(i + 1) % n]);
-            a.0 * b.1 - b.0 * a.1
-        })
-        .sum()
 }
 
 #[cfg(test)]
@@ -683,7 +653,8 @@ mod tests {
     }
 
     #[test]
-    fn ring_orientation_does_not_matter() {
+    fn contains_ignores_ring_orientation() {
+        // The clip on the page sets the orientation itself (`MapClip::new`); `contains` reads either the same.
         let ccw = with_holes(vec![square(10.0, 10.0, 30.0, 30.0)]);
         let cw = Mask {
             id: "m".into(),
@@ -692,40 +663,12 @@ mod tests {
                 holes: vec![reversed(square(10.0, 10.0, 30.0, 30.0))],
             }],
         };
-        let a = masked_rings(&ccw);
-        let b = masked_rings(&cw);
-        assert_eq!(a.len(), 2);
-        // Outline first, clockwise (negative); the hole counter-clockwise (positive).
-        assert!(
-            signed_area(&a[0]) < 0.0 && signed_area(&a[1]) > 0.0,
-            "{a:?}"
-        );
-        for (ra, rb) in a.iter().zip(&b) {
-            assert_eq!(signed_area(ra), signed_area(rb));
-            let mut sa = ra.clone();
-            let mut sb = rb.clone();
-            sa.sort_by(|p, q| p.partial_cmp(q).unwrap());
-            sb.sort_by(|p, q| p.partial_cmp(q).unwrap());
-            assert_eq!(sa, sb);
-        }
-        // In the internal frame, y down.
-        assert!(a[0].contains(&internal(100.0, 100.0)), "{a:?}");
         for pt in [(5.0, 5.0), (20.0, 20.0), (50.0, 50.0), (150.0, 5.0)] {
             let pt = internal(pt.0, pt.1);
             assert_eq!(contains(&ccw, pt), contains(&cw, pt), "{pt:?}");
         }
         assert!(contains(&cw, internal(50.0, 50.0)));
-        // A closing point equal to the first is dropped.
-        let mut closed = square(0.0, 0.0, 100.0, 100.0);
-        closed.push(closed[0]);
-        let closed = Mask {
-            id: "m".into(),
-            polygons: vec![MaskPolygon {
-                outline: closed,
-                holes: vec![],
-            }],
-        };
-        assert_eq!(masked_rings(&closed)[0].len(), 4);
+        assert!(!contains(&cw, internal(20.0, 20.0)));
     }
 
     #[test]

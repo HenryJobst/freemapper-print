@@ -1630,6 +1630,59 @@ mod tests {
     }
 
     #[test]
+    fn map_clip_ignores_ring_orientation() {
+        // The same mask written counter-clockwise and clockwise, once with a closing point equal to the first:
+        // the clip has the same rings with the same orientation on the page, and shows the map in the same places.
+        let rev = |mut r: Vec<[f64; 2]>| {
+            r.reverse();
+            r
+        };
+        let ccw = mask(
+            "m",
+            sq(0.0, 0.0, 100.0, 100.0),
+            vec![sq(10.0, 10.0, 30.0, 30.0)],
+        );
+        let cw = mask(
+            "m",
+            rev(sq(0.0, 0.0, 100.0, 100.0)),
+            vec![rev(sq(10.0, 10.0, 30.0, 30.0))],
+        );
+        let mut closed_outline = sq(0.0, 0.0, 100.0, 100.0);
+        closed_outline.push(closed_outline[0]);
+        let closed = mask("m", closed_outline, vec![sq(10.0, 10.0, 30.0, 30.0)]);
+        let to_page = |(x, y): Pt| (x + 100.0, y + 150.0);
+        let frame = PaperBox {
+            min: (50.0, 0.0),
+            max: (250.0, 200.0),
+        };
+        // Twice the shoelace sum in page mm (y down): negative runs counter-clockwise on paper.
+        let area = |r: &[Pt]| -> f64 {
+            (0..r.len())
+                .map(|i| {
+                    let (p, q) = (r[i], r[(i + 1) % r.len()]);
+                    p.0 * q.1 - q.0 * p.1
+                })
+                .sum()
+        };
+        let clips: Vec<MapClip> = [&ccw, &cw, &closed]
+            .into_iter()
+            .map(|m| map_clip(m, frame, to_page))
+            .collect();
+        for clip in &clips {
+            let signs: Vec<bool> = clip.rings().iter().map(|r| area(r) < 0.0).collect();
+            // The frame and the hole counter-clockwise on paper, the outline clockwise.
+            assert_eq!(signs, [true, false, true]);
+        }
+        for at in [(5.3, -5.3), (20.3, -20.3), (50.3, -50.3), (120.3, -5.3)] {
+            let shown = visible(&clips[0], to_page(at));
+            assert_eq!(shown, !crate::mask::contains(&ccw, at), "{at:?}");
+            for clip in &clips[1..] {
+                assert_eq!(visible(clip, to_page(at)), shown, "{at:?}");
+            }
+        }
+    }
+
+    #[test]
     fn overlapping_holes_unite() {
         // Two windows that overlap, one written counter-clockwise and one clockwise: the clip shows the map in
         // both and in their overlap, and hides it in the outline outside them, exactly where `contains` says the
