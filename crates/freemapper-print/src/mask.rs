@@ -334,6 +334,68 @@ fn segments_meet(p1: Pt, p2: Pt, q1: Pt, q2: Pt) -> bool {
         || (d4 == 0.0 && on_segment(p1, p2, q2))
 }
 
+/// Where the ring `points` (as written, y up) crosses or touches itself: the point two edges that are not
+/// neighbours share, or the shared point of neighbours that run back over each other. Of several, the one on the
+/// edges that come first in the ring. `None` for a ring that does not meet itself. The check looks at every pair
+/// of edges, so it is meant for one ring known to cross itself, as [`check`] reports it.
+pub fn crossing(points: &[[f64; 2]]) -> Option<[f64; 2]> {
+    let (pts, _) = cleaned(points);
+    let n = pts.len();
+    if n < 3 {
+        return None;
+    }
+    let edge = |i: usize| (pts[i], pts[(i + 1) % n]);
+    for j in 1..n {
+        let (q1, q2) = edge(j);
+        for i in 0..j {
+            let (p1, p2) = edge(i);
+            if (i + 1) % n == j || (j + 1) % n == i {
+                // Neighbours share a point; they meet elsewhere only when they run back over each other.
+                let (first, second) = if (i + 1) % n == j { (i, j) } else { (j, i) };
+                let shared = edge(first).1;
+                let (a, b) = (edge(first).0, edge(second).1);
+                let u = (a.0 - shared.0, a.1 - shared.1);
+                let v = (b.0 - shared.0, b.1 - shared.1);
+                if u.0 * v.1 - u.1 * v.0 == 0.0 && u.0 * v.0 + u.1 * v.1 > 0.0 {
+                    return Some([shared.0, -shared.1]);
+                }
+                continue;
+            }
+            if let Some((x, y)) = meeting_point(p1, p2, q1, q2) {
+                return Some([x, -y]);
+            }
+        }
+    }
+    None
+}
+
+/// The point the closed segments `p1 p2` and `q1 q2` have in common, `None` when they have none. For segments on
+/// one line that overlap, an end point inside the other segment.
+fn meeting_point(p1: Pt, p2: Pt, q1: Pt, q2: Pt) -> Option<Pt> {
+    if !segments_meet(p1, p2, q1, q2) {
+        return None;
+    }
+    let d1 = orient(q1, q2, p1);
+    let d2 = orient(q1, q2, p2);
+    if d1 != d2 && (d1 != 0.0 || d2 != 0.0) {
+        let d3 = orient(p1, p2, q1);
+        let d4 = orient(p1, p2, q2);
+        if d3 != 0.0 || d4 != 0.0 {
+            let t = d1 / (d1 - d2);
+            return Some((p1.0 + (p2.0 - p1.0) * t, p1.1 + (p2.1 - p1.1) * t));
+        }
+    }
+    // On one line, or an end point on the other segment.
+    [p1, p2]
+        .into_iter()
+        .find(|&c| orient(q1, q2, c) == 0.0 && on_segment(q1, q2, c))
+        .or_else(|| {
+            [q1, q2]
+                .into_iter()
+                .find(|&c| orient(p1, p2, c) == 0.0 && on_segment(p1, p2, c))
+        })
+}
+
 /// An edge of a ring: from point `idx` to the next.
 struct Edge {
     ring: usize,
@@ -664,6 +726,27 @@ mod tests {
             }],
         };
         assert_eq!(masked_rings(&closed)[0].len(), 4);
+    }
+
+    #[test]
+    fn crossing_names_where_the_edges_meet() {
+        // A bow-tie: its edges (0,0)-(10,10) and (10,0)-(0,10) cross at (5, 5).
+        let bow = vec![[0.0, 0.0], [10.0, 10.0], [10.0, 0.0], [0.0, 10.0]];
+        assert_eq!(crossing(&bow), Some([5.0, 5.0]));
+        // A spike: the neighbours meet at (10, 0) and run back over each other.
+        let spike = vec![[0.0, 0.0], [10.0, 0.0], [5.0, 0.0], [5.0, 5.0]];
+        assert!(crossing(&spike).is_some());
+        // A plain square does not meet itself.
+        assert_eq!(crossing(&square(0.0, 0.0, 10.0, 10.0)), None);
+        // An end point on another edge: the point itself.
+        let touch = vec![
+            [0.0, 0.0],
+            [10.0, 0.0],
+            [10.0, 10.0],
+            [5.0, 0.0],
+            [0.0, 10.0],
+        ];
+        assert_eq!(crossing(&touch), Some([5.0, 0.0]));
     }
 
     #[test]

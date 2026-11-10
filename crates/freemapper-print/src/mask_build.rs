@@ -72,7 +72,7 @@ pub enum BuildError {
     /// At the polyline point `at` the corridor turns back on itself, or a segment next to it is too short for the
     /// width (the inner edges of the corridor would cross).
     SharpTurn { at: [f64; 2] },
-    /// The corridor crosses itself near `near` (map mm, y up).
+    /// The corridor crosses itself near `near` (map mm, y up): where two of its edges meet.
     SelfIntersecting { near: [f64; 2] },
     /// The built mask fails the check of the project file; a gap in this module.
     Invalid(Problem),
@@ -478,7 +478,9 @@ pub fn corridor(
     };
     if let Err(e) = mask::check(&alone, &mut Budget::new(MAX_CHECK_STEPS)) {
         return Err(match (e.problem, e.point) {
-            (Problem::SelfIntersecting, Some(i)) => BuildError::SelfIntersecting { near: ring[i] },
+            (Problem::SelfIntersecting, Some(i)) => BuildError::SelfIntersecting {
+                near: mask::crossing(&ring).unwrap_or(ring[i]).map(rounded),
+            },
             (problem, _) => BuildError::Invalid(problem),
         });
     }
@@ -959,6 +961,20 @@ mod tests {
             "{err:?}"
         );
         assert!(err.to_string().contains("reduce the width"), "{err}");
+        // The message names where two edges of the corridor cross, within a width of where the line crosses itself
+        // (66.7, 0), not the first point of one of the crossing edges, which can lie far away.
+        let err = corridor(
+            &[[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [50.0, -50.0]],
+            10.0,
+            1.0,
+            None,
+        )
+        .unwrap_err();
+        let BuildError::SelfIntersecting { near } = err else {
+            panic!("{err:?}");
+        };
+        assert_eq!(near, [73.603, 5.0]);
+        assert!((near[0] - 200.0 / 3.0).hypot(near[1]) < 10.0, "{near:?}");
         // Points: at least 2 different, finite, within reach.
         assert_eq!(
             corridor(&[[1.0, 1.0], [1.0, 1.0]], 10.0, 1.0, None),
