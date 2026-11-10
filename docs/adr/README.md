@@ -93,3 +93,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0050](0050-reader-tests-against-the-suite-contract.md) | Reader tests against the suite contract | Accepted | 2026-11-10 |
 | [0051](0051-render-comes-from-freemapper-core.md) | The renderer comes from freemapper-core | Accepted, amends [0014](0014-renderer-copied-from-freemapper.md) | 2026-11-10 |
 | [0052](0052-an-unknown-map-kind-counts-as-absent.md) | An unknown map kind in freemapper.toml counts as absent | Accepted, amends [0050](0050-reader-tests-against-the-suite-contract.md) | 2026-11-10 |
+| [0053](0053-page-builder-comes-from-freemapper-core.md) | The page builder comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) | 2026-11-11 |
