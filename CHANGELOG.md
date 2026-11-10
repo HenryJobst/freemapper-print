@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- Die gemeinsamen Bausteine kommen jetzt aus freemapper-core v0.4.2 (Purple-Pen-Schreiber, Objekt-IDs). Die Ausgabe bleibt unverändert.
+
 ## [0.5.0] - 2026-11-10
 
 ### Hinzugefügt

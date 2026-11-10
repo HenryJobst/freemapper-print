@@ -505,28 +505,28 @@ pub(super) fn mask_notes(
         let path = |p: &[MapCoord]| -> Vec<Pt> { p.iter().map(|c| to_page(*c)).collect() };
         for special in &event.specials {
             let (kind, hidden) = match special {
-                Special::MarkedRoute { path: p, courses }
-                    if applies(courses, &course.name) && p.len() > 1 =>
-                {
-                    (
-                        MaskedObject::MarkedRoute,
-                        hider.path_hidden(&path(p), false),
-                    )
-                }
-                Special::ForbiddenRoute { path: p, courses } if applies(courses, &course.name) => (
+                Special::MarkedRoute {
+                    path: p, courses, ..
+                } if applies(courses, &course.name) && p.len() > 1 => (
+                    MaskedObject::MarkedRoute,
+                    hider.path_hidden(&path(p), false),
+                ),
+                Special::ForbiddenRoute {
+                    path: p, courses, ..
+                } if applies(courses, &course.name) => (
                     MaskedObject::ForbiddenRoute,
                     hider.path_hidden(&path(p), false),
                 ),
-                Special::Boundary { path: p, courses }
-                    if applies(courses, &course.name) && p.len() > 1 =>
-                {
+                Special::Boundary {
+                    path: p, courses, ..
+                } if applies(courses, &course.name) && p.len() > 1 => {
                     (MaskedObject::Boundary, hider.path_hidden(&path(p), false))
                 }
-                Special::OutOfBounds { rings, courses } if applies(courses, &course.name) => {
+                Special::OutOfBounds { rings, courses, .. } if applies(courses, &course.name) => {
                     let rings: Vec<Vec<Pt>> = rings.iter().map(|r| path(r)).collect();
                     (MaskedObject::OutOfBoundsArea, hider.area_hidden(&rings))
                 }
-                Special::Dangerous { rings, courses } if applies(courses, &course.name) => {
+                Special::Dangerous { rings, courses, .. } if applies(courses, &course.name) => {
                     let rings: Vec<Vec<Pt>> = rings.iter().map(|r| path(r)).collect();
                     (MaskedObject::DangerousArea, hider.area_hidden(&rings))
                 }

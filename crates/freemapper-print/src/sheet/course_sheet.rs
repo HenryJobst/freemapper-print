@@ -435,21 +435,21 @@ fn stops_and_bends<'a>(
 /// overprint shape but a mask, which hides the map and never widens the frame (ADR 0045).
 fn special_points(special: &Special<MapCoord>, course: &str) -> Vec<MapCoord> {
     match special {
-        Special::OutOfBounds { rings, courses } | Special::Dangerous { rings, courses }
+        Special::OutOfBounds { rings, courses, .. } | Special::Dangerous { rings, courses, .. }
             if applies(courses, course) =>
         {
             rings.iter().flatten().copied().collect()
         }
-        Special::ForbiddenRoute { path, courses }
-        | Special::Boundary { path, courses }
-        | Special::MarkedRoute { path, courses }
-        | Special::Line { path, courses }
+        Special::ForbiddenRoute { path, courses, .. }
+        | Special::Boundary { path, courses, .. }
+        | Special::MarkedRoute { path, courses, .. }
+        | Special::Line { path, courses, .. }
             if applies(courses, course) =>
         {
             path.clone()
         }
-        Special::FirstAid { pt, courses }
-        | Special::Water { pt, courses }
+        Special::FirstAid { pt, courses, .. }
+        | Special::Water { pt, courses, .. }
         | Special::Text { pt, courses, .. }
             if applies(courses, course) =>
         {
@@ -888,6 +888,7 @@ mod tests {
         let water = |x: i32, y: i32| Special::Water {
             pt: MapCoord::new(x, y),
             courses: CourseFilter::All,
+            id: None,
         };
         // A water point 2 km east of the course, for all courses, and one just west of it.
         courses.event.specials = vec![water(500_000, 30_000), water(-80_000, 30_000)];
@@ -1463,10 +1464,12 @@ mod tests {
             Special::FirstAid {
                 pt: at(90.0, 60.0),
                 courses: all.clone(),
+                id: None,
             },
             Special::ForbiddenRoute {
                 path: vec![at(85.0, 70.0)],
                 courses: all.clone(),
+                id: None,
             },
             Special::OutOfBounds {
                 rings: vec![vec![
@@ -1476,6 +1479,7 @@ mod tests {
                     at(60.0, 70.0),
                 ]],
                 courses: all,
+                id: None,
             },
         ]);
         let course = course(&courses, "K");
@@ -2073,36 +2077,44 @@ mod tests {
             Special::MarkedRoute {
                 path: vec![up(-60.0, 0.0), up(-20.0, 0.0)],
                 courses: CourseFilter::All,
+                id: None,
             },
             Special::MarkedRoute {
                 path: vec![up(-60.0, -60.0), up(-20.0, -60.0)],
                 courses: kurz(),
+                id: None,
             },
             Special::MarkedRoute {
                 path: vec![up(-60.0, -70.0), up(-20.0, -70.0)],
                 courses: CourseFilter::Only(vec!["D/H 12".into()]),
+                id: None,
             },
             Special::ForbiddenRoute {
                 path: vec![up(-30.0, 30.0)],
                 courses: kurz(),
+                id: None,
             },
             Special::Boundary {
                 path: vec![up(70.0, -60.0), up(90.0, -60.0)],
                 courses: kurz(),
+                id: None,
             },
             Special::OutOfBounds {
                 rings: vec![square_ring(60.0, -100.0, 80.0, -80.0)],
                 courses: kurz(),
+                id: None,
             },
             Special::Dangerous {
                 rings: vec![square_ring(-40.0, -110.0, -30.0, -100.0)],
                 courses: kurz(),
+                id: None,
             },
             Special::Text {
                 pt: up(0.0, 40.0),
                 text: "Wasser".into(),
                 size_mm: 3.0,
                 courses: kurz(),
+                id: None,
             },
         ]);
     }
@@ -2224,6 +2236,7 @@ mod tests {
             c.event.specials.push(Special::OutOfBounds {
                 rings: vec![square_ring(-10.0, -70.0, 30.0, -35.0)],
                 courses: crate::course::CourseFilter::All,
+                id: None,
             })
         });
         assert_eq!(
@@ -2405,6 +2418,7 @@ mod tests {
         courses.event.specials.push(Special::MarkedRoute {
             path,
             courses: crate::course::CourseFilter::All,
+            id: None,
         });
         let assigned = mask_for(&project.project, &courses, "Kurz");
         let masks: Vec<Applied<'_>> = assigned

@@ -513,7 +513,9 @@ fn special_shapes(
     let path = |p: &[MapCoord]| -> Vec<Pt> { p.iter().map(|c| to_page(*c)).collect() };
     let rings = |r: &[Vec<MapCoord>]| -> Vec<Vec<Pt>> { r.iter().map(|v| path(v)).collect() };
     match special {
-        Special::OutOfBounds { rings: r, courses } if applies(courses, course) => {
+        Special::OutOfBounds {
+            rings: r, courses, ..
+        } if applies(courses, course) => {
             // The profile's angles run counter-clockwise on paper; the page's y points down.
             let angles: Vec<f64> = s.hatch_angles.iter().map(|a| -a).collect();
             o.upper.extend(symbols::hatch(
@@ -524,7 +526,9 @@ fn special_shapes(
                 budget,
             ));
         }
-        Special::Dangerous { rings: r, courses } if applies(courses, course) => {
+        Special::Dangerous {
+            rings: r, courses, ..
+        } if applies(courses, course) => {
             // Always a cross hatch, with the line width and spacing of the out-of-bounds area, as Purple
             // Pen draws it.
             o.upper.extend(symbols::hatch(
@@ -537,7 +541,9 @@ fn special_shapes(
         }
         // Upper purple: ISOM 2017-2 section 3.7, 711 Out-of-bounds route (ISSprOM 2019-2 has no 711). The
         // "forbidden lines" of Rev. 4's lower list are the boundaries 707/708, `Special::Boundary` here.
-        Special::ForbiddenRoute { path: p, courses } if applies(courses, course) => {
+        Special::ForbiddenRoute {
+            path: p, courses, ..
+        } if applies(courses, course) => {
             let points = path(p);
             match points[..] {
                 [] => {}
@@ -555,23 +561,27 @@ fn special_shapes(
                 )),
             }
         }
-        Special::Boundary { path: p, courses } if applies(courses, course) && p.len() > 1 => {
+        Special::Boundary {
+            path: p, courses, ..
+        } if applies(courses, course) && p.len() > 1 => {
             o.lower.push(symbols::line(path(p), s.boundary));
         }
-        Special::MarkedRoute { path: p, courses } if applies(courses, course) && p.len() > 1 => {
+        Special::MarkedRoute {
+            path: p, courses, ..
+        } if applies(courses, course) && p.len() > 1 => {
             o.upper
                 .extend(symbols::dashes(&path(p), s.dash, s.gap, s.line, budget));
         }
         // Lower purple: ISOM 2017-2 section 3.7, 712 First aid post and 713 Refreshment point (ISSprOM 2019-2
         // has neither).
-        Special::FirstAid { pt, courses } if applies(courses, course) => {
+        Special::FirstAid { pt, courses, .. } if applies(courses, course) => {
             o.lower.extend(symbols::first_aid(
                 to_page(*pt),
                 s.first_aid,
                 s.first_aid_bar,
             ));
         }
-        Special::Water { pt, courses } if applies(courses, course) => {
+        Special::Water { pt, courses, .. } if applies(courses, course) => {
             o.lower.extend(symbols::water(
                 to_page(*pt),
                 s.refreshment,
@@ -583,11 +593,14 @@ fn special_shapes(
             text,
             size_mm,
             courses,
+            ..
         } if applies(courses, course) => {
             o.upper
                 .extend(symbols::text_lines(text, to_page(*pt), size_mm * geometry));
         }
-        Special::Line { path: p, courses } if applies(courses, course) && p.len() > 1 => {
+        Special::Line {
+            path: p, courses, ..
+        } if applies(courses, course) && p.len() > 1 => {
             o.lower.push(symbols::line(path(p), s.line));
         }
         // White-out becomes a mask in M4.
