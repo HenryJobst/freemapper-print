@@ -9,18 +9,34 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- Abdeckungen für Fenster- und Korridor-OL werden gedruckt (ADR 0045). Nennt die Zuordnung einer Bahn eine
-  Abdeckung aus `[[masks]]`, zeigt das Blatt die Karte nur außerhalb der abgedeckten Flächen und in ihren Fenstern.
-  Überlappende Fenster ergeben ein Fenster. Bahnaufdruck, Beschreibungskasten, Blattelemente und Fußzeile bleiben
-  ganz sichtbar. Ohne eigene Abdeckung gelten die Abdeckflächen (White-out) aus Purple Pen, jede für sich, auch
-  wenn sie sich überlappen. Ein Blatt wendet höchstens 1000 Abdeckungen an; hat eine Bahn mehr, fehlen die übrigen,
-  und `check` warnt. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
+- Abdeckungen für Fenster- und Korridor-OL in der Projektdatei (ADR 0045). Eine Tabelle `[[masks]]` hat eine ID
+  und Polygone aus einem Umriss und Löchern, den Fenstern. Die Punkte sind Karten-mm mit der y-Achse nach oben,
+  wie OOM sie anzeigt und wie `centre_map_mm` sie nimmt. `mask = "…"` in `[[assignments]]` gibt einer Bahn ihre
+  Abdeckung, mehrere Bahnen dürfen dieselbe nutzen. Beim Laden prüft das Programm jede Abdeckung und nennt einen
+  Fehler mit Datei, Zeile und Feld, etwa ein Loch außerhalb seines Umrisses oder einen Ring, der sich kreuzt.
+- Abdeckungen werden gedruckt. Auf dem Blatt einer Bahn mit Abdeckung fehlt die Karte in der abgedeckten Fläche;
+  außerhalb des Umrisses und in den Fenstern ist sie zu sehen, und überlappende Fenster ergeben ein Fenster.
+  Bahnaufdruck, Beschreibungskasten, Blattelemente und Fußzeile bleiben ganz sichtbar, auch die Strecken zwischen
+  den Fenstern. Ohne eigene Abdeckung gelten die Abdeckflächen (White-out) aus Purple Pen, jede für sich, auch wenn
+  sie sich überlappen. Ein Blatt wendet höchstens 1000 Abdeckungen an; hat eine Bahn mehr, fehlen die übrigen, und
+  `check` warnt. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
+- `masks window` schreibt eine Abdeckung mit runden Fenstern um die Posten einer Bahn (ADR 0047). Der Radius gilt
+  in Millimetern auf dem Papier, Vorgabe 15 mm; `--radius-for` gibt einzelnen Posten einen eigenen, `--controls`
+  wählt Posten nach Code oder Nummer aus, `--include-start` und `--include-finish` geben auch Start und Ziel ein
+  Fenster, und `--assign` druckt die Bahn damit.
+- `masks corridor` macht aus einer Linie, die Sie mit `--points` vorgeben, einen Korridor mit der Breite aus
+  `--width` (Vorgabe 10 mm auf dem Papier). Einen automatischen Korridor gibt es nicht. Einen Knick, der für die
+  Breite zu scharf ist, oder eine Linie, die sich kreuzt, lehnt der Befehl ab und nennt die Stelle.
+- Beide Befehle hängen die Tabelle als Text an die Projektdatei an, mit einem Kommentar, wie sie entstand; alles
+  davor bleibt unverändert. Eine vorhandene Abdeckung ändern sie nie.
 - `check` prüft Bahnblätter mit Abdeckung (ADR 0046). Es warnt, wenn ein Posten, der Start oder das Ziel dort
   liegt, wo die Abdeckung die Karte verbirgt, und zählt je Art, was vom Bahnaufdruck dort liegt: Pflichtstrecken,
   Querungsstellen, verbotene Strecken, Sperrgebietsgrenzen, Sperr- und Gefahrengebiete, Texte. Gedruckt wird der
   Aufdruck trotzdem. Es warnt auch, wenn eine Abdeckung den ganzen Kartenausschnitt verbirgt, und sagt zur
   Information, wenn sie im Ausschnitt nichts verbirgt oder keine Bahn sie nutzt. Erreicht die Prüfung ihre Grenze,
   sagt `check`, dass es nur einen Teil geprüft hat.
+- Zwei Beispiele: `luebeck-training-window` (Fenster-OL mit acht Posten) und `luebeck-training-corridor`
+  (Korridor-OL entlang dreier Straßen der Lübecker Altstadt). Das Handbuch hat ein Kapitel 11 über Abdeckungen.
 
 ### Geändert
 

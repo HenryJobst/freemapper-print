@@ -55,10 +55,21 @@ New in 0.3.0 (milestone M3):
 - the course must fit the map: the program reads Purple Pen with the y axis up and detects it for IOF XML, checks
   the map scale and compares the controls with latitude and longitude, and stops on a doubtful fit.
 
+On `main`, not yet released (milestone M4):
+
+- masks for window and corridor orienteering: a mask hides the map on a course's sheet except for windows or a
+  corridor. The overprint, the control descriptions, the title and the footer stay everywhere, the legs between
+  the windows included;
+- `masks window` puts round windows around the controls of a course, with a radius in millimetres on paper and,
+  if wanted, a radius of its own for single controls;
+- `masks corridor` turns a line you give into a corridor of adjustable width. There is no automatic corridor,
+  because no rule book says where one runs;
+- masks can also be written into the project file by hand; Purple Pen's white-out prints as a mask of the courses
+  it belongs to;
+- `check` warns about controls, marked routes, out-of-bounds areas and other overprint that lie under a mask.
+
 Planned:
 
-- masks for window and corridor orienteering, in variants assigned to single courses (M4). Hand-written masks
-  and Purple Pen's white-out print already;
 - use through an AI assistant (MCP, M5) and an editor in the browser (M6);
 - OCAD maps, later.
 
@@ -76,6 +87,20 @@ moves there later and stays in this repository until then.
 ## Examples
 
 Finished examples are in [`examples/`](examples/README.en.md). Click a picture to open the example with its PDFs.
+
+<a href="examples/luebeck-training-window/README.en.md"><img src="examples/luebeck-training-window/preview.jpg" width="640"
+alt="Window orienteering in Lübeck, A4 at 1:4000: the map only in round windows around start, controls and finish, white paper with the purple legs between them"></a>
+
+**Window orienteering** ([`luebeck-training-window`](examples/luebeck-training-window/README.en.md)): a training
+course with eight controls in Lübeck's old town, on A4 at 1:4000. The map shows only in windows of 15 mm radius
+around start, controls and finish, one of them larger. `masks window` writes the mask.
+
+<a href="examples/luebeck-training-corridor/README.en.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
+alt="Corridor orienteering in Lübeck, A4 at 1:4000: the map only in a band along three streets"></a>
+
+**Corridor orienteering** ([`luebeck-training-corridor`](examples/luebeck-training-corridor/README.en.md)): a
+short course with seven controls in a corridor 12 mm wide along three streets of the old town. The line was chosen
+by hand, and `masks corridor` turns it into the mask.
 
 <a href="examples/luebeck-competition-courses/README.en.md"><img src="examples/luebeck-competition-courses/preview.jpg" width="640"
 alt="The sheet of course A of a city sprint in Lübeck, A4 at 1:4000, with the course in purple and the control descriptions at the top right"></a>
@@ -105,7 +130,6 @@ alt="The same sprint map of Lübeck old town at 1:4000 and 1:3000"></a>
 
 **Lübeck at two scales** ([`luebeck-scales`](examples/luebeck-scales/README.en.md)): the same sprint map at 1:4000
 on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows to 133 % as ISSprOM requires.
-The next milestone adds window and corridor orienteering (M4).
 
 ## Status
 
@@ -113,7 +137,8 @@ The current version is [v0.4.0](https://github.com/HenryJobst/freemapper-print/r
 10 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
-numbers (M3) are part of it. Masks for window and corridor orienteering (M4) follow.
+numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is finished on `main`
+and not yet released.
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
@@ -202,6 +227,22 @@ everything before it left unchanged. `--direction` and `--gap` set your own plac
 exports only those courses, `--single-file` writes all courses into one PDF with a page per course, and `--layout`
 exports a layout without courses. The [manual](docs/manual/en.md#8-courses) goes through the project file keys, the
 fit errors and the notes.
+
+### Window and corridor orienteering
+
+```sh
+freemapper-print masks window stadtsprint --course A --radius 15 --include-start --include-finish --assign
+freemapper-print masks corridor stadtsprint --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5" --width 12 --assign --course B
+freemapper-print check stadtsprint
+```
+
+`masks window` puts a round window around each control of course A, the start and the finish included, and
+`--assign` prints the course with it. The radius counts in millimetres on paper; `--controls` picks controls, and
+`--radius-for 35=20` gives one control a larger window. `masks corridor` lays a corridor 12 mm wide along the
+points, in map mm with the y axis up, as OOM's status bar shows them. Both append a `[[masks]]` table to the
+project file; everything before it stays unchanged. `check` then reports controls and overprint under the mask.
+The [manual](docs/manual/en.md#11-masks-for-window-and-corridor-orienteering) describes masks, their limits and
+Purple Pen's white-out.
 
 ### The map alone
 
