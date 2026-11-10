@@ -2108,7 +2108,7 @@ fn masks_usage_errors_in_both_languages() {
     assert!(
         out.contains("does not draw one by itself")
             && out.contains(
-                "after changing the print scale, delete the mask and run the command again"
+                "After changing the print scale, delete the mask and run the command again."
             ),
         "{out}"
     );
