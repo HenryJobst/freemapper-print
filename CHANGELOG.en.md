@@ -9,7 +9,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
-- The shared building blocks come from freemapper-core v0.8.0 (candidates without float noise, `MapGrid`, the suite contract). Output is unchanged.
+- The shared building blocks come from freemapper-core v0.9.0 (candidates without float noise, `MapGrid`, the suite contract). Output is unchanged.
+- The renderer (page model, symbol drawing, PDF writer, Arimo font) comes from freemapper-core as `freemapper-render` (ADR 0051). The example PDFs stay byte-identical.
 - Tests: every test run now reads two maps written by freemapper (schoolyard 1:1000, sprint 1:4000) and compares map kind, title, sheet objects, base area and extent with the expected values from `freemapper-contract` (decision 0050). If freemapper changes a tag or a key of `freemapper.toml`, these tests fail before a sheet is printed wrong.
 
 ## [0.5.1] - 2026-11-10
