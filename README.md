@@ -120,7 +120,7 @@ Purple-Pen-Datei, mit Postenbeschreibung, Sperrgebiet, verbotener Querung, Pflic
 alt="Das Blatt einer Trainingsbahn im Viktoriapark in Berlin, A4 in 1:4000, mit Postenbeschreibung"></a>
 
 **Ein Vereinstraining in Berlin** ([`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.md)):
-eine Bahn von 1,7 km auf der Viktoriapark-Karte von freemapper, aus einer Purple-Pen-Datei, auf A4 in 1:4000.
+eine Bahn von 1,8 km auf der Viktoriapark-Karte von freemapper, aus einer Purple-Pen-Datei, auf A4 in 1:4000.
 
 <a href="examples/luebeck-competition-layouts/README.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
 alt="Ein Stadtsprint in Lübeck auf A4 in 1:4000 und auf A3 in 1:3000, mit Titel, Logos und Kontrollstrecke"></a>

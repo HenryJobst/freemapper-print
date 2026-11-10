@@ -115,7 +115,7 @@ out-of-bounds area, a forbidden crossing, a marked route to the finish and one n
 alt="The sheet of a club training course in the Viktoriapark in Berlin, A4 at 1:4000, with control descriptions"></a>
 
 **A club training in Berlin** ([`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.en.md)):
-one course of 1.7 km on freemapper's Viktoriapark map, from a Purple Pen file, on A4 at 1:4000.
+one course of 1.8 km on freemapper's Viktoriapark map, from a Purple Pen file, on A4 at 1:4000.
 
 <a href="examples/luebeck-competition-layouts/README.en.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
 alt="A city sprint in Lübeck on A4 at 1:4000 and on A3 at 1:3000, with title, logos and scale check bar"></a>

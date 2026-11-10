@@ -2,7 +2,7 @@
 
 [Deutsch](README.md)
 
-A club training in the Viktoriapark in Berlin-Kreuzberg: one course of 1.7 km with 10 controls, from a Purple
+A club training in the Viktoriapark in Berlin-Kreuzberg: one course of 1.8 km with 11 controls, from a Purple
 Pen file, printed on A4 at 1:4000 with control descriptions.
 
 ![The sheet of the training course, A4 landscape at 1:4000, with the description box at the top right](preview.jpg)
@@ -22,20 +22,23 @@ The sheet is in German (`event.lang = "de"`), as for a German club.
 ## The course
 
 The start is on the street along the north edge of the park, and the finish is on the same street, 200 m further
-east. In between the course runs anticlockwise through the park and around it. Nine controls stand at building
-corners, one (code 49) at a corner of the open land in the park. The finish row of the descriptions has symbol
+east. In between the course runs anticlockwise around the park. The controls sit on three kinds of objects: five at building corners (codes 34, 52, 56,
+43 and 35), four at corners of open land (58, 61, 39 and 49), two on paths (45 at the end of a path, 36 at a bend).
+So the description changes between "building", "open land" and "path", and between corner, end and bend. The
+finish row of the descriptions has symbol
 14.3: from the last control, runners navigate to the finish without tapes.
 
-Every control except start and finish sits on a feature of the map, a corner of a building (symbol 521) or of the
-open land (401). A small script read these points from `berlin-viktoriapark.omap`, converted them to
+Every control except start and finish sits on a point of a map object: a corner of a building (symbol 521) or of
+open land (401), or a point of a path (505.1). A small script read these points from `berlin-viktoriapark.omap`, converted them to
 millimetres and wrote them with y pointing up, as Purple Pen writes it (ADR 0032). The descriptions follow the IOF
-2018 standard: column D "building" or "open land", column G the outside corner with its compass direction. The
+2018 standard: column D "building", "open land" or "path", column G the outside corner, the end or the bend, with its compass
+direction where there is one. The
 file gives no number positions, so the program places every number itself.
 
-On the map from freemapper 0.6.0, five controls (34, 41, 47, 38 and 49) stood on junctions of the park paths. In
-version 0.8.0 the park is yellow open land, and the paths of compacted gravel are candidates and no longer paths
-of the map. The five controls now stand on the nearest fitting corner, four on a building and 49 on the open
-land, 13 to 29 m from where they were. The course is 3.5 m longer for it and stays at 1.7 km.
+The map from freemapper 0.8.0 has only the yellow open land in the park, a few paths and many buildings around it,
+no trees and no gravel paths. An earlier version of this course had nine of ten controls at building corners. The
+present course uses what the map offers: the corners of the small yellow areas at the edge, and path ends and
+bends.
 
 ## What `check` reports
 
@@ -45,7 +48,7 @@ course, `check` checks the layout as a sheet without a course, as `export --layo
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
 Bahn „Training“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 38,2 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 31,8 mm zu breit und 26,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Karte ist 21,8 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
@@ -104,15 +107,15 @@ freemapper-print --lang de export .
 ## Open
 
 - Open `training.ppen` once in Purple Pen (macOS beta) and check it. Does Purple Pen load the map
-  `berlin-viktoriapark.omap`? Do the controls sit at their building corners and the corner of the open land, and
-  are the descriptions right? The value `Spr2019` for the map standard has not been checked against Purple Pen.
+  `berlin-viktoriapark.omap`? Do the controls sit at their building corners, the corners of the open land and on
+  the paths, and are the descriptions right? The value `Spr2019` for the map standard has not been checked against Purple Pen.
 
 ## Checked
 
 - `check` and `export` as above, with the messages above.
 - Exported twice: the PDF is identical byte for byte.
-- The page viewed at 100 dpi and the controls at 300 dpi: every control sits at its building corner or at the
-  corner of the open land, the description box covers no control, and the footer sits below the map frame. The
+- The page viewed at 100 dpi and the controls at 300 dpi: every control sits at its building corner, at the
+  corner of its open land or on the path (end or bend), the description box covers no control, and the footer sits below the map frame. The
   light brown base area reaches to the edge of the map; west and east of it the paper stays white.
 
 ## Regenerate

@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-Ein Vereinstraining im Viktoriapark in Berlin-Kreuzberg: eine Bahn von 1,7 km mit 10 Posten, aus einer
+Ein Vereinstraining im Viktoriapark in Berlin-Kreuzberg: eine Bahn von 1,8 km mit 11 Posten, aus einer
 Purple-Pen-Datei, gedruckt auf A4 in 1:4000 mit Postenbeschreibung.
 
 ![Das Blatt der Trainingsbahn, A4 quer in 1:4000, mit Beschreibungskasten oben rechts](preview.jpg)
@@ -20,21 +20,23 @@ Purple-Pen-Datei, gedruckt auf A4 in 1:4000 mit Postenbeschreibung.
 ## Die Bahn
 
 Start auf der Straße am Nordrand des Parks, Ziel ebenfalls dort, 200 m weiter östlich. Dazwischen führt die Bahn
-gegen den Uhrzeigersinn durch den Park und um ihn herum. Neun Posten stehen an Gebäudeecken, einer (Code 49) an
-einer Ecke der offenen Fläche im Park. Die Zielzeile der Beschreibung hat das Symbol 14.3: Vom letzten Posten
+gegen den Uhrzeigersinn um den Park herum. Die Posten liegen auf drei Arten von Objekten: fünf an Gebäudeecken
+(Codes 34, 52, 56, 43 und 35), vier an Ecken offener Flächen (58, 61, 39 und 49), zwei an Wegen (45 am Ende eines
+Pfads, 36 an der Biegung eines Pfads). So wechselt die Beschreibung zwischen „Gebäude“, „offenes Gebiet“ und
+„Pfad“ und zwischen Ecke, Ende und Biegung. Die Zielzeile der Beschreibung hat das Symbol 14.3: Vom letzten Posten
 orientiert man sich ohne Markierung ins Ziel.
 
-Jeder Posten außer Start und Ziel liegt auf einem Objekt der Karte, einem Eckpunkt eines Gebäudes (Symbol 521) oder
-der offenen Fläche (401). Ein kleines Skript hat diese Punkte aus `berlin-viktoriapark.omap` gelesen, in Millimeter
+Jeder Posten außer Start und Ziel liegt auf einem Punkt eines Objekts der Karte: einem Eckpunkt eines Gebäudes
+(Symbol 521) oder einer offenen Fläche (401) oder einem Punkt eines Pfads (505.1). Ein kleines Skript hat diese Punkte aus `berlin-viktoriapark.omap` gelesen, in Millimeter
 umgerechnet und mit der y-Achse nach oben geschrieben, wie Purple Pen es tut (ADR 0032). Die Beschreibungen folgen
-der IOF-Norm von 2018: Spalte D „Gebäude“ oder „offenes Gebiet“, Spalte G die Außenecke mit Himmelsrichtung. Die
+der IOF-Norm von 2018: Spalte D „Gebäude“, „offenes Gebiet“ oder „Pfad“, Spalte G die Außenecke, das Ende oder die
+Biegung, mit Himmelsrichtung, wo es eine gibt. Die
 Datei gibt keine Lage für Postennummern an, alle Nummern setzt das Programm selbst.
 
-Auf der Karte aus freemapper 0.6.0 standen fünf Posten (34, 41, 47, 38 und 49) an Gabelungen der Parkwege. In
-Version 0.8.0 ist der Park eine gelbe offene Fläche, und die Wege aus festem Kies sind keine Wege der Karte mehr,
-sondern Kandidaten. Die fünf Posten stehen jetzt am nächsten passenden Eckpunkt, vier an einem Gebäude und 49 an
-der offenen Fläche, 13 bis 29 m von ihrer alten Lage entfernt. Die Bahn ist dadurch 3,5 m länger und bleibt bei
-1,7 km.
+Die Karte aus freemapper 0.8.0 hat im Park nur die gelbe offene Fläche, wenige Pfade und viele Gebäude ringsum, keine
+Bäume und keine Wege aus Kies. Eine frühere Fassung dieser Bahn stand mit neun von zehn Posten an Gebäudeecken. Die
+jetzige Bahn nutzt, was die Karte hergibt: die Ecken der kleinen gelben Flächen am Rand, die Pfadenden und
+-biegungen.
 
 ## Was `check` meldet
 
@@ -44,7 +46,7 @@ Bahn prüft `check` das Layout als Blatt ohne Bahn, so wie `export --layout` es 
 ```
 Zur Information: Die geografischen Koordinaten wurden nicht geprüft, denn kein Posten hat sowohl eine Kartenposition als auch geografische Koordinaten.
 Bahn „Training“ auf Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
-Zur Information: Die Karte ist 38,2 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
+Zur Information: Die Karte ist 31,8 mm zu breit und 26,0 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Layout a4-4000: A4 Querformat, Druckmaßstab 1:4000, Kartenmaßstab 1:4000, Geometriefaktor 1,000, Symbolfaktor 1,000.
 Zur Information: Die Karte ist 21,8 mm zu breit und 18,1 mm zu hoch für den Kartenausschnitt und wird dort mit Absicht beschnitten (map_frame.crop = true).
 Zur Information: Der Text title nutzt {length_km}, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
@@ -104,15 +106,15 @@ freemapper-print --lang de export .
 ## Offen
 
 - Öffnen Sie `training.ppen` einmal in Purple Pen (Beta für macOS) und prüfen Sie die Datei: Lädt Purple Pen die
-  Karte `berlin-viktoriapark.omap`? Stehen die Posten an ihren Gebäudeecken und der Ecke der offenen Fläche, und
-  stimmen die Beschreibungen? Der Wert `Spr2019` für den Kartenstandard ist nicht gegen Purple Pen geprüft.
+  Karte `berlin-viktoriapark.omap`? Stehen die Posten an ihren Gebäudeecken, den Ecken der offenen Flächen und an den
+  Pfaden, und stimmen die Beschreibungen? Der Wert `Spr2019` für den Kartenstandard ist nicht gegen Purple Pen geprüft.
 
 ## Geprüft
 
 - `check` und `export` wie oben, mit den Meldungen von oben.
 - Zweimal exportiert: Das PDF ist Byte für Byte gleich.
-- Die Seite bei 100 dpi und die Posten bei 300 dpi angesehen: Jeder Posten steht an seiner Gebäudeecke oder an
-  der Ecke der offenen Fläche, der Beschreibungskasten deckt keinen Posten ab, die Fußzeile steht unter dem
+- Die Seite bei 100 dpi und die Posten bei 300 dpi angesehen: Jeder Posten steht an seiner Gebäudeecke, an der
+  Ecke seiner offenen Fläche oder am Pfad (Ende oder Biegung), der Beschreibungskasten deckt keinen Posten ab, die Fußzeile steht unter dem
   Kartenausschnitt. Die hellbraune Grundfläche reicht bis an den Rand der Karte; westlich und östlich davon
   bleibt das Papier weiß.
 
