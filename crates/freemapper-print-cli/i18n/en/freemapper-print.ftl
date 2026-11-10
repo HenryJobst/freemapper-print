@@ -149,6 +149,7 @@ check-course-file-notes = The course file itself has notes: see the lines above 
 ## Sheet notes
 
 list-and = { $first } and { $last }
+list-more = { $count } more
 note-element-outside-page = Note: the element { $id } reaches past the page edge and is cut off there.
 note-footer-outside-page = Note: the footer with { $content ->
         [copyright] the copyright lines
@@ -285,6 +286,10 @@ note-control-in-masked-area = Note: on the sheet of course "{ $course }", { $cou
        *[other] them
     }. Add a window there, or check that the course has the right mask.
 note-mask-covers-nothing = Info: the mask "{ $mask }" hides nothing in the map frame of course "{ $course }". If it should, check its points. They are map mm with y pointing up, as OOM shows them.
+note-white-outs-cover-nothing = Info: in the map frame of course "{ $course }", { $count ->
+        [one] the white-out area { $ids } of the course file hides nothing.
+       *[other] the { $count } white-out areas { $ids } of the course file hide nothing.
+    }
 note-mask-leaves-no-window = Note: the mask "{ $mask }" hides the whole map frame of course "{ $course }", so the sheet shows no map at all. Check its windows and its points. They are map mm with y pointing up, as OOM shows them.
 note-mask-check-limited = Note: on the sheet of course "{ $course }" the check against the mask reached its limit, so part of the overprint was not checked. Look at the sheet for course symbols with no map under them.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.

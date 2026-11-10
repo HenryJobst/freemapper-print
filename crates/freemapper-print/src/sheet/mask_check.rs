@@ -289,8 +289,16 @@ fn cover(polygon: &MaskPolygon, b: [f64; 4], r: [f64; 4]) -> Cover {
     if touched { Cover::Part } else { Cover::All }
 }
 
-/// The notes of a course sheet about its `masks` (those it applies): [`SheetNote::MaskCoversNothing`] and
-/// [`SheetNote::MaskLeavesNoWindow`] per mask, [`SheetNote::ControlInMaskedArea`],
+/// A mask a sheet applies, and whether it is a white-out of the course file (not a `[[masks]]` entry).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Applied<'a> {
+    pub mask: &'a Mask,
+    pub white_out: bool,
+}
+
+/// The notes of a course sheet about its `masks` (those it applies): [`SheetNote::MaskCoversNothing`] per
+/// `[[masks]]` entry and one [`SheetNote::WhiteOutsCoverNothing`] for the white-outs of the course file that hide
+/// nothing (ruling R12), [`SheetNote::MaskLeavesNoWindow`] per mask, [`SheetNote::ControlInMaskedArea`],
 /// [`SheetNote::OverprintInMaskedArea`] per kind, and [`SheetNote::MaskCheckLimited`] when the budget ran out.
 /// `to_page` places a course coordinate on the page, `page_to_map` turns a page point into the internal frame,
 /// and `frame` is the map frame on the page. `sizes` and `course_factor` are the ones the overprint is drawn
@@ -299,7 +307,7 @@ fn cover(polygon: &MaskPolygon, b: [f64; 4], r: [f64; 4]) -> Cover {
 pub(super) fn mask_notes(
     course: &Course<MapCoord>,
     event: &FittedEvent,
-    masks: &[&Mask],
+    applied: &[Applied<'_>],
     frame: PaperBox,
     to_page: &dyn Fn(MapCoord) -> Pt,
     page_to_map: &dyn Fn(Pt) -> Pt,
@@ -307,17 +315,20 @@ pub(super) fn mask_notes(
     course_factor: f64,
 ) -> Vec<SheetNote> {
     let mut notes = Vec::new();
-    if masks.is_empty() {
+    if applied.is_empty() {
         return notes;
     }
+    let masks: Vec<&Mask> = applied.iter().map(|a| a.mask).collect();
     let name = || course.name.clone();
-    let mut hider = Hider::new(masks, frame, page_to_map);
+    let mut hider = Hider::new(&masks, frame, page_to_map);
 
     // The frame in the internal frame; the page and the map share the direction of y.
     let (ax, ay) = page_to_map(frame.min);
     let (bx, by) = page_to_map(frame.max);
     let r = [ax.min(bx), ay.min(by), ax.max(bx), ay.max(by)];
-    for m in masks {
+    let mut idle_white_outs: Vec<String> = Vec::new();
+    for a in applied {
+        let m = a.mask;
         let mut covers = Cover::Nothing;
         for p in &m.polygons {
             if !hider.take(polygon_points(p)) {
@@ -336,6 +347,7 @@ pub(super) fn mask_notes(
             break;
         }
         match covers {
+            Cover::Nothing if a.white_out => idle_white_outs.push(m.id.clone()),
             Cover::Nothing => notes.push(SheetNote::MaskCoversNothing {
                 course: name(),
                 mask: m.id.clone(),
@@ -346,6 +358,13 @@ pub(super) fn mask_notes(
             }),
             _ => {}
         }
+    }
+
+    if !idle_white_outs.is_empty() {
+        notes.push(SheetNote::WhiteOutsCoverNothing {
+            course: name(),
+            ids: idle_white_outs,
+        });
     }
 
     let mut controls: Vec<String> = Vec::new();

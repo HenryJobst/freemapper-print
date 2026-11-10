@@ -175,8 +175,12 @@ pub enum SheetNote {
         course: String,
         controls: Vec<String>,
     },
-    /// The mask `mask` hides nothing inside the map frame of the course's sheet. Informs only.
+    /// The mask `mask`, a `[[masks]]` entry, hides nothing inside the map frame of the course's sheet. Informs only.
     MaskCoversNothing { course: String, mask: String },
+    /// These white-outs of the course file (ids `whiteout-<n>`, in the order the sheet applies them) hide nothing
+    /// inside the map frame of the course's sheet: one note per course, however many there are (ruling R12).
+    /// Informs only.
+    WhiteOutsCoverNothing { course: String, ids: Vec<String> },
     /// The mask `mask` hides the whole map frame of the sheet of a course with legs: the sheet shows no map.
     MaskLeavesNoWindow { course: String, mask: String },
     /// The check of the overprint against the masks reached its budget ([`MAX_MASK_SAMPLES`],
@@ -264,7 +268,7 @@ impl SheetNote {
             SheetNote::Fit(note) => !note.is_warning(),
             SheetNote::Stale(stale) => !stale.is_warning(),
             SheetNote::Mask(note) => !note.is_warning(),
-            SheetNote::MaskCoversNothing { .. } => true,
+            SheetNote::MaskCoversNothing { .. } | SheetNote::WhiteOutsCoverNothing { .. } => true,
             _ => false,
         }
     }

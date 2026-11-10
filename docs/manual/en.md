@@ -916,6 +916,7 @@ Notes about one course sheet:
 | "on the sheet of course …, a marked route lies wholly or in part where the mask hides the map …" | The note counts by kind what of the overprint lies in a masked area: marked routes (taped legs between controls too), crossing points, forbidden routes, out-of-bounds boundaries, out-of-bounds areas, dangerous areas and texts from the course file. Everything is printed, but with no map under it. Widen the window or add one. If it is meant, say an out-of-bounds area at the edge, you can leave the note. Plain legs and control numbers do not count, because on a window course they cross masked areas anyway. |
 | "the mask … hides the whole map frame of course …, so the sheet shows no map at all." | No window of the mask lies in the map frame. Most often the points are written with y the wrong way. Masks take map mm with y pointing up, as OOM's status bar shows them, not as the `.omap` file stores them. |
 | "Info: the mask … hides nothing in the map frame of course …" | For information only. The mask lies wholly beside the frame, or the frame lies wholly in one window. If that is not what you meant, check the points as for the note above. |
+| "Info: in the map frame of course …, the … white-out areas … of the course file hide nothing." | The same for white-out areas from Purple Pen, in one line per course with their count and ids (the first ten, the rest counted). A white-out area for all courses often lies beside the frame of most of them. |
 | "on the sheet of course … the check against the mask reached its limit …" | `check` tests at most 200 000 points per sheet. A course with very long marked routes or thousands of white-out areas gets past that, and what comes after is not checked. Look at the sheet. |
 | "Info: the text … uses …, but the course file has no value for course …, so it prints empty." | The file has no length or climb for the course. Enter them in the course-setting program, or leave the placeholder out of the text. |
 | "Info: the text … uses …, which is only filled on course sheets. On this sheet it stays empty." | A shared text with `{course}` or the like prints on a sheet without course. Hide the text on that layout with `hide_shared`. |
@@ -1137,7 +1138,8 @@ when they come:
   see them with no map under them. Widen a window or add one; if it is meant, leave the note. Plain legs and control
   numbers do not count.
 - The mask hides the whole map frame (note). Most often y is written the wrong way round.
-- The mask hides nothing in the map frame (information).
+- The mask hides nothing in the map frame (information). White-out areas from Purple Pen that hide nothing come in
+  one line per course.
 - The check reached its limit of 200 000 points per sheet (note). Look at the sheet.
 - No course uses a mask (information, once per run).
 

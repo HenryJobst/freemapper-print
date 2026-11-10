@@ -319,6 +319,7 @@ mod tests {
             "radius",
             "points",
             "scales",
+            "ids",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

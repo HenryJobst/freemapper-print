@@ -1708,6 +1708,70 @@ fn check_counts_mask_warnings_but_not_mask_infos() {
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
 }
 
+#[test]
+fn check_folds_idle_white_outs_and_names_white_outs_by_number() {
+    // Three white-outs of the course file far outside the frame, for all courses.
+    let (dir, path) = viktoriapark_with("");
+    let ppen = dir.path().join("training.ppen");
+    let text = std::fs::read_to_string(&ppen).unwrap();
+    let specials: String = (0..3)
+        .map(|i| {
+            let x = 900 + 100 * i;
+            format!(
+                "<special-object id=\"{}\" kind=\"white-out\"><location x=\"{x}\" y=\"900\" />\
+                 <location x=\"{}\" y=\"900\" /><location x=\"{}\" y=\"950\" />\
+                 <courses all=\"true\" /></special-object>\n",
+                100 + i,
+                x + 50,
+                x + 50
+            )
+        })
+        .collect();
+    std::fs::write(
+        &ppen,
+        text.replace(
+            "</course-scribe-event>",
+            &format!("{specials}</course-scribe-event>"),
+        ),
+    )
+    .unwrap();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let line = "Info: in the map frame of course \"Training\", the 3 white-out areas whiteout-1, whiteout-2 \
+                and whiteout-3 of the course file hide nothing.";
+    assert_eq!(err.matches(line).count(), 1, "{err}");
+    assert!(
+        !err.contains("by number") && !err.contains("takes the place"),
+        "{err}"
+    );
+    // A [[masks]] table standing in for the second white-out: its own line, and the line that names the area.
+    let mut project = std::fs::read_to_string(&path).unwrap();
+    project.push_str(
+        "\n[[masks]]\nid = \"whiteout-2\"\npolygons = [[[[800, 800], [850, 800], [850, 850]]]]\n",
+    );
+    std::fs::write(&path, &project).unwrap();
+    let o = run("de", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains(
+            "Zur Information: Auf dem Blatt der Bahn „Training“ tritt die Tabelle [[masks]] mit der ID whiteout-2 \
+             an die Stelle der Abdeckfläche aus der Bahndatei, die um 1025, 925 liegt (Karten-mm, y nach oben)."
+        ),
+        "{err}"
+    );
+    assert!(
+        err.contains("Zur Information: Die Abdeckung „whiteout-2“ verbirgt im Kartenausschnitt der Bahn „Training“ nichts.")
+            && err.contains(
+                "Im Kartenausschnitt der Bahn „Training“ verbergen die 2 Abdeckflächen whiteout-1 und whiteout-3 \
+                 aus der Bahndatei nichts."
+            ),
+        "{err}"
+    );
+}
+
 // ---- masks window, masks corridor (ADR 0047) ----
 
 #[test]

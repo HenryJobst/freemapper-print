@@ -2143,6 +2143,28 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-mask-covers-nothing",
             Some(&args!("course" => printable(course), "mask" => printable(mask))),
         ),
+        SheetNote::WhiteOutsCoverNothing { course, ids } => {
+            // A course file can hold thousands: the first few by id, the rest counted.
+            let mut shown: Vec<String> = ids
+                .iter()
+                .take(MAX_LISTED_WHITE_OUTS)
+                .map(|id| printable(id))
+                .collect();
+            if ids.len() > MAX_LISTED_WHITE_OUTS {
+                shown.push(texts.get(
+                    "list-more",
+                    Some(&args!("count" => ids.len() - MAX_LISTED_WHITE_OUTS)),
+                ));
+            }
+            texts.get(
+                "note-white-outs-cover-nothing",
+                Some(&args!(
+                    "course" => printable(course),
+                    "ids" => join_and(texts, shown),
+                    "count" => ids.len(),
+                )),
+            )
+        }
         SheetNote::MaskLeavesNoWindow { course, mask } => texts.get(
             "note-mask-leaves-no-window",
             Some(&args!("course" => printable(course), "mask" => printable(mask))),
@@ -2190,6 +2212,9 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
         SheetNote::Mask(note) => mask_note_line(texts, note),
     }
 }
+
+/// Most white-out ids one line names; the rest are counted.
+const MAX_LISTED_WHITE_OUTS: usize = 10;
 
 /// The message for a remark about the mask variants. No wildcard arm.
 fn mask_note_line(texts: &Texts, note: &MaskNote) -> String {
@@ -3088,6 +3113,20 @@ mod tests {
                     mask: s("fenster"),
                 },
                 vec!["Kurz", "fenster"],
+            ),
+            (
+                SheetNote::WhiteOutsCoverNothing {
+                    course: s("Kurz"),
+                    ids: vec![s("whiteout-1"), s("whiteout-3")],
+                },
+                vec!["Kurz", "whiteout-1", "whiteout-3"],
+            ),
+            (
+                SheetNote::WhiteOutsCoverNothing {
+                    course: s("Kurz"),
+                    ids: (1..=12).map(|i| format!("whiteout-{i}")).collect(),
+                },
+                vec!["Kurz", "whiteout-10", "12", "2"],
             ),
             (
                 SheetNote::MaskLeavesNoWindow {

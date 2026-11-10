@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use crate::course::{Course, CourseKind, FittedEvent, SourceFormat, Special};
-use crate::courses::{LoadedCourses, layout_for, mask_for};
+use crate::courses::{LoadedCourses, MaskRef, layout_for, mask_for};
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
 use crate::mask::{Mask, to_internal};
 use crate::numbers::{place_on_sheet, resolve};
@@ -17,6 +17,7 @@ use crate::render::page::{MapClip, PaperBox, Pt, RenderedPage};
 use crate::scale::geometry_factor;
 
 use super::layout::{anchor_point, inside};
+use super::mask_check::Applied;
 use super::placeholders::CourseValues;
 use super::{
     LogoCache, NoBoxReason, PlacedElement, SheetContext, SheetError, SheetNote, SheetReport,
@@ -46,7 +47,8 @@ pub struct DescriptionSource<'a> {
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
 /// [`SheetNote::OverprintCut`], [`SheetNote::MasksCapped`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`],
 /// [`SheetNote::NumberGapOutOfRange`] and the notes of the check against the masks (ADR 0046):
-/// [`SheetNote::MaskCoversNothing`], [`SheetNote::MaskLeavesNoWindow`], [`SheetNote::ControlInMaskedArea`],
+/// [`SheetNote::MaskCoversNothing`], [`SheetNote::WhiteOutsCoverNothing`], [`SheetNote::MaskLeavesNoWindow`],
+/// [`SheetNote::ControlInMaskedArea`],
 /// [`SheetNote::OverprintInMaskedArea`] and [`SheetNote::MaskCheckLimited`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
@@ -209,10 +211,13 @@ pub fn render_course_sheet(
             (y - page_mm.1 / 2.0 + centre_mm.1) / gf,
         )
     };
-    let applied: Vec<&Mask> = masks
+    let applied: Vec<Applied<'_>> = masks
         .iter()
         .take(MAX_APPLIED_MASKS)
-        .map(|m| m.mask())
+        .map(|m| Applied {
+            mask: m.mask(),
+            white_out: matches!(m, MaskRef::WhiteOut(_)),
+        })
         .collect();
     notes.extend(super::mask_check::mask_notes(
         course,
@@ -2101,6 +2106,7 @@ mod tests {
                     SheetNote::OverprintInMaskedArea { .. }
                         | SheetNote::ControlInMaskedArea { .. }
                         | SheetNote::MaskCoversNothing { .. }
+                        | SheetNote::WhiteOutsCoverNothing { .. }
                         | SheetNote::MaskLeavesNoWindow { .. }
                         | SheetNote::MaskCheckLimited { .. }
                 )
@@ -2223,6 +2229,58 @@ mod tests {
     }
 
     #[test]
+    fn white_outs_that_hide_nothing_fold_into_one_line() {
+        // Three white-outs of the course file far outside the frame: one Info line for the course, with all three
+        // ids, instead of one per white-out (ruling R12).
+        let far = |i: f64| {
+            mask(
+                "",
+                sq(1000.0 + 200.0 * i, 1000.0, 1100.0 + 200.0 * i, 1100.0),
+                vec![],
+            )
+        };
+        let add = |c: &mut LoadedCourses, n: usize| {
+            for i in 0..n {
+                let mut m = far(i as f64);
+                m.id = format!("whiteout-{}", i + 1);
+                c.white_outs.push(crate::courses::WhiteOut {
+                    mask: m,
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+        };
+        let (_, report) = ppen_sheet(A4, "Kurz", |c| add(c, 3));
+        let want = SheetNote::WhiteOutsCoverNothing {
+            course: "Kurz".into(),
+            ids: vec![
+                "whiteout-1".into(),
+                "whiteout-2".into(),
+                "whiteout-3".into(),
+            ],
+        };
+        assert_eq!(mask_check_notes(&report), [&want]);
+        assert!(want.is_info());
+        // A `[[masks]]` entry standing in for the second keeps a line of its own.
+        let stand_in = format!(
+            "{A4}[[masks]]\nid = \"whiteout-2\"\npolygons = [[[[900, 900], [950, 900], [950, 950]]]]\n"
+        );
+        let (_, report) = ppen_sheet(&stand_in, "Kurz", |c| add(c, 3));
+        assert_eq!(
+            mask_check_notes(&report),
+            [
+                &SheetNote::MaskCoversNothing {
+                    course: "Kurz".into(),
+                    mask: "whiteout-2".into(),
+                },
+                &SheetNote::WhiteOutsCoverNothing {
+                    course: "Kurz".into(),
+                    ids: vec!["whiteout-1".into(), "whiteout-3".into()],
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn mask_leaves_no_window_is_warning() {
         let all = with_mask("[[[[-2000, -2000], [2000, -2000], [2000, 2000], [-2000, 2000]]]]");
         let (_, report) = ppen_sheet(&all, "Kurz", |_| {});
@@ -2284,7 +2342,13 @@ mod tests {
             courses: crate::course::CourseFilter::All,
         });
         let assigned = mask_for(&project.project, &courses, "Kurz");
-        let masks: Vec<&Mask> = assigned.iter().map(|m| m.mask()).collect();
+        let masks: Vec<Applied<'_>> = assigned
+            .iter()
+            .map(|m| Applied {
+                mask: m.mask(),
+                white_out: false,
+            })
+            .collect();
         // Page = map mm shifted, the frame 200 by 280 mm round the course.
         let to_page = |c: MapCoord| {
             (

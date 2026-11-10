@@ -954,6 +954,7 @@ Hinweise zum Blatt einer Bahn:
 | „Auf dem Blatt der Bahn … liegt eine Pflichtstrecke ganz oder teilweise dort, wo die Abdeckung die Karte verbirgt …“ | Der Hinweis zählt je Art, was vom Bahnaufdruck in einer abgedeckten Fläche liegt: Pflichtstrecken (auch abgeflaggte Strecken zwischen Posten), Querungsstellen, verbotene Strecken, Sperrgebietsgrenzen, Sperrgebiete, Gefahrengebiete und Texte aus der Bahndatei. Gedruckt wird alles, aber ohne Karte darunter. Vergrößern Sie das Fenster oder legen Sie eines an. Ist es gewollt, etwa ein Sperrgebiet am Rand, können Sie den Hinweis stehen lassen. Gewöhnliche Strecken und Postennummern zählen nicht, denn beim Fenster-OL laufen sie ohnehin über abgedeckte Flächen. |
 | „Die Abdeckung … verbirgt den ganzen Kartenausschnitt der Bahn …, das Blatt zeigt also gar keine Karte.“ | Kein Fenster der Abdeckung liegt im Kartenausschnitt. Meist sind die Punkte in der falschen y-Richtung geschrieben: Abdeckungen nehmen Karten-mm mit der y-Achse nach oben, wie die Statusleiste von OOM sie zeigt, nicht wie die `.omap`-Datei sie speichert. |
 | „Zur Information: Die Abdeckung … verbirgt im Kartenausschnitt der Bahn … nichts.“ | Nur zur Information. Die Abdeckung liegt ganz neben dem Ausschnitt, oder der Ausschnitt liegt ganz in einem Fenster. Ist das nicht gewollt, prüfen Sie die Punkte wie im Hinweis davor. |
+| „Zur Information: Im Kartenausschnitt der Bahn … verbergen die … Abdeckflächen … aus der Bahndatei nichts.“ | Dasselbe für Abdeckflächen aus Purple Pen, in einer Zeile je Bahn mit ihrer Zahl und ihren IDs (die ersten zehn, der Rest gezählt). Eine Abdeckfläche für alle Bahnen liegt oft neben dem Ausschnitt der meisten. |
 | „Auf dem Blatt der Bahn … hat die Prüfung gegen die Abdeckung ihre Grenze erreicht …“ | `check` prüft höchstens 200 000 Punkte je Blatt. Eine Bahn mit sehr langen Pflichtstrecken oder Tausenden Abdeckflächen kommt darüber; was danach kommt, bleibt ungeprüft. Sehen Sie sich das Blatt an. |
 | „Zur Information: Der Text … nutzt …, die Bahndatei hat für die Bahn … aber keinen Wert. Der Platzhalter bleibt leer.“ | Die Datei hat für die Bahn keine Länge oder keinen Anstieg. Tragen Sie sie im Bahnlegungsprogramm ein oder lassen Sie den Platzhalter aus dem Text weg. |
 | „Zur Information: Der Text … nutzt …, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.“ | Ein gemeinsamer Text mit `{course}` oder ähnlichem steht auf einem Blatt ohne Bahn. Blenden Sie den Text auf diesem Layout mit `hide_shared` aus. |
@@ -1183,7 +1184,8 @@ Kapitel 10; hier, wann sie kommen:
   sie ohne Karte darunter. Vergrößern Sie ein Fenster oder legen Sie eins an; ist es gewollt, lassen Sie den
   Hinweis stehen. Gewöhnliche Strecken und Postennummern zählen nicht.
 - Die Abdeckung verbirgt den ganzen Kartenausschnitt (Hinweis). Meist ist y falsch herum geschrieben.
-- Die Abdeckung verbirgt im Kartenausschnitt nichts (Information).
+- Die Abdeckung verbirgt im Kartenausschnitt nichts (Information). Abdeckflächen aus Purple Pen, die nichts
+  verbergen, stehen in einer Zeile je Bahn.
 - Die Prüfung hat ihre Grenze von 200 000 Punkten je Blatt erreicht (Hinweis). Sehen Sie sich das Blatt an.
 - Keine Bahn nutzt eine Abdeckung (Information, einmal je Lauf).
 
