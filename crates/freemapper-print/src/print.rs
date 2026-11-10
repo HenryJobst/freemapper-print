@@ -5,83 +5,20 @@
 //! symbols by the symbol factor the IOF standard sets for the map kind. Nothing is fitted to the page: a map larger than
 //! the page is clipped, and the report says by how much it overflows.
 
-use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
-
-use crate::omap::enlarge::enlarge_symbols;
-use crate::omap::{MapCoord, MapDocument, MapObject, MapObjectKind, OmapError, SymbolSet};
+use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::project::SheetLang;
-use crate::render::bounds::{Bounds, painted_bounds};
-use crate::render::draw::{MAX_UNITS_PER_OBJECT, Primitive, Shape, primitives_within};
-use crate::render::fonts::substituted;
-use crate::render::geometry::Pt;
-use crate::render::page::{PaperBox, RenderedPage};
+use crate::render::build::{BuildError, PageSpec, build_page_within};
+use crate::render::page::RenderedPage;
 use crate::render::pdf::{PdfError, PdfMeta, write_pdf};
-use crate::render::symbols::{RenderSymbols, Symbol};
 use crate::scale::{MapKind, ScaleError, geometry_factor, is_standard, symbol_factor};
 use crate::sheet::SheetNote;
 
-/// White margin on each side of the page for the `render` command; the map is clipped to the page
-/// minus this margin (mm). A layout sets its own ([`PrintOptions::frame_margin_mm`]).
-pub const PAGE_MARGIN_MM: f64 = 5.0;
-
-/// Most units of work one page may use, counted as for one object (`MAX_UNITS_PER_OBJECT`): a
-/// primitive costs one unit plus one per eight points it keeps, and a clip outline one per
-/// eight points for each clip block the PDF writes. Lübeck (2173 objects, about 4400
-/// primitives) uses about 6500 units and the forest sample (539 objects, about 1500
-/// primitives) at most about 6400 at every allowed scale, so a dense real map stays far below
-/// it. A file that asks for more is broken or hostile; the objects after the limit are not
-/// drawn and counted ([`PrintReport::objects_not_drawn_page_limit`]).
-///
-/// A page keeps at most four million points (500 000 units of at most eight points each),
-/// clip outlines counted once per block. Measured peak memory (release build, macOS): about
-/// 200 MB on a 134 KB file of 500 000 strokes of seven points, the largest of the hostile
-/// files tried (ADR 0019).
-pub const MAX_UNITS_PER_PAGE: usize = 500_000;
-
-/// The tag freemapper puts on the objects of a map's peripheral information.
-const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
-
-/// The tag freemapper v0.9.0 put on the scale bar objects (lines 994, texts 993) instead of `sheet`; they belong to
-/// the information block all the same. Maps made by that version carry it.
-const SCALE_BAR_TAG: (&str, &str) = ("freemapper:source", "scale-bar");
-
-/// The tag freemapper puts on the base area of a sprint map (ADR 0044, freemapper ADR 0069): one area in the
-/// colour "walkable area" under the whole map. It is always drawn and never counts for the page centre, the
-/// overflow or the north-line bounds.
-pub(crate) const BASE_TAG: (&str, &str) = ("freemapper:source", "base");
-
-/// The map part freemapper puts the base area in. A layout cannot hide it (ADR 0044).
-pub const BASE_PART: &str = "base";
-
-/// Micrometres (OOM map units) per millimetre.
-const UM_PER_MM: f64 = 1000.0;
-
-/// Paper sizes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Paper {
-    A4,
-    A3,
-}
-
-impl Paper {
-    /// Width and height in portrait orientation (mm).
-    pub fn size_mm(self) -> (f64, f64) {
-        match self {
-            Paper::A4 => (210.0, 297.0),
-            Paper::A3 => (297.0, 420.0),
-        }
-    }
-}
-
-/// Page orientation. `Auto` takes the orientation in which less of the map lies outside the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Orientation {
-    Auto,
-    Portrait,
-    Landscape,
-}
+#[cfg(test)]
+pub(crate) use crate::render::build::BASE_TAG;
+pub use crate::render::build::{
+    BASE_PART, MAX_UNITS_PER_PAGE, Orientation, PAGE_MARGIN_MM, Paper, frame_box, is_base_object,
+    is_north_line, is_sheet_object,
+};
 
 /// How a map is put on a page.
 #[derive(Debug, Clone, PartialEq)]
@@ -165,9 +102,17 @@ pub enum PrintError {
     #[error(transparent)]
     Scale(#[from] ScaleError),
     #[error("could not resize the map symbols for the print scale")]
-    Symbols(#[from] OmapError),
+    Symbols(OmapError),
     #[error(transparent)]
     Pdf(#[from] PdfError),
+}
+
+impl From<BuildError> for PrintError {
+    fn from(e: BuildError) -> Self {
+        match e {
+            BuildError::Symbols(e) => PrintError::Symbols(e),
+        }
+    }
 }
 
 /// The page for `map` at the print scale of `options`, in page millimetres, ready for any backend.
@@ -182,6 +127,9 @@ pub fn render_page(
 }
 
 /// [`render_page`] with a page budget of `page_budget` units.
+///
+/// The factors are computed here (the scale policy stays in this crate, ADR 0053); the page itself comes from
+/// the page builder in core.
 fn render_page_within(
     map: &MapDocument,
     options: &PrintOptions,
@@ -191,110 +139,30 @@ fn render_page_within(
     let print_scale = options.print_scale.unwrap_or(map_scale);
     let symbol_factor = symbol_factor(options.kind, map_scale, print_scale)?;
     let geometry_factor = geometry_factor(map_scale, print_scale);
-    let symbols = render_symbols(&map.symbol_set, symbol_factor)?;
-
-    let mut skipped_objects = 0;
-    let mut objects = Vec::new();
-    for object in map.parts.iter().flat_map(|p| &p.objects) {
-        if is_sheet_object(object)
-            && !options.show_sheet_objects
-            && !is_north_line(&map.symbol_set, object)
-        {
-            continue;
-        }
-        if map.symbol_set.is_hidden(object.symbol_id)
-            || !symbols.symbols.contains_key(&object.symbol_id)
-        {
-            skipped_objects += 1;
-            continue;
-        }
-        objects.push(scaled(object, geometry_factor));
-    }
-
-    // Draw everything in print-scale millimetres of the map, then place it on the page.
-    let mut primitives = Vec::new();
-    let mut page_left = page_budget;
-    let mut truncated_objects = 0;
-    let mut objects_not_drawn_page_limit = 0;
-    let mut dropped_pattern_objects = 0;
-    let mut fonts = BTreeSet::new();
-    for (index, object) in objects.iter().enumerate() {
-        if page_left == 0 {
-            objects_not_drawn_page_limit += 1;
-            continue;
-        }
-        let mut drawn = primitives_within(object, &symbols, page_left.min(MAX_UNITS_PER_OBJECT));
-        let north_line = is_north_line(&map.symbol_set, object);
-        let base = is_base_object(object);
-        for p in &mut drawn.primitives {
-            p.north_line = north_line;
-            p.base = base;
-            p.object = u32::try_from(index).unwrap_or(u32::MAX);
-            p.symbol = object.symbol_id;
-        }
-        page_left = page_left.saturating_sub(drawn.units);
-        truncated_objects += usize::from(drawn.cut);
-        dropped_pattern_objects += usize::from(
-            object.kind == MapObjectKind::Path
-                && symbols.dropped_patterns.contains(&object.symbol_id),
-        );
-        primitives.append(&mut drawn.primitives);
-        if let (MapObjectKind::Text { .. }, Some(Symbol::Text(def))) =
-            (&object.kind, symbols.symbols.get(&object.symbol_id))
-            && substituted(&def.family)
-        {
-            fonts.insert(def.family.trim().to_string());
-        }
-    }
-    // Paint order: highest priority number first, priority 0 last (on top). Stable, so the
-    // objects keep their order within a colour.
-    primitives.sort_by_key(|p| std::cmp::Reverse(p.priority));
-
-    // The base area stays out of the bounds: it is the map plus a margin (ADR 0044).
-    let bounds = painted_bounds(&primitives);
-    let centre = match (options.centre, bounds) {
-        (Some(c), _) => (
-            f64::from(c.x) * geometry_factor / UM_PER_MM,
-            f64::from(c.y) * geometry_factor / UM_PER_MM,
-        ),
-        (None, Some((min, max))) => ((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0),
-        (None, None) => (0.0, 0.0),
-    };
-    let margin = options.frame_margin_mm.unwrap_or(PAGE_MARGIN_MM);
-    let page_mm = page_size(options.paper, options.orientation, bounds, centre, margin);
-    let frame = frame_box(page_mm, margin);
-    // The centre of the frame is the centre of the page: the margin is the same on every side.
-    let offset = (page_mm.0 / 2.0 - centre.0, page_mm.1 / 2.0 - centre.1);
-    let overflow_mm = bounds
-        .map(|b| overflow(b, offset, frame))
-        .filter(|o| o.dx > 0.0 || o.dy > 0.0)
-        .map(|o| (o.dx, o.dy));
-    translate(&mut primitives, offset);
-
-    let page = RenderedPage {
-        primitives,
-        clip: frame,
-        page_mm,
-        centre_mm: centre,
-        colours: symbols.colours,
-        sheet: Vec::new(),
-        overprint: Default::default(),
-        map_clips: Vec::new(),
-    };
-    let report = PrintReport {
-        page_mm,
-        print_scale,
-        geometry_factor,
+    let spec = PageSpec {
         symbol_factor,
+        geometry_factor,
+        paper: options.paper,
+        orientation: options.orientation,
+        centre: options.centre,
+        frame_margin_mm: options.frame_margin_mm,
+        show_sheet_objects: options.show_sheet_objects,
+    };
+    let (page, built) = build_page_within(map, &spec, page_budget)?;
+    let report = PrintReport {
+        page_mm: built.page_mm,
+        print_scale,
+        geometry_factor: built.geometry_factor,
+        symbol_factor: built.symbol_factor,
         non_standard_scale: !is_standard(options.kind, print_scale),
-        overflow_mm,
-        skipped_objects,
-        unknown_type_objects: map.unknown_objects,
-        truncated_objects,
-        objects_not_drawn_page_limit,
-        dropped_pattern_objects,
-        substituted_fonts: fonts.into_iter().collect(),
-        missing_glyphs: Vec::new(),
+        overflow_mm: built.overflow_mm,
+        skipped_objects: built.skipped_objects,
+        unknown_type_objects: built.unknown_type_objects,
+        truncated_objects: built.truncated_objects,
+        objects_not_drawn_page_limit: built.objects_not_drawn_page_limit,
+        dropped_pattern_objects: built.dropped_pattern_objects,
+        substituted_fonts: built.substituted_fonts,
+        missing_glyphs: built.missing_glyphs,
     };
     Ok((page, report))
 }
@@ -326,189 +194,11 @@ pub fn print_map(
     Ok((pdf, report, notes))
 }
 
-/// The symbols of `set` with every dimension multiplied by `factor`.
-fn render_symbols(set: &SymbolSet, factor: f64) -> Result<RenderSymbols, OmapError> {
-    if factor == 1.0 {
-        return RenderSymbols::from_set(set);
-    }
-    // Enlarging keeps every id, so the code table and the hidden list stay valid.
-    let mut enlarged = set.clone();
-    enlarged.symbols_xml = enlarge_symbols(&set.symbols_xml, factor)?;
-    RenderSymbols::from_set(&enlarged)
-}
-
-pub(crate) fn is_sheet_object(object: &MapObject) -> bool {
-    has_tag(object, SHEET_TAG) || has_tag(object, SCALE_BAR_TAG)
-}
-
-/// Part of freemapper's base area, by its tag (ADR 0044).
-pub(crate) fn is_base_object(object: &MapObject) -> bool {
-    has_tag(object, BASE_TAG)
-}
-
-fn has_tag(object: &MapObject, (key, value): (&str, &str)) -> bool {
-    object.tags.iter().any(|(k, v)| k == key && v == value)
-}
-
-/// A magnetic north line (601, or a variant 601.x): part of the map even where freemapper tags it
-/// as a sheet object (ADR 0023).
-pub(crate) fn is_north_line(set: &SymbolSet, object: &MapObject) -> bool {
-    set.code_of(object.symbol_id)
-        .is_some_and(|code| code == "601" || code.starts_with("601."))
-}
-
-/// `c` times `factor`, rounded to whole µm. The geometry factor is at most 4 (a forest map drawn
-/// at 1:20000 printed at 1:5000), so a coordinate beyond ±537 m of map paper leaves the `i32`
-/// range. `as i32` then saturates at ±2147 m: such a point lies kilometres off any page either
-/// way, so the page and its overflow report stay as they would be (the overflow counts to the
-/// saturated point).
-fn scale_coord(c: MapCoord, factor: f64) -> MapCoord {
-    MapCoord {
-        x: (f64::from(c.x) * factor).round() as i32,
-        y: (f64::from(c.y) * factor).round() as i32,
-        ..c
-    }
-}
-
-/// `object` with its geometry multiplied by `factor` (Bézier control points, pattern origin and
-/// the box of a box text included).
-fn scaled(object: &MapObject, factor: f64) -> MapObject {
-    let mut object = object.clone();
-    if factor == 1.0 {
-        return object;
-    }
-    for c in &mut object.coords {
-        *c = scale_coord(*c, factor);
-    }
-    if let Some(p) = &mut object.pattern {
-        p.origin = scale_coord(p.origin, factor);
-    }
-    if let MapObjectKind::Text {
-        box_size: Some((w, h)),
-        ..
-    } = &mut object.kind
-    {
-        *w *= factor;
-        *h *= factor;
-    }
-    object
-}
-
-/// How far painted bounds reach beyond the clip rectangle (mm), and the area outside it (mm²).
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Overflow {
-    dx: f64,
-    dy: f64,
-    area: f64,
-}
-
-/// The map frame on a page of `page_mm`: the page minus `margin_mm` on every side. A margin of
-/// more than half the page leaves a frame of zero width or height in the middle of the page.
-pub fn frame_box(page_mm: (f64, f64), margin_mm: f64) -> PaperBox {
-    // `max` first: a NaN margin becomes 0.
-    let mx = margin_mm.max(0.0).min(page_mm.0 / 2.0);
-    let my = margin_mm.max(0.0).min(page_mm.1 / 2.0);
-    PaperBox {
-        min: (mx, my),
-        max: (page_mm.0 - mx, page_mm.1 - my),
-    }
-}
-
-/// The overflow of `bounds` moved by `offset` beyond `frame`.
-fn overflow((min, max): Bounds, offset: Pt, frame: PaperBox) -> Overflow {
-    let axis = |min: f64, max: f64, lo: f64, hi: f64| {
-        let out = (lo - min).max(0.0) + (max - hi).max(0.0);
-        let inside = (max.min(hi) - min.max(lo)).max(0.0);
-        (out, max - min, inside)
-    };
-    let (dx, w, w_in) = axis(min.0 + offset.0, max.0 + offset.0, frame.min.0, frame.max.0);
-    let (dy, h, h_in) = axis(min.1 + offset.1, max.1 + offset.1, frame.min.1, frame.max.1);
-    Overflow {
-        dx,
-        dy,
-        area: w * h - w_in * h_in,
-    }
-}
-
-/// The page (mm) in the requested orientation. `Auto` takes the one whose overflowing area beyond
-/// the frame (the page minus `margin_mm`) is smaller, then the one with the smaller overflow
-/// lengths (a map of a single straight line has almost no area), and portrait on a tie.
-fn page_size(
-    paper: Paper,
-    orientation: Orientation,
-    bounds: Option<Bounds>,
-    centre: Pt,
-    margin_mm: f64,
-) -> (f64, f64) {
-    let portrait = paper.size_mm();
-    let landscape = (portrait.1, portrait.0);
-    match (orientation, bounds) {
-        (Orientation::Portrait, _) | (Orientation::Auto, None) => portrait,
-        (Orientation::Landscape, _) => landscape,
-        (Orientation::Auto, Some(b)) => {
-            let cost = |page: (f64, f64)| {
-                let o = overflow(
-                    b,
-                    (page.0 / 2.0 - centre.0, page.1 / 2.0 - centre.1),
-                    frame_box(page, margin_mm),
-                );
-                (o.area, o.dx + o.dy)
-            };
-            let (p, l) = (cost(portrait), cost(landscape));
-            if l.0 < p.0 || (l.0 == p.0 && l.1 < p.1) {
-                landscape
-            } else {
-                portrait
-            }
-        }
-    }
-}
-
-type Rings = Arc<[Vec<Pt>]>;
-
-/// Moved outlines by the address of the original, which the entry holds so that no address
-/// is reused.
-type MovedOutlines = HashMap<usize, (Rings, Rings)>;
-
-/// Moves every primitive by `d` (mm). Clipped shapes that share an outline keep sharing it,
-/// at every nesting level: each outline is moved once.
-fn translate(primitives: &mut [Primitive], d: Pt) {
-    let mut moved = MovedOutlines::new();
-    for p in primitives {
-        translate_shape(&mut p.shape, d, &mut moved);
-    }
-}
-
-fn translate_shape(shape: &mut Shape, d: Pt, moved: &mut MovedOutlines) {
-    let shift = |p: &mut Pt| {
-        p.0 += d.0;
-        p.1 += d.1;
-    };
-    match shape {
-        Shape::Fill { rings, .. } => rings.iter_mut().flatten().for_each(shift),
-        Shape::Stroke { path, .. } => path.iter_mut().for_each(shift),
-        Shape::Text { origin, .. } => shift(origin),
-        Shape::Clipped { rings, inner } => {
-            let key = Arc::as_ptr(rings).cast::<()>().addr();
-            let (_, to) = moved.entry(key).or_insert_with(|| {
-                let to: Rings = rings
-                    .iter()
-                    .map(|r| r.iter().map(|&(x, y)| (x + d.0, y + d.1)).collect())
-                    .collect();
-                (Arc::clone(rings), to)
-            });
-            *rings = Arc::clone(to);
-            translate_shape(inner, d, moved);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::omap::{MapGeoref, MapPart};
-    use crate::render::bounds::shape_bounds;
-    use crate::render::draw::FillRule;
+    use crate::omap::{MapGeoref, MapObject, MapObjectKind, MapPart, SymbolSet};
+    use crate::render::draw::Shape;
 
     fn map(scale: u32, set: SymbolSet, objects: Vec<MapObject>) -> MapDocument {
         MapDocument {
@@ -560,159 +250,6 @@ mod tests {
 
     fn render(doc: &MapDocument, options: &PrintOptions) -> (RenderedPage, PrintReport) {
         render_page(doc, options).unwrap()
-    }
-
-    #[test]
-    fn primitives_carry_symbol_class_north_line_and_object() {
-        use crate::render::draw::SymbolClass;
-        let set = SymbolSet::issprom_2019();
-        let id = |code: &str| set.id_for_code(code).unwrap();
-        let square = |symbol_id: u32| {
-            let mut coords: Vec<MapCoord> =
-                [(0, 0), (20_000, 0), (20_000, 20_000), (0, 20_000), (0, 0)]
-                    .into_iter()
-                    .map(|(x, y)| MapCoord::new(x, y))
-                    .collect();
-            coords[4].flags = crate::omap::coord::FLAG_CLOSE;
-            MapObject {
-                symbol_id,
-                kind: MapObjectKind::Path,
-                coords,
-                tags: Vec::new(),
-                pattern: None,
-            }
-        };
-        let boulder = MapObject {
-            symbol_id: id("204"),
-            kind: MapObjectKind::Point { rotation_rad: 0.0 },
-            coords: vec![MapCoord::new(5_000, 5_000)],
-            tags: Vec::new(),
-            pattern: None,
-        };
-        let objects = vec![
-            boulder,
-            line(id("501.1"), (30_000, 0)),
-            square(id("401")),
-            // Uncrossable water: a combined symbol of a fill and a bank line, closed.
-            square(id("301")),
-            line(id("601"), (0, 40_000)),
-        ];
-        // The same combined symbol on an open path.
-        let objects = [objects, vec![line(id("301"), (0, -30_000))]].concat();
-        let doc = map(4000, set.clone(), objects);
-        let (page, _) = render(&doc, &options(Orientation::Portrait));
-        let classes = |object: u32| -> Vec<SymbolClass> {
-            let mut c: Vec<SymbolClass> = page
-                .primitives
-                .iter()
-                .filter(|p| p.object == object)
-                .map(|p| p.class)
-                .collect();
-            c.dedup();
-            c
-        };
-        assert_eq!(classes(0), [SymbolClass::Point]);
-        assert_eq!(classes(1), [SymbolClass::Line]);
-        assert_eq!(classes(2), [SymbolClass::Area]);
-        // A combined symbol counts by its path, as freemapper-courseplan reads maps: a closed one (the water
-        // with its bank line) is an area, an open one a line.
-        assert_eq!(classes(3), [SymbolClass::Area]);
-        assert_eq!(classes(5), [SymbolClass::Line]);
-        assert!(!page.primitives.iter().any(|p| p.object > 5));
-        for p in &page.primitives {
-            assert_eq!(p.north_line, p.object == 4, "{p:?}");
-        }
-        assert!(page.primitives.iter().any(|p| p.north_line));
-    }
-
-    #[test]
-    fn auto_turns_a_wide_map_to_landscape() {
-        let doc = map(
-            4000,
-            SymbolSet::issprom_2019(),
-            vec![line(edge(), (250_000, 150_000))],
-        );
-        let (page, report) = render(&doc, &options(Orientation::Auto));
-        assert_eq!(page.page_mm, (297.0, 210.0));
-        assert_eq!(report.overflow_mm, None);
-        let (_, report) = render(&doc, &options(Orientation::Portrait));
-        // 250 mm of line plus half its 0.1 mm width (501.1) at each end, on 200 mm of printable
-        // width.
-        let (dx, dy) = report.overflow_mm.unwrap();
-        assert!((dx - 50.1).abs() < 1e-9 && dy == 0.0, "{dx} {dy}");
-    }
-
-    #[test]
-    fn auto_turns_a_long_straight_line_too() {
-        // No overflowing area in either orientation; the overflow length decides.
-        let doc = map(
-            4000,
-            SymbolSet::issprom_2019(),
-            vec![line(edge(), (250_000, 0))],
-        );
-        let (page, _) = render(&doc, &options(Orientation::Auto));
-        assert_eq!(page.page_mm, (297.0, 210.0));
-    }
-
-    #[test]
-    fn auto_prefers_portrait_on_a_tie() {
-        let doc = map(
-            4000,
-            SymbolSet::issprom_2019(),
-            vec![line(edge(), (20_000, 20_000))],
-        );
-        let (page, _) = render(&doc, &options(Orientation::Auto));
-        assert_eq!(page.page_mm, (210.0, 297.0));
-        let empty = map(4000, SymbolSet::issprom_2019(), Vec::new());
-        let (page, report) = render(&empty, &options(Orientation::Auto));
-        assert_eq!(page.page_mm, (210.0, 297.0));
-        assert!(page.primitives.is_empty() && report.overflow_mm.is_none());
-    }
-
-    #[test]
-    fn sheet_tagged_north_line_variants_are_drawn() {
-        // A variant 601.x (601.5, the blue north line) is a north line too (ADR 0023); a code
-        // that only starts with the digits is not.
-        let set = SymbolSet::issprom_2019().with_additions(
-            r#"<symbol type="2" id="@" code="6011" name="other"><line_symbol color="2" line_width="100"/></symbol>"#,
-        );
-        let sheet = |code: &str| MapObject {
-            tags: vec![(SHEET_TAG.0.into(), SHEET_TAG.1.into())],
-            ..line(set.id_for_code(code).unwrap(), (25_000, 0))
-        };
-        let doc = map(4000, set.clone(), vec![sheet("601.5")]);
-        let (page, _) = render(&doc, &options(Orientation::Portrait));
-        assert_eq!(page.primitives.len(), 1);
-        let doc = map(4000, set.clone(), vec![sheet("6011")]);
-        let (page, _) = render(&doc, &options(Orientation::Portrait));
-        assert!(page.primitives.is_empty());
-    }
-
-    #[test]
-    fn scale_bar_tagged_objects_count_as_sheet_objects() {
-        // freemapper v0.9.0 tags the scale bar `scale-bar` instead of `sheet`; it counts as one, so it is left out of the
-        // page like the rest of the information block.
-        let set = SymbolSet::issprom_2019();
-        let code = set.id_for_code("601").unwrap();
-        let bar = MapObject {
-            tags: vec![("freemapper:source".into(), "scale-bar".into())],
-            ..line(code, (25_000, 0))
-        };
-        let doc = map(4000, set, vec![bar]);
-        assert!(super::is_sheet_object(&doc.parts[0].objects[0]));
-    }
-
-    #[test]
-    fn hidden_symbols_are_skipped() {
-        let set = SymbolSet::issprom_2019().with_additions(
-            r#"<symbol type="2" id="@" code="999.1" name="hidden" is_hidden="true"><line_symbol color="2" line_width="100"/></symbol>"#,
-        );
-        let hidden = set.id_for_code("999.1").unwrap();
-        assert!(set.is_hidden(hidden));
-        let doc = map(4000, set, vec![line(hidden, (25_000, 0))]);
-        let (page, report) = render(&doc, &options(Orientation::Portrait));
-        assert!(page.primitives.is_empty());
-        assert_eq!(report.skipped_objects, 1);
     }
 
     #[test]
@@ -776,53 +313,6 @@ mod tests {
             (size_big / size_base - 1.5).abs() < 1e-3,
             "{size_base} {size_big}"
         );
-    }
-
-    #[test]
-    fn box_scales_with_the_geometry() {
-        let set = SymbolSet::issprom_2019();
-        let text = MapObject {
-            symbol_id: set.id_for_code("704").unwrap(),
-            kind: MapObjectKind::Text {
-                text: "Wald".into(),
-                h_align: 0,
-                v_align: 1,
-                rotation_rad: 0.0,
-                box_size: Some((40_000.0, 20_000.0)),
-            },
-            coords: vec![MapCoord::new(10_000, 0)],
-            tags: Vec::new(),
-            pattern: None,
-        };
-        let MapObjectKind::Text { box_size, .. } = scaled(&text, 0.8).kind else {
-            panic!()
-        };
-        assert_eq!(box_size, Some((32_000.0, 16_000.0)));
-    }
-
-    #[test]
-    fn substituted_fonts_are_reported() {
-        let mut set = SymbolSet::issprom_2019();
-        set.symbols_xml = set
-            .symbols_xml
-            .replace(r#"family="Arial""#, r#"family="Frutiger""#);
-        let id = set.id_for_code("704").unwrap();
-        let text = MapObject {
-            symbol_id: id,
-            kind: MapObjectKind::Text {
-                text: "Wald".into(),
-                h_align: 0,
-                v_align: 0,
-                rotation_rad: 0.0,
-                box_size: None,
-            },
-            coords: vec![MapCoord::new(0, 0)],
-            tags: Vec::new(),
-            pattern: None,
-        };
-        let doc = map(4000, set, vec![text.clone(), text]);
-        let (_, report) = render(&doc, &options(Orientation::Portrait));
-        assert_eq!(report.substituted_fonts, ["Frutiger"]);
     }
 
     #[test]
@@ -932,15 +422,6 @@ mod tests {
         assert_eq!(notes, []);
     }
 
-    /// A sprint set plus `999.1`, an area with a hatch `spacing` µm apart.
-    fn hatched(spacing: u32) -> (SymbolSet, u32) {
-        let set = SymbolSet::issprom_2019().with_additions(&format!(
-            r#"<symbol type="4" id="@" code="999.1" name="hatch"><area_symbol inner_color="-1" min_area="0" patterns="1"><pattern type="1" angle="0" rotatable="false" line_spacing="{spacing}" line_offset="0" offset_along_line="0" color="2" line_width="10"/></area_symbol></symbol>"#
-        ));
-        let id = set.id_for_code("999.1").unwrap();
-        (set, id)
-    }
-
     fn area(symbol_id: u32, w: i32, h: i32) -> MapObject {
         MapObject {
             symbol_id,
@@ -949,54 +430,6 @@ mod tests {
             tags: Vec::new(),
             pattern: None,
         }
-    }
-
-    #[test]
-    fn page_budget_bounds_the_page_and_counts_the_rest() {
-        // Each area: a 10 mm square hatched 0.1 mm apart, 101 lines.
-        let (set, id) = hatched(100);
-        let doc = map(4000, set, vec![area(id, 10_000, 10_000); 20]);
-        let (page, report) =
-            render_page_within(&doc, &options(Orientation::Portrait), 250).unwrap();
-        // A unit per line and one per outline: two whole areas (102 units each), 45 lines of the
-        // third.
-        assert_eq!(page.primitives.len(), 247);
-        // Two whole areas, the third cut short, the other 17 not drawn.
-        assert_eq!(report.truncated_objects, 1);
-        assert_eq!(report.objects_not_drawn_page_limit, 17);
-        let (page, report) = render(&doc, &options(Orientation::Portrait));
-        assert_eq!(page.primitives.len(), 20 * 101);
-        assert_eq!(
-            (
-                report.truncated_objects,
-                report.objects_not_drawn_page_limit
-            ),
-            (0, 0)
-        );
-    }
-
-    /// A map of `objects` objects of 20 000 points each, whose combined symbol fills the object
-    /// 1000 times (final review of M1: three of them took 1.2 GB).
-    fn thousand_fills(objects: usize) -> MapDocument {
-        let parts = r#"<part symbol="0"/>"#.repeat(1000);
-        let coords: String = (0..20_000)
-            .map(|i| format!("{} {};", i % 1000 * 10, i / 1000 * 10))
-            .collect();
-        let object = format!(
-            r#"<object type="1" symbol="1"><coords count="20001">{coords}0 0 18;</coords></object>"#
-        );
-        let xml = format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<map xmlns="http://openorienteering.org/apps/mapper/xml/v2" version="9">
-<georeferencing scale="4000"/>
-<colors count="1"><color priority="0" name="Black" c="0" m="0" y="0" k="1" opacity="1"/></colors>
-<symbols count="2" id="ISSprOM 2019"><symbol type="4" id="0" code="999" name="a"><area_symbol inner_color="0" min_area="0" patterns="0"/></symbol><symbol type="16" id="1" code="998" name="c"><combined_symbol parts="1000">{parts}</combined_symbol></symbol></symbols>
-<parts count="1" current="0"><part name="p"><objects count="{objects}">{}</objects></part></parts>
-<templates count="0"/>
-</map>"#,
-            object.repeat(objects)
-        );
-        crate::omap::read::read_map(&xml).unwrap()
     }
 
     /// Points the fills and strokes of `page` keep.
@@ -1009,41 +442,6 @@ mod tests {
                 _ => 0,
             })
             .sum()
-    }
-
-    #[test]
-    fn page_budget_counts_work_units() {
-        use crate::render::draw::{BUDGET_SLACK, KEPT_POINTS_PER_UNIT, work_units};
-        // One object: its own budget cuts it.
-        let before = work_units();
-        let (page, report) = render(&thousand_fills(1), &options(Orientation::Portrait));
-        let work = work_units() - before;
-        assert_eq!(
-            (
-                report.truncated_objects,
-                report.objects_not_drawn_page_limit
-            ),
-            (1, 0)
-        );
-        assert!(work <= MAX_UNITS_PER_OBJECT + BUDGET_SLACK, "{work}");
-        // Three: two use up the page, the third is not drawn.
-        let before = work_units();
-        let (page3, report) = render(&thousand_fills(3), &options(Orientation::Portrait));
-        let work = work_units() - before;
-        assert_eq!(
-            (
-                report.truncated_objects,
-                report.objects_not_drawn_page_limit
-            ),
-            (2, 1)
-        );
-        assert!(work <= MAX_UNITS_PER_PAGE + 2 * BUDGET_SLACK, "{work}");
-        let points = kept_points(&page3);
-        assert!(
-            points <= MAX_UNITS_PER_PAGE * KEPT_POINTS_PER_UNIT,
-            "{points}"
-        );
-        assert_eq!(page3.primitives.len(), 2 * page.primitives.len());
     }
 
     #[test]
@@ -1086,258 +484,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn primitives_come_in_paint_order() {
-        // An edge line (501.1, black) before a water area (blue, a higher number): water is
-        // painted first, the line on top, though the file lists the line first.
-        let set = SymbolSet::issprom_2019();
-        let water = set.id_for_code("301.1").unwrap();
-        let doc = map(
-            4000,
-            set,
-            vec![line(edge(), (25_000, 0)), area(water, 10_000, 10_000)],
-        );
-        let (page, _) = render(&doc, &options(Orientation::Portrait));
-        let priorities: Vec<i32> = page.primitives.iter().map(|p| p.priority).collect();
-        assert!(
-            priorities.windows(2).all(|w| w[0] >= w[1]),
-            "{priorities:?}"
-        );
-        assert!(priorities.len() >= 2);
-    }
-
-    #[test]
-    fn overflow_counts_what_is_painted() {
-        // A text anchored right at the edge of the printable area still sticks out with its
-        // glyphs: the overflow measures them, not the anchor.
-        let set = SymbolSet::issprom_2019();
-        let id = set.id_for_code("704").unwrap();
-        let text = MapObject {
-            symbol_id: id,
-            kind: MapObjectKind::Text {
-                text: "Wald".into(),
-                h_align: 0,
-                v_align: 0,
-                rotation_rad: 0.0,
-                box_size: None,
-            },
-            coords: vec![MapCoord::new(100_000, 0)],
-            tags: Vec::new(),
-            pattern: None,
-        };
-        let doc = map(4000, set, vec![line(edge(), (100_000, 0)), text]);
-        let centred = PrintOptions {
-            centre: Some(MapCoord::new(0, 0)),
-            ..options(Orientation::Portrait)
-        };
-        // The line ends 5 mm inside the page edge (x = 205 mm), on the clip; the text runs on.
-        let (_, report) = render(&doc, &centred);
-        let (dx, _) = report.overflow_mm.expect("the text sticks out");
-        assert!(dx > 3.0, "{dx}");
-    }
-
-    #[test]
-    fn frame_box_is_the_page_minus_the_margin() {
-        let frame = |min, max| PaperBox { min, max };
-        assert_eq!(
-            frame_box((210.0, 297.0), PAGE_MARGIN_MM),
-            frame((5.0, 5.0), (205.0, 292.0))
-        );
-        // A margin wider than half the page leaves a frame of zero width, then zero height.
-        assert_eq!(
-            frame_box((210.0, 297.0), 120.0),
-            frame((105.0, 120.0), (105.0, 177.0))
-        );
-        assert_eq!(
-            frame_box((210.0, 297.0), 500.0),
-            frame((105.0, 148.5), (105.0, 148.5))
-        );
-        assert_eq!(
-            frame_box((210.0, 297.0), f64::NAN),
-            frame((0.0, 0.0), (210.0, 297.0))
-        );
-    }
-
-    #[test]
-    fn auto_orientation_measures_against_the_frame() {
-        // 196 mm wide, 150 mm tall: fits in portrait with the 5 mm margin (200 mm), and only in
-        // landscape with a 10 mm margin (190 mm wide in portrait).
-        let doc = map(
-            4000,
-            SymbolSet::issprom_2019(),
-            vec![line(edge(), (196_000, 150_000))],
-        );
-        let (page, _) = render(&doc, &options(Orientation::Auto));
-        assert_eq!(page.page_mm, (210.0, 297.0));
-        let wide = PrintOptions {
-            frame_margin_mm: Some(10.0),
-            ..options(Orientation::Auto)
-        };
-        let (page, report) = render(&doc, &wide);
-        assert_eq!(page.page_mm, (297.0, 210.0));
-        assert_eq!(page.clip, frame_box((297.0, 210.0), 10.0));
-        assert_eq!(report.overflow_mm, None);
-    }
-
-    #[test]
-    fn dropped_patterns_and_unknown_objects_are_reported() {
-        // A spacing of 0.01 mm breaks the 0.05 mm limit: the pattern is dropped when read.
-        let (set, id) = hatched(10);
-        let mut doc = map(
-            4000,
-            set,
-            vec![area(id, 10_000, 10_000), line(edge(), (5_000, 0))],
-        );
-        doc.unknown_objects = 3;
-        let (page, report) = render(&doc, &options(Orientation::Portrait));
-        assert_eq!(report.dropped_pattern_objects, 1);
-        assert_eq!(report.unknown_type_objects, 3);
-        assert_eq!(page.primitives.len(), 1, "only the line");
-    }
-
-    #[test]
-    fn nested_pattern_outlines_stay_shared_on_the_page() {
-        // A hatched square at every point of an outer pattern: each hatch line is clipped to
-        // the outer area and, inside that, to its own square. Moving the page must not copy
-        // either outline per line.
-        let set = SymbolSet::issprom_2019().with_additions(concat!(
-            r#"<symbol type="4" id="@" code="999.2" name="nested"><area_symbol inner_color="-1" min_area="0" patterns="1">"#,
-            r#"<pattern type="2" angle="0" line_spacing="2000" line_offset="0" offset_along_line="0" point_distance="2000">"#,
-            r#"<symbol type="1" code=""><point_symbol inner_radius="0" inner_color="-1" outer_width="0" outer_color="-1" elements="1"><element>"#,
-            r#"<symbol type="4" code=""><area_symbol inner_color="-1" min_area="0" patterns="1"><pattern type="1" angle="0" line_spacing="100" line_offset="0" offset_along_line="0" color="2" line_width="10"/></area_symbol></symbol>"#,
-            r#"<object type="1"><coords count="5">-500 -500;500 -500;500 500;-500 500;-500 -500 18;</coords></object>"#,
-            r#"</element></point_symbol></symbol></pattern></area_symbol></symbol>"#,
-        ));
-        let id = set.id_for_code("999.2").unwrap();
-        let doc = map(4000, set, vec![area(id, 10_000, 10_000)]);
-        let (page, _) = render(&doc, &options(Orientation::Portrait));
-        // Every outline (by content) is one Arc.
-        let mut outlines: Vec<&Rings> = Vec::new();
-        let mut clipped = 0;
-        for p in &page.primitives {
-            let mut shape = &p.shape;
-            while let Shape::Clipped { rings, inner } = shape {
-                clipped += 1;
-                match outlines.iter().find(|o| o[..] == rings[..]) {
-                    Some(o) => assert!(Arc::ptr_eq(o, rings), "an outline was copied"),
-                    None => outlines.push(rings),
-                }
-                shape = inner;
-            }
-        }
-        // A square at each of the 36 placements, ten lines each, two clips per line: the outer
-        // outline and one per square.
-        assert!(clipped > 400, "{clipped}");
-        assert_eq!(outlines.len(), 37);
-    }
-
-    /// A map of `objects` circles of `points` points, each with `patterns` line patterns of one
-    /// colour, clipped and unclipped (`no_clipping="2"`) in turn, one line each.
-    fn interleaved(patterns: usize, points: u32, objects: usize) -> MapDocument {
-        let xml: String = (0..patterns)
-            .map(|i| {
-                format!(
-                    r#"<pattern type="1" angle="0" no_clipping="{}" line_spacing="1000000" line_offset="0" offset_along_line="0" color="2" line_width="10"/>"#,
-                    if i % 2 == 0 { 0 } else { 2 }
-                )
-            })
-            .collect();
-        let set = SymbolSet::issprom_2019().with_additions(&format!(
-            r#"<symbol type="4" id="@" code="999.3" name="interleaved"><area_symbol inner_color="-1" min_area="0" patterns="{patterns}">{xml}</area_symbol></symbol>"#
-        ));
-        let circle: Vec<(i32, i32)> = (0..points)
-            .map(|i| {
-                let a = f64::from(i) / f64::from(points) * std::f64::consts::TAU;
-                (
-                    (50_000.0 * a.cos()).round() as i32,
-                    (50_000.0 * a.sin()).round() as i32,
-                )
-            })
-            .collect();
-        let object = MapObject {
-            coords: crate::omap::closed_ring(&circle),
-            ..area(set.id_for_code("999.3").unwrap(), 0, 0)
-        };
-        map(4000, set, vec![object; objects])
-    }
-
-    #[test]
-    fn every_clip_block_the_pdf_writes_is_charged() {
-        // 40 patterns on a 2000 point circle: the PDF writes the outline 20 times.
-        use crate::render::draw::{KEPT_POINTS_PER_UNIT, work_units};
-        let doc = interleaved(40, 2000, 1);
-        let before = work_units();
-        let (page, report) = render(&doc, &options(Orientation::Portrait));
-        let work = work_units() - before;
-        assert_eq!(report.truncated_objects, 0);
-        let (pdf, _) = write_pdf(&page, &PdfMeta::new("clips")).unwrap();
-        let content = crate::render::pdf::content_of(&pdf);
-        let blocks = content.windows(4).filter(|w| w == b"W*\nn").count();
-        assert_eq!(blocks, 20);
-        // Each block writes the 2000 point outline: the units pay for all of them.
-        assert!(
-            work * KEPT_POINTS_PER_UNIT >= blocks * 2000,
-            "{work} units for {blocks} blocks"
-        );
-    }
-
-    #[test]
-    fn a_spent_object_asks_for_no_more_outlines() {
-        // The reviewer's probe, smaller: 300 clipped patterns on a 20 000 point circle need
-        // 750 000 units. Each object is cut at its own budget, and the patterns after that do not
-        // ask for their outlines, so the second object still gets the rest of the page.
-        use crate::render::draw::{BUDGET_SLACK, work_units};
-        let doc = interleaved(600, 20_000, 4);
-        let before = work_units();
-        let (_, report) = render(&doc, &options(Orientation::Portrait));
-        let work = work_units() - before;
-        assert_eq!(
-            (
-                report.truncated_objects,
-                report.objects_not_drawn_page_limit
-            ),
-            (2, 2)
-        );
-        // One outline (2500 units) may be asked for beyond each object's budget.
-        assert!(
-            work <= MAX_UNITS_PER_PAGE + 2 * (2_500 + BUDGET_SLACK),
-            "{work}"
-        );
-    }
-
-    #[test]
-    fn pattern_rings_stay_shared_after_moving() {
-        let rings: Rings = vec![vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]].into();
-        let clipped = |rings: &Rings| {
-            Primitive::new(
-                2,
-                Shape::Clipped {
-                    rings: Arc::clone(rings),
-                    inner: Box::new(Shape::Fill {
-                        rings: vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
-                        rule: FillRule::EvenOdd,
-                    }),
-                },
-            )
-        };
-        let mut primitives = vec![clipped(&rings), clipped(&rings)];
-        translate(&mut primitives, (10.0, 20.0));
-        let (Shape::Clipped { rings: a, inner }, Shape::Clipped { rings: b, .. }) =
-            (&primitives[0].shape, &primitives[1].shape)
-        else {
-            panic!()
-        };
-        assert!(Arc::ptr_eq(a, b));
-        assert_eq!(a[0][1], (11.0, 20.0));
-        assert_eq!(
-            **inner,
-            Shape::Fill {
-                rings: vec![vec![(10.0, 20.0), (11.0, 21.0), (10.0, 21.0)]],
-                rule: FillRule::EvenOdd,
-            }
-        );
-    }
-
     // --- The base area of sprint maps (ADR 0044) ---
 
     /// A small sprint map near the origin on the walkable-area palette: an edge line from (0, 0) to `to`
@@ -1359,29 +505,6 @@ mod tests {
     }
 
     #[test]
-    fn base_area_does_not_move_the_page_centre() {
-        for (to, orientation) in [
-            ((60_000, 40_000), Orientation::Auto),
-            // 250 mm wide: overflows a portrait A4 by 50.1 mm, and only by that.
-            ((250_000, 150_000), Orientation::Portrait),
-        ] {
-            let plain = render(&sprint_map(to, false), &options(orientation));
-            let based = render(&sprint_map(to, true), &options(orientation));
-            assert_eq!(based.0.centre_mm, plain.0.centre_mm);
-            assert_eq!(based.0.page_mm, plain.0.page_mm);
-            assert_eq!(based.0.clip, plain.0.clip);
-            assert_eq!(based.1.overflow_mm, plain.1.overflow_mm);
-        }
-        let (_, report) = render(
-            &sprint_map((250_000, 150_000), true),
-            &options(Orientation::Portrait),
-        );
-        // The line's 250 mm and its stroke ends on 200 mm of frame; the base area adds nothing.
-        let (dx, dy) = report.overflow_mm.unwrap();
-        assert!((50.0..50.2).contains(&dx) && dy == 0.0, "{dx} {dy}");
-    }
-
-    #[test]
     fn base_area_does_not_count_under_the_footer() {
         // The footer sits in the bottom-left corner of the frame, on the base area but off the map.
         let footer_notes = |base: bool| {
@@ -1397,56 +520,6 @@ mod tests {
                 .iter()
                 .any(|n| matches!(n, SheetNote::FooterOverlapsMap { .. }))
         );
-    }
-
-    #[test]
-    fn base_area_is_still_painted() {
-        let doc = sprint_map((60_000, 40_000), true);
-        let base_id = doc.symbol_set.id_for_code("990").unwrap();
-        let (page, report) = render(&doc, &options(Orientation::Auto));
-        let walkable = page
-            .colours
-            .iter()
-            .find(|c| c.name == "Lower brown 30% for walkable area")
-            .expect("the colour is read like any other");
-        assert_eq!(walkable.priority, 32);
-        let base: Vec<usize> = (0..page.primitives.len())
-            .filter(|&i| page.primitives[i].base)
-            .collect();
-        assert!(!base.is_empty(), "the base area is drawn");
-        for &i in &base {
-            let p = &page.primitives[i];
-            assert_eq!((p.priority, p.symbol), (32, base_id), "{p:?}");
-        }
-        // Only the base object is flagged.
-        assert!(
-            page.primitives
-                .iter()
-                .all(|p| p.base == (p.symbol == base_id))
-        );
-        // Painted first: before every primitive of a lower priority number.
-        let last_base = *base.last().unwrap();
-        let first_other = page
-            .primitives
-            .iter()
-            .position(|p| p.priority < 32)
-            .unwrap();
-        assert!(last_base < first_other, "{last_base} {first_other}");
-        // It reaches far beyond the frame; the page clips it there like every map primitive.
-        let (min, max) = shape_bounds(&page.primitives[base[0]].shape).unwrap();
-        let frame = page.clip;
-        assert!(min.0 < frame.min.0 && min.1 < frame.min.1);
-        assert!(max.0 > frame.max.0 && max.1 > frame.max.1);
-        assert_eq!(frame, frame_box(page.page_mm, PAGE_MARGIN_MM));
-        assert_eq!(report.overflow_mm, None);
-        // The PDF paints it in its CMYK, clipped to the frame.
-        let (pdf, _) = write_pdf(&page, &PdfMeta::new("base")).unwrap();
-        let content = String::from_utf8_lossy(&crate::render::pdf::content_of(&pdf)).into_owned();
-        let clip = content.find("re\nW").expect("the frame clip");
-        let fill = content
-            .find("0.06 0.23 0.33 0 k")
-            .expect("the walkable area colour");
-        assert!(clip < fill, "{content:.400}");
     }
 }
 
