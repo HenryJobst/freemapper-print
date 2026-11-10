@@ -14,63 +14,43 @@ gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt di
 
 Das kann es schon:
 
-- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4 oder A3;
-- in einem anderen Maßstab drucken, mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die
-  jüngsten Klassen mit Symbolen auf 133 %);
-- die Nordlinien der Karte immer mitdrucken.
-
-Neu in 0.2.0:
-
-- eine Projektdatei je Veranstaltung mit beliebig vielen Layouts, angelegt mit `init`, geprüft mit `check`, als
+- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4 oder A3, auch in
+  einem anderen Maßstab mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die jüngsten
+  Klassen mit Symbolen auf 133 %);
+- eine Projektdatei je Veranstaltung mit beliebig vielen Layouts: angelegt mit `init`, geprüft mit `check`, als
   PDFs geschrieben mit `export`;
-- auf jedem Blatt Passepartout, Rahmenlinie und eine Fußzeile mit Quellenangaben und Namensnennung; als
-  Elemente, die man selbst platziert, Titelblock und Texte mit Platzhaltern, Vereins- und Sponsorenlogos (PNG,
-  JPEG, SVG) und eine Kontrollstrecke zum Nachmessen;
-- Nordlinien ergänzt das Programm, wenn die Karte keine hat;
-- auch `render` druckt die Quellenangaben aus den Kartennotizen und die Namensnennung;
-- Meldungen und Hilfe auf Deutsch und Englisch;
-- ein volles Laufwerk hinterlässt kein halbes PDF.
-
-Neu in 0.4.0:
-
-- die Grundfläche der Sprintkarten von freemapper wird mitgedruckt, immer und ohne Schalter; sie bestimmt weder
-  die Seitenmitte noch den Überstand (am besten in Farbe drucken);
-- die Karten der Beispiele stammen aus freemapper 0.8.0 (Grundfläche, gelbe Parks), die Beispiele sind neu
-  erzeugt;
-- Programmtexte, Regelprofile, Kartenleser und Bahncode kommen aus freemapper-core. Für Nutzer ändert sich nichts
-  außer einer Schutzregel: Das Programm schreibt nie durch einen Link am Ziel.
-
-Neu in 0.3.0 (Meilenstein M3):
-
-- Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Condes, OCAD-Bahnlegung, der
-  eigene Export von Purple Pen), in der Projektdatei verknüpft und bei jedem Lauf neu gelesen;
+- auf jedem Blatt Passepartout, Rahmenlinie und eine Fußzeile mit Quellenangaben und Namensnennung; als Elemente,
+  die man selbst platziert, Titelblock und Texte mit Platzhaltern, Vereins- und Sponsorenlogos (PNG, JPEG, SVG)
+  und eine Kontrollstrecke zum Nachmessen;
+- Nordlinien immer mitdrucken, auch ergänzen, wenn die Karte keine hat;
+- die Grundfläche der Sprintkarten von freemapper mitdrucken, immer und ohne Schalter (am besten in Farbe);
+- Bahnen aus Purple Pen (`.ppen`) und aus jedem Programm, das IOF-XML 3.0 schreibt (Condes, OCAD-Bahnlegung),
+  in der Projektdatei verknüpfen und bei jedem Lauf neu lesen;
 - ein Blatt je Bahn, mit dem Bahnaufdruck in Violett, aufgeteilt in unteres und oberes Violett, und der
   Postenbeschreibung aus Purple-Pen-Dateien (IOF-XML kennt keine Beschreibungen);
 - Postennummern dort, wo die Bahndatei sie hinsetzt, oder vom Programm so platziert, dass sie Strecken, Kreise und
   die Punkt- und Liniensymbole der Karte frei lassen; `check` schlägt einen besseren Platz vor, `numbers accept`
   schreibt ihn ins Projekt;
-- `init --courses` legt ein Projekt aus einer Bahndatei an;
-- `export` schreibt ein PDF je Bahn, mit `--course` nur gewählte Bahnen, mit `--single-file` ein PDF mit allen
-  Bahnen;
+- `init --courses` legt ein Projekt aus einer Bahndatei an; `export` schreibt ein PDF je Bahn, mit `--course` nur
+  gewählte Bahnen, mit `--single-file` ein PDF mit allen Bahnen;
 - die Bahnsymbole in der Größe, die die Norm für den Druckmaßstab vorgibt, etwa Postenkreise von 7,5 mm auf einer
   Waldkarte in 1:10000;
-- die Bahn muss zur Karte passen: Das Programm liest Purple Pen mit der y-Achse nach oben und erkennt sie bei
+- prüfen, ob die Bahn zur Karte passt: Das Programm liest Purple Pen mit der y-Achse nach oben und erkennt sie bei
   IOF-XML, prüft den Kartenmaßstab, vergleicht die Posten mit Breite und Länge und hält bei einer zweifelhaften
-  Einpassung an.
-
-Neu in 0.5.0 (Meilenstein M4):
-
+  Einpassung an;
 - Abdeckungen für Fenster- und Korridor-OL: Eine Abdeckung verbirgt die Karte auf dem Blatt einer Bahn bis auf
   Fenster oder einen Korridor. Bahnaufdruck, Postenbeschreibung, Titel und Fußzeile bleiben überall stehen, auch
   die Strecken zwischen den Fenstern;
 - `masks window` legt runde Fenster um die Posten einer Bahn, mit einem Radius in Millimetern auf dem Papier und
-  auf Wunsch einem eigenen Radius je Posten;
-- `masks corridor` macht aus einer Linie, die Sie vorgeben, einen Korridor mit einstellbarer Breite. Einen
-  automatischen Korridor gibt es nicht, denn kein Regelwerk sagt, wo er verläuft;
-- Abdeckungen lassen sich auch von Hand in die Projektdatei schreiben; das White-out aus Purple Pen druckt das
-  Programm als Abdeckung der Bahnen, für die es gilt;
+  auf Wunsch einem eigenen Radius je Posten; `masks corridor` macht aus einer Linie, die Sie vorgeben, einen
+  Korridor mit einstellbarer Breite. Einen automatischen Korridor gibt es nicht, denn kein Regelwerk sagt, wo er
+  verläuft;
+- Abdeckungen auch von Hand in die Projektdatei schreiben; das White-out aus Purple Pen druckt das Programm als
+  Abdeckung der Bahnen, für die es gilt;
 - `check` warnt vor Posten, Pflichtstrecken, Sperrgebieten und anderem Bahnaufdruck, die unter einer Abdeckung
-  liegen.
+  liegen;
+- Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
+  schreibt nie durch einen Link am Ziel.
 
 Geplant ist:
 
@@ -139,7 +119,7 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.5.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.0) vom
+Aktuelle Version ist [v0.5.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.1) vom
 10. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und

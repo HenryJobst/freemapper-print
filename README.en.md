@@ -14,59 +14,41 @@ OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on pap
 
 What it does already:
 
-- print a finished OOM map (`.omap`) as a vector PDF at the exact print scale, on A4 or A3;
-- print at another scale with the symbol sizes the standard sets (for example 1:3000 for the youngest classes,
-  symbols at 133 %);
-- always print the map's north lines.
-
-New in 0.2.0:
-
-- one project file per event with any number of layouts, created with `init`, checked with `check` and written
-  as PDFs with `export`;
-- on every sheet a passe-partout, a frame line and a footer with the copyright and credit lines; as elements you
-  place, a title block and texts with placeholders, club and sponsor logos (PNG, JPEG, SVG) and a scale check bar
-  to measure against;
-- north lines added when the map has none;
-- `render` prints the copyright lines from the map notes and the credit line too;
-- messages and help in German and English;
-- a full disk leaves no half-written PDF.
-
-New in 0.4.0:
-
-- the base area of freemapper's sprint maps is printed with the map, always and without a switch; it decides
-  neither the page centre nor the overflow (print in colour for best results);
-- the maps of the examples come from freemapper 0.8.0 (base area, yellow parks), and the examples are rebuilt;
-- program texts, rule profiles, map reader and course code come from freemapper-core. Nothing changes for users
-  apart from a safety rule: the program never writes through a link at the target.
-
-New in 0.3.0 (milestone M3):
-
-- courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Condes, OCAD course setting,
-  Purple Pen's own export), linked in the project file and read again on every run;
-- one sheet per course, with the course overprint in purple, split into lower and upper purple, and the
-  control description box from Purple Pen files (IOF XML has no descriptions);
-- control numbers where the course file puts them, or placed by the program clear of legs, circles and the
-  map's point and line symbols; `check` proposes a better place, `numbers accept` writes it into the project;
-- `init --courses` builds a project from a course file;
-- `export` writes one PDF per course, only chosen courses with `--course`, or one PDF with all courses with
-  `--single-file`;
-- course symbols at the size the standard sets for the print scale, such as 7.5 mm control circles on a forest
-  map at 1:10000;
-- the course must fit the map: the program reads Purple Pen with the y axis up and detects it for IOF XML, checks
-  the map scale and compares the controls with latitude and longitude, and stops on a doubtful fit.
-
-New in 0.5.0 (milestone M4):
-
+- print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A4 or A3, also at a different scale
+  with the symbol sizes the standard prescribes (for example 1:3000 for the youngest classes with symbols at
+  133 %);
+- one project file per event with any number of layouts: created with `init`, checked with `check`, written as
+  PDFs with `export`;
+- on every sheet a passe-partout, a frame line and a footer with source notes and credit; as elements you place
+  yourself, a title block and texts with placeholders, club and sponsor logos (PNG, JPEG, SVG) and a scale check
+  bar to measure against;
+- always print the map's north lines, and add them when the map has none;
+- print the base area of freemapper's sprint maps, always and without a switch (best printed in colour);
+- link courses from Purple Pen (`.ppen`) and from any program that writes IOF XML 3.0 (Condes, OCAD course
+  setting) in the project file, and read them again on every run;
+- one sheet per course, with the course overprint in purple, split into lower and upper purple, and the control
+  description from Purple Pen files (IOF XML has no descriptions);
+- control numbers where the course file puts them, or placed by the program so that they leave legs, circles and
+  the map's point and line symbols free; `check` suggests a better place, `numbers accept` writes it into the
+  project;
+- `init --courses` creates a project from a course file; `export` writes one PDF per course, with `--course`
+  only chosen courses, with `--single-file` one PDF with all courses;
+- the course symbols at the size the standard sets for the print scale, such as control circles of 7.5 mm on a
+  forest map at 1:10000;
+- check that the course fits the map: the program reads Purple Pen with the y axis up and detects it in IOF XML,
+  checks the map scale, compares the controls with latitude and longitude, and stops on a doubtful fit;
 - masks for window and corridor orienteering: a mask hides the map on a course's sheet except for windows or a
-  corridor. The overprint, the control descriptions, the title and the footer stay everywhere, the legs between
-  the windows included;
-- `masks window` puts round windows around the controls of a course, with a radius in millimetres on paper and,
-  if wanted, a radius of its own for single controls;
-- `masks corridor` turns a line you give into a corridor of adjustable width. There is no automatic corridor,
-  because no rule book says where one runs;
-- masks can also be written into the project file by hand; Purple Pen's white-out prints as a mask of the courses
-  it belongs to;
-- `check` warns about controls, marked routes, out-of-bounds areas and other overprint that lie under a mask.
+  corridor. Course overprint, control description, title and footer stay everywhere, including the legs between
+  windows;
+- `masks window` puts round windows around a course's controls, with a radius in millimetres on paper and, if
+  wanted, its own radius per control; `masks corridor` turns a line you give into a corridor of adjustable width.
+  There is no automatic corridor, because no rule set says where it runs;
+- masks can also be written by hand into the project file; the program prints Purple Pen's white-out as a mask
+  of the courses it applies to;
+- `check` warns about controls, mandatory legs, out-of-bounds areas and other course overprint that lie under a
+  mask;
+- messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
+  through a link at the target.
 
 Planned:
 
@@ -133,7 +115,7 @@ on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows t
 
 ## Status
 
-The current version is [v0.5.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.0) of
+The current version is [v0.5.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.1) of
 10 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
