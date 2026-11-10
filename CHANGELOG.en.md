@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- The shared crates now come from freemapper-core v0.4.2 (Purple Pen writer, object ids). Output is unchanged.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

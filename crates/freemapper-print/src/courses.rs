@@ -439,7 +439,7 @@ fn white_outs_of(event: &FittedEvent) -> Vec<WhiteOut> {
         .specials
         .iter()
         .filter_map(|s| match s {
-            Special::WhiteOut { rings, courses } => Some((rings, courses)),
+            Special::WhiteOut { rings, courses, .. } => Some((rings, courses)),
             _ => None,
         })
         .enumerate()

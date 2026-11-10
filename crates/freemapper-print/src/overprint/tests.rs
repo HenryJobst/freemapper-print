@@ -72,6 +72,7 @@ fn event(controls: Vec<Control<MapCoord>>, specials: Vec<Special<MapCoord>>) -> 
             format: SourceFormat::PurplePen,
             event_name: None,
             map_scale: None,
+            item_scaling: None,
         },
         notes: Vec::new(),
     }
@@ -524,10 +525,12 @@ fn specials_go_to_their_layer() {
         Special::OutOfBounds {
             rings: ring(),
             courses: all.clone(),
+            id: None,
         },
         Special::Dangerous {
             rings: ring(),
             courses: all.clone(),
+            id: None,
         },
     ] {
         let u = upper_only(s);
@@ -536,11 +539,13 @@ fn specials_go_to_their_layer() {
     let boundary = lower_only(Special::Boundary {
         path: path(30.0),
         courses: all.clone(),
+        id: None,
     });
     assert!(matches!(boundary[..], [Shape::Stroke { width, .. }] if (width - 1.0).abs() < 1e-9));
     let line = lower_only(Special::Line {
         path: path(30.0),
         courses: all.clone(),
+        id: None,
     });
     assert!(matches!(line[..], [Shape::Stroke { width, .. }] if (width - 0.35).abs() < 1e-9));
     // Forbidden routes (ISOM 2017-2 711) are upper purple. One point is Purple Pen's forbidden
@@ -548,6 +553,7 @@ fn specials_go_to_their_layer() {
     let cross = upper_only(Special::ForbiddenRoute {
         path: vec![pt()],
         courses: all.clone(),
+        id: None,
     });
     assert_eq!(cross.len(), 2, "{cross:?}");
     // Two or more points: crosses along it 5 mm apart and no line, as ISOM 2017-2 draws 711 and OOM's ISOM
@@ -555,6 +561,7 @@ fn specials_go_to_their_layer() {
     let route = upper_only(Special::ForbiddenRoute {
         path: path(30.0),
         courses: all.clone(),
+        id: None,
     });
     assert_eq!(route.len(), 12, "{route:?}");
     for arm in cross.iter().chain(&route) {
@@ -568,6 +575,7 @@ fn specials_go_to_their_layer() {
     let marked = upper_only(Special::MarkedRoute {
         path: path(30.0),
         courses: all.clone(),
+        id: None,
     });
     // Dashes of 2 mm with gaps of 0.5 mm.
     assert_eq!(marked.len(), 12, "{marked:?}");
@@ -576,6 +584,7 @@ fn specials_go_to_their_layer() {
     let aid = lower_only(Special::FirstAid {
         pt: pt(),
         courses: all.clone(),
+        id: None,
     });
     assert_eq!(aid.len(), 2);
     for bar in &aid {
@@ -589,6 +598,7 @@ fn specials_go_to_their_layer() {
     let cup = lower_only(Special::Water {
         pt: pt(),
         courses: all.clone(),
+        id: None,
     });
     let points: Vec<Pt> = cup
         .iter()
@@ -619,22 +629,26 @@ fn specials_go_to_their_layer() {
         text: "Zuschauer".into(),
         size_mm: 3.0,
         courses: all.clone(),
+        id: None,
     });
     assert!(matches!(&text[..], [Shape::Text { text, .. }] if text == "Zuschauer"));
     // Not drawn: white-out (a mask, which clips the map instead; ADR 0045) and specials of other courses.
     let (l, u) = layers_of(Special::WhiteOut {
         rings: ring(),
         courses: all,
+        id: None,
     });
     assert!(l.is_empty() && u.is_empty());
     let (l, u) = layers_of(Special::FirstAid {
         pt: pt(),
         courses: CourseFilter::Only(vec!["B".into()]),
+        id: None,
     });
     assert!(l.is_empty() && u.is_empty());
     let (l, _) = layers_of(Special::FirstAid {
         pt: pt(),
         courses: CourseFilter::Only(vec!["B".into(), "A".into()]),
+        id: None,
     });
     assert!(!l.is_empty());
 }
@@ -888,6 +902,7 @@ fn out_of_bounds_hatch_follows_the_profile() {
                 vec![Special::OutOfBounds {
                     rings: ring(),
                     courses: CourseFilter::All,
+                    id: None,
                 }],
             );
             let c = course(CourseKind::Normal, Vec::new());

@@ -656,6 +656,7 @@ mod tests {
                 format: SourceFormat::IofXml,
                 event_name: None,
                 map_scale: Some(4000),
+                item_scaling: None,
             },
             notes: vec![],
         }
