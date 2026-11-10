@@ -452,11 +452,20 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             Some(&args!("path" => args.map.display().to_string())),
         )
     })?;
-    let title = args.title.clone().unwrap_or_else(|| {
-        args.map
-            .file_stem()
-            .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
-    });
+    // The title of the map's `freemapper.toml` comes before the file name (an unusable sidecar counts as missing).
+    let title = args
+        .title
+        .clone()
+        .or_else(|| {
+            freemapper_print::scale::read_sidecar_title(&map_path)
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_else(|| {
+            args.map
+                .file_stem()
+                .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
+        });
     let sheet_lang = sheet_lang(texts);
     let map_scale = map.georef.scale_denominator;
     let map_rel = project::relative_path(&dir, &map_path);

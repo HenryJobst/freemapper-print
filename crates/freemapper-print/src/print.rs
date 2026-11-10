@@ -42,6 +42,10 @@ pub const MAX_UNITS_PER_PAGE: usize = 500_000;
 /// The tag freemapper puts on the objects of a map's peripheral information.
 const SHEET_TAG: (&str, &str) = ("freemapper:source", "sheet");
 
+/// The tag freemapper v0.9.0 put on the scale bar objects (lines 994, texts 993) instead of `sheet`; they belong to
+/// the information block all the same. Maps made by that version carry it.
+const SCALE_BAR_TAG: (&str, &str) = ("freemapper:source", "scale-bar");
+
 /// The tag freemapper puts on the base area of a sprint map (ADR 0044, freemapper ADR 0069): one area in the
 /// colour "walkable area" under the whole map. It is always drawn and never counts for the page centre, the
 /// overflow or the north-line bounds.
@@ -334,7 +338,7 @@ fn render_symbols(set: &SymbolSet, factor: f64) -> Result<RenderSymbols, OmapErr
 }
 
 fn is_sheet_object(object: &MapObject) -> bool {
-    has_tag(object, SHEET_TAG)
+    has_tag(object, SHEET_TAG) || has_tag(object, SCALE_BAR_TAG)
 }
 
 /// Part of freemapper's base area, by its tag (ADR 0044).
@@ -682,6 +686,20 @@ mod tests {
         let doc = map(4000, set.clone(), vec![sheet("6011")]);
         let (page, _) = render(&doc, &options(Orientation::Portrait));
         assert!(page.primitives.is_empty());
+    }
+
+    #[test]
+    fn scale_bar_tagged_objects_count_as_sheet_objects() {
+        // freemapper v0.9.0 tags the scale bar `scale-bar` instead of `sheet`; it counts as one, so it is left out of the
+        // page like the rest of the information block.
+        let set = SymbolSet::issprom_2019();
+        let code = set.id_for_code("601").unwrap();
+        let bar = MapObject {
+            tags: vec![("freemapper:source".into(), "scale-bar".into())],
+            ..line(code, (25_000, 0))
+        };
+        let doc = map(4000, set, vec![bar]);
+        assert!(super::is_sheet_object(&doc.parts[0].objects[0]));
     }
 
     #[test]

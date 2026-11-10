@@ -154,6 +154,7 @@ pub fn geometry_factor(map_scale: u32, print_scale: u32) -> f64 {
 #[derive(Deserialize)]
 struct Sidecar {
     map_kind: Option<MapKind>,
+    title: Option<String>,
 }
 
 /// `freemapper.toml` next to a map could not be used.
@@ -175,6 +176,19 @@ pub enum SidecarError {
 /// The map kind from `freemapper.toml` next to `map_path`: `Ok(None)` without the file or without
 /// `map_kind` in it, an error when the file exists but cannot be read or parsed.
 pub fn read_sidecar(map_path: &Path) -> Result<Option<MapKind>, SidecarError> {
+    Ok(read_sidecar_file(map_path)?.and_then(|s| s.map_kind))
+}
+
+/// The map title from `freemapper.toml` next to `map_path`: `Ok(None)` without the file, without `title`
+/// in it or with an empty one, an error when the file exists but cannot be read or parsed.
+pub fn read_sidecar_title(map_path: &Path) -> Result<Option<String>, SidecarError> {
+    Ok(read_sidecar_file(map_path)?
+        .and_then(|s| s.title)
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty()))
+}
+
+fn read_sidecar_file(map_path: &Path) -> Result<Option<Sidecar>, SidecarError> {
     let Some(dir) = map_path.parent() else {
         return Ok(None);
     };
@@ -185,7 +199,7 @@ pub fn read_sidecar(map_path: &Path) -> Result<Option<MapKind>, SidecarError> {
         Err(source) => return Err(SidecarError::Read { path, source }),
     };
     toml::from_str::<Sidecar>(&text)
-        .map(|s| s.map_kind)
+        .map(Some)
         .map_err(|e| SidecarError::Invalid {
             path,
             message: e.message().to_string(),
@@ -404,6 +418,22 @@ mod tests {
         assert!(read_sidecar(&map_path).unwrap().is_none());
         std::fs::remove_file(dir.path().join("freemapper.toml")).unwrap();
         assert!(read_sidecar(&map_path).unwrap().is_none());
+    }
+
+    #[test]
+    fn sidecar_title_is_read_trimmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let map_path = dir.path().join("x.omap");
+        assert_eq!(read_sidecar_title(&map_path).unwrap(), None);
+        let toml = dir.path().join("freemapper.toml");
+        std::fs::write(&toml, "title = \"  Stadtsprint  \"\n").unwrap();
+        assert_eq!(
+            read_sidecar_title(&map_path).unwrap().as_deref(),
+            Some("Stadtsprint")
+        );
+        std::fs::write(&toml, "title = \" \"\nmap_kind = \"sprint\"\n").unwrap();
+        assert_eq!(read_sidecar_title(&map_path).unwrap(), None);
+        assert_eq!(read_sidecar(&map_path).unwrap(), Some(MapKind::Sprint));
     }
 
     #[test]
