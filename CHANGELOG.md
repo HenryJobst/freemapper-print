@@ -7,10 +7,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.5.1] - 2026-11-10
+
 ### Behoben
 
 - Beispiel `berlin-viktoriapark-training`: neue Bahn von 1,8 km mit 11 Posten auf Gebäudeecken, Ecken offener Flächen und Pfaden statt neun Posten an Gebäudeecken.
-
 - Die Maßstabsleiste aus freemapper v0.9.0 (Tag `freemapper:source=scale-bar`) zählt wie die übrigen Randangaben und wird nicht mehr als Karteninhalt mitgedruckt.
 - `init` nimmt den Titel aus der `freemapper.toml` neben der Karte, bevor es auf den Dateinamen zurückfällt.
 

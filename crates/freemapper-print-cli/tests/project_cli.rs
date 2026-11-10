@@ -1702,8 +1702,8 @@ fn check_counts_mask_warnings_but_not_mask_infos() {
     // The start and the finish by kind, the controls by code, with "and" as masks window lists them.
     assert!(
         err.contains(
-            "Note: on the sheet of course \"Training\", the start, controls 34, 52, 41, 47, 38, 56, 43, 49, 35 \
-             and 60 and the finish lie where the mask hides the map, so runners find no map there."
+            "Note: on the sheet of course \"Training\", the start, controls 34, 52, 45, 58, 36, 56, 61, 43, 39, 35 \
+             and 49 and the finish lie where the mask hides the map, so runners find no map there."
         ),
         "{err}"
     );
@@ -1712,8 +1712,8 @@ fn check_counts_mask_warnings_but_not_mask_infos() {
     let err = stderr(&o);
     assert!(
         err.contains(
-            "Hinweis: Auf dem Blatt der Bahn „Training“ liegen der Start, die Posten 34, 52, 41, 47, 38, 56, 43, 49, \
-             35 und 60 und das Ziel dort, wo die Abdeckung die Karte verbirgt."
+            "Hinweis: Auf dem Blatt der Bahn „Training“ liegen der Start, die Posten 34, 52, 45, 58, 36, 56, 61, 43, \
+             39, 35 und 49 und das Ziel dort, wo die Abdeckung die Karte verbirgt."
         ) && err.contains("Mit Hinweisen: 1 von 1 Bahn, 0 von 1 Layoutblatt."),
         "{err}"
     );
@@ -1803,7 +1803,7 @@ fn masks_window_appends_and_keeps_comments() {
             "--course",
             "Training",
             "--radius-for",
-            "41=20",
+            "45=20",
             "--assign",
         ],
     );
@@ -1821,7 +1821,7 @@ fn masks_window_appends_and_keeps_comments() {
     assert!(
         new.contains("# Windows of 15 mm radius on paper at 1:4000 around ")
             && new.contains(
-                "made by masks window.\n# Control 41 has a window of 20 mm radius.\n[[masks]]\n"
+                "made by masks window.\n# Control 45 has a window of 20 mm radius.\n[[masks]]\n"
             ),
         "{new}"
     );
@@ -1834,10 +1834,10 @@ fn masks_window_appends_and_keeps_comments() {
     assert!(
         err.contains("Added the mask \"window-Training\"")
             && err.contains(
-                "12 windows of 15 mm radius on paper at 1:4000 around the start, controls 34, 52, 41, 47, 38, 56, \
-                 43, 49, 35 and 60 and the finish of course \"Training\"."
+                "13 windows of 15 mm radius on paper at 1:4000 around the start, controls 34, 52, 45, 58, 36, 56, \
+                 61, 43, 39, 35 and 49 and the finish of course \"Training\"."
             )
-            && err.contains("Control 41 has a window of 20 mm radius.")
+            && err.contains("Control 45 has a window of 20 mm radius.")
             && !err.contains("no window")
             && err.contains("Course \"Training\" prints with it now, on layout a4-4000.")
             && err.contains("Run check"),

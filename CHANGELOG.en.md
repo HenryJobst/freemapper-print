@@ -7,10 +7,11 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-10
+
 ### Fixed
 
 - Example `berlin-viktoriapark-training`: a new course of 1.8 km with 11 controls on building corners, corners of open land and paths instead of nine controls at building corners.
-
 - The scale bar from freemapper v0.9.0 (tag `freemapper:source=scale-bar`) counts as part of the information block and is no longer printed as map content.
 - `init` takes the title from the `freemapper.toml` next to the map before it falls back to the file name.
 
