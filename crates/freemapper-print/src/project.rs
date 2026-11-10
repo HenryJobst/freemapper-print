@@ -761,8 +761,8 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
     check_courses(file, p, &layout_ids, &mask_ids)
 }
 
-/// The id a white-out of the course file has as a mask variant: `whiteout-<n>`, the n-th white-out in file
-/// order, from 1 (ADR 0045).
+/// The id a white-out of the course file has as a mask variant: `whiteout-<n>`, n being Purple Pen's id of the
+/// white-out, or its place in the file from 1 when ids are missing (ADR 0045, 0048).
 pub fn white_out_id(n: usize) -> String {
     format!("{WHITE_OUT_PREFIX}{n}")
 }

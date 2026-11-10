@@ -47,9 +47,8 @@ Projects without masks print as before, byte for byte. `whiteout-<n>` names a pl
 area (ruling R16): after a white-out is deleted or the order changes in Purple Pen, an assignment or a stand-in
 `[[masks]]` entry silently means another area. The manual says so, and `check` prints an Info line
 (`MaskNote::WhiteOutByNumber`) for each course with such a reference, with the centre of the area's box in map mm,
-y up, so that a changed target shows. Follow-up: with the pin change to freemapper-core v0.4.0, whose specials
-carry `id: Option<u32>`, key white-outs by Purple Pen's special-object id and keep `whiteout-<n>` only as a
-fallback. North lines added without a 601 symbol are sheet items and stay visible across masked paper, while the
+y up, so that a changed target shows. Amended by ADR 0048: since freemapper-core v0.4.x, `n` is Purple Pen's special-object id; the file position is
+only the fallback. North lines added without a 601 symbol are sheet items and stay visible across masked paper, while the
 map's own north lines are clipped with the map (ruling R14, documented in the manual). A sheet element over a
 window gets a warning (ruling R15, ADR 0046). A known gap, accepted: a white-out ring that crosses itself
 is not checked and clips by the nonzero rule, so a loop wound against the rest shows the map, where Purple Pen fills

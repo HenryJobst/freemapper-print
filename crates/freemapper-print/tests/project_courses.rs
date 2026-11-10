@@ -515,7 +515,7 @@ fn white_outs_become_mask_variants() {
     );
     let (_d, path) = ppen_dir(
         &specials,
-        "[[assignments]]\ncourse = \"B\"\nlayout = \"a4\"\nmask = \"whiteout-3\"\n\
+        "[[assignments]]\ncourse = \"B\"\nlayout = \"a4\"\nmask = \"whiteout-103\"\n\
          [[assignments]]\ncourse = \"A\"\nlayout = \"a4\"\n",
     );
     let lp = project::load(&path).unwrap();
@@ -526,7 +526,7 @@ fn white_outs_become_mask_variants() {
         .iter()
         .map(|w| w.mask.id.as_str())
         .collect();
-    assert_eq!(ids, ["whiteout-1", "whiteout-2", "whiteout-3"]);
+    assert_eq!(ids, ["whiteout-101", "whiteout-102", "whiteout-103"]);
     // The coordinates are the file's, y up, as in a `[[masks]]` table.
     assert_eq!(
         loaded.white_outs[0].mask.polygons[0].outline,
@@ -537,21 +537,21 @@ fn white_outs_become_mask_variants() {
     assert!(a.iter().all(|m| matches!(m, MaskRef::WhiteOut(_))));
     assert_eq!(
         mask_ids(&lp.project, &loaded, "A"),
-        ["whiteout-1", "whiteout-2"]
+        ["whiteout-101", "whiteout-102"]
     );
     // B names white-out 3 itself, which wins over white-out 2 of all courses: only that one.
-    assert_eq!(mask_ids(&lp.project, &loaded, "B"), ["whiteout-3"]);
+    assert_eq!(mask_ids(&lp.project, &loaded, "B"), ["whiteout-103"]);
     // C has 2 and 3, which overlap: both, unchecked; the clips of Task 2 unite them. No note.
     assert_eq!(
         mask_ids(&lp.project, &loaded, "C"),
-        ["whiteout-2", "whiteout-3"]
+        ["whiteout-102", "whiteout-103"]
     );
     // B names a white-out by its number: an Info line says where that area lies (ruling R16).
     assert_eq!(
         loaded.mask_notes,
         [MaskNote::WhiteOutByNumber {
             course: "B".into(),
-            id: "whiteout-3".into(),
+            id: "whiteout-103".into(),
             centre: [60.0, 50.0],
             stand_in: false,
         }]
@@ -562,7 +562,7 @@ fn white_outs_become_mask_variants() {
     // used. A white-out the course file lacks is stale data, and the course gets no mask.
     let (_d, path) = ppen_dir(
         &specials,
-        "[[masks]]\nid = \"whiteout-3\"\n\
+        "[[masks]]\nid = \"whiteout-103\"\n\
          polygons = [[[[150, 40], [160, 40], [160, 50], [150, 50]]]]\n\
          [[assignments]]\ncourse = \"B\"\nlayout = \"a4\"\nmask = \"whiteout-9\"\n",
     );
@@ -573,7 +573,7 @@ fn white_outs_become_mask_variants() {
         loaded.mask_notes,
         [MaskNote::WhiteOutByNumber {
             course: "C".into(),
-            id: "whiteout-3".into(),
+            id: "whiteout-103".into(),
             centre: [60.0, 50.0],
             stand_in: true,
         }]
@@ -589,7 +589,7 @@ fn white_outs_become_mask_variants() {
     let c = mask_for(&lp.project, &loaded, "C");
     assert!(
         matches!(c.as_slice(), [MaskRef::WhiteOut(w), MaskRef::Project(p)]
-        if w.id == "whiteout-2" && p.polygons[0].outline[0] == [150.0, 40.0]),
+        if w.id == "whiteout-102" && p.polygons[0].outline[0] == [150.0, 40.0]),
         "{c:?}"
     );
 }
@@ -625,14 +625,14 @@ fn whiteout_only_applies_to_its_courses() {
     let none: Vec<String> = Vec::new();
     assert_eq!(
         white_out_masks(&specials),
-        [none.clone(), vec!["whiteout-1".to_string()], none]
+        [none.clone(), vec!["whiteout-101".to_string()], none]
     );
 }
 
 #[test]
 fn whiteout_with_all_applies_everywhere() {
     let specials = white_out(1, -80.0, 40.0, 10.0, "<courses all=\"true\" />");
-    let all = vec!["whiteout-1".to_string()];
+    let all = vec!["whiteout-101".to_string()];
     assert_eq!(white_out_masks(&specials), [all.clone(), all.clone(), all]);
 }
 
@@ -645,7 +645,7 @@ fn overlapping_white_outs_give_both_masks() {
         white_out(1, 50.0, 40.0, 10.0, "<courses all=\"true\" />"),
         white_out(2, 55.0, 45.0, 10.0, "<courses all=\"true\" />"),
     );
-    let both = vec!["whiteout-1".to_string(), "whiteout-2".to_string()];
+    let both = vec!["whiteout-101".to_string(), "whiteout-102".to_string()];
     assert_eq!(
         white_out_masks(&specials),
         [both.clone(), both.clone(), both]
