@@ -54,7 +54,7 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0011](0011-club-training-first.md) | Club training first | Accepted | 2026-11-08 |
 | [0012](0012-symbols-keep-their-printed-size.md) | Symbols keep the printed size the standard sets | Superseded by [0018](0018-symbols-scale-as-the-iof-standards-set.md) | 2026-11-08 |
 | [0013](0013-example-projects-built-on-freemapper-examples.md) | Example projects built on freemapper's examples | Accepted | 2026-11-08 |
-| [0014](0014-renderer-copied-from-freemapper.md) | The renderer is copied from freemapper and developed here | Accepted, amended by [0043](0043-omap-course-and-placement-come-from-freemapper-core.md) | 2026-11-08 |
+| [0014](0014-renderer-copied-from-freemapper.md) | The renderer is copied from freemapper and developed here | Accepted, amended by [0043](0043-omap-course-and-placement-come-from-freemapper-core.md) and [0051](0051-render-comes-from-freemapper-core.md) | 2026-11-08 |
 | [0015](0015-course-content-in-course-setting-presentation-here.md) | Course setting decides what is the same on every sheet, freemapper-print the rest | Accepted | 2026-11-08 |
 | [0016](0016-ai-features-optional.md) | AI features inside the program are optional | Accepted | 2026-11-08 |
 | [0017](0017-arimo-as-the-embedded-font.md) | Arimo as the embedded font | Accepted | 2026-11-08 |
@@ -91,3 +91,5 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0048](0048-white-outs-by-purple-pen-id.md) | White-outs keyed by Purple Pen id | Accepted | 2026-11-10 |
 | [0049](0049-description-symbols-from-core.md) | Description symbols from core | Accepted | 2026-11-10 |
 | [0050](0050-reader-tests-against-the-suite-contract.md) | Reader tests against the suite contract | Accepted | 2026-11-10 |
+| [0051](0051-render-comes-from-freemapper-core.md) | The renderer comes from freemapper-core | Accepted, amends [0014](0014-renderer-copied-from-freemapper.md) | 2026-11-10 |
+| [0052](0052-an-unknown-map-kind-counts-as-absent.md) | An unknown map kind in freemapper.toml counts as absent | Accepted, amends [0050](0050-reader-tests-against-the-suite-contract.md) | 2026-11-10 |

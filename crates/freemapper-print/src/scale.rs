@@ -153,7 +153,7 @@ pub fn geometry_factor(map_scale: u32, print_scale: u32) -> f64 {
 
 #[derive(Deserialize)]
 struct Sidecar {
-    /// The name as written; a name this version does not know is no error (ADR 0051).
+    /// The name as written; a name this version does not know is no error (ADR 0052).
     map_kind: Option<String>,
     title: Option<String>,
 }

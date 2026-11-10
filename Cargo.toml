@@ -16,6 +16,7 @@ freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag =
 freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0" }
 freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0" }
 freemapper-omap = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0" }
+freemapper-render = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0" }
 freemapper-course = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0" }
 # The suite contract with its fixtures; tests only (ADR 0050).
 freemapper-contract = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.10.0", features = ["fixtures"] }

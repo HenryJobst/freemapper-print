@@ -14,7 +14,6 @@ pub mod output;
 pub mod overprint;
 pub mod print;
 pub mod project;
-pub mod render;
 pub mod rules;
 pub mod scale;
 pub mod sheet;
@@ -25,6 +24,7 @@ pub use freemapper_course as course;
 pub use freemapper_course::description_symbols;
 pub use freemapper_course::placement;
 pub use freemapper_omap as omap;
+pub use freemapper_render as render;
 
 /// The program and where to find it, as named in the PDF metadata.
 pub const CREDIT: &str = concat!("freemapper-print – ", env!("CARGO_PKG_REPOSITORY"));
@@ -57,8 +57,8 @@ mod contract;
 mod boundaries {
     //! The boundaries of ADR 0039 and 0043. `omap`, `course` and `placement` are freemapper-core crates now, so
     //! the compiler keeps them apart; the code here reaches them through the re-exports in this file only.
-    //! `render` moves into freemapper-core later and must not reach into the parts of freemapper-print that stay
-    //! here, nor into the course crate.
+    //! `render` is a freemapper-core crate too (`freemapper-render`, ADR 0051); Cargo keeps it from reaching
+    //! into the parts of freemapper-print.
 
     use std::path::{Path, PathBuf};
 
@@ -244,30 +244,6 @@ mod boundaries {
         }
     }
 
-    #[test]
-    fn render_does_not_know_courses_or_sheets() {
-        let found = uses(
-            "render",
-            &[
-                "rules",
-                "mask",
-                "output",
-                "scale",
-                "overprint",
-                "sheet",
-                "project",
-                "course",
-                "courses",
-                "placement",
-                "numbers",
-                "export",
-                "describe",
-                "print",
-            ],
-        );
-        assert!(found.is_empty(), "{found:#?}");
-    }
-
     /// The files under `src/` and `tests/` other than this one that name `freemapper_omap` or
     /// `freemapper_course`, as "file: crate".
     fn direct_crate_uses() -> Vec<String> {
@@ -280,7 +256,7 @@ mod boundaries {
             .filter(|f| *f != lib)
         {
             let text = std::fs::read_to_string(&file).unwrap();
-            for name in ["freemapper_omap", "freemapper_course"] {
+            for name in ["freemapper_omap", "freemapper_course", "freemapper_render"] {
                 if text.contains(name) {
                     found.push(format!("{}: {name}", file.display()));
                 }
@@ -302,6 +278,7 @@ mod boundaries {
             "pub use freemapper_course::description_symbols;",
             "pub use freemapper_course::placement;",
             "pub use freemapper_omap as omap;",
+            "pub use freemapper_render as render;",
         ] {
             assert!(lib.contains(line), "missing: {line}");
         }

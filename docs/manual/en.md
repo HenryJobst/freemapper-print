@@ -823,7 +823,8 @@ These notes come from `render`, `check` and `export`:
   area pattern denser than 0.05 mm or with invalid numbers. The program leaves the pattern out and prints
   the rest of the area.
 - "Note: ... The map kind comes from the map file instead.": the `freemapper.toml` next to the map is broken.
-  The program then takes the map kind from the map file.
+  The program then takes the map kind from the map file. A map kind the program does not know is no error:
+  the map file decides then too, without a note.
 - "the font Arimo replaces ...": the PDF contains only the Arimo font. The program replaces the other fonts of
   the map with it.
 - "the embedded font has no glyph for these characters, so they are missing in the PDF": a character of the map

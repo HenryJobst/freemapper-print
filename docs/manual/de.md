@@ -861,7 +861,8 @@ Diese Hinweise kommen von `render`, `check` und `export`:
   verlangt ein Flächenmuster, das dichter als 0,05 mm ist oder ungültige Zahlen hat. Das Programm lässt das
   Muster weg und druckt den Rest der Fläche.
 - „Hinweis: … Die Kartenart kommt stattdessen aus der Kartendatei.“: Die Datei `freemapper.toml` neben der
-  Karte ist kaputt. Das Programm bestimmt die Kartenart dann aus der Kartendatei.
+  Karte ist kaputt. Das Programm bestimmt die Kartenart dann aus der Kartendatei. Eine Kartenart, die das
+  Programm nicht kennt, ist kein Fehler: Auch dann entscheidet die Kartendatei, ohne Hinweis.
 - „Die Schrift Arimo ersetzt …“: Das PDF enthält nur die Schrift Arimo. Andere Schriften der Karte ersetzt das
   Programm durch sie.
 - „Die eingebettete Schrift kann diese Zeichen nicht darstellen …“: Ein Zeichen der Karte fehlt in Arimo und

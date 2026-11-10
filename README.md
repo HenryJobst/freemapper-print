@@ -66,8 +66,8 @@ liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer
 Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren.
 freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile),
 `freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap` (Kartenmodell und Kartenleser) und
-`freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der Renderer (`render`) zieht später
-um und liegt bis dahin noch in diesem Repository.
+`freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der Renderer (`freemapper-render`) liegt seit core v0.9.0
+auch dort.
 
 ## Beispiele
 
