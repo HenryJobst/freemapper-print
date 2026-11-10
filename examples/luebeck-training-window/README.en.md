@@ -64,14 +64,12 @@ Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gef�
 A mask belongs to a course's assignment. The layout sheet without a course therefore has none, and
 `export --layout a4-4000` prints the whole map.
 
-Without `--include-start` and `--include-finish` the start and finish would get no window. `masks window` says so
-right away, and `check` then names them with exit code 1:
+The start and the finish get their windows by default. With `--no-start` and `--no-finish` they would get none.
+`masks window` says so right away, and `check` then names them with exit code 1:
 
 ```
-Hinweis: Auf dem Blatt der Bahn „Fenster“ liegen die Posten STA1, FIN1 dort, wo die Abdeckung die Karte verbirgt. Die Läufer finden um sie herum keine Karte. Ergänzen Sie dort ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
+Hinweis: Auf dem Blatt der Bahn „Fenster“ liegen der Start und das Ziel dort, wo die Abdeckung die Karte verbirgt. Die Läufer finden dort keine Karte. Ergänzen Sie ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
 ```
-
-`STA1` and `FIN1` are the start and the finish; Purple Pen gives them no code.
 
 ## How it was made
 
@@ -110,11 +108,11 @@ The mask comes from `masks window`, with no hand work:
 
 ```sh
 freemapper-print --lang de check .
-freemapper-print --lang de masks window . --course Fenster --radius 15 --radius-for 34=20 --include-start --include-finish --assign
+freemapper-print --lang de masks window . --course Fenster --radius 15 --radius-for 34=20 --assign
 ```
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um STA1, 43, 34, 41, 42, 38, 35, 50, 37 und FIN1 der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
 Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.

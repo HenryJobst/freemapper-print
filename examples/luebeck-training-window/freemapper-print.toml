@@ -65,8 +65,8 @@ mask = "window-Fenster"
 course = "Fenster"
 layout = "a4-4000"
 
-# Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um STA1, 43, 34, 41, 42, 38, 35, 50, 37 und
-# FIN1 der Bahn „Fenster“, erzeugt mit masks window.
+# Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38,
+# 35, 50 und 37 und das Ziel der Bahn „Fenster“, erzeugt mit masks window.
 # Posten 34 hat ein Fenster mit 20 mm Radius.
 [[masks]]
 id = "window-Fenster"

@@ -63,14 +63,12 @@ Zur Information: Der Text title nutzt {controls}, der nur auf Bahnblättern gef�
 Eine Abdeckung gehört zur Zuordnung einer Bahn. Das Layoutblatt ohne Bahn hat deshalb keine, und
 `export --layout a4-4000` druckt die ganze Karte.
 
-Ohne `--include-start` und `--include-finish` bekämen Start und Ziel kein Fenster. `masks window` sagt das
-gleich, und `check` meldet sie dann mit Exit-Code 1:
+Start und Ziel bekommen ihr Fenster von selbst. Mit `--no-start` und `--no-finish` bekämen sie keins. `masks window`
+sagt das gleich, und `check` meldet sie dann mit Exit-Code 1:
 
 ```
-Hinweis: Auf dem Blatt der Bahn „Fenster“ liegen die Posten STA1, FIN1 dort, wo die Abdeckung die Karte verbirgt. Die Läufer finden um sie herum keine Karte. Ergänzen Sie dort ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
+Hinweis: Auf dem Blatt der Bahn „Fenster“ liegen der Start und das Ziel dort, wo die Abdeckung die Karte verbirgt. Die Läufer finden dort keine Karte. Ergänzen Sie ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
 ```
-
-`STA1` und `FIN1` sind Start und Ziel; Purple Pen gibt ihnen keinen Code.
 
 ## So ist es entstanden
 
@@ -109,11 +107,11 @@ Die Abdeckung entsteht mit `masks window`, ohne Handarbeit:
 
 ```sh
 freemapper-print --lang de check .
-freemapper-print --lang de masks window . --course Fenster --radius 15 --radius-for 34=20 --include-start --include-finish --assign
+freemapper-print --lang de masks window . --course Fenster --radius 15 --radius-for 34=20 --assign
 ```
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um STA1, 43, 34, 41, 42, 38, 35, 50, 37 und FIN1 der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
 Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
