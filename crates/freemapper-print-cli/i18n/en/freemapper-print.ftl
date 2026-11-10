@@ -343,6 +343,8 @@ stale-scope-course = course "{ $name }"
 note-stale-changed-base = Note: the course file has moved the number of control { $control } since the project file corrected it. Check whether the correction still fits.
 note-stale-mask = Note: the project file gives course "{ $course }" the mask "{ $mask }", but the course file has no such white-out area. The course prints without a mask; the assignment stays in the project file.
 note-mask-unused = Info: no course uses the mask "{ $id }". Name it in an assignment with mask = "{ $id }", or delete its [[masks]] entry.
+note-white-out-by-number = Info: course "{ $course }" prints with the white-out area { $id } of the course file, which lies around { $x }, { $y } (map mm, y up). The number counts the white-out areas in course file order. If you delete one in Purple Pen or their order changes, the same number means another area, so check the assignment then.
+note-white-out-stand-in = Info: on the sheet of course "{ $course }", the [[masks]] table with the id { $id } takes the place of the white-out area of the course file that lies around { $x }, { $y } (map mm, y up). The number counts the white-out areas in course file order. If you delete one in Purple Pen or their order changes, the table replaces another area, so check its id then.
 note-map-cropped-to-course = Info: the map is { $cut } for the map frame. A course sheet shows the part around the course, so the rest is cut off on purpose.
 note-course-placeholder-not-filled = Info: the text { $id } uses { $name }, which is only filled on course sheets. On this sheet it stays empty.
 note-no-courses-to-export = Note: the course file has no course to export, so no PDF was written.

@@ -895,6 +895,7 @@ the exit code.
 | "the course file has moved the number of control … since the project file corrected it. Check whether the correction still fits." | Someone moved the number in the course-setting program after you made the correction. Look at the sheet. If the correction still fits, the note stays until you delete the entry and write it again with `numbers accept --direction … --gap …`. If it does not fit, delete the entry. |
 | "Info: no course uses the mask … Name it in an assignment …" | A `[[masks]]` entry applies to no course. No assignment names it with `mask`, and no white-out area of the course file has its id. Add `mask = "…"` to the course's assignment, or delete the entry. The note comes once per run. |
 | "the project file gives course … the mask …, but the course file has no such white-out area. …" | The assignment names a white-out area from Purple Pen that the course file no longer has. The course prints without a mask. Fix the number, name a mask of your own, or delete the `mask` line. |
+| "Info: course … prints with the white-out area whiteout-… of the course file, which lies around …" and "Info: on the sheet of course …, the [[masks]] table with the id whiteout-… takes the place of the white-out area …" | The project file names a white-out area by its number, and the number counts the areas in course file order. Look in OOM whether the area around that point is the one you mean. After a white-out area was deleted in Purple Pen, the number can point at another one. |
 | "the course file has no course to export, so no PDF was written." | The file has no course, or every course was left out. See the notes above. |
 
 Notes about one course sheet:
@@ -1114,6 +1115,12 @@ white-out areas, each on its own, also where they overlap. `check` lists the whi
 - A `[[masks]]` table with the id `whiteout-2` takes the place of the second white-out area.
 - If the course file no longer has the white-out area named, `check` says so, and the course prints without a
   mask. The assignment stays in the project file.
+
+The number in `whiteout-<n>` is the place of the area in the course file, not a name. If you delete a white-out
+area in Purple Pen, or their order changes, `whiteout-2` means another area, and the program cannot tell. Check the
+assignments and the `[[masks]]` tables after such a change. `check` helps with one information line for each
+course whose assignment names a white-out area by its number, or on whose sheet a `[[masks]]` table takes the place
+of one. The line gives the middle of the area in map mm with y up, so you can find it in OOM.
 
 A sheet applies at most 1000 masks. If a course has more white-out areas, the rest are left out, and `check` warns.
 

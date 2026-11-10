@@ -32,7 +32,7 @@ pub struct LoadedCourses {
     pub stale: Vec<Stale>,
     /// The white-outs of the course file as mask variants `whiteout-<n>`, in file order (ADR 0045).
     pub white_outs: Vec<WhiteOut>,
-    /// Masks that no course uses.
+    /// Masks that no course uses, and the white-outs the project file names by number.
     pub mask_notes: Vec<MaskNote>,
 }
 
@@ -169,7 +169,7 @@ pub fn load_courses(
     let white_outs = white_outs_of(&fitted.event);
     let mut stale = stale_entries(&project.project, &fitted.event, &white_outs);
     stale.extend(crate::numbers::changed_bases(project, &fitted.event));
-    let mask_notes = mask_notes(&project.project, &white_outs);
+    let mask_notes = mask_notes(&project.project, &fitted.event, &white_outs);
     Ok(Some(LoadedCourses {
         notes: fitted.event.notes.clone(),
         event: fitted.event,
@@ -315,6 +315,17 @@ pub struct WhiteOut {
 pub enum MaskNote {
     /// No assignment names the mask and no white-out of the course file has its id. Information only.
     MaskUnused { id: String },
+    /// The project file names the white-out `id` (`whiteout-<n>`) for `course`: its assignment names it, or
+    /// (`stand_in`) a `[[masks]]` entry with that id takes its place on the course's sheet. `n` counts the
+    /// white-outs in course file order, so deleting or reordering one in Purple Pen moves the reference to another
+    /// area without a warning. `centre` is the middle of the white-out's box (map mm, y up), so that a changed
+    /// target shows (ruling R16). Information only.
+    WhiteOutByNumber {
+        course: String,
+        id: String,
+        centre: [f64; 2],
+        stand_in: bool,
+    },
 }
 
 impl MaskNote {
@@ -408,9 +419,11 @@ fn white_outs_of(event: &FittedEvent) -> Vec<WhiteOut> {
         .collect()
 }
 
-/// The notes about masks: every `[[masks]]` entry that no assignment names and no white-out id matches.
-fn mask_notes(project: &Project, white_outs: &[WhiteOut]) -> Vec<MaskNote> {
-    project
+/// The notes about masks: every `[[masks]]` entry that no assignment names and no white-out id matches, then a
+/// [`MaskNote::WhiteOutByNumber`] for each course whose assignment names a white-out, and for each course on which
+/// a `[[masks]]` entry stands in for one, in course order.
+fn mask_notes(project: &Project, event: &FittedEvent, white_outs: &[WhiteOut]) -> Vec<MaskNote> {
+    let mut notes: Vec<MaskNote> = project
         .masks
         .iter()
         .filter(|m| {
@@ -421,5 +434,48 @@ fn mask_notes(project: &Project, white_outs: &[WhiteOut]) -> Vec<MaskNote> {
             !assigned && !white_outs.iter().any(|w| w.mask.id == m.id)
         })
         .map(|m| MaskNote::MaskUnused { id: m.id.clone() })
-        .collect()
+        .collect();
+    let white_out = |id: &str| white_outs.iter().find(|w| w.mask.id == id);
+    for course in &event.courses {
+        let assigned = project
+            .assignments
+            .iter()
+            .find(|a| a.course == course.name)
+            .and_then(|a| a.mask.as_deref());
+        let named: Vec<(&WhiteOut, bool)> = match assigned {
+            Some(id) => white_out(id).map(|w| (w, false)).into_iter().collect(),
+            None => white_outs
+                .iter()
+                .filter(|w| applies(&w.courses, &course.name))
+                .filter(|w| project.masks.iter().any(|m| m.id == w.mask.id))
+                .map(|w| (w, true))
+                .collect(),
+        };
+        for (w, stand_in) in named {
+            notes.push(MaskNote::WhiteOutByNumber {
+                course: course.name.clone(),
+                id: w.mask.id.clone(),
+                centre: box_centre(&w.mask),
+                stand_in,
+            });
+        }
+    }
+    notes
+}
+
+/// The middle of the box around the outlines of `mask` (map mm, y up, as written).
+fn box_centre(mask: &Mask) -> [f64; 2] {
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for [x, y] in mask.polygons.iter().flat_map(|p| &p.outline) {
+        b = [b[0].min(*x), b[1].min(*y), b[2].max(*x), b[3].max(*y)];
+    }
+    if b[0] > b[2] {
+        return [0.0, 0.0];
+    }
+    [(b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0]
 }

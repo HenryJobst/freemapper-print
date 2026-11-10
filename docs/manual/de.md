@@ -933,6 +933,7 @@ nicht für den Exit-Code.
 | „Die Bahndatei hat die Nummer von Posten … verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.“ | Jemand hat die Nummer im Bahnlegungsprogramm verschoben, nachdem Sie die Korrektur gemacht haben. Sehen Sie sich das Blatt an. Passt die Korrektur noch, bleibt der Hinweis, bis Sie den Eintrag löschen und mit `numbers accept --direction … --gap …` neu schreiben. Passt sie nicht, löschen Sie den Eintrag. |
 | „Zur Information: Keine Bahn nutzt die Abdeckung … Nennen Sie sie in einer Zuordnung …“ | Ein Eintrag `[[masks]]` gilt für keine Bahn. Keine Zuordnung nennt ihn mit `mask`, und keine Abdeckfläche der Bahndatei hat seine ID. Tragen Sie `mask = "…"` in die Zuordnung der Bahn ein, oder löschen Sie den Eintrag. Der Hinweis kommt einmal je Lauf. |
 | „Die Projektdatei gibt der Bahn … die Abdeckung …, aber die Bahndatei hat keine solche Abdeckfläche (White-out). …“ | Die Zuordnung nennt eine Abdeckfläche aus Purple Pen, die es in der Bahndatei nicht mehr gibt. Die Bahn wird ohne Abdeckung gedruckt. Korrigieren Sie die Nummer, nennen Sie eine eigene Abdeckung, oder löschen Sie die Zeile `mask`. |
+| „Zur Information: Die Bahn … wird mit der Abdeckfläche whiteout-… aus der Bahndatei gedruckt, die um … liegt …“ und „Zur Information: Auf dem Blatt der Bahn … tritt die Tabelle [[masks]] mit der ID whiteout-… an die Stelle der Abdeckfläche …“ | Die Projektdatei nennt eine Abdeckfläche mit ihrer Nummer, und die Nummer zählt die Flächen in der Reihenfolge der Bahndatei. Sehen Sie in OOM nach, ob die Fläche um diesen Punkt die gemeinte ist. Wurde in Purple Pen eine Abdeckfläche gelöscht, kann die Nummer auf eine andere zeigen. |
 | „Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.“ | Die Datei hat keine Bahn, oder jede Bahn fehlt. Siehe die Hinweise davor. |
 
 Hinweise zum Blatt einer Bahn:
@@ -1158,6 +1159,13 @@ Purple Pen kennt Abdeckflächen (White-out). Das Programm druckt sie als Abdecku
 - Eine Tabelle `[[masks]]` mit der ID `whiteout-2` tritt an die Stelle der zweiten Abdeckfläche.
 - Hat die Bahndatei die genannte Abdeckfläche nicht mehr, meldet `check` das, und die Bahn wird ohne Abdeckung
   gedruckt. Die Zuordnung bleibt in der Projektdatei.
+
+Die Nummer in `whiteout-<n>` ist die Stelle der Fläche in der Bahndatei, kein Name. Löschen Sie in Purple Pen eine
+Abdeckfläche oder ändert sich ihre Reihenfolge, meint `whiteout-2` eine andere Fläche, und das Programm merkt es
+nicht. Prüfen Sie nach einer solchen Änderung die Zuordnungen und die Tabellen `[[masks]]`. Dabei hilft `check` mit
+einer Zeile zur Information für jede Bahn, deren Zuordnung eine Abdeckfläche mit ihrer Nummer nennt oder auf deren
+Blatt eine Tabelle `[[masks]]` an die Stelle einer Abdeckfläche tritt. Die Zeile nennt die Mitte der Fläche in
+Karten-mm mit der y-Achse nach oben, so finden Sie sie in OOM.
 
 Ein Blatt wendet höchstens 1000 Abdeckungen an. Hat eine Bahn mehr Abdeckflächen, fehlen die übrigen, und `check`
 warnt.

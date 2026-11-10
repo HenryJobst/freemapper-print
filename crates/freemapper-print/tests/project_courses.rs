@@ -546,7 +546,17 @@ fn white_outs_become_mask_variants() {
         mask_ids(&lp.project, &loaded, "C"),
         ["whiteout-2", "whiteout-3"]
     );
-    assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
+    // B names a white-out by its number: an Info line says where that area lies (ruling R16).
+    assert_eq!(
+        loaded.mask_notes,
+        [MaskNote::WhiteOutByNumber {
+            course: "B".into(),
+            id: "whiteout-3".into(),
+            centre: [60.0, 50.0],
+            stand_in: false,
+        }]
+    );
+    assert!(!loaded.mask_notes[0].is_warning());
 
     // A `[[masks]]` entry named like a white-out stands in for it, for the white-out's courses, and counts as
     // used. A white-out the course file lacks is stale data, and the course gets no mask.
@@ -558,7 +568,16 @@ fn white_outs_become_mask_variants() {
     );
     let lp = project::load(&path).unwrap();
     let loaded = load_courses(&lp, &map).unwrap().unwrap();
-    assert!(loaded.mask_notes.is_empty(), "{:?}", loaded.mask_notes);
+    // The stand-in replaces white-out 3 on C, its only course: the Info line names where the replaced area lies.
+    assert_eq!(
+        loaded.mask_notes,
+        [MaskNote::WhiteOutByNumber {
+            course: "C".into(),
+            id: "whiteout-3".into(),
+            centre: [60.0, 50.0],
+            stand_in: true,
+        }]
+    );
     assert_eq!(
         loaded.stale,
         [Stale::Mask {

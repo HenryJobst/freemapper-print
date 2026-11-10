@@ -2197,6 +2197,24 @@ fn mask_note_line(texts: &Texts, note: &MaskNote) -> String {
         MaskNote::MaskUnused { id } => {
             texts.get("note-mask-unused", Some(&args!("id" => printable(id))))
         }
+        MaskNote::WhiteOutByNumber {
+            course,
+            id,
+            centre,
+            stand_in,
+        } => texts.get(
+            if *stand_in {
+                "note-white-out-stand-in"
+            } else {
+                "note-white-out-by-number"
+            },
+            Some(&args!(
+                "course" => printable(course),
+                "id" => printable(id),
+                "x" => short_decimal(texts, centre[0], 1),
+                "y" => short_decimal(texts, centre[1], 1),
+            )),
+        ),
     }
 }
 
@@ -3085,6 +3103,24 @@ mod tests {
             (
                 SheetNote::Mask(MaskNote::MaskUnused { id: s("spare") }),
                 vec!["spare", "[[masks]]"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::WhiteOutByNumber {
+                    course: s("Kurz"),
+                    id: s("whiteout-2"),
+                    centre: [-12.25, 40.0],
+                    stand_in: false,
+                }),
+                vec!["Kurz", "whiteout-2", "-12", "40", "Purple Pen"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::WhiteOutByNumber {
+                    course: s("Kurz"),
+                    id: s("whiteout-2"),
+                    centre: [-12.25, 40.0],
+                    stand_in: true,
+                }),
+                vec!["Kurz", "whiteout-2", "[[masks]]", "-12", "40", "Purple Pen"],
             ),
             (
                 SheetNote::MapCroppedToCourse {
