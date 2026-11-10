@@ -440,6 +440,30 @@ pub enum ProjectError {
     NoLayout { file: String },
     #[error("{file} exists already; it was not overwritten")]
     Exists { file: String },
+    /// [`append_mask`] for a course whose assignment names another mask.
+    #[error(
+        "{file}: the assignment of course \"{course}\" names the mask \"{mask}\" already; change it in the file"
+    )]
+    CourseHasMask {
+        file: String,
+        course: String,
+        mask: String,
+    },
+    /// [`append_mask`] found the course's assignment, but not as a `[[assignments]]` table of its own.
+    #[error(
+        "{file}: the assignment of course \"{course}\" is not written as a table [[assignments]] of its own, so \
+         the mask cannot be added to it; add mask = \"{mask}\" to it by hand"
+    )]
+    AssignmentNotEditable {
+        file: String,
+        course: String,
+        mask: String,
+    },
+    /// The changed file loaded, but not as what was written; the old content was put back.
+    #[error(
+        "{file}: the changed file reads back differently than it was written, so the old content was put back"
+    )]
+    ReadBackDiffers { file: String },
     #[error("cannot write the project file: {0}")]
     Serialize(String),
 }
@@ -1459,28 +1483,202 @@ pub fn append_correction(
         numbers: [&correction],
     })
     .map_err(|e| ProjectError::Serialize(e.to_string()))?;
-    // The new lines end as the file's do.
-    let crlf = old.windows(2).any(|w| w == b"\r\n");
-    let newline: &[u8] = if crlf { b"\r\n" } else { b"\n" };
-    let mut new = old.clone();
+    let new = appended(&old, &table);
+    rewrite(path, &old, &new, |_| true)
+}
+
+/// The line break of `text`: CRLF when it has one, else LF.
+fn newline_of(text: &[u8]) -> &'static str {
+    if text.windows(2).any(|w| w == b"\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+/// `text` (LF line breaks) with the line breaks of `old`.
+fn with_newlines(old: &[u8], text: &str) -> String {
+    text.replace('\n', newline_of(old))
+}
+
+/// `old` with an empty line and then `tables` (TOML text, LF line breaks), the new lines ending as the file's do.
+fn appended(old: &[u8], tables: &str) -> Vec<u8> {
+    let newline = newline_of(old).as_bytes();
+    let mut new = old.to_vec();
     if !new.ends_with(b"\n") {
         new.extend_from_slice(newline);
     }
     new.extend_from_slice(newline);
-    for line in table.split_inclusive('\n') {
-        match line.strip_suffix('\n') {
-            Some(text) => {
-                new.extend_from_slice(text.as_bytes());
-                new.extend_from_slice(newline);
+    new.extend_from_slice(with_newlines(old, tables).as_bytes());
+    new
+}
+
+/// Replaces the project file `path` with `new` ([`replace_file`]) and loads it. When it does not load, or `wanted`
+/// says the result is not what was meant, the old content `old` is put back and the error returned: the load
+/// error, or [`ProjectError::ReadBackDiffers`].
+fn rewrite(
+    path: &Path,
+    old: &[u8],
+    new: &[u8],
+    wanted: impl FnOnce(&LoadedProject) -> bool,
+) -> Result<LoadedProject, ProjectError> {
+    replace_file(path, new)?;
+    let file = path.display().to_string();
+    load(path)
+        .and_then(|lp| {
+            if wanted(&lp) {
+                Ok(lp)
+            } else {
+                Err(ProjectError::ReadBackDiffers { file })
             }
-            None => new.extend_from_slice(line.as_bytes()),
+        })
+        .inspect_err(|_| {
+            // Best effort: the load error is the one to report.
+            let _ = replace_file(path, old);
+        })
+}
+
+/// Appends `mask` as a `[[masks]]` table to the project file at `path` and loads the result, the way
+/// [`append_correction`] appends a correction: everything before stays byte for byte as it was, the new lines end
+/// as the file's do, the file is replaced through a partial file, and when the result does not load or does not
+/// read back as written, the old content is put back and the error returned. `comment` (when not empty) goes above
+/// the table as `#` lines. Points are written as they are; generated masks round them to 0.001 mm.
+///
+/// With `assign` = (course, layout) the course prints with the mask: its `[[assignments]]` table gets a line
+/// `mask = "<id>"` after its header, or, without an assignment, a new table with `layout` follows the mask. Refused
+/// before anything is written: an id the file has already ([`ProjectError::DuplicateId`]), a course whose
+/// assignment names another mask ([`ProjectError::CourseHasMask`]), and an assignment not written as a table of its
+/// own ([`ProjectError::AssignmentNotEditable`]).
+pub fn append_mask(
+    path: &Path,
+    mask: &Mask,
+    assign: Option<(&str, &str)>,
+    comment: &str,
+) -> Result<LoadedProject, ProjectError> {
+    let file = path.display().to_string();
+    let old = std::fs::read(path).map_err(|source| ProjectError::Io {
+        file: file.clone(),
+        source,
+    })?;
+    let before = load(path)?;
+    let mut expected = before.project.clone();
+    if expected.masks.iter().any(|m| m.id == mask.id) {
+        return Err(ProjectError::DuplicateId {
+            file,
+            field: "masks".into(),
+            id: mask.id.clone(),
+        });
+    }
+    expected.masks.push(mask.clone());
+    let mut new = old.clone();
+    let mut tables = String::new();
+    if !comment.is_empty() {
+        tables.push_str(&comment_lines(comment));
+    }
+    tables.push_str(&mask_table(mask)?);
+    if let Some((course, layout)) = assign {
+        match expected.assignments.iter().position(|a| a.course == course) {
+            Some(i) => match &expected.assignments[i].mask {
+                Some(m) if *m == mask.id => {}
+                Some(m) => {
+                    return Err(ProjectError::CourseHasMask {
+                        file,
+                        course: course.into(),
+                        mask: m.clone(),
+                    });
+                }
+                None => {
+                    let not_editable = || ProjectError::AssignmentNotEditable {
+                        file: file.clone(),
+                        course: course.into(),
+                        mask: mask.id.clone(),
+                    };
+                    let text = std::str::from_utf8(&old).map_err(|_| not_editable())?;
+                    let at = assignment_body(text, i, expected.assignments.len())
+                        .ok_or_else(not_editable)?;
+                    let line = with_newlines(&old, &key_line("mask", &mask.id)?);
+                    new.splice(at..at, line.bytes());
+                    expected.assignments[i].mask = Some(mask.id.clone());
+                }
+            },
+            None => {
+                let a = Assignment {
+                    course: course.into(),
+                    layout: layout.into(),
+                    mask: Some(mask.id.clone()),
+                };
+                #[derive(Serialize)]
+                struct Wrapper<'a> {
+                    assignments: [&'a Assignment; 1],
+                }
+                let table = toml::to_string(&Wrapper { assignments: [&a] })
+                    .map_err(|e| ProjectError::Serialize(e.to_string()))?;
+                tables.push('\n');
+                tables.push_str(&table);
+                expected.assignments.push(a);
+            }
         }
     }
-    replace_file(path, &new)?;
-    load(path).inspect_err(|_| {
-        // Best effort: the load error is the one to report.
-        let _ = replace_file(path, &old);
-    })
+    let new = appended(&new, &tables);
+    rewrite(path, &old, &new, |lp| lp.project == expected)
+}
+
+/// `key = "value"` as TOML writes it, with a line break.
+fn key_line(key: &str, value: &str) -> Result<String, ProjectError> {
+    let mut table = toml::Table::new();
+    table.insert(key.into(), toml::Value::String(value.into()));
+    toml::to_string(&table).map_err(|e| ProjectError::Serialize(e.to_string()))
+}
+
+/// The byte offset in `text` just after the header line of the `i`-th `[[assignments]]` table, when the text
+/// has `count` such headers (otherwise some assignments are written another way and the count cannot be trusted).
+/// A header may carry a comment. The caller checks the result by loading it again.
+fn assignment_body(text: &str, i: usize, count: usize) -> Option<usize> {
+    let mut found = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("[[")
+            && let Some((name, after)) = rest.split_once("]]")
+            && name.trim() == "assignments"
+            && (after.trim().is_empty() || after.trim_start().starts_with('#'))
+        {
+            found.push(offset + line.len());
+        }
+        offset += line.len();
+    }
+    // A header on the last line without a line break has no table body to add to.
+    let at = *found.get(i)?;
+    (found.len() == count && text[..at].ends_with('\n')).then_some(at)
+}
+
+/// Most points on one line of a written ring.
+const POINTS_PER_LINE: usize = 4;
+
+/// `mask` as a `[[masks]]` table: the id, then the polygons with one ring per block and a few points per line.
+/// The numbers are written so that they read back exactly.
+fn mask_table(mask: &Mask) -> Result<String, ProjectError> {
+    let number = |v: f64| format!("{v:?}");
+    let mut out = String::from("[[masks]]\n");
+    out.push_str(&key_line("id", &mask.id)?);
+    out.push_str("polygons = [\n");
+    for polygon in &mask.polygons {
+        out.push_str("    [\n");
+        for ring in std::iter::once(&polygon.outline).chain(&polygon.holes) {
+            out.push_str("        [\n");
+            for chunk in ring.chunks(POINTS_PER_LINE) {
+                let points: Vec<String> = chunk
+                    .iter()
+                    .map(|[x, y]| format!("[{}, {}]", number(*x), number(*y)))
+                    .collect();
+                let _ = writeln!(out, "            {},", points.join(", "));
+            }
+            out.push_str("        ],\n");
+        }
+        out.push_str("    ],\n");
+    }
+    out.push_str("]\n");
+    Ok(out)
 }
 
 /// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
@@ -3154,6 +3352,142 @@ mod tests {
         assert!(restore_permissions(&path, wanted, &swap).is_err());
         let mode = std::fs::metadata(&other).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    /// A mask with one window; the points need more than one decimal to read back exactly.
+    fn small_mask(id: &str) -> Mask {
+        Mask {
+            id: id.into(),
+            polygons: vec![MaskPolygon {
+                outline: vec![
+                    [-100.0, -100.0],
+                    [100.0, -100.0],
+                    [100.0, 100.0],
+                    [-100.0, 100.0],
+                ],
+                holes: vec![vec![
+                    [0.0, 0.0],
+                    [10.125, 0.0],
+                    [10.125, 10.333],
+                    [0.1, 10.0],
+                    [-3.7, 5.0],
+                ]],
+            }],
+        }
+    }
+
+    const ASSIGNED: &str = "# layouts\n[[layouts]]\nid = \"a4\"\n\n[[assignments]] # by hand\ncourse = \"A\"\n\
+                            layout = \"a4\"\n\n[[numbers]]\ncontrol = \"31\"\ncourse = \"A\"\ndirection = 10.0\n# end";
+
+    #[test]
+    fn append_mask_keeps_the_text_and_assigns() {
+        let old = format!("{HEAD}{ASSIGNED}");
+        let (_dir, path) = temp_project(&old);
+        // The existing assignment of A gets the mask in its own table; the rest stays as it was.
+        let lp = append_mask(
+            &path,
+            &small_mask("w"),
+            Some(("A", "other")),
+            "made by\na test",
+        )
+        .unwrap();
+        let new = std::fs::read_to_string(&path).unwrap();
+        let prefix = old.replacen(
+            "[[assignments]] # by hand\n",
+            "[[assignments]] # by hand\nmask = \"w\"\n",
+            1,
+        );
+        assert!(new.starts_with(&prefix), "{new}");
+        assert!(
+            new.contains("# end\n\n# made by\n# a test\n[[masks]]\nid = \"w\"\n"),
+            "{new}"
+        );
+        assert_eq!(lp.project.masks, [small_mask("w")]);
+        let a = &lp.project.assignments;
+        assert_eq!(a.len(), 1);
+        assert_eq!(
+            (a[0].layout.as_str(), a[0].mask.as_deref()),
+            ("a4", Some("w"))
+        );
+        // A course without an assignment gets a new table after the mask.
+        let lp = append_mask(&path, &small_mask("v"), Some(("B", "a4")), "").unwrap();
+        let newer = std::fs::read_to_string(&path).unwrap();
+        assert!(newer.starts_with(&new), "{newer}");
+        assert_eq!(
+            lp.project.assignments[1],
+            Assignment {
+                course: "B".into(),
+                layout: "a4".into(),
+                mask: Some("v".into()),
+            }
+        );
+        // Without an assignment only the mask is added.
+        let lp = append_mask(&path, &small_mask("u"), None, "").unwrap();
+        assert_eq!(lp.project.masks.len(), 3);
+        assert_eq!(lp.project.assignments.len(), 2);
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with(&newer));
+    }
+
+    #[test]
+    fn append_mask_refuses_before_writing() {
+        let old = format!("{HEAD}{ASSIGNED}");
+        let (_dir, path) = temp_project(&old);
+        append_mask(&path, &small_mask("w"), Some(("A", "a4")), "").unwrap();
+        let done = std::fs::read_to_string(&path).unwrap();
+        // The id once only.
+        let err = append_mask(&path, &small_mask("w"), None, "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::DuplicateId { ref id, .. } if id == "w"),
+            "{err}"
+        );
+        // A second mask for A.
+        let err = append_mask(&path, &small_mask("v"), Some(("A", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::CourseHasMask { ref mask, .. } if mask == "w"),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+        // An assignment written inline cannot take the line.
+        let inline = format!(
+            "assignments = [{{ course = \"A\", layout = \"a4\" }}]\n{HEAD}[[layouts]]\nid = \"a4\"\n"
+        );
+        std::fs::write(&path, &inline).unwrap();
+        let err = append_mask(&path, &small_mask("w"), Some(("A", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { .. }),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+    }
+
+    #[test]
+    fn append_mask_restores_the_file_when_it_no_longer_loads() {
+        // An inline `masks` array makes the appended table a duplicate key.
+        let old = format!("masks = []\n{HEAD}{WITH_LAYOUT}");
+        let (_dir, path) = temp_project(&old);
+        let err = append_mask(&path, &small_mask("w"), None, "").unwrap_err();
+        assert!(matches!(err, ProjectError::Parse { .. }), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+        // A mask that fails the check is refused with the field and the file put back.
+        let (_dir, path) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        let mut outside = small_mask("w");
+        outside.polygons[0].holes[0][0] = [500.0, 0.0];
+        let err = append_mask(&path, &outside, None, "").unwrap_err();
+        assert!(err.to_string().contains("masks[0].polygons[0][1]"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            format!("{HEAD}{WITH_LAYOUT}")
+        );
+    }
+
+    #[test]
+    fn append_mask_follows_crlf() {
+        let text = format!("{HEAD}{ASSIGNED}\n").replace('\n', "\r\n");
+        let (_dir, path) = temp_project(&text);
+        append_mask(&path, &small_mask("w"), Some(("A", "a4")), "c").unwrap();
+        let new = std::fs::read(&path).unwrap();
+        let lone = new.windows(2).any(|w| w[1] == b'\n' && w[0] != b'\r');
+        assert!(!lone, "{:?}", String::from_utf8_lossy(&new));
     }
 
     #[test]

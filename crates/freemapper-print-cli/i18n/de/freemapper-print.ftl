@@ -386,3 +386,63 @@ error-numbers-exists = die Projektdatei hat für Posten { $control } schon eine 
 error-numbers-value = --direction braucht eine endliche Zahl, und --gap muss größer als 0 und höchstens { $max } mm sein
 numbers-accepted = Korrektur für die Nummer von Posten { $control } für { $scope } in { $path } eingetragen: Richtung { $direction }° mit einem Abstand von { $gap } mm. Mit check sehen Sie das Ergebnis.
 error-load-changed-project = das Projekt { $path } lässt sich mit der neuen Korrektur nicht laden, deshalb blieb es unverändert
+
+# ---- masks window, masks corridor (M4 Task 4) ----
+masks-about = Fügt der Projektdatei Abdeckungen für Fenster- und Korridor-OL hinzu.
+masks-window-about = Fügt eine Abdeckung für Fenster-OL hinzu: Die Karte bleibt nur in einem Kreis um jeden Posten einer Bahn sichtbar.
+masks-window-after-content = Der Radius ist in Druck-mm auf dem Blatt angegeben, im Druckmaßstab des Layouts, auf dem die Bahn gedruckt wird. So sieht ein Fenster in jedem Maßstab gleich aus. Ohne --controls bekommt jeder Posten der Bahn ein Fenster. --controls nimmt Postencodes mit Kommas dazwischen (31,32,35) oder zwei Postennummern mit einem Bindestrich (3-6) für die Posten, die auf dem Blatt die Nummern 3 bis 6 tragen; Start und Ziel zählen dabei nicht mit. Start und Ziel bekommen nur mit --include-start und --include-finish ein Fenster. Überlappende Fenster verschmelzen zu einem. Die neue Tabelle [[masks]] kommt als Text ans Ende der Datei, mit einem Kommentar, wie sie entstand; mit --assign bekommt die Zuordnung der Bahn die Abdeckung, oder nach der Tabelle folgt eine neue Zuordnung. Alles davor bleibt unverändert, auch die Kommentare. Danach lädt das Programm die Datei neu; schlägt das fehl, stellt es den alten Inhalt wieder her.
+masks-after-exit-codes = Rückgabewerte: 0, wenn die Abdeckung geschrieben ist; 1, wenn sich das Projekt, seine Karte oder seine Bahndatei nicht laden oder schreiben lässt oder die geänderte Datei nicht lädt (der alte Inhalt wird wiederhergestellt); 2, wenn die Befehlszeile falsch ist: eine unbekannte Bahn oder ein unbekannter Posten, ein Wert außerhalb des Bereichs, eine ID, die die Datei schon hat, eine Bahn mit einer anderen Abdeckung oder ein Korridor, der für seine Breite zu scharf abbiegt.
+masks-corridor-about = Fügt eine Abdeckung für Korridor-OL hinzu: Die Karte bleibt nur in einem Korridor entlang einer Linie sichtbar, die Sie angeben. Keine Regel legt fest, wo ein Korridor verläuft, deshalb zeichnet das Programm keinen von sich aus.
+masks-corridor-after-content = Die Punkte sind Karten-mm mit der y-Achse nach oben, wie OOMs Statusleiste sie zeigt, genau wie centre_map_mm und die Punkte unter [[masks]]. Die Breite ist in Druck-mm auf dem Blatt angegeben: mit --course im Druckmaßstab des Layouts dieser Bahn, sonst im Druckmaßstab, den alle Layouts gemeinsam haben. Der Korridor reicht die halbe Breite zu jeder Seite der Linie. Seine Enden sind gerade abgeschnitten; Knicke bis 120° behalten eine spitze Ecke, schärfere werden abgeschrägt. Das Programm lehnt einen Korridor ab, der auf sich selbst zurückläuft, ein Stück hat, das für den Knick an seinem Ende zu kurz ist, oder sich selbst kreuzt; vereinfachen Sie dann die Linie dort oder verringern Sie die Breite. Die neue Tabelle [[masks]] kommt als Text ans Ende der Datei, wie bei masks window.
+help-masks-window-course = Name der Bahn, wie in der Bahndatei. Ihre Posten bekommen die Fenster, und ihr Layout gibt den Druckmaßstab vor.
+help-masks-controls = Welche Posten ein Fenster bekommen: Codes mit Kommas dazwischen (31,32,35) oder Postennummern als Bereich (3-6). Ohne Angabe jeder Posten.
+help-masks-radius = Radius jedes Fensters in Druck-mm, von 1 bis 100. Ohne Angabe 15.
+help-masks-radius-for = Radius für einen Posten, CODE=MM, etwa 35=20. Darf mehrmals angegeben werden.
+help-masks-include-start = Auch der Start bekommt ein Fenster.
+help-masks-include-finish = Auch das Ziel bekommt ein Fenster.
+help-masks-window-id = ID der neuen Abdeckung. Ohne Angabe window-<Bahn>, mit angehängter Nummer, wenn es die schon gibt.
+help-masks-window-assign = Die Bahn wird mit der neuen Abdeckung gedruckt: Ihre Zuordnung bekommt sie, oder eine neue Zuordnung kommt hinzu.
+help-masks-points = Die Linie als x,y;x,y;… in Karten-mm mit y nach oben, Dezimalstellen mit Punkt, mindestens 2 Punkte.
+help-masks-width = Breite des Korridors in Druck-mm, von 1 bis 100. Ohne Angabe 10.
+help-masks-corridor-id = ID der neuen Abdeckung. Ohne Angabe corridor-<n> mit der ersten freien Nummer.
+help-masks-corridor-assign = Die Bahn aus --course wird mit der neuen Abdeckung gedruckt. Braucht --course.
+help-masks-corridor-course = Die Bahn, deren Layout den Druckmaßstab für die Breite vorgibt.
+error-masks-no-course-file = masks window und masks corridor --course brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+error-masks-map-scale = die Karte nennt keinen Maßstab, deshalb lassen sich Druck-mm nicht in Karten-mm umrechnen
+error-masks-id = eine Abdeckungs-ID braucht 1 bis { $max } Zeichen und keine Steuerzeichen
+error-masks-id-taken = die Projektdatei hat schon eine Abdeckung „{ $id }“. Wählen Sie mit --id eine andere ID, oder ändern Sie die Abdeckung in der Datei.
+error-masks-course-has-mask = die Bahn „{ $course }“ wird schon mit der Abdeckung „{ $mask }“ gedruckt. Ändern Sie ihre Zuordnung in der Projektdatei, wenn sie eine andere nutzen soll; das Programm ersetzt sie nicht.
+error-masks-assignment-inline = die Zuordnung der Bahn „{ $course }“ steht nicht als eigene Tabelle [[assignments]] in der Datei, deshalb kann das Programm ihr die Abdeckung nicht hinzufügen. Tragen Sie mask = "{ $id }" von Hand ein. Die Projektdatei blieb unverändert.
+error-masks-radius-for = --radius-for nimmt CODE=MM, etwa 35=20, und „{ $text }“ ist nicht so geschrieben
+error-masks-size = { $value } mm liegt außerhalb von { $min } bis { $max } mm; Radius und Breite sind Druck-mm auf dem Blatt
+error-masks-selection = --controls nimmt Postencodes mit Kommas dazwischen (31,32,35) oder einen Bereich von Postennummern (3-6), und „{ $text }“ ist keins von beidem
+error-masks-range = die Bahn „{ $course }“ hat die Postennummern 1 bis { $count }, deshalb passt der Bereich { $from }-{ $to } nicht
+error-masks-radius-unselected = Posten { $control } bekommt kein Fenster, deshalb kann --radius-for seinen Radius nicht setzen
+error-masks-no-controls = die Bahn „{ $course }“ hat keinen Posten, um den ein Fenster passt
+error-masks-no-position = Posten { $control } hat keine Lage auf der Karte
+error-masks-too-many-points = die Abdeckung hätte mehr als { $max } Punkte. Nehmen Sie weniger Fenster oder einen kleineren Radius.
+error-masks-points = --points nimmt Punkte als x,y;x,y;… in Karten-mm mit y nach oben, Dezimalstellen mit Punkt, und „{ $text }“ ist keine solche Liste
+error-masks-too-few-points = ein Korridor braucht mindestens 2 verschiedene Punkte
+error-masks-too-many-corridor-points = ein Korridor nimmt höchstens { $max } Punkte
+error-masks-point-out-of-reach = der Punkt { $x }, { $y } liegt jenseits von ±2 000 000 mm, der Reichweite einer OOM-Karte
+error-masks-sharp-turn = der Korridor knickt bei { $x }, { $y } für seine Breite zu scharf ab, seine Ränder würden sich kreuzen. Vereinfachen Sie die Linie dort oder verringern Sie die Breite.
+error-masks-self-intersecting = der Korridor kreuzt sich selbst bei { $x }, { $y }. Vereinfachen Sie die Linie oder verringern Sie die Breite.
+error-masks-invalid = die erzeugte Abdeckung besteht die Prüfung der Projektdatei nicht ({ $problem }). Das ist ein Fehler im Programm; bitte melden Sie ihn.
+error-masks-scales = die Layouts drucken in verschiedenen Maßstäben ({ $scales }), und die Breite ist in Druck-mm angegeben. Geben Sie --course an, damit die Breite dem Layout dieser Bahn folgt.
+error-load-changed-mask = das Projekt { $path } lässt sich mit der neuen Abdeckung nicht laden, deshalb blieb es unverändert
+masks-window-comment = Fenster mit { $radius } mm Radius auf dem Papier bei 1:{ $scale } um { $controls } der Bahn „{ $course }“, erzeugt mit masks window.
+masks-window-radius-for = Posten { $control } hat ein Fenster mit { $radius } mm Radius.
+masks-window-written = Abdeckung „{ $id }“ in { $path } eingetragen: { $count ->
+        [one] ein Fenster
+       *[other] { $count } Fenster
+    } mit { $radius } mm Radius auf dem Papier bei 1:{ $scale } um { $controls } der Bahn „{ $course }“.
+masks-no-start-finish = { $which ->
+        [start] Der Start hat kein Fenster, deshalb nennt check ihn. Mit --include-start bekommt er eins.
+        [finish] Das Ziel hat kein Fenster, deshalb nennt check es. Mit --include-finish bekommt es eins.
+       *[both] Start und Ziel haben kein Fenster, deshalb nennt check sie. Mit --include-start und --include-finish bekommen sie eins.
+    }
+masks-corridor-comment = Korridor { $width } mm breit auf dem Papier bei 1:{ $scale }, erzeugt mit masks corridor aus diesen Punkten:
+masks-corridor-written = Abdeckung „{ $id }“ in { $path } eingetragen: ein Korridor { $width } mm breit auf dem Papier bei 1:{ $scale } entlang { $count } Punkten.
+masks-assigned = Die Bahn „{ $course }“ wird jetzt damit gedruckt, auf Layout { $layout }.
+masks-not-assigned = Noch nutzt keine Bahn sie. Nennen Sie sie in einer Zuordnung mit mask = "{ $id }", oder rufen Sie den Befehl noch einmal mit --assign auf.
+masks-run-check = Mit check sehen Sie das Ergebnis.

@@ -8,6 +8,7 @@ pub mod courses;
 pub mod describe;
 pub mod export;
 pub mod mask;
+pub mod mask_build;
 pub mod numbers;
 pub mod output;
 pub mod overprint;

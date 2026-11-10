@@ -386,3 +386,63 @@ error-numbers-exists = the project file has a correction for control { $control 
 error-numbers-value = --direction needs a finite number, and --gap must be above 0 and at most { $max } mm
 numbers-accepted = Added a correction for the number of control { $control } for { $scope } to { $path }: direction { $direction }° with a gap of { $gap } mm. Run check to see the result.
 error-load-changed-project = the project { $path } does not load with the new correction, so it was left as it was
+
+# ---- masks window, masks corridor (M4 Task 4) ----
+masks-about = Add masks for window and corridor orienteering to the project file.
+masks-window-about = Add a mask for window orienteering: the map shows only in a circle around each control of a course.
+masks-window-after-content = The radius is print mm on the sheet, at the print scale of the layout the course prints on, so a window looks the same at every scale. Without --controls every control of the course gets a window. --controls takes control codes separated by commas (31,32,35), or two control numbers joined by a dash (3-6) for the controls numbered 3 to 6 on the sheet; start and finish are not counted. The start and the finish get a window only with --include-start and --include-finish. Windows that overlap merge into one. The new [[masks]] table goes to the end of the file as text, with a comment that says how it was made; with --assign the course's assignment gets the mask, or a new assignment follows the table. Everything before stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
+masks-after-exit-codes = Exit codes: 0 when the mask is written, 1 when the project, its map or its course file cannot be loaded or written, or the changed file does not load (the old content is put back), 2 when the command line is wrong: an unknown course or control, a value out of range, a mask id the file has already, a course that has another mask, or a corridor that turns too sharply for its width.
+masks-corridor-about = Add a mask for corridor orienteering: the map shows only in a corridor along a polyline you give. No rule says where a corridor goes, so the program does not draw one by itself.
+masks-corridor-after-content = The points are map mm with y pointing up, as OOM's status bar shows them, the same as centre_map_mm and the points under [[masks]]. The width is print mm on the sheet: at the print scale of the course's layout with --course, otherwise at the print scale all layouts share. The corridor runs half the width to each side of the polyline. Its ends are cut square, and turns up to 120° keep a pointed corner while sharper ones are cut off. The program refuses a corridor that turns back on itself, has a segment too short for the turn at its end, or comes back across itself; simplify the polyline there or reduce the width. The new [[masks]] table goes to the end of the file as text, as for masks window.
+help-masks-window-course = Name of the course, as in the course file. Its controls get the windows, and its layout gives the print scale.
+help-masks-controls = Which controls get a window: codes separated by commas (31,32,35) or control numbers as a range (3-6). Default: every control.
+help-masks-radius = Radius of every window in print mm, from 1 to 100. Default: 15.
+help-masks-radius-for = Radius for one control, CODE=MM, such as 35=20. Can be given more than once.
+help-masks-include-start = The start gets a window too.
+help-masks-include-finish = The finish gets a window too.
+help-masks-window-id = Id of the new mask. Default: window-<course>, with a number added when that is taken.
+help-masks-window-assign = The course prints with the new mask: its assignment gets it, or a new assignment is added.
+help-masks-points = The polyline as x,y;x,y;… in map mm with y up, decimals with a point, at least 2 points.
+help-masks-width = Width of the corridor in print mm, from 1 to 100. Default: 10.
+help-masks-corridor-id = Id of the new mask. Default: corridor-<n>, the first number not taken.
+help-masks-corridor-assign = The course of --course prints with the new mask. Needs --course.
+help-masks-corridor-course = The course whose layout gives the print scale for the width.
+error-masks-no-course-file = masks window and masks corridor --course need a course file, and the project names none under [sources] courses
+error-masks-map-scale = the map states no scale, so print mm cannot be turned into map mm
+error-masks-id = a mask id needs 1 to { $max } characters and no control characters
+error-masks-id-taken = the project file has a mask "{ $id }" already. Choose another id with --id, or change the mask in the file.
+error-masks-course-has-mask = course "{ $course }" prints with the mask "{ $mask }" already. Change its assignment in the project file to use another one; the program does not replace it.
+error-masks-assignment-inline = the assignment of course "{ $course }" is not written as a table [[assignments]] of its own, so the program cannot add the mask to it. Add mask = "{ $id }" to it by hand. The project file was left unchanged.
+error-masks-radius-for = --radius-for takes CODE=MM, such as 35=20, and "{ $text }" is not written that way
+error-masks-size = { $value } mm is outside { $min } to { $max } mm; radius and width are print mm on the sheet
+error-masks-selection = --controls takes control codes separated by commas (31,32,35) or a range of control numbers (3-6), and "{ $text }" is neither
+error-masks-range = course "{ $course }" has the control numbers 1 to { $count }, so the range { $from }-{ $to } does not fit
+error-masks-radius-unselected = control { $control } gets no window, so --radius-for cannot set its radius
+error-masks-no-controls = course "{ $course }" has no control to put a window around
+error-masks-no-position = control { $control } has no position on the map
+error-masks-too-many-points = the mask would have more than { $max } points. Use fewer windows or a smaller radius.
+error-masks-points = --points takes points as x,y;x,y;… in map mm with y up, decimals with a point, and "{ $text }" is not such a list
+error-masks-too-few-points = a corridor needs at least 2 different points
+error-masks-too-many-corridor-points = a corridor takes at most { $max } points
+error-masks-point-out-of-reach = the point { $x }, { $y } lies beyond ±2 000 000 mm, the reach of an OOM map
+error-masks-sharp-turn = the corridor turns too sharply at { $x }, { $y } for its width, so its edges would cross. Simplify the polyline there or reduce the width.
+error-masks-self-intersecting = the corridor crosses itself near { $x }, { $y }. Simplify the polyline or reduce the width.
+error-masks-invalid = the generated mask does not pass the check of the project file ({ $problem }). This is a bug; please report it.
+error-masks-scales = the layouts print at different scales ({ $scales }), and the width is print mm. Give --course, so that the width follows the layout of that course.
+error-load-changed-mask = the project { $path } does not load with the new mask, so it was left as it was
+masks-window-comment = Windows of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }", made by masks window.
+masks-window-radius-for = Control { $control } has a window of { $radius } mm radius.
+masks-window-written = Added the mask "{ $id }" to { $path }: { $count ->
+        [one] one window
+       *[other] { $count } windows
+    } of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }".
+masks-no-start-finish = { $which ->
+        [start] The start has no window, so check names it. --include-start gives it one.
+        [finish] The finish has no window, so check names it. --include-finish gives it one.
+       *[both] The start and the finish have no window, so check names them. --include-start and --include-finish give them one.
+    }
+masks-corridor-comment = Corridor { $width } mm wide on paper at 1:{ $scale }, made by masks corridor from these points:
+masks-corridor-written = Added the mask "{ $id }" to { $path }: a corridor { $width } mm wide on paper at 1:{ $scale } along { $count } points.
+masks-assigned = Course "{ $course }" prints with it now, on layout { $layout }.
+masks-not-assigned = No course uses it yet. Name it in an assignment with mask = "{ $id }", or run the command again with --assign.
+masks-run-check = Run check to see the result.

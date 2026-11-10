@@ -1748,6 +1748,95 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_windows_unite_in_the_pdf() {
+        // End to end (ADR 0047): a window mask generated for Kurz, whose controls 31 and 32 are moved 20 mm apart,
+        // written to the project file and printed. Windows of 15 mm overlap; the map shows in both and between.
+        use crate::mask_build::{Selection, WindowOptions, map_extent, windows};
+        let (_dir, project, map, mut courses) = course_project(A4);
+        let control = courses
+            .event
+            .controls
+            .iter_mut()
+            .find(|c| c.code == "32")
+            .unwrap();
+        // 31 is at (20, -30) with y up, (20 000, 30 000) µm in the internal frame.
+        control.position = Some(MapCoord::new(40_000, 30_000));
+        let options = WindowOptions {
+            selection: Selection::All,
+            include_start: false,
+            include_finish: false,
+            radius_mm: 15.0,
+            per_control: Default::default(),
+            // The layout prints at the map scale.
+            map_mm_per_print_mm: 1.0,
+        };
+        let (mask, list) = windows(
+            "window-Kurz",
+            course(&courses, "Kurz"),
+            &courses.event,
+            &options,
+            map_extent(&map),
+        )
+        .unwrap();
+        assert_eq!(list.len(), 2);
+        let project =
+            crate::project::append_mask(&project.path, &mask, Some(("Kurz", "a4")), "").unwrap();
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &map,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        let [clip] = page.map_clips.as_slice() else {
+            panic!("one mask: {:?}", page.map_clips.len())
+        };
+        let gf = report.print.geometry_factor;
+        let at = |x: i32, y: i32| on_page(&page, gf, MapCoord::new(x, y));
+        // Each centre, the overlap between them, and 14 mm out from each.
+        for p in [
+            (20_000, 30_000),
+            (40_000, 30_000),
+            (30_000, 30_000),
+            (6_100, 30_000),
+            (53_900, 30_000),
+        ] {
+            assert!(visible(clip, at(p.0, p.1)), "{p:?}");
+        }
+        // Beside both windows, and the start, which has no window by default, are under the mask.
+        for p in [
+            (30_000, 50_000),
+            (30_000, 10_000),
+            (4_000, 30_000),
+            (-50_000, -60_000),
+        ] {
+            assert!(!visible(clip, at(p.0, p.1)), "{p:?}");
+        }
+        // The start and the finish are named by `check`; the controls are not.
+        let named: Vec<&String> = report
+            .notes
+            .iter()
+            .filter_map(|n| match n {
+                SheetNote::ControlInMaskedArea { controls, .. } => Some(controls),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(named, ["S1", "F1"]);
+        // The PDF clips the map with the mask (around the map before and after the lower purple).
+        let pdf = crate::render::pdf::content_of(
+            &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                .unwrap()
+                .0,
+        );
+        let text = String::from_utf8(pdf).unwrap();
+        assert_eq!(text.lines().filter(|l| *l == "W").count(), 3);
+    }
+
+    #[test]
     fn white_outs_of_a_course_each_clip_the_map() {
         // Ruling R8: two overlapping white-outs of one course are two masks; the map is hidden in either.
         let (_dir, project, map, mut courses) = course_project(A4);

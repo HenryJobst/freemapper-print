@@ -104,6 +104,7 @@ mod tests {
         "init-",
         "list-",
         "logo-",
+        "masks-",
         "missing-",
         "note-",
         "number-",
@@ -311,6 +312,13 @@ mod tests {
             "set",
             "mask",
             "objects",
+            "x",
+            "y",
+            "which",
+            "problem",
+            "radius",
+            "points",
+            "scales",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

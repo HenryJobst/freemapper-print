@@ -1707,3 +1707,327 @@ fn check_counts_mask_warnings_but_not_mask_infos() {
     let o = run("en", &["export", path.to_str().unwrap()]);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
 }
+
+// ---- masks window, masks corridor (ADR 0047) ----
+
+#[test]
+fn masks_window_appends_and_keeps_comments() {
+    // Viktoriapark ends in the assignment of "Training", which gets the mask in its own table.
+    let (_dir, path) = viktoriapark_with("");
+    let old = std::fs::read_to_string(&path).unwrap();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Training",
+            "--radius-for",
+            "41=20",
+            "--assign",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let new = std::fs::read_to_string(&path).unwrap();
+    // The line goes right after the header of the assignment; the rest stays as it was.
+    let expected = old.replacen(
+        "[[assignments]]\ncourse = \"Training\"",
+        "[[assignments]]\nmask = \"window-Training\"\ncourse = \"Training\"",
+        1,
+    );
+    assert_ne!(expected, old);
+    assert!(new.starts_with(&expected), "{new}");
+    assert!(
+        new.contains("# Windows of 15 mm radius on paper at 1:4000 around ")
+            && new.contains(
+                "made by masks window.\n# Control 41 has a window of 20 mm radius.\n[[masks]]\n"
+            ),
+        "{new}"
+    );
+    let loaded = project::load(&path).unwrap();
+    let mask = &loaded.project.masks[0];
+    assert_eq!(mask.id, "window-Training");
+    let a = &loaded.project.assignments[0];
+    assert_eq!(a.mask.as_deref(), Some("window-Training"));
+    assert!(
+        err.contains("Added the mask \"window-Training\"")
+            && err.contains("of 15 mm radius on paper at 1:4000")
+            && err.contains("Control 41 has a window of 20 mm radius.")
+            && err.contains("The start and the finish have no window, so check names them.")
+            && err.contains("Course \"Training\" prints with it now, on layout a4-4000.")
+            && err.contains("Run check"),
+        "{err}"
+    );
+    // check names the start and the finish, which have no window.
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("where the mask hides the map"), "{err}");
+    // The same in German, with start and finish, a second mask by its own id: the controls 1 and 2 by number.
+    let (_dir, path) = viktoriapark_with("");
+    let p = path.to_str().unwrap();
+    let o = run(
+        "de",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Training",
+            "--controls",
+            "1-2",
+            "--radius",
+            "12.5",
+            "--include-start",
+            "--include-finish",
+            "--id",
+            "fenster",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains("Abdeckung „fenster“ in")
+            && err.contains("4 Fenster mit 12,5 mm Radius auf dem Papier bei 1:4000")
+            && err.contains("Noch nutzt keine Bahn sie.")
+            && !err.contains("kein Fenster"),
+        "{err}"
+    );
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.masks[0].polygons[0].holes.len(), 4);
+    assert_eq!(loaded.project.assignments[0].mask, None);
+}
+
+#[test]
+fn masks_corridor_appends_and_assigns() {
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "corridor",
+            p,
+            "--points",
+            "-60,70; 20,-30;70,30",
+            "--assign",
+            "--course",
+            "Eng",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(new.starts_with(&old), "{new}");
+    assert!(
+        new.contains(
+            "# Corridor 10 mm wide on paper at 1:4000, made by masks corridor from these points:\n\
+             # --points \"-60,70;20,-30;70,30\"\n[[masks]]\n"
+        ),
+        "{new}"
+    );
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.masks[0].id, "corridor-1");
+    let a = &loaded.project.assignments[0];
+    assert_eq!(
+        (a.course.as_str(), a.layout.as_str(), a.mask.as_deref()),
+        ("Eng", "a3", Some("corridor-1"))
+    );
+    assert!(
+        err.contains("Added the mask \"corridor-1\"")
+            && err.contains("a corridor 10 mm wide on paper at 1:4000 along 3 points")
+            && err.contains("Course \"Eng\" prints with it now, on layout a3."),
+        "{err}"
+    );
+    // The corridor runs over the controls, so check finds nothing in the masked area there.
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert!(!err.contains("where the mask hides the map"), "{err}");
+    // A second one without --course takes the scale all layouts share and the next number; German texts.
+    let o = run(
+        "de",
+        &[
+            "masks", "corridor", p, "--points", "0,0;10,0", "--width", "6",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains("Abdeckung „corridor-2“")
+            && err.contains("ein Korridor 6 mm breit auf dem Papier bei 1:4000 entlang 2 Punkten"),
+        "{err}"
+    );
+    assert_eq!(project::load(&path).unwrap().project.masks.len(), 2);
+}
+
+#[test]
+fn masks_refuses_a_duplicate_id() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let args = ["masks", "window", p, "--course", "Eng", "--id", "m"];
+    assert_eq!(run("en", &args).status.code(), Some(0));
+    let done = std::fs::read_to_string(&path).unwrap();
+    for (lang, hint) in [
+        ("en", "has a mask \"m\" already"),
+        ("de", "hat schon eine Abdeckung „m“"),
+    ] {
+        let o = run(lang, &args);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        let o = run(
+            lang,
+            &["masks", "corridor", p, "--points", "0,0;10,0", "--id", "m"],
+        );
+        assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    }
+    // Without --id the default is made unique.
+    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let ids: Vec<String> = project::load(&path)
+        .unwrap()
+        .project
+        .masks
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(ids, ["m", "window-Eng", "window-Eng-2"]);
+}
+
+#[test]
+fn masks_refuses_a_second_mask_for_a_course() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["masks", "window", p, "--course", "Eng", "--assign"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let done = std::fs::read_to_string(&path).unwrap();
+    for (lang, hint) in [
+        ("en", "prints with the mask \"window-Eng\" already"),
+        ("de", "wird schon mit der Abdeckung „window-Eng“ gedruckt"),
+    ] {
+        let o = run(
+            lang,
+            &[
+                "masks", "corridor", p, "--points", "0,0;10,0", "--course", "Eng", "--assign",
+            ],
+        );
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    }
+}
+
+#[test]
+fn masks_usage_errors_in_both_languages() {
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let cases: [(&[&str], &str, &str); 7] = [
+        (
+            &["masks", "corridor", p, "--points", "0,0;100,0;90,8"],
+            "turns too sharply at 100, 0",
+            "knickt bei 100, 0 für seine Breite zu scharf ab",
+        ),
+        (
+            &[
+                "masks",
+                "corridor",
+                p,
+                "--points",
+                "0,0;100,0;100,50;50,50;50,-50",
+            ],
+            "crosses itself near",
+            "kreuzt sich selbst bei",
+        ),
+        (
+            &["masks", "corridor", p, "--points", "0,0 10,0"],
+            "--points takes points as x,y;x,y",
+            "--points nimmt Punkte als x,y;x,y",
+        ),
+        (
+            &["masks", "window", p, "--course", "Eng", "--radius", "0.5"],
+            "0.5 mm is outside 1 to 100 mm",
+            "0,5 mm liegt außerhalb von 1 bis 100 mm",
+        ),
+        (
+            &["masks", "window", p, "--course", "Eng", "--controls", "2-5"],
+            "the control numbers 1 to 2, so the range 2-5 does not fit",
+            "die Postennummern 1 bis 2, deshalb passt der Bereich 2-5 nicht",
+        ),
+        (
+            &[
+                "masks",
+                "window",
+                p,
+                "--course",
+                "Eng",
+                "--controls",
+                "31,99",
+            ],
+            "has no control 99",
+            "hat keinen Posten 99",
+        ),
+        (
+            &[
+                "masks",
+                "window",
+                p,
+                "--course",
+                "Eng",
+                "--radius-for",
+                "35",
+            ],
+            "--radius-for takes CODE=MM",
+            "--radius-for nimmt CODE=MM",
+        ),
+    ];
+    for (args, en, de) in cases {
+        for (lang, text) in [("en", en), ("de", de)] {
+            let o = run(lang, args);
+            let err = stderr(&o);
+            assert_eq!(o.status.code(), Some(2), "{lang} {args:?}: {err}");
+            assert!(err.contains(text), "{lang}: {err}");
+        }
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    // --assign needs --course for a corridor (clap), an unknown course is a usage error too.
+    let o = run(
+        "en",
+        &["masks", "corridor", p, "--points", "0,0;1,0", "--assign"],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    let o = run("en", &["masks", "window", p, "--course", "Nope"]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    // The help says that sizes are print mm and that no corridor is drawn by itself.
+    let o = run("de", &["masks", "window", "--help"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("Druck-mm") && out.contains("--include-start"),
+        "{out}"
+    );
+    let o = run("en", &["masks", "corridor", "--help"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(out.contains("does not draw one by itself"), "{out}");
+}
+
+#[test]
+fn masks_restore_the_file_when_it_no_longer_loads() {
+    let (_ws, path, old) = numbers_workspace();
+    // An inline `masks` array makes the appended table a duplicate key.
+    let broken = format!("masks = []\n{old}");
+    std::fs::write(&path, &broken).unwrap();
+    let o = run(
+        "en",
+        &["masks", "window", path.to_str().unwrap(), "--course", "Eng"],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("does not load with the new mask"), "{err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+}
