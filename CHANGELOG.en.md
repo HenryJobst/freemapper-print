@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- The shared building blocks come from freemapper-core v0.7.0 (candidates without float noise, `MapGrid`). Output is unchanged.
+
 ## [0.5.1] - 2026-11-10
 
 ### Fixed

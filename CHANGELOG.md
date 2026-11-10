@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- Die gemeinsamen Bausteine kommen aus freemapper-core v0.7.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`). Die Ausgabe bleibt unverändert.
+
 ## [0.5.1] - 2026-11-10
 
 ### Behoben
