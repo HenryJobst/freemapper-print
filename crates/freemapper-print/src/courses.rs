@@ -32,7 +32,7 @@ pub struct LoadedCourses {
     pub fit_notes: Vec<FitNote>,
     /// Entries of the project file that name courses or controls the course file does not have.
     pub stale: Vec<Stale>,
-    /// The white-outs of the course file as mask variants `whiteout-<n>`, in file order (ADR 0045).
+    /// The white-outs of the course file as mask variants `whiteout-<n>`, n = Purple Pen id (ADR 0048).
     pub white_outs: Vec<WhiteOut>,
     /// Masks that no course uses, and the white-outs the project file names by number.
     pub mask_notes: Vec<MaskNote>,
@@ -435,20 +435,34 @@ pub fn mask_for<'a>(
 /// outline, any further ones holes; points in map mm, y up, as in a `[[masks]]` table.
 fn white_outs_of(event: &FittedEvent) -> Vec<WhiteOut> {
     let pt = |c: &MapCoord| [f64::from(c.x) / 1000.0, -f64::from(c.y) / 1000.0];
-    event
+    let found = event
         .specials
         .iter()
         .filter_map(|s| match s {
-            Special::WhiteOut { rings, courses, .. } => Some((rings, courses)),
+            Special::WhiteOut { rings, courses, id } => Some((rings, courses, *id)),
             _ => None,
         })
+        .collect::<Vec<_>>();
+    // Purple Pen's own ids survive a deleted or reordered white-out; file order is the fallback when any id
+    // is missing, zero or repeated.
+    let by_id = {
+        let mut seen = std::collections::HashSet::new();
+        found
+            .iter()
+            .all(|(_, _, id)| id.is_some_and(|n| n > 0 && seen.insert(n)))
+    };
+    found
+        .into_iter()
         .enumerate()
-        .map(|(i, (rings, courses))| {
+        .map(|(i, (rings, courses, id))| {
             let mut rings = rings.iter().map(|r| r.iter().map(pt).collect::<Vec<_>>());
             let outline = rings.next().unwrap_or_default();
             WhiteOut {
                 mask: Mask {
-                    id: white_out_id(i + 1),
+                    id: white_out_id(match id {
+                        Some(n) if by_id => n as usize,
+                        _ => i + 1,
+                    }),
                     polygons: vec![MaskPolygon {
                         outline,
                         holes: rings.collect(),

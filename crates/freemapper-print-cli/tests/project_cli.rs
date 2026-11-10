@@ -1753,8 +1753,8 @@ fn check_folds_idle_white_outs_and_names_white_outs_by_number() {
     let o = run("en", &["check", p]);
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(0), "{err}");
-    let line = "Info: in the map frame of course \"Training\", the 3 white-out areas whiteout-1, whiteout-2 \
-                and whiteout-3 of the course file hide nothing.";
+    let line = "Info: in the map frame of course \"Training\", the 3 white-out areas whiteout-100, whiteout-101 \
+                and whiteout-102 of the course file hide nothing.";
     assert_eq!(err.matches(line).count(), 1, "{err}");
     assert!(
         !err.contains("by number") && !err.contains("takes the place"),
@@ -1763,7 +1763,7 @@ fn check_folds_idle_white_outs_and_names_white_outs_by_number() {
     // A [[masks]] table standing in for the second white-out: its own line, and the line that names the area.
     let mut project = std::fs::read_to_string(&path).unwrap();
     project.push_str(
-        "\n[[masks]]\nid = \"whiteout-2\"\npolygons = [[[[800, 800], [850, 800], [850, 850]]]]\n",
+        "\n[[masks]]\nid = \"whiteout-101\"\npolygons = [[[[800, 800], [850, 800], [850, 850]]]]\n",
     );
     std::fs::write(&path, &project).unwrap();
     let o = run("de", &["check", p]);
@@ -1771,15 +1771,15 @@ fn check_folds_idle_white_outs_and_names_white_outs_by_number() {
     assert_eq!(o.status.code(), Some(0), "{err}");
     assert!(
         err.contains(
-            "Zur Information: Auf dem Blatt der Bahn „Training“ tritt die Tabelle [[masks]] mit der ID whiteout-2 \
+            "Zur Information: Auf dem Blatt der Bahn „Training“ tritt die Tabelle [[masks]] mit der ID whiteout-101 \
              an die Stelle der Abdeckfläche aus der Bahndatei, die um 1025, 925 liegt (Karten-mm, y nach oben)."
         ),
         "{err}"
     );
     assert!(
-        err.contains("Zur Information: Die Abdeckung „whiteout-2“ verbirgt im Kartenausschnitt der Bahn „Training“ nichts.")
+        err.contains("Zur Information: Die Abdeckung „whiteout-101“ verbirgt im Kartenausschnitt der Bahn „Training“ nichts.")
             && err.contains(
-                "Im Kartenausschnitt der Bahn „Training“ verbergen die 2 Abdeckflächen whiteout-1 und whiteout-3 \
+                "Im Kartenausschnitt der Bahn „Training“ verbergen die 2 Abdeckflächen whiteout-100 und whiteout-102 \
                  aus der Bahndatei nichts."
             ),
         "{err}"

@@ -88,3 +88,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0045](0045-mask-variants.md) | Mask variants | Accepted | 2026-11-10 |
 | [0046](0046-checking-masks.md) | Checking masks | Accepted | 2026-11-10 |
 | [0047](0047-generated-masks.md) | Generated masks | Accepted | 2026-11-10 |
+| [0048](0048-white-outs-by-purple-pen-id.md) | White-outs keyed by Purple Pen id | Accepted | 2026-11-10 |
