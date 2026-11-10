@@ -143,7 +143,13 @@ check-courses-clean = Checked { $count ->
         [one] 1 layout sheet
        *[other] { $layouts } layout sheets
     }, no notes.
-check-courses-with-notes = With notes: { $count } of { $total } courses, { $layouts_with_notes } of { $layouts } layout sheets.
+check-courses-with-notes = With notes: { $count } of { $total ->
+        [one] 1 course
+       *[other] { $total } courses
+    }, { $layouts_with_notes } of { $layouts ->
+        [one] 1 layout sheet
+       *[other] { $layouts } layout sheets
+    }.
 check-course-file-notes = The course file itself has notes: see the lines above the first course.
 
 ## Sheet notes
@@ -278,13 +284,10 @@ masked-text = { $count ->
         [one] a text from the course file
        *[other] { $count } texts from the course file
     }
-note-control-in-masked-area = Note: on the sheet of course "{ $course }", { $count ->
-        [one] control { $controls } lies
-       *[other] controls { $controls } lie
-    } where the mask hides the map, so runners find no map around { $count ->
-        [one] it
-       *[other] them
-    }. Add a window there, or check that the course has the right mask.
+note-control-in-masked-area = Note: on the sheet of course "{ $course }", { $controls } { $count ->
+        [one] lies
+       *[other] lie
+    } where the mask hides the map, so runners find no map there. Add a window, or check that the course has the right mask.
 note-mask-covers-nothing = Info: the mask "{ $mask }" hides nothing in the map frame of course "{ $course }". If it should, check its points. They are map mm with y pointing up, as OOM shows them.
 note-white-outs-cover-nothing = Info: in the map frame of course "{ $course }", { $count ->
         [one] the white-out area { $ids } of the course file hides nothing.
@@ -398,16 +401,16 @@ error-load-changed-project = the project { $path } does not load with the new co
 # ---- masks window, masks corridor (M4 Task 4) ----
 masks-about = Add masks for window and corridor orienteering to the project file.
 masks-window-about = Add a mask for window orienteering: the map shows only in a circle around each control of a course.
-masks-window-after-content = The radius is print mm on the sheet, at the print scale of the layout the course prints on, so a window looks the same at every scale. Without --controls every control of the course gets a window. --controls takes control codes separated by commas (31,32,35), or two control numbers joined by a dash (3-6) for the controls numbered 3 to 6 on the sheet; start and finish are not counted. The start and the finish get a window only with --include-start and --include-finish. Windows that overlap merge into one. The new [[masks]] table goes to the end of the file as text, with a comment that says how it was made; with --assign the course's assignment gets the mask, or a new assignment follows the table. Everything before stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
+masks-window-after-content = The radius is print mm on the sheet, at the print scale of the layout the course prints on, so a window looks the same at every scale. The mask stores it in map mm, though: after changing the print scale, delete the mask and run the command again. Without --controls every control of the course gets a window. --controls takes control codes separated by commas (31,32,35), or two control numbers joined by a dash (3-6) for the controls numbered 3 to 6 on the sheet; start and finish are not counted. The start and the finish always get a window, unless --no-start or --no-finish leaves it out. Windows that overlap merge into one. The new [[masks]] table goes to the end of the file as text, with a comment that says how it was made; with --assign the course's assignment gets the mask, or a new assignment follows the table. Everything before stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
 masks-after-exit-codes = Exit codes: 0 when the mask is written, 1 when the project, its map or its course file cannot be loaded or written, or the changed file does not load (the old content is put back), 2 when the command line is wrong: an unknown course or control, a value out of range, a mask id the file has already, a course that has another mask, or a corridor that turns too sharply for its width.
 masks-corridor-about = Add a mask for corridor orienteering: the map shows only in a corridor along a polyline you give. No rule says where a corridor goes, so the program does not draw one by itself.
-masks-corridor-after-content = The points are map mm with y pointing up, as OOM's status bar shows them, the same as centre_map_mm and the points under [[masks]]. The width is print mm on the sheet: at the print scale of the course's layout with --course, otherwise at the print scale all layouts share. The corridor runs half the width to each side of the polyline. Its ends are cut square, and turns up to 120° keep a pointed corner while sharper ones are cut off. The program refuses a corridor that turns back on itself, has a segment too short for the turn at its end, or comes back across itself; simplify the polyline there or reduce the width. The new [[masks]] table goes to the end of the file as text, as for masks window.
+masks-corridor-after-content = The points are map mm with y pointing up, as OOM's status bar shows them, the same as centre_map_mm and the points under [[masks]]. The width is print mm on the sheet: at the print scale of the course's layout with --course, otherwise at the print scale all layouts share. The mask stores it in map mm, though: after changing the print scale, delete the mask and run the command again. The corridor runs half the width to each side of the polyline. Its ends are cut square, and turns up to 120° keep a pointed corner while sharper ones are cut off. The program refuses a corridor that turns back on itself, has a segment too short for the turn at its end, or comes back across itself; simplify the polyline there or reduce the width. The new [[masks]] table goes to the end of the file as text, as for masks window.
 help-masks-window-course = Name of the course, as in the course file. Its controls get the windows, and its layout gives the print scale.
-help-masks-controls = Which controls get a window: codes separated by commas (31,32,35) or control numbers as a range (3-6). Default: every control.
+help-masks-controls = Which controls get a window: codes separated by commas (31,32,35) or control numbers as a range (3-6). Default: every control. The start and the finish get their window either way.
 help-masks-radius = Radius of every window in print mm, from 1 to 100. Default: 15.
-help-masks-radius-for = Radius for one control, CODE=MM, such as 35=20. Can be given more than once.
-help-masks-include-start = The start gets a window too.
-help-masks-include-finish = The finish gets a window too.
+help-masks-radius-for = Radius for one control, CODE=MM, such as 35=20; the start usually has the code STA1, the finish FIN1. Can be given more than once.
+help-masks-no-start = The start gets no window.
+help-masks-no-finish = The finish gets no window.
 help-masks-window-id = Id of the new mask. Default: window-<course>, with a number added when that is taken.
 help-masks-window-assign = The course prints with the new mask: its assignment gets it, or a new assignment is added.
 help-masks-points = The polyline as x,y;x,y;… in map mm with y up, decimals with a point, at least 2 points.
@@ -439,16 +442,29 @@ error-masks-self-intersecting = the corridor crosses itself near { $x }, { $y }.
 error-masks-invalid = the generated mask does not pass the check of the project file ({ $problem }). This is a bug; please report it.
 error-masks-scales = the layouts print at different scales ({ $scales }), and the width is print mm. Give --course, so that the width follows the layout of that course.
 error-load-changed-mask = the project { $path } does not load with the new mask, so it was left as it was
+stop-start = the start
+stop-start-acc = the start
+stop-finish = the finish
+stop-controls = { $count ->
+        [one] control { $codes }
+       *[other] controls { $codes }
+    }
+stop-start-code = start ({ $code })
+stop-finish-code = finish ({ $code })
 masks-window-comment = Windows of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }", made by masks window.
-masks-window-radius-for = Control { $control } has a window of { $radius } mm radius.
+masks-window-radius-for = { $kind ->
+        [start] The start has
+        [finish] The finish has
+       *[control] Control { $control } has
+    } a window of { $radius } mm radius.
 masks-window-written = Added the mask "{ $id }" to { $path }: { $count ->
         [one] one window
        *[other] { $count } windows
     } of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }".
 masks-no-start-finish = { $which ->
-        [start] The start has no window, so check names it. --include-start gives it one.
-        [finish] The finish has no window, so check names it. --include-finish gives it one.
-       *[both] The start and the finish have no window, so check names them. --include-start and --include-finish give them one.
+        [start] The start has no window, so check names it. Without --no-start it gets one.
+        [finish] The finish has no window, so check names it. Without --no-finish it gets one.
+       *[both] The start and the finish have no window, so check names them. Without --no-start and --no-finish they get one.
     }
 masks-corridor-comment = Corridor { $width } mm wide on paper at 1:{ $scale }, made by masks corridor from these points:
 masks-corridor-written = Added the mask "{ $id }" to { $path }: a corridor { $width } mm wide on paper at 1:{ $scale } along { $count } points.

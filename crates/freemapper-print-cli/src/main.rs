@@ -11,7 +11,9 @@ use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, load_courses};
+use freemapper_print::courses::{
+    CorrectionScope, LoadedCourses, MaskNote, Stale, StopName, load_courses,
+};
 use freemapper_print::export::{
     ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
     select_courses, select_layouts, sheet_report,
@@ -152,9 +154,9 @@ struct WindowArgs {
     #[arg(long = "radius-for", value_name = "CODE=MM")]
     radius_for: Vec<String>,
     #[arg(long)]
-    include_start: bool,
+    no_start: bool,
     #[arg(long)]
-    include_finish: bool,
+    no_finish: bool,
     #[arg(long, value_name = "ID")]
     id: Option<String>,
     #[arg(long)]
@@ -1019,17 +1021,14 @@ fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
         BuildError::BadSelection { text } => {
             ("error-masks-selection", args!("text" => printable(&text)))
         }
-        BuildError::UnknownControl { code, known } => {
-            let known: Vec<String> = known.iter().map(|c| printable(c)).collect();
-            (
-                "error-unknown-control",
-                args!(
-                    "course" => printable(course),
-                    "control" => printable(&code),
-                    "known" => known.join(", "),
-                ),
-            )
-        }
+        BuildError::UnknownControl { code, known } => (
+            "error-unknown-control",
+            args!(
+                "course" => printable(course),
+                "control" => printable(&code),
+                "known" => stops_with_codes(texts, &known),
+            ),
+        ),
         BuildError::RangeOutOfCourse { from, to, count } => (
             "error-masks-range",
             args!(
@@ -1219,8 +1218,8 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
     let print_scale = layout.print_scale.unwrap_or(map.georef.scale_denominator);
     let options = WindowOptions {
         selection,
-        include_start: args.include_start,
-        include_finish: args.include_finish,
+        start: !args.no_start,
+        finish: !args.no_finish,
         radius_mm: args.radius.unwrap_or(mask_build::DEFAULT_RADIUS_MM),
         per_control,
         map_mm_per_print_mm: map_mm_per_print_mm(texts, &map, print_scale)?,
@@ -1239,12 +1238,12 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
         mask_build::map_extent(&map),
     )
     .map_err(|e| build_error(texts, e, &course.name))?;
-    let codes: Vec<String> = windows.iter().map(|w| printable(&w.code)).collect();
+    let stops: Vec<StopName> = windows.iter().map(|w| w.stop.clone()).collect();
     let radius = short_decimal(texts, options.radius_mm, 2);
     let summary = args!(
         "id" => printable(&id),
         "count" => windows.len(),
-        "controls" => join_and(texts, codes),
+        "controls" => stops_phrase(texts, &stops, true),
         "course" => printable(&course.name),
         "radius" => radius,
         "scale" => print_scale.to_string(),
@@ -1257,7 +1256,8 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
             texts.get(
                 "masks-window-radius-for",
                 Some(&args!(
-                    "control" => printable(&w.code),
+                    "kind" => stop_kind(&w.stop),
+                    "control" => printable(w.stop.code()),
                     "radius" => short_decimal(texts, w.radius_mm, 2),
                 )),
             )
@@ -1288,7 +1288,7 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
                 .iter()
                 .find(|c| c.code == s.control)
                 .is_some_and(|c| s.kind.unwrap_or(c.kind) == kind);
-            of_kind && !windows.iter().any(|w| w.code == s.control)
+            of_kind && !windows.iter().any(|w| w.stop.code() == s.control)
         })
     };
     let (start, finish) = (
@@ -1309,6 +1309,67 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
     }
     mask_written_lines(texts, &id, assign);
     Ok(0)
+}
+
+/// `start`, `finish` or `control`: a selector for the messages that name a stop by kind.
+fn stop_kind(stop: &StopName) -> &'static str {
+    match stop {
+        StopName::Start(_) => "start",
+        StopName::Control(_) => "control",
+        StopName::Finish(_) => "finish",
+    }
+}
+
+/// `stops` (course order) as a phrase in the user's language (ruling R13): the start and the finish by kind, the
+/// controls between them by code, those next to each other in one group ("controls 31, 32 and 33"). `accusative`
+/// picks the German article for an object ("um den Start").
+fn stops_phrase(texts: &Texts, stops: &[StopName], accusative: bool) -> String {
+    let mut items: Vec<String> = Vec::new();
+    let mut group: Vec<String> = Vec::new();
+    let flush = |group: &mut Vec<String>, items: &mut Vec<String>| {
+        if !group.is_empty() {
+            let count = group.len();
+            let codes = join_and(texts, std::mem::take(group));
+            items.push(texts.get(
+                "stop-controls",
+                Some(&args!("codes" => codes, "count" => count)),
+            ));
+        }
+    };
+    for stop in stops {
+        match stop {
+            StopName::Control(code) => group.push(printable(code)),
+            other => {
+                flush(&mut group, &mut items);
+                let id = match (other, accusative) {
+                    (StopName::Start(_), false) => "stop-start",
+                    (StopName::Start(_), true) => "stop-start-acc",
+                    _ => "stop-finish",
+                };
+                items.push(texts.plain(id));
+            }
+        }
+    }
+    flush(&mut group, &mut items);
+    join_and(texts, items)
+}
+
+/// `stops` as a list of the codes the user can type, the start and the finish with their kind: "31, 32, start
+/// (STA1) and finish (FIN1)".
+fn stops_with_codes(texts: &Texts, stops: &[StopName]) -> String {
+    let items = stops
+        .iter()
+        .map(|stop| match stop {
+            StopName::Control(code) => printable(code),
+            StopName::Start(code) => {
+                texts.get("stop-start-code", Some(&args!("code" => printable(code))))
+            }
+            StopName::Finish(code) => {
+                texts.get("stop-finish-code", Some(&args!("code" => printable(code))))
+            }
+        })
+        .collect();
+    join_and(texts, items)
 }
 
 /// The course `name` of the course file, or a usage error that lists the courses.
@@ -2135,7 +2196,7 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-control-in-masked-area",
             Some(&args!(
                 "course" => printable(course),
-                "controls" => printable(&controls.join(", ")),
+                "controls" => stops_phrase(texts, controls, false),
                 "count" => controls.len(),
             )),
         ),
@@ -2745,12 +2806,8 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         .mut_arg("radius_for", |a| {
                             a.help(texts.plain("help-masks-radius-for"))
                         })
-                        .mut_arg("include_start", |a| {
-                            a.help(texts.plain("help-masks-include-start"))
-                        })
-                        .mut_arg("include_finish", |a| {
-                            a.help(texts.plain("help-masks-include-finish"))
-                        })
+                        .mut_arg("no_start", |a| a.help(texts.plain("help-masks-no-start")))
+                        .mut_arg("no_finish", |a| a.help(texts.plain("help-masks-no-finish")))
                         .mut_arg("id", |a| a.help(texts.plain("help-masks-window-id")))
                         .mut_arg("assign", |a| {
                             a.help(texts.plain("help-masks-window-assign"))
@@ -3108,14 +3165,19 @@ mod tests {
             (
                 SheetNote::ControlInMaskedArea {
                     course: s("Kurz"),
-                    controls: vec![s("S1"), s("31")],
+                    controls: vec![
+                        StopName::Start(s("S1")),
+                        StopName::Control(s("31")),
+                        StopName::Control(s("32")),
+                        StopName::Finish(s("F1")),
+                    ],
                 },
-                vec!["Kurz", "S1, 31"],
+                vec!["Kurz", "31", "32"],
             ),
             (
                 SheetNote::ControlInMaskedArea {
                     course: s("Kurz"),
-                    controls: vec![s("32")],
+                    controls: vec![StopName::Control(s("32"))],
                 },
                 vec!["Kurz", "32"],
             ),

@@ -6,7 +6,9 @@
 use std::path::Path;
 
 use crate::course::fit::{FitError, FitNote, FitOptions};
-use crate::course::model::{Course, FittedEvent, MAX_COURSE_FILE_BYTES, NumberPlacement};
+use crate::course::model::{
+    ControlKind, Course, FittedEvent, MAX_COURSE_FILE_BYTES, NumberPlacement,
+};
 use crate::course::{CourseError, CourseNote, fit, read_iof_xml, read_ppen};
 use crate::course::{CourseFilter, Special};
 use crate::mask::{Mask, MaskPolygon};
@@ -299,6 +301,45 @@ pub fn layout_for<'a>(
                     layout: first.id.clone(),
                 }),
             )
+        }
+    }
+}
+
+/// A stop of a course as messages name it (ruling R13): the start and the finish by their kind, every other stop
+/// by its code. Each keeps its code for where the user has to type it, such as `--radius-for`. Purple Pen gives
+/// the start and the finish no code of their own, so theirs (`STA1`, `FIN1`) mean little to a reader.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopName {
+    Start(String),
+    Control(String),
+    Finish(String),
+}
+
+impl StopName {
+    /// The name of a stop with the code `code` and the effective kind `kind`.
+    pub fn new(code: &str, kind: ControlKind) -> Self {
+        let code = code.to_string();
+        match kind {
+            ControlKind::Start => StopName::Start(code),
+            ControlKind::Finish => StopName::Finish(code),
+            _ => StopName::Control(code),
+        }
+    }
+
+    /// The name of the `i`-th stop of `course`: its kind in the course, else its control's kind.
+    pub fn of(course: &Course<MapCoord>, event: &FittedEvent, i: usize) -> Self {
+        let stop = &course.stops[i];
+        let kind = event
+            .controls
+            .iter()
+            .find(|c| c.code == stop.control)
+            .map_or(ControlKind::Control, |c| stop.kind.unwrap_or(c.kind));
+        StopName::new(&stop.control, kind)
+    }
+
+    pub fn code(&self) -> &str {
+        match self {
+            StopName::Start(c) | StopName::Control(c) | StopName::Finish(c) => c,
         }
     }
 }

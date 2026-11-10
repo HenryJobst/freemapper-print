@@ -1699,8 +1699,22 @@ fn check_counts_mask_warnings_but_not_mask_infos() {
         err.contains("Note: the mask \"all\" hides the whole map frame of course \"Training\""),
         "{err}"
     );
+    // The start and the finish by kind, the controls by code, with "and" as masks window lists them.
     assert!(
-        err.contains("where the mask hides the map, so runners find no map around them"),
+        err.contains(
+            "Note: on the sheet of course \"Training\", the start, controls 34, 52, 41, 47, 38, 56, 43, 49, 35 \
+             and 60 and the finish lie where the mask hides the map, so runners find no map there."
+        ),
+        "{err}"
+    );
+    assert!(!err.contains("STA1") && !err.contains("FIN1"), "{err}");
+    let o = run("de", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    assert!(
+        err.contains(
+            "Hinweis: Auf dem Blatt der Bahn „Training“ liegen der Start, die Posten 34, 52, 41, 47, 38, 56, 43, 49, \
+             35 und 60 und das Ziel dort, wo die Abdeckung die Karte verbirgt."
+        ) && err.contains("Mit Hinweisen: 1 von 1 Bahn, 0 von 1 Layoutblatt."),
         "{err}"
     );
     // The PDF is written all the same.
@@ -1816,21 +1830,28 @@ fn masks_window_appends_and_keeps_comments() {
     assert_eq!(mask.id, "window-Training");
     let a = &loaded.project.assignments[0];
     assert_eq!(a.mask.as_deref(), Some("window-Training"));
+    // The start and the finish get their windows by default, named by kind (ruling R13).
     assert!(
         err.contains("Added the mask \"window-Training\"")
-            && err.contains("of 15 mm radius on paper at 1:4000")
+            && err.contains(
+                "12 windows of 15 mm radius on paper at 1:4000 around the start, controls 34, 52, 41, 47, 38, 56, \
+                 43, 49, 35 and 60 and the finish of course \"Training\"."
+            )
             && err.contains("Control 41 has a window of 20 mm radius.")
-            && err.contains("The start and the finish have no window, so check names them.")
+            && !err.contains("no window")
             && err.contains("Course \"Training\" prints with it now, on layout a4-4000.")
             && err.contains("Run check"),
         "{err}"
     );
-    // check names the start and the finish, which have no window.
+    assert!(
+        new.contains("around the start, controls 34, 52,") && !new.contains("STA1"),
+        "{new}"
+    );
+    // check finds every stop in a window.
     let o = run("en", &["check", p]);
     let err = stderr(&o);
-    assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("where the mask hides the map"), "{err}");
-    // The same in German, with start and finish, a second mask by its own id: the controls 1 and 2 by number.
+    assert!(!err.contains("where the mask hides the map"), "{err}");
+    // In German, without start and finish, a second mask by its own id: the controls 1 and 2 by number.
     let (_dir, path) = viktoriapark_with("");
     let p = path.to_str().unwrap();
     let o = run(
@@ -1845,8 +1866,8 @@ fn masks_window_appends_and_keeps_comments() {
             "1-2",
             "--radius",
             "12.5",
-            "--include-start",
-            "--include-finish",
+            "--no-start",
+            "--no-finish",
             "--id",
             "fenster",
         ],
@@ -1855,13 +1876,17 @@ fn masks_window_appends_and_keeps_comments() {
     assert_eq!(o.status.code(), Some(0), "{err}");
     assert!(
         err.contains("Abdeckung „fenster“ in")
-            && err.contains("4 Fenster mit 12,5 mm Radius auf dem Papier bei 1:4000")
-            && err.contains("Noch nutzt keine Bahn sie.")
-            && !err.contains("kein Fenster"),
+            && err.contains("2 Fenster mit 12,5 mm Radius auf dem Papier bei 1:4000")
+            && err.contains("um die Posten 34 und 52 der Bahn „Training“.")
+            && err.contains(
+                "Start und Ziel haben kein Fenster, deshalb nennt check sie. Ohne --no-start und --no-finish \
+                 bekommen sie eins."
+            )
+            && err.contains("Noch nutzt keine Bahn sie."),
         "{err}"
     );
     let loaded = project::load(&path).unwrap();
-    assert_eq!(loaded.project.masks[0].polygons[0].holes.len(), 4);
+    assert_eq!(loaded.project.masks[0].polygons[0].holes.len(), 2);
     assert_eq!(loaded.project.assignments[0].mask, None);
 }
 
@@ -2034,8 +2059,9 @@ fn masks_usage_errors_in_both_languages() {
                 "--controls",
                 "31,99",
             ],
-            "has no control 99",
-            "hat keinen Posten 99",
+            // The list names the start and the finish by kind, with the code to type.
+            "has no control 99; its controls are start (",
+            "hat keinen Posten 99; ihre Posten sind Start (",
         ),
         (
             &[
@@ -2072,12 +2098,20 @@ fn masks_usage_errors_in_both_languages() {
     let o = run("de", &["masks", "window", "--help"]);
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(
-        out.contains("Druck-mm") && out.contains("--include-start"),
+        out.contains("Druck-mm")
+            && out.contains("--no-start")
+            && out.contains("löschen Sie die Abdeckung und rufen Sie den Befehl noch einmal auf"),
         "{out}"
     );
     let o = run("en", &["masks", "corridor", "--help"]);
     let out = String::from_utf8_lossy(&o.stdout);
-    assert!(out.contains("does not draw one by itself"), "{out}");
+    assert!(
+        out.contains("does not draw one by itself")
+            && out.contains(
+                "after changing the print scale, delete the mask and run the command again"
+            ),
+        "{out}"
+    );
 }
 
 #[test]

@@ -169,11 +169,12 @@ pub enum SheetNote {
         kind: MaskedObject,
         count: usize,
     },
-    /// The centres of these controls (codes, each once, in course order: start, controls, map exchanges, finish)
-    /// lie in the map frame where a mask of the sheet hides the map: the runner finds no map around them.
+    /// The centres of these stops (each code once, in course order: start, controls, map exchanges, finish) lie in
+    /// the map frame where a mask of the sheet hides the map: the runner finds no map around them. The start and
+    /// the finish are named by kind (ruling R13).
     ControlInMaskedArea {
         course: String,
-        controls: Vec<String>,
+        controls: Vec<crate::courses::StopName>,
     },
     /// The mask `mask`, a `[[masks]]` entry, hides nothing inside the map frame of the course's sheet. Informs only.
     MaskCoversNothing { course: String, mask: String },

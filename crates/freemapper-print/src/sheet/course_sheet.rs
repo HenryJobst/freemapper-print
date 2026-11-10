@@ -1833,8 +1833,8 @@ mod tests {
         control.position = Some(MapCoord::new(40_000, 30_000));
         let options = WindowOptions {
             selection: Selection::All,
-            include_start: false,
-            include_finish: false,
+            start: false,
+            finish: false,
             radius_mm: 15.0,
             per_control: Default::default(),
             // The layout prints at the map scale.
@@ -1886,7 +1886,7 @@ mod tests {
             assert!(!visible(clip, at(p.0, p.1)), "{p:?}");
         }
         // The start and the finish are named by `check`; the controls are not.
-        let named: Vec<&String> = report
+        let named: Vec<&crate::courses::StopName> = report
             .notes
             .iter()
             .filter_map(|n| match n {
@@ -1895,7 +1895,7 @@ mod tests {
             })
             .flatten()
             .collect();
-        assert_eq!(named, ["S1", "F1"]);
+        assert_eq!(named, [&start(), &finish()]);
         // The PDF clips the map with the mask (around the map before and after the lower purple).
         let pdf = crate::render::pdf::content_of(
             &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
@@ -2107,6 +2107,19 @@ mod tests {
         ]);
     }
 
+    /// The stops of Kurz as `ControlInMaskedArea` names them: the start and the finish by kind.
+    fn start() -> crate::courses::StopName {
+        crate::courses::StopName::Start("S1".into())
+    }
+
+    fn finish() -> crate::courses::StopName {
+        crate::courses::StopName::Finish("F1".into())
+    }
+
+    fn control(code: &str) -> crate::courses::StopName {
+        crate::courses::StopName::Control(code.into())
+    }
+
     /// The notes about masks of a sheet report.
     fn mask_check_notes(report: &SheetReport) -> Vec<&SheetNote> {
         report
@@ -2141,7 +2154,7 @@ mod tests {
         let notes = mask_check_notes(&report);
         let want = SheetNote::ControlInMaskedArea {
             course: "Kurz".into(),
-            controls: vec!["S1".into(), "32".into(), "F1".into()],
+            controls: vec![start(), control("32"), finish()],
         };
         assert_eq!(notes, [&want]);
         assert!(!want.is_info(), "a warning");
@@ -2161,7 +2174,7 @@ mod tests {
         let want = [
             SheetNote::ControlInMaskedArea {
                 course: "Kurz".into(),
-                controls: vec!["S1".into(), "F1".into()],
+                controls: vec![start(), finish()],
             },
             // The leg from S1 and two of the three marked routes; the third belongs to D/H 12.
             in_mask(MarkedRoute, 3),
@@ -2342,7 +2355,7 @@ mod tests {
         };
         let controls = SheetNote::ControlInMaskedArea {
             course: "Kurz".into(),
-            controls: vec!["S1".into(), "31".into(), "32".into(), "F1".into()],
+            controls: vec![start(), control("31"), control("32"), finish()],
         };
         assert_eq!(mask_check_notes(&report), [&none_left, &controls]);
         assert!(!none_left.is_info());
@@ -2369,7 +2382,7 @@ mod tests {
             mask_check_notes(&report),
             [&SheetNote::ControlInMaskedArea {
                 course: "Kurz".into(),
-                controls: vec!["31".into(), "F1".into()],
+                controls: vec![control("31"), finish()],
             }]
         );
     }

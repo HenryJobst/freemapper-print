@@ -320,6 +320,7 @@ mod tests {
             "points",
             "scales",
             "ids",
+            "codes",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

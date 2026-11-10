@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::f64::consts::PI;
 
 use crate::course::model::{ControlKind, Course, FittedEvent};
+use crate::courses::StopName;
 use crate::mask::{self, Budget, MAX_CHECK_STEPS, MAX_COORD_MM, Mask, MaskPolygon, Problem};
 use crate::omap::{MapCoord, MapDocument};
 
@@ -45,8 +46,8 @@ pub enum BuildError {
     SizeOutOfRange { value: f64 },
     /// `--controls` is neither a list of codes nor a range `FROM-TO`.
     BadSelection { text: String },
-    /// A code that is no stop of the course; `known` lists the stops in course order.
-    UnknownControl { code: String, known: Vec<String> },
+    /// A code that is no stop of the course; `known` lists the stops in course order, each code once.
+    UnknownControl { code: String, known: Vec<StopName> },
     /// A range of control numbers outside 1..=`count`, or from above to.
     RangeOutOfCourse {
         from: usize,
@@ -92,7 +93,11 @@ impl std::fmt::Display for BuildError {
             Self::UnknownControl { code, known } => write!(
                 f,
                 "the course has no control {code}; its controls are {}",
-                known.join(", ")
+                known
+                    .iter()
+                    .map(StopName::code)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             Self::RangeOutOfCourse { from, to, count } => write!(
                 f,
@@ -179,10 +184,10 @@ impl Selection {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowOptions {
     pub selection: Selection,
-    /// The start gets a window too.
-    pub include_start: bool,
-    /// The finish gets a window too.
-    pub include_finish: bool,
+    /// The start gets a window, whatever `selection` says (the CLI's default, ruling R13).
+    pub start: bool,
+    /// The finish gets a window, whatever `selection` says (the CLI's default).
+    pub finish: bool,
     /// The radius of every window (print mm).
     pub radius_mm: f64,
     /// Radii (print mm) of single controls by code, in place of `radius_mm`.
@@ -194,7 +199,8 @@ pub struct WindowOptions {
 /// One window of a generated mask.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Window {
-    pub code: String,
+    /// The stop the window is around, the start and the finish by kind.
+    pub stop: StopName,
     /// The centre of the control, map mm, y up.
     pub centre: [f64; 2],
     /// Print mm.
@@ -251,7 +257,7 @@ fn selected(
     course: &Course<MapCoord>,
     event: &FittedEvent,
     options: &WindowOptions,
-) -> Result<Vec<(String, [f64; 2])>, BuildError> {
+) -> Result<Vec<(StopName, [f64; 2])>, BuildError> {
     let numbered = crate::overprint::labels(course, event);
     let kind_of = |i: usize| {
         let stop = &course.stops[i];
@@ -275,13 +281,13 @@ fn selected(
             numbered[from - 1..*to].iter().map(|(i, _, _)| *i).collect()
         }
         Selection::Codes(codes) => {
-            let mut known: Vec<String> = Vec::new();
-            for s in &course.stops {
-                if !known.contains(&s.control) {
-                    known.push(s.control.clone());
+            let mut known: Vec<StopName> = Vec::new();
+            for (i, s) in course.stops.iter().enumerate() {
+                if !known.iter().any(|k| k.code() == s.control) {
+                    known.push(StopName::of(course, event, i));
                 }
             }
-            if let Some(code) = codes.iter().find(|c| !known.contains(c)) {
+            if let Some(code) = codes.iter().find(|c| !known.iter().any(|k| k.code() == *c)) {
                 return Err(BuildError::UnknownControl {
                     code: code.clone(),
                     known,
@@ -294,18 +300,18 @@ fn selected(
     };
     for i in 0..course.stops.len() {
         match kind_of(i) {
-            Some(ControlKind::Start) if options.include_start => {
+            Some(ControlKind::Start) if options.start => {
                 wanted.insert(i);
             }
-            Some(ControlKind::Finish) if options.include_finish => {
+            Some(ControlKind::Finish) if options.finish => {
                 wanted.insert(i);
             }
             _ => {}
         }
     }
-    let mut out: Vec<(String, [f64; 2])> = Vec::new();
+    let mut out: Vec<(StopName, [f64; 2])> = Vec::new();
     for (i, stop) in course.stops.iter().enumerate() {
-        if !wanted.contains(&i) || out.iter().any(|(c, _)| *c == stop.control) {
+        if !wanted.contains(&i) || out.iter().any(|(c, _)| c.code() == stop.control) {
             continue;
         }
         let position = event
@@ -316,7 +322,7 @@ fn selected(
             .ok_or_else(|| BuildError::NoPosition {
                 code: stop.control.clone(),
             })?;
-        out.push((stop.control.clone(), written(&position)));
+        out.push((StopName::of(course, event, i), written(&position)));
     }
     if out.is_empty() {
         return Err(BuildError::NoControls);
@@ -342,17 +348,17 @@ pub fn windows(
     if let Some(code) = options
         .per_control
         .keys()
-        .find(|code| !chosen.iter().any(|(c, _)| c == *code))
+        .find(|code| !chosen.iter().any(|(c, _)| c.code() == code.as_str()))
     {
         return Err(BuildError::RadiusForUnselected { code: code.clone() });
     }
     let mut holes = Vec::new();
     let mut list = Vec::new();
     let mut points = 4;
-    for (code, centre) in chosen {
+    for (stop, centre) in chosen {
         let radius_mm = options
             .per_control
-            .get(&code)
+            .get(stop.code())
             .copied()
             .unwrap_or(options.radius_mm);
         let n = window_vertices(radius_mm);
@@ -373,7 +379,7 @@ pub fn windows(
             .collect();
         holes.push(ring);
         list.push(Window {
-            code,
+            stop,
             centre,
             radius_mm,
             vertices: n,
@@ -672,8 +678,8 @@ mod tests {
     fn options(selection: Selection, radius_mm: f64, k: f64) -> WindowOptions {
         WindowOptions {
             selection,
-            include_start: false,
-            include_finish: false,
+            start: false,
+            finish: false,
             radius_mm,
             per_control: BTreeMap::new(),
             map_mm_per_print_mm: k,
@@ -692,7 +698,7 @@ mod tests {
     }
 
     fn codes(windows: &[Window]) -> Vec<&str> {
-        windows.iter().map(|w| w.code.as_str()).collect()
+        windows.iter().map(|w| w.stop.code()).collect()
     }
 
     fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
@@ -752,7 +758,7 @@ mod tests {
         o.per_control.insert("33".into(), 25.0);
         let (mask, list) = build(&o).unwrap();
         for (hole, w) in mask.polygons[0].holes.iter().zip(&list) {
-            let want = if w.code == "33" { 25.0 } else { 15.0 };
+            let want = if w.stop.code() == "33" { 25.0 } else { 15.0 };
             assert_eq!(w.radius_mm, want);
             assert!((dist(hole[0], w.centre) - want).abs() <= 0.001);
         }
@@ -832,20 +838,28 @@ mod tests {
             err,
             BuildError::UnknownControl {
                 code: "99".into(),
-                known: ["S", "31", "32", "33", "34", "35", "36", "F"]
-                    .map(String::from)
-                    .to_vec()
+                known: std::iter::once(StopName::Start("S".into()))
+                    .chain(
+                        ["31", "32", "33", "34", "35", "36"].map(|c| StopName::Control(c.into()))
+                    )
+                    .chain([StopName::Finish("F".into())])
+                    .collect()
             }
         );
-        // Start and finish only on request.
+        // The start and the finish get their windows whatever the selection, named by kind; without them only
+        // the selected controls.
         let mut o = options(Selection::Numbers { from: 1, to: 1 }, 15.0, 1.0);
-        o.include_start = true;
-        o.include_finish = true;
+        o.start = true;
+        o.finish = true;
         let (_, list) = build(&o).unwrap();
         assert_eq!(codes(&list), ["S", "31", "F"]);
+        assert_eq!(list[0].stop, StopName::Start("S".into()));
+        assert_eq!(list[2].stop, StopName::Finish("F".into()));
+        o.finish = false;
+        assert_eq!(codes(&build(&o).unwrap().1), ["S", "31"]);
         let (_, list) = build(&options(Selection::All, 15.0, 1.0)).unwrap();
         assert!(!codes(&list).contains(&"S") && !codes(&list).contains(&"F"));
-        // A course without controls has nothing to select.
+        // A course without controls has nothing to select but its start and finish.
         let e = event(
             &[
                 ("S", ControlKind::Start, 0.0, 0.0),
@@ -863,13 +877,18 @@ mod tests {
             ),
             Err(BuildError::NoControls)
         );
+        let mut o = options(Selection::All, 15.0, 1.0);
+        o.start = true;
+        o.finish = true;
+        let (_, list) = windows("w", &e.courses[0], &e, &o, None).unwrap();
+        assert_eq!(codes(&list), ["S", "F"]);
     }
 
     #[test]
     fn generated_mask_passes_validation() {
         let mut o = options(Selection::All, 30.0, 1.0);
-        o.include_start = true;
-        o.include_finish = true;
+        o.start = true;
+        o.finish = true;
         let (mask, _) = build(&o).unwrap();
         assert_eq!(
             mask::check(&mask, &mut Budget::new(MAX_CHECK_STEPS)),

@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 
 use crate::course::{ControlKind, Course, CourseKind, FittedEvent, Special};
+use crate::courses::StopName;
 use crate::mask::{self, Mask, MaskPolygon, to_internal};
 use crate::omap::MapCoord;
 use crate::overprint::{applies, leg_lines};
@@ -447,7 +448,7 @@ pub(super) fn mask_notes(
         });
     }
 
-    let mut controls: Vec<String> = Vec::new();
+    let mut controls: Vec<StopName> = Vec::new();
     let mut counts: BTreeMap<MaskedObject, usize> = BTreeMap::new();
     'check: {
         if hider.limited {
@@ -473,8 +474,8 @@ pub(super) fn mask_notes(
             }
             if kind == ControlKind::CrossingPoint {
                 found(&mut counts, MaskedObject::CrossingPoint);
-            } else if !controls.contains(&stop.control) {
-                controls.push(stop.control.clone());
+            } else if !controls.iter().any(|c| c.code() == stop.control) {
+                controls.push(StopName::new(&stop.control, kind));
             }
         }
         // Marked-route legs, from where they leave their first stop's symbol to where they reach the second's.
