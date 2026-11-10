@@ -16,11 +16,11 @@ Die eingebettete Schrift, unter der SIL Open Font License 1.1. Quelle, Version u
 
 The IOF control description symbols and their German and English texts come from Purple Pen's
 `src/PurplePenCore/symbols.xml` (https://github.com/petergolde/PurplePen, commit
-`201417f97bb69302e3e0db123f428870e0914515`). The program embeds the file unchanged; its hash is in
-`crates/freemapper-print/data/README.md`. Purple Pen is published under this BSD licence:
+`201417f97bb69302e3e0db123f428870e0914515`). The program embeds the file unchanged (through freemapper-core's `freemapper-course` crate); its hash is in
+`crates/freemapper-course/data/README.md` of freemapper-core. Purple Pen is published under this BSD licence:
 
 Die IOF-Symbole der Postenbeschreibung und ihre deutschen und englischen Texte stammen aus Purple Pens
-`symbols.xml` (Quelle wie oben). Das Programm enthält die Datei unverändert. Purple Pen steht unter dieser
+`symbols.xml` (Quelle wie oben). Das Programm enthält die Datei unverändert (über die Crate `freemapper-course` aus freemapper-core). Purple Pen steht unter dieser
 BSD-Lizenz:
 
 ```
