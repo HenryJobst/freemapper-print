@@ -290,6 +290,7 @@ note-white-outs-cover-nothing = Zur Information: Im Kartenausschnitt der Bahn �
         [one] verbirgt die Abdeckfläche { $ids } aus der Bahndatei nichts.
        *[other] verbergen die { $count } Abdeckflächen { $ids } aus der Bahndatei nichts.
     }
+note-element-covers-window = Hinweis: Auf dem Blatt der Bahn „{ $course }“ deckt das Element { $id } einen Teil der Fenster der Abdeckung „{ $mask }“ ab. Auf einem Blatt mit Abdeckung zeigen nur die Fenster die Karte, und das Element verbirgt einen Teil davon. Versetzen Sie das Element über seinen Anker, oder legen Sie das Fenster anders.
 note-mask-leaves-no-window = Hinweis: Die Abdeckung „{ $mask }“ verbirgt den ganzen Kartenausschnitt der Bahn „{ $course }“, das Blatt zeigt also gar keine Karte. Prüfen Sie ihre Fenster und ihre Punkte. Sie sind Karten-mm mit der y-Achse nach oben, wie OOM sie anzeigt.
 note-mask-check-limited = Hinweis: Auf dem Blatt der Bahn „{ $course }“ hat die Prüfung gegen die Abdeckung ihre Grenze erreicht, ein Teil des Bahnaufdrucks blieb ungeprüft. Suchen Sie auf dem Blatt nach Bahnsymbolen ohne Karte darunter.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.

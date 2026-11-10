@@ -2165,6 +2165,18 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
                 )),
             )
         }
+        SheetNote::ElementCoversWindow {
+            course,
+            element,
+            mask,
+        } => texts.get(
+            "note-element-covers-window",
+            Some(&args!(
+                "course" => printable(course),
+                "id" => printable(element),
+                "mask" => printable(mask),
+            )),
+        ),
         SheetNote::MaskLeavesNoWindow { course, mask } => texts.get(
             "note-mask-leaves-no-window",
             Some(&args!("course" => printable(course), "mask" => printable(mask))),
@@ -3127,6 +3139,14 @@ mod tests {
                     ids: (1..=12).map(|i| format!("whiteout-{i}")).collect(),
                 },
                 vec!["Kurz", "whiteout-10", "12", "2"],
+            ),
+            (
+                SheetNote::ElementCoversWindow {
+                    course: s("Kurz"),
+                    element: s("descriptions"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "descriptions", "fenster"],
             ),
             (
                 SheetNote::MaskLeavesNoWindow {

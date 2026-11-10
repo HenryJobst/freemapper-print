@@ -290,6 +290,7 @@ note-white-outs-cover-nothing = Info: in the map frame of course "{ $course }", 
         [one] the white-out area { $ids } of the course file hides nothing.
        *[other] the { $count } white-out areas { $ids } of the course file hide nothing.
     }
+note-element-covers-window = Note: on the sheet of course "{ $course }", the element { $id } covers part of the windows of the mask "{ $mask }". On a masked sheet only the windows show the map, and the element hides part of it. Move the element by its anchor, or place the window elsewhere.
 note-mask-leaves-no-window = Note: the mask "{ $mask }" hides the whole map frame of course "{ $course }", so the sheet shows no map at all. Check its windows and its points. They are map mm with y pointing up, as OOM shows them.
 note-mask-check-limited = Note: on the sheet of course "{ $course }" the check against the mask reached its limit, so part of the overprint was not checked. Look at the sheet for course symbols with no map under them.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.

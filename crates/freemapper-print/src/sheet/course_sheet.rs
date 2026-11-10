@@ -47,8 +47,8 @@ pub struct DescriptionSource<'a> {
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
 /// [`SheetNote::OverprintCut`], [`SheetNote::MasksCapped`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`],
 /// [`SheetNote::NumberGapOutOfRange`] and the notes of the check against the masks (ADR 0046):
-/// [`SheetNote::MaskCoversNothing`], [`SheetNote::WhiteOutsCoverNothing`], [`SheetNote::MaskLeavesNoWindow`],
-/// [`SheetNote::ControlInMaskedArea`],
+/// [`SheetNote::ElementCoversWindow`], [`SheetNote::MaskCoversNothing`], [`SheetNote::WhiteOutsCoverNothing`],
+/// [`SheetNote::MaskLeavesNoWindow`], [`SheetNote::ControlInMaskedArea`],
 /// [`SheetNote::OverprintInMaskedArea`] and [`SheetNote::MaskCheckLimited`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
@@ -211,6 +211,18 @@ pub fn render_course_sheet(
             (y - page_mm.1 / 2.0 + centre_mm.1) / gf,
         )
     };
+    let clipped: Vec<&Mask> = masks
+        .iter()
+        .take(MAX_APPLIED_MASKS)
+        .map(|m| m.mask())
+        .collect();
+    notes.extend(super::mask_check::elements_over_windows(
+        &course.name,
+        &rects,
+        &clipped,
+        frame,
+        &map_to_page,
+    ));
     let applied: Vec<Applied<'_>> = masks
         .iter()
         .take(MAX_APPLIED_MASKS)
@@ -2226,6 +2238,46 @@ mod tests {
             |_| {},
         );
         assert_eq!(mask_check_notes(&report), [&want]);
+    }
+
+    #[test]
+    fn description_box_over_a_window_is_noted() {
+        // A window course: the box in the frame's top-right corner. With the only window round control 31 at the
+        // frame centre, the box lies over masked paper only; with a window over the whole frame it covers part of
+        // that window and hides map the sheet would show (ruling R15).
+        let covers = |report: &SheetReport| -> Vec<SheetNote> {
+            report
+                .notes
+                .iter()
+                .filter(|n| matches!(n, SheetNote::ElementCoversWindow { .. }))
+                .cloned()
+                .collect()
+        };
+        let boxed = |window: &str| {
+            format!(
+                "{}[[masks]]\nid = \"w\"\npolygons = [[[[-2000, -2000], [2000, -2000], [2000, 2000], \
+                 [-2000, 2000]], {window}]]\n[[assignments]]\ncourse = \"Kurz\"\nlayout = \"a4\"\nmask = \"w\"\n",
+                with_box(TOP_RIGHT, "")
+            )
+        };
+        let (_, report) = ppen_sheet(&boxed(AROUND_31), "Kurz", as_ppen);
+        assert_eq!(covers(&report), Vec::<SheetNote>::new());
+        let (_, report) = ppen_sheet(
+            &boxed("[[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]]"),
+            "Kurz",
+            as_ppen,
+        );
+        let over = |element: &str| SheetNote::ElementCoversWindow {
+            course: "Kurz".into(),
+            element: element.into(),
+            mask: "w".into(),
+        };
+        // The layout has no passe-partout, so the footer sits in the frame and covers the window too.
+        assert_eq!(covers(&report), [over("descriptions"), over("footer")]);
+        assert!(!over("descriptions").is_info() && report.needs_attention());
+        // No mask, no such note.
+        let (_, report) = ppen_sheet(&with_box(TOP_RIGHT, ""), "Kurz", as_ppen);
+        assert_eq!(covers(&report), Vec::<SheetNote>::new());
     }
 
     #[test]

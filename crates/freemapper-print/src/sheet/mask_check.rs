@@ -202,7 +202,7 @@ impl<'a> Hider<'a> {
 }
 
 /// The part of the segment `a b` inside `frame` (Liang-Barsky), `None` when none is.
-fn clip_segment(a: Pt, b: Pt, frame: PaperBox) -> Option<(Pt, Pt)> {
+pub(super) fn clip_segment(a: Pt, b: Pt, frame: PaperBox) -> Option<(Pt, Pt)> {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let (mut t0, mut t1) = (0.0f64, 1.0f64);
     for (p, q) in [
@@ -234,6 +234,86 @@ fn clip_segment(a: Pt, b: Pt, frame: PaperBox) -> Option<(Pt, Pt)> {
     Some((
         (a.0 + dx * t0, a.1 + dy * t0),
         (a.0 + dx * t1, a.1 + dy * t1),
+    ))
+}
+
+/// [`SheetNote::ElementCoversWindow`] for each element in `rects` (id and page box) that meets a hole of one of
+/// the masks the sheet applies (ruling R15): on a window course the windows are the only map the sheet shows. Only
+/// the part of an element inside the map `frame` counts. A hole ring is tested by its box first, then by its edges
+/// through the element's box, then by whether it holds the box. `map_to_page` places a point of the internal frame
+/// on the page. One note per element and mask.
+pub(super) fn elements_over_windows(
+    course: &str,
+    rects: &[(String, PaperBox)],
+    masks: &[&Mask],
+    frame: PaperBox,
+    map_to_page: &dyn Fn(Pt) -> Pt,
+) -> Vec<SheetNote> {
+    let holes: Vec<(usize, Vec<Pt>, PaperBox)> = masks
+        .iter()
+        .enumerate()
+        .flat_map(|(i, m)| {
+            m.polygons
+                .iter()
+                .flat_map(move |p| p.holes.iter().map(move |h| (i, h)))
+        })
+        .filter_map(|(i, h)| {
+            let ring: Vec<Pt> = h.iter().map(|&p| map_to_page(to_internal(p))).collect();
+            let b = page_box(&ring)?;
+            Some((i, ring, b))
+        })
+        .collect();
+    let mut notes = Vec::new();
+    if holes.is_empty() {
+        return notes;
+    }
+    for (id, rect) in rects {
+        let r = PaperBox {
+            min: (rect.min.0.max(frame.min.0), rect.min.1.max(frame.min.1)),
+            max: (rect.max.0.min(frame.max.0), rect.max.1.min(frame.max.1)),
+        };
+        if !(r.min.0 <= r.max.0 && r.min.1 <= r.max.1) {
+            continue;
+        }
+        let mut met: Vec<usize> = Vec::new();
+        for (i, ring, b) in &holes {
+            if met.contains(i)
+                || b.max.0 < r.min.0
+                || b.min.0 > r.max.0
+                || b.max.1 < r.min.1
+                || b.min.1 > r.max.1
+            {
+                continue;
+            }
+            let n = ring.len();
+            let crosses = (0..n).any(|k| clip_segment(ring[k], ring[(k + 1) % n], r).is_some());
+            let centre = ((r.min.0 + r.max.0) / 2.0, (r.min.1 + r.max.1) / 2.0);
+            if crosses || mask::inside(ring, centre) {
+                met.push(*i);
+            }
+        }
+        met.sort_unstable();
+        notes.extend(met.into_iter().map(|i| SheetNote::ElementCoversWindow {
+            course: course.to_string(),
+            element: id.clone(),
+            mask: masks[i].id.clone(),
+        }));
+    }
+    notes
+}
+
+/// The box around `points`, `None` for none.
+fn page_box(points: &[Pt]) -> Option<PaperBox> {
+    let (&first, rest) = points.split_first()?;
+    Some(rest.iter().fold(
+        PaperBox {
+            min: first,
+            max: first,
+        },
+        |b, &(x, y)| PaperBox {
+            min: (b.min.0.min(x), b.min.1.min(y)),
+            max: (b.max.0.max(x), b.max.1.max(y)),
+        },
     ))
 }
 
@@ -553,6 +633,66 @@ mod tests {
             Some(false)
         );
         assert_eq!(MAX_MASK_SAMPLES - hider.samples, 11);
+    }
+
+    #[test]
+    fn elements_over_windows_count_by_the_hole_rings() {
+        // One mask: the whole frame masked but a window from (40, 40) to (60, 60) on the page (the page is the
+        // internal frame here; the rings are written y up).
+        let m = Mask {
+            id: "w".into(),
+            polygons: vec![MaskPolygon {
+                outline: vec![
+                    [-50.0, 50.0],
+                    [150.0, 50.0],
+                    [150.0, -150.0],
+                    [-50.0, -150.0],
+                ],
+                holes: vec![vec![
+                    [40.0, -40.0],
+                    [60.0, -40.0],
+                    [60.0, -60.0],
+                    [40.0, -60.0],
+                ]],
+            }],
+        };
+        let rect = |x0: f64, y0: f64, x1: f64, y1: f64| PaperBox {
+            min: (x0, y0),
+            max: (x1, y1),
+        };
+        let rects = vec![
+            // Over part of the window.
+            ("part".to_string(), rect(55.0, 55.0, 70.0, 70.0)),
+            // Wholly inside it.
+            ("inside".to_string(), rect(45.0, 45.0, 50.0, 50.0)),
+            // Around it.
+            ("around".to_string(), rect(30.0, 30.0, 70.0, 70.0)),
+            // Over masked paper only, and across the window's box but not the window.
+            ("paper".to_string(), rect(5.0, 5.0, 30.0, 30.0)),
+            // Outside the frame, though the hole would reach it there.
+            ("outside".to_string(), rect(-20.0, 45.0, -1.0, 50.0)),
+        ];
+        let notes = elements_over_windows("K", &rects, &[&m], frame(), &|p| p);
+        let named: Vec<&str> = notes
+            .iter()
+            .map(|n| match n {
+                SheetNote::ElementCoversWindow {
+                    element,
+                    mask,
+                    course,
+                } => {
+                    assert_eq!((mask.as_str(), course.as_str()), ("w", "K"));
+                    element.as_str()
+                }
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(named, ["part", "inside", "around"]);
+        assert!(!notes[0].is_info());
+        // A mask without holes (a white-out) has no window to cover.
+        let mut plain = m.clone();
+        plain.polygons[0].holes.clear();
+        assert!(elements_over_windows("K", &rects, &[&plain], frame(), &|p| p).is_empty());
     }
 
     #[test]

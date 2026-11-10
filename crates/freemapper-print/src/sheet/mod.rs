@@ -181,6 +181,13 @@ pub enum SheetNote {
     /// inside the map frame of the course's sheet: one note per course, however many there are (ruling R12).
     /// Informs only.
     WhiteOutsCoverNothing { course: String, ids: Vec<String> },
+    /// The element `element` (an id, or `footer`) covers part of a window (a hole) of the mask `mask` inside the
+    /// map frame: on a masked sheet the windows are the only map there is (ruling R15).
+    ElementCoversWindow {
+        course: String,
+        element: String,
+        mask: String,
+    },
     /// The mask `mask` hides the whole map frame of the sheet of a course with legs: the sheet shows no map.
     MaskLeavesNoWindow { course: String, mask: String },
     /// The check of the overprint against the masks reached its budget ([`MAX_MASK_SAMPLES`],
