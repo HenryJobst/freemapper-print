@@ -2017,6 +2017,25 @@ fn masks_usage_errors_in_both_languages() {
 }
 
 #[test]
+fn masks_refuse_a_new_assignment_next_to_inline_assignments() {
+    let (_ws, path, old) = numbers_workspace();
+    // Assignments as an inline array: a new [[assignments]] table would not load, so --assign is refused.
+    let inline = format!("assignments = []\n{old}");
+    std::fs::write(&path, &inline).unwrap();
+    let p = path.to_str().unwrap();
+    for (lang, hint) in [
+        ("en", "cannot add one for course \"Eng\""),
+        ("de", "für die Bahn „Eng“ keine neue anhängen"),
+    ] {
+        let o = run(lang, &["masks", "window", p, "--course", "Eng", "--assign"]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+    }
+}
+
+#[test]
 fn masks_restore_the_file_when_it_no_longer_loads() {
     let (_ws, path, old) = numbers_workspace();
     // An inline `masks` array makes the appended table a duplicate key.

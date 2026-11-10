@@ -413,6 +413,7 @@ error-masks-id = eine Abdeckungs-ID braucht 1 bis { $max } Zeichen und keine Ste
 error-masks-id-taken = die Projektdatei hat schon eine Abdeckung „{ $id }“. Wählen Sie mit --id eine andere ID, oder ändern Sie die Abdeckung in der Datei.
 error-masks-course-has-mask = die Bahn „{ $course }“ wird schon mit der Abdeckung „{ $mask }“ gedruckt. Ändern Sie ihre Zuordnung in der Projektdatei, wenn sie eine andere nutzen soll; das Programm ersetzt sie nicht.
 error-masks-assignment-inline = die Zuordnung der Bahn „{ $course }“ steht nicht als eigene Tabelle [[assignments]] in der Datei, deshalb kann das Programm ihr die Abdeckung nicht hinzufügen. Tragen Sie mask = "{ $id }" von Hand ein. Die Projektdatei blieb unverändert.
+error-masks-assignments-inline = die Zuordnungen stehen nicht als Tabellen [[assignments]] in der Datei, deshalb kann das Programm für die Bahn „{ $course }“ keine neue anhängen. Tragen Sie eine Zuordnung mit mask = "{ $id }" von Hand ein. Die Projektdatei blieb unverändert.
 error-masks-radius-for = --radius-for nimmt CODE=MM, etwa 35=20, und „{ $text }“ ist nicht so geschrieben
 error-masks-size = { $value } mm liegt außerhalb von { $min } bis { $max } mm; Radius und Breite sind Druck-mm auf dem Blatt
 error-masks-selection = --controls nimmt Postencodes mit Kommas dazwischen (31,32,35) oder einen Bereich von Postennummern (3-6), und „{ $text }“ ist keins von beidem

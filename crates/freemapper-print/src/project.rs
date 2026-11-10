@@ -457,15 +457,29 @@ pub enum ProjectError {
         course: String,
         mask: String,
     },
-    /// [`append_mask`] found the course's assignment, but not as a `[[assignments]]` table of its own.
+    /// [`append_mask`] found the course's assignment, but not as a `[[assignments]]` table of its own; or, for a
+    /// course without one (`new`), assignments written another way, so that a new table would not load.
     #[error(
-        "{file}: the assignment of course \"{course}\" is not written as a table [[assignments]] of its own, so \
-         the mask cannot be added to it; add mask = \"{mask}\" to it by hand"
+        "{file}: {}",
+        if *new {
+            format!(
+                "the assignments are not written as tables [[assignments]], so none can be added for course \
+                 \"{course}\"; add an assignment with mask = \"{mask}\" by hand"
+            )
+        } else {
+            format!(
+                "the assignment of course \"{course}\" is not written as a table [[assignments]] of its own, so \
+                 the mask cannot be added to it; add mask = \"{mask}\" to it by hand"
+            )
+        }
     )]
     AssignmentNotEditable {
         file: String,
         course: String,
         mask: String,
+        /// The course has no assignment yet, and the file's assignments are not written as tables a new one
+        /// could join.
+        new: bool,
     },
     /// The changed file loaded, but not as what was written; the old content was put back.
     #[error(
@@ -1626,6 +1640,7 @@ pub fn append_mask(
                         file: file.clone(),
                         course: course.into(),
                         mask: mask.id.clone(),
+                        new: false,
                     };
                     let text = std::str::from_utf8(&old).map_err(|_| not_editable())?;
                     let at = assignment_body(text, i, expected.assignments.len())
@@ -1636,6 +1651,20 @@ pub fn append_mask(
                 }
             },
             None => {
+                // A new `[[assignments]]` table only adds to assignments written as such tables; next to an inline
+                // `assignments = [...]` it would be a second definition of the key.
+                let as_tables = std::str::from_utf8(&old).is_ok_and(|text| {
+                    !has_inline_assignments(text)
+                        && assignment_headers(text).len() == expected.assignments.len()
+                });
+                if !as_tables {
+                    return Err(ProjectError::AssignmentNotEditable {
+                        file,
+                        course: course.into(),
+                        mask: mask.id.clone(),
+                        new: true,
+                    });
+                }
                 let a = Assignment {
                     course: course.into(),
                     layout: layout.into(),
@@ -1668,6 +1697,14 @@ fn key_line(key: &str, value: &str) -> Result<String, ProjectError> {
 /// has `count` such headers (otherwise some assignments are written another way and the count cannot be trusted).
 /// A header may carry a comment. The caller checks the result by loading it again.
 fn assignment_body(text: &str, i: usize, count: usize) -> Option<usize> {
+    let found = assignment_headers(text);
+    // A header on the last line without a line break has no table body to add to.
+    let at = *found.get(i)?;
+    (found.len() == count && text[..at].ends_with('\n')).then_some(at)
+}
+
+/// The byte offsets in `text` just after each `[[assignments]]` header line (a header may carry a comment).
+fn assignment_headers(text: &str) -> Vec<usize> {
     let mut found = Vec::new();
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
@@ -1681,9 +1718,16 @@ fn assignment_body(text: &str, i: usize, count: usize) -> Option<usize> {
         }
         offset += line.len();
     }
-    // A header on the last line without a line break has no table body to add to.
-    let at = *found.get(i)?;
-    (found.len() == count && text[..at].ends_with('\n')).then_some(at)
+    found
+}
+
+/// Whether a line of `text` starts the key `assignments` itself (`assignments = [...]`), as an inline array.
+fn has_inline_assignments(text: &str) -> bool {
+    text.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix("assignments")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    })
 }
 
 /// Most points on one line of a written ring.
@@ -3492,6 +3536,22 @@ mod tests {
             "{err}"
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+        // A course without an assignment next to inline assignments: refused the same way, not as a load failure.
+        let err = append_mask(&path, &small_mask("w"), Some(("B", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { new: true, ref course, .. } if course == "B"),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+        // An empty inline array as well.
+        let empty = format!("assignments = []\n{HEAD}[[layouts]]\nid = \"a4\"\n");
+        std::fs::write(&path, &empty).unwrap();
+        let err = append_mask(&path, &small_mask("w"), Some(("B", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { new: true, .. }),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), empty);
     }
 
     #[test]

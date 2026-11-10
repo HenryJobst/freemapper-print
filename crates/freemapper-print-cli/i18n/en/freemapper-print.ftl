@@ -413,6 +413,7 @@ error-masks-id = a mask id needs 1 to { $max } characters and no control charact
 error-masks-id-taken = the project file has a mask "{ $id }" already. Choose another id with --id, or change the mask in the file.
 error-masks-course-has-mask = course "{ $course }" prints with the mask "{ $mask }" already. Change its assignment in the project file to use another one; the program does not replace it.
 error-masks-assignment-inline = the assignment of course "{ $course }" is not written as a table [[assignments]] of its own, so the program cannot add the mask to it. Add mask = "{ $id }" to it by hand. The project file was left unchanged.
+error-masks-assignments-inline = the assignments are not written as tables [[assignments]] in the file, so the program cannot add one for course "{ $course }". Add an assignment with mask = "{ $id }" by hand. The project file was left unchanged.
 error-masks-radius-for = --radius-for takes CODE=MM, such as 35=20, and "{ $text }" is not written that way
 error-masks-size = { $value } mm is outside { $min } to { $max } mm; radius and width are print mm on the sheet
 error-masks-selection = --controls takes control codes separated by commas (31,32,35) or a range of control numbers (3-6), and "{ $text }" is neither

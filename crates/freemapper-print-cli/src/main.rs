@@ -1151,13 +1151,17 @@ fn write_mask(
                 Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
             ))
             .into(),
-            project::ProjectError::AssignmentNotEditable { course, mask, .. } => {
-                UsageError(texts.get(
-                    "error-masks-assignment-inline",
-                    Some(&args!("course" => printable(&course), "id" => printable(&mask))),
-                ))
-                .into()
-            }
+            project::ProjectError::AssignmentNotEditable {
+                course, mask, new, ..
+            } => UsageError(texts.get(
+                if new {
+                    "error-masks-assignments-inline"
+                } else {
+                    "error-masks-assignment-inline"
+                },
+                Some(&args!("course" => printable(&course), "id" => printable(&mask))),
+            ))
+            .into(),
             err @ project::ProjectError::Write { .. } => anyhow::Error::new(err)
                 .context(texts.get("error-write-file", Some(&args!("path" => path)))),
             // A file that no longer loads has been put back as it was.

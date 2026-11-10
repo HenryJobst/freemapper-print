@@ -1220,7 +1220,9 @@ Diese Meldungen beenden `masks window` und `masks corridor` mit Exit-Code 2, die
 - „die Bahn … wird schon mit der Abdeckung … gedruckt“: Ändern Sie die Zuordnung von Hand; das Programm ersetzt
   keine Abdeckung.
 - „die Zuordnung der Bahn … steht nicht als eigene Tabelle [[assignments]] in der Datei …“: Tragen Sie
-  `mask = "…"` von Hand ein.
+  `mask = "…"` von Hand ein. „die Zuordnungen stehen nicht als Tabellen [[assignments]] in der Datei …“ kommt für
+  eine Bahn ohne Zuordnung, wenn die Datei ihre Zuordnungen als `assignments = [...]` schreibt: Tragen Sie die
+  Zuordnung mit `mask = "…"` von Hand ein.
 - „… mm liegt außerhalb von 1 bis 100 mm …“: Radius und Breite sind Druck-mm.
 - „--controls nimmt Postencodes mit Kommas dazwischen …“ und „die Bahn … hat die Postennummern 1 bis …“: Prüfen Sie
   die Auswahl.

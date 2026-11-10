@@ -1173,6 +1173,8 @@ These messages end `masks window` and `masks corridor` with exit code 2, and the
 - "the project file has a mask … already": choose another id with `--id`.
 - "course … prints with the mask … already": change the assignment by hand; the program does not replace a mask.
 - "the assignment of course … is not written as a table [[assignments]] of its own …": add `mask = "…"` by hand.
+  "the assignments are not written as tables [[assignments]] …" comes for a course without an assignment when the
+  file writes its assignments as `assignments = [...]`: add the assignment with `mask = "…"` by hand.
 - "… mm is outside 1 to 100 mm …": radius and width are print mm.
 - "--controls takes control codes separated by commas …" and "course … has the control numbers 1 to …": check the
   selection.
