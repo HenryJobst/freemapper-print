@@ -1155,6 +1155,7 @@ For masks you write by hand, the program checks on loading:
 | The outlines of one mask do not overlap, touch or lie inside one another. | The map would show again where they overlap. For two areas that touch, draw one outline around both. |
 | Every number is finite and lies between −2 000 000 and 2 000 000 mm. | That is the reach of an OOM map. |
 | At most 64 masks per file, 256 polygons per mask, 4096 points per ring, 100 000 points in the whole file, 100 million steps for all checks together. | The limits protect against broken or hostile files. A window from `masks window` has about 50 points, the ten windows of luebeck-training-window about 500 together. |
+| The project file has at most 16 MB. | The masks of a file within the other limits take about 4 MB at most. A larger file would need gigabytes of memory to read before those limits could refuse it. |
 
 A broken rule stops `check` and `export`. The message is in English and names file, line, column and the field,
 for example:

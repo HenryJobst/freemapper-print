@@ -1201,6 +1201,7 @@ Für Abdeckungen, die Sie von Hand schreiben, prüft das Programm beim Laden:
 | Die Umrisse einer Abdeckung überlappen sich nicht, berühren sich nicht und liegen nicht ineinander. | In einer Überlappung würde die Karte wieder sichtbar. Für zwei Flächen, die sich berühren, zeichnen Sie einen Umriss um beide. |
 | Jede Zahl ist endlich und liegt zwischen −2 000 000 und 2 000 000 mm. | Das ist die Reichweite einer OOM-Karte. |
 | Höchstens 64 Abdeckungen je Datei, 256 Polygone je Abdeckung, 4096 Punkte je Ring, 100 000 Punkte in der ganzen Datei, 100 Millionen Rechenschritte für alle Prüfungen zusammen. | Die Grenzen schützen vor kaputten oder feindlichen Dateien. Ein Fenster aus `masks window` hat etwa 50 Punkte, die zehn Fenster aus luebeck-training-window zusammen etwa 500. |
+| Die Projektdatei ist höchstens 16 MB groß. | Die Abdeckungen einer Datei innerhalb der übrigen Grenzen brauchen höchstens etwa 4 MB. Eine größere Datei würde beim Lesen Gigabytes an Speicher belegen, bevor diese Grenzen sie ablehnen könnten. |
 
 Eine verletzte Regel hält `check` und `export` an. Die Meldung ist vorerst englisch und nennt Datei, Zeile, Spalte
 und das Feld, zum Beispiel:

@@ -35,6 +35,10 @@ pub const MAX_CENTRE_MM: f64 = 2_000_000.0;
 /// Smallest size (pt) of a `credit_line` element: the credit line must stay readable (ADR 0025).
 pub const MIN_CREDIT_PT: f64 = 5.0;
 
+/// Largest project file `load` reads, in bytes (16 MiB). The largest file within the mask limits takes about 2 to
+/// 4 MB; parsing a much larger one would take gigabytes before the limits refuse it.
+pub const MAX_PROJECT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Default file name of a project file.
 pub const FILE_NAME: &str = "freemapper-print.toml";
 
@@ -399,6 +403,10 @@ pub enum ProjectError {
         file: String,
         source: std::io::Error,
     },
+    #[error(
+        "project file {file} is too large: {bytes} bytes, at most {MAX_PROJECT_FILE_BYTES} (16 MiB) are read"
+    )]
+    TooLarge { file: String, bytes: u64 },
     #[error("cannot write project file {file}")]
     Write {
         file: String,
@@ -486,13 +494,39 @@ fn parse_error(file: &str, text: &str, e: &toml::de::Error) -> ProjectError {
     }
 }
 
+/// The text of the project file, read only when it is within [`MAX_PROJECT_FILE_BYTES`]. The read is capped
+/// again, because a file can grow after the size check.
+fn read_capped(path: &Path, file: &str) -> Result<String, ProjectError> {
+    use std::io::Read;
+    let io = |source| ProjectError::Io {
+        file: file.to_string(),
+        source,
+    };
+    let too_large = |bytes| ProjectError::TooLarge {
+        file: file.to_string(),
+        bytes,
+    };
+    let mut handle = std::fs::File::open(path).map_err(io)?;
+    let len = handle.metadata().map_err(io)?.len();
+    if len > MAX_PROJECT_FILE_BYTES {
+        return Err(too_large(len));
+    }
+    let mut bytes = Vec::new();
+    (&mut handle)
+        .take(MAX_PROJECT_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+    if bytes.len() as u64 > MAX_PROJECT_FILE_BYTES {
+        return Err(too_large(bytes.len() as u64));
+    }
+    String::from_utf8(bytes)
+        .map_err(|e| io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+}
+
 /// Reads and checks a project file. Paths inside stay as written; `LoadedProject::resolve` makes them absolute.
 pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
     let file = path.display().to_string();
-    let text = std::fs::read_to_string(path).map_err(|source| ProjectError::Io {
-        file: file.clone(),
-        source,
-    })?;
+    let text = read_capped(path, &file)?;
 
     #[derive(Deserialize)]
     struct Probe {
@@ -3478,6 +3512,29 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             format!("{HEAD}{WITH_LAYOUT}")
         );
+    }
+
+    #[test]
+    fn project_file_over_the_size_cap_is_refused_before_parsing() {
+        // A valid head and a long comment: over the cap by one byte, refused with the limit named.
+        let mut text = format!("{HEAD}{WITH_LAYOUT}");
+        let pad = MAX_PROJECT_FILE_BYTES as usize + 1 - text.len();
+        text.push('#');
+        text.push_str(&"x".repeat(pad - 2));
+        text.push('\n');
+        assert_eq!(text.len() as u64, MAX_PROJECT_FILE_BYTES + 1);
+        let (_dir, path) = temp_project(&text);
+        let err = load(&path).unwrap_err();
+        assert!(
+            matches!(err, ProjectError::TooLarge { bytes, .. } if bytes == MAX_PROJECT_FILE_BYTES + 1),
+            "{err}"
+        );
+        assert!(err.to_string().contains("16777216"), "{err}");
+        // One byte shorter loads.
+        text.truncate(text.len() - 2);
+        text.push('\n');
+        std::fs::write(&path, &text).unwrap();
+        assert!(load(&path).is_ok());
     }
 
     #[test]
