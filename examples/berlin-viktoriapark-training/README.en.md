@@ -106,12 +106,13 @@ freemapper-print --lang de export .
 
 ## Open
 
-- Open `training.ppen` once in Purple Pen (macOS beta) and check it. Does Purple Pen load the map
-  `berlin-viktoriapark.omap`? Do the controls sit at their building corners, the corners of the open land and on
-  the paths, and are the descriptions right? The value `Spr2019` for the map standard has not been checked against Purple Pen.
+- Whether the controls sit on their objects in Purple Pen and whether it recognises the map standard `Spr2019`
+  has not been looked at in detail.
 
 ## Checked
 
+- `training.ppen` opens in Purple Pen without an error; the course is there, and so is the control description
+  with its symbols (reported by the user, 2026-11-10).
 - `check` and `export` as above, with the messages above.
 - Exported twice: the PDF is identical byte for byte.
 - The page viewed at 100 dpi and the controls at 300 dpi: every control sits at its building corner, at the

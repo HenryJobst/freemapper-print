@@ -105,12 +105,13 @@ freemapper-print --lang de export .
 
 ## Offen
 
-- Öffnen Sie `training.ppen` einmal in Purple Pen (Beta für macOS) und prüfen Sie die Datei: Lädt Purple Pen die
-  Karte `berlin-viktoriapark.omap`? Stehen die Posten an ihren Gebäudeecken, den Ecken der offenen Flächen und an den
-  Pfaden, und stimmen die Beschreibungen? Der Wert `Spr2019` für den Kartenstandard ist nicht gegen Purple Pen geprüft.
+- Ob die Posten in Purple Pen an ihren Objekten stehen und der Kartenstandard `Spr2019` dort richtig erkannt wird,
+  ist noch nicht im Einzelnen angesehen.
 
 ## Geprüft
 
+- `training.ppen` lässt sich in Purple Pen ohne Fehler öffnen; die Bahn ist da, die Postenbeschreibung mit ihren
+  Symbolen auch (Rückmeldung des Nutzers, 2026-11-10).
 - `check` und `export` wie oben, mit den Meldungen von oben.
 - Zweimal exportiert: Das PDF ist Byte für Byte gleich.
 - Die Seite bei 100 dpi und die Posten bei 300 dpi angesehen: Jeder Posten steht an seiner Gebäudeecke, an der
