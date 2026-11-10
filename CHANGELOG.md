@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.5.0] - 2026-11-10
+
 ### Hinzugefügt
 
 - Abdeckungen für Fenster- und Korridor-OL in der Projektdatei (ADR 0045). Eine Tabelle `[[masks]]` hat eine ID

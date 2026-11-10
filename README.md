@@ -58,7 +58,7 @@ Neu in 0.3.0 (Meilenstein M3):
   IOF-XML, prüft den Kartenmaßstab, vergleicht die Posten mit Breite und Länge und hält bei einer zweifelhaften
   Einpassung an.
 
-Auf `main`, noch nicht veröffentlicht (Meilenstein M4):
+Neu in 0.5.0 (Meilenstein M4):
 
 - Abdeckungen für Fenster- und Korridor-OL: Eine Abdeckung verbirgt die Karte auf dem Blatt einer Bahn bis auf
   Fenster oder einen Korridor. Bahnaufdruck, Postenbeschreibung, Titel und Fußzeile bleiben überall stehen, auch
@@ -139,12 +139,12 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.4.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.4.0) vom
+Aktuelle Version ist [v0.5.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.0) vom
 10. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
-Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, ist auf `main`
-fertig und noch nicht veröffentlicht. Die erste Version richtet sich an Vereinstrainings in Stadt und
+Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
+dazu. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).

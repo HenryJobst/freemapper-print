@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-10
+
 ### Added
 
 - Masks for window and corridor orienteering in the project file (ADR 0045). A `[[masks]]` table has an id and
