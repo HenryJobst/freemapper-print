@@ -92,3 +92,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0049](0049-description-symbols-from-core.md) | Description symbols from core | Accepted | 2026-11-10 |
 | [0050](0050-reader-tests-against-the-suite-contract.md) | Reader tests against the suite contract | Accepted | 2026-11-10 |
 | [0051](0051-render-comes-from-freemapper-core.md) | The renderer comes from freemapper-core | Accepted, amends [0014](0014-renderer-copied-from-freemapper.md) | 2026-11-10 |
+| [0052](0052-an-unknown-map-kind-counts-as-absent.md) | An unknown map kind in freemapper.toml counts as absent | Accepted, amends [0050](0050-reader-tests-against-the-suite-contract.md) | 2026-11-10 |

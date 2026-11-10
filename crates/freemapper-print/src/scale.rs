@@ -153,7 +153,8 @@ pub fn geometry_factor(map_scale: u32, print_scale: u32) -> f64 {
 
 #[derive(Deserialize)]
 struct Sidecar {
-    map_kind: Option<MapKind>,
+    /// The name as written; a name this version does not know is no error (ADR 0052).
+    map_kind: Option<String>,
     title: Option<String>,
 }
 
@@ -173,10 +174,13 @@ pub enum SidecarError {
     },
 }
 
-/// The map kind from `freemapper.toml` next to `map_path`: `Ok(None)` without the file or without
-/// `map_kind` in it, an error when the file exists but cannot be read or parsed.
+/// The map kind from `freemapper.toml` next to `map_path`: `Ok(None)` without the file, without
+/// `map_kind` in it or with a kind this version does not know (a newer freemapper may write one), an
+/// error when the file exists but cannot be read or parsed.
 pub fn read_sidecar(map_path: &Path) -> Result<Option<MapKind>, SidecarError> {
-    Ok(read_sidecar_file(map_path)?.and_then(|s| s.map_kind))
+    Ok(read_sidecar_file(map_path)?
+        .and_then(|s| s.map_kind)
+        .and_then(|name| MapKind::ALL.into_iter().find(|k| k.name() == name)))
 }
 
 /// The map title from `freemapper.toml` next to `map_path`: `Ok(None)` without the file, without `title`
@@ -401,7 +405,7 @@ mod tests {
     fn broken_sidecar_is_reported_and_ignored() {
         let dir = tempfile::tempdir().unwrap();
         let map_path = dir.path().join("a.omap");
-        std::fs::write(dir.path().join("freemapper.toml"), "map_kind = \"moon\"\n").unwrap();
+        std::fs::write(dir.path().join("freemapper.toml"), "map_kind = 4000\n").unwrap();
         let err = read_sidecar(&map_path).unwrap_err();
         assert!(
             err.to_string().contains("freemapper.toml is not valid"),
@@ -418,6 +422,32 @@ mod tests {
         assert!(read_sidecar(&map_path).unwrap().is_none());
         std::fs::remove_file(dir.path().join("freemapper.toml")).unwrap();
         assert!(read_sidecar(&map_path).unwrap().is_none());
+    }
+
+    #[test]
+    fn an_unknown_kind_counts_as_absent_and_keeps_the_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let map_path = dir.path().join("a.omap");
+        std::fs::write(
+            dir.path().join("freemapper.toml"),
+            "map_kind = \"gym\"\ntitle = \"Halle\"\nfuture_key = 1\n",
+        )
+        .unwrap();
+        assert_eq!(read_sidecar(&map_path).unwrap(), None);
+        assert_eq!(
+            read_sidecar_title(&map_path).unwrap().as_deref(),
+            Some("Halle")
+        );
+        // The kind then comes from the map file.
+        let map = read_map_file(Path::new(LUEBECK)).unwrap();
+        assert_eq!(infer_kind(&map, &map_path), Some(MapKind::Sprint));
+        // Names are matched as written.
+        std::fs::write(
+            dir.path().join("freemapper.toml"),
+            "map_kind = \"Sprint\"\n",
+        )
+        .unwrap();
+        assert_eq!(read_sidecar(&map_path).unwrap(), None);
     }
 
     #[test]

@@ -51,29 +51,31 @@ fn each(test: impl Fn(&Read)) {
     }
 }
 
+/// The kind the sidecar must give: `None` for the fixture whose kind no reader knows.
+fn sidecar_kind(read: &Read) -> Option<MapKind> {
+    let name = read.expected.map_kind.as_str();
+    let kind = MapKind::ALL.into_iter().find(|k| k.name() == name);
+    assert!(kind.is_some() || name == "unknown", "{}: {name}", read.name);
+    kind
+}
+
+/// The kind print works with: the sidecar's, or the one inferred from the map.
 fn kind(read: &Read) -> MapKind {
-    *MapKind::ALL
-        .iter()
-        .find(|k| k.name() == read.expected.map_kind)
-        .unwrap_or_else(|| panic!("{}: unknown kind {}", read.name, read.expected.map_kind))
+    infer_kind(&read.map, &read.path).unwrap_or_else(|| panic!("{}: no kind", read.name))
 }
 
 #[test]
 fn contract_kind() {
     each(|read| {
-        // The sidecar names the kind; nothing is inferred from scale or symbol set.
-        assert_eq!(
-            read_sidecar(&read.path).unwrap(),
-            Some(kind(read)),
-            "{}",
-            read.name
-        );
-        assert_eq!(
-            infer_kind(&read.map, &read.path),
-            Some(kind(read)),
-            "{}",
-            read.name
-        );
+        // A kind print does not know is no error and counts as absent.
+        let from_sidecar = read_sidecar(&read.path).unwrap();
+        assert_eq!(from_sidecar, sidecar_kind(read), "{}", read.name);
+        // The sidecar's kind wins; without one the map decides, and every fixture gives a kind.
+        let inferred = infer_kind(&read.map, &read.path);
+        assert!(inferred.is_some(), "{}", read.name);
+        if from_sidecar.is_some() {
+            assert_eq!(inferred, from_sidecar, "{}", read.name);
+        }
     });
 }
 
@@ -82,7 +84,7 @@ fn contract_title() {
     each(|read| {
         assert_eq!(
             read_sidecar_title(&read.path).unwrap().as_deref(),
-            Some(read.expected.title.as_str()),
+            read.expected.title.as_deref(),
             "{}",
             read.name
         );
