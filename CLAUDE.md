@@ -49,4 +49,6 @@ before changing code.
 - Test fixtures name source, date or commit, and licence in a README next to them.
 - Exchange with freemapper and freemapper-courseplan goes through their stable contracts only: the tag
   `freemapper:source=sheet` and the map part "peripheral information", and from `freemapper.toml` only
-  `map_kind`, `scale_denominator`, `crs`, `provider`, `title` and `[map_area]`.
+  `map_kind`, `scale_denominator`, `crs`, `provider`, `title` and `[map_area]`. The tests `contract_*` in
+  `crates/freemapper-print/src/contract.rs` check what print reads against the fixtures of `freemapper-contract`
+  (ADR 0050); a contract change starts in freemapper-core.

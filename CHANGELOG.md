@@ -9,7 +9,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
-- Die gemeinsamen Bausteine kommen aus freemapper-core v0.7.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`). Die Ausgabe bleibt unverändert.
+- Die gemeinsamen Bausteine kommen aus freemapper-core v0.8.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`, Vertrag der Suite). Die Ausgabe bleibt unverändert.
+- Tests: Jeder Testlauf liest jetzt zwei Karten, die freemapper geschrieben hat (Schulhof 1:1000, Sprint 1:4000), und vergleicht Kartenart, Titel, Randobjekte, Grundfläche und Ausdehnung mit den Erwartungswerten aus `freemapper-contract` (Entscheidung 0050). Ändert freemapper ein Tag oder einen Schlüssel der `freemapper.toml`, schlagen diese Tests fehl, bevor ein Blatt falsch gedruckt wird.
 
 ## [0.5.1] - 2026-11-10
 

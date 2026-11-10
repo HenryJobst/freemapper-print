@@ -51,6 +51,9 @@ pub const fn credit_line(lang: project::SheetLang) -> &'static str {
 }
 
 #[cfg(test)]
+mod contract;
+
+#[cfg(test)]
 mod boundaries {
     //! The boundaries of ADR 0039 and 0043. `omap`, `course` and `placement` are freemapper-core crates now, so
     //! the compiler keeps them apart; the code here reaches them through the re-exports in this file only.
