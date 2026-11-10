@@ -1,0 +1,92 @@
+﻿<course-scribe-event>
+  <event id="1">
+    <title>Korridortraining Lübeck</title>
+    <notes>Written by hand for the freemapper-print example luebeck-training-corridor. CC0.</notes>
+    <map kind="OCAD" scale="4000">luebeck.omap</map>
+    <standards map="Spr2019" description="2018" />
+    <all-controls print-scale="4000" description-kind="symbols" />
+    <numbering start="31" disallow-invertible="true" />
+    <course-appearance />
+    <descriptions lang="de" />
+  </event>
+  <control id="1" kind="start">
+    <location x="-86" y="2.7" />
+  </control>
+  <control id="2" kind="finish">
+    <location x="95" y="37.1" />
+    <description box="all" iof-2004-ref="14.3" />
+  </control>
+  <control id="3" kind="normal">
+    <code>41</code>
+    <location x="-50.107" y="0.586" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="4" kind="normal">
+    <code>52</code>
+    <location x="-22.662" y="15.041" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="5" kind="normal">
+    <code>53</code>
+    <location x="-19.361" y="32.357" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="6" kind="normal">
+    <code>48</code>
+    <location x="-17.333" y="56.63" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NE" />
+  </control>
+  <control id="7" kind="normal">
+    <code>40</code>
+    <location x="15.916" y="54.608" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="8" kind="normal">
+    <code>54</code>
+    <location x="58.064" y="44.555" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5NW" />
+  </control>
+  <control id="9" kind="normal">
+    <code>55</code>
+    <location x="82.664" y="42.885" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5SE" />
+  </control>
+  <course id="1" kind="normal" order="1">
+    <name>Korridor</name>
+    <labels label-kind="sequence" />
+    <first course-control="1" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course-control id="1" control="1">
+    <next course-control="2" />
+  </course-control>
+  <course-control id="2" control="3">
+    <next course-control="3" />
+  </course-control>
+  <course-control id="3" control="4">
+    <next course-control="4" />
+  </course-control>
+  <course-control id="4" control="5">
+    <next course-control="5" />
+  </course-control>
+  <course-control id="5" control="6">
+    <next course-control="6" />
+  </course-control>
+  <course-control id="6" control="7">
+    <next course-control="7" />
+  </course-control>
+  <course-control id="7" control="8">
+    <next course-control="8" />
+  </course-control>
+  <course-control id="8" control="9">
+    <next course-control="9" />
+  </course-control>
+  <course-control id="9" control="2" />
+</course-scribe-event>
