@@ -22,19 +22,27 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   `check` warnt. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
 - `masks window` schreibt eine Abdeckung mit runden Fenstern um die Posten einer Bahn (ADR 0047). Der Radius gilt
   in Millimetern auf dem Papier, Vorgabe 15 mm; `--radius-for` gibt einzelnen Posten einen eigenen, `--controls`
-  wählt Posten nach Code oder Nummer aus, `--include-start` und `--include-finish` geben auch Start und Ziel ein
-  Fenster, und `--assign` druckt die Bahn damit.
+  wählt Posten nach Code oder Nummer aus, und `--assign` druckt die Bahn damit. Start und Ziel bekommen ebenfalls
+  ein Fenster, außer mit `--no-start` oder `--no-finish`. Die Ausgabe und der Kommentar in der Projektdatei nennen
+  Start und Ziel beim Namen, nicht mit den Codes `STA1` und `FIN1`. Die Abdeckung behält die Fenster in Karten-mm;
+  nach einem neuen Druckmaßstab ruft man den Befehl noch einmal auf.
 - `masks corridor` macht aus einer Linie, die Sie mit `--points` vorgeben, einen Korridor mit der Breite aus
   `--width` (Vorgabe 10 mm auf dem Papier). Einen automatischen Korridor gibt es nicht. Einen Knick, der für die
-  Breite zu scharf ist, oder eine Linie, die sich kreuzt, lehnt der Befehl ab und nennt die Stelle.
+  Breite zu scharf ist, oder eine Linie, die sich kreuzt, lehnt der Befehl ab und nennt die Stelle, bei einer
+  Kreuzung den Punkt, an dem sich die Ränder schneiden.
 - Beide Befehle hängen die Tabelle als Text an die Projektdatei an, mit einem Kommentar, wie sie entstand; alles
-  davor bleibt unverändert. Eine vorhandene Abdeckung ändern sie nie.
+  davor bleibt unverändert. Eine vorhandene Abdeckung ändern sie nie. Schreibt die Datei ihre Zuordnungen als
+  `assignments = [...]`, bricht `--assign` mit Exit-Code 2 ab, und die Datei bleibt, wie sie war.
 - `check` prüft Bahnblätter mit Abdeckung (ADR 0046). Es warnt, wenn ein Posten, der Start oder das Ziel dort
   liegt, wo die Abdeckung die Karte verbirgt, und zählt je Art, was vom Bahnaufdruck dort liegt: Pflichtstrecken,
   Querungsstellen, verbotene Strecken, Sperrgebietsgrenzen, Sperr- und Gefahrengebiete, Texte. Gedruckt wird der
   Aufdruck trotzdem. Es warnt auch, wenn eine Abdeckung den ganzen Kartenausschnitt verbirgt, und sagt zur
-  Information, wenn sie im Ausschnitt nichts verbirgt oder keine Bahn sie nutzt. Erreicht die Prüfung ihre Grenze,
-  sagt `check`, dass es nur einen Teil geprüft hat.
+  Information, wenn sie im Ausschnitt nichts verbirgt oder keine Bahn sie nutzt; Abdeckflächen aus Purple Pen, die
+  nichts verbergen, stehen in einer Zeile je Bahn. Es warnt, wenn ein Blattelement oder die Fußzeile einen Teil
+  eines Fensters abdeckt. Nennt die Projektdatei eine Abdeckfläche mit ihrer Nummer (`whiteout-<n>`), sagt `check`,
+  wo diese Fläche liegt, denn die Nummer folgt der Reihenfolge in der Bahndatei und kann nach einer Änderung in
+  Purple Pen eine andere Fläche meinen. Erreicht die Prüfung ihre Grenze, sagt `check`, dass es nur einen Teil
+  geprüft hat.
 - Zwei Beispiele: `luebeck-training-window` (Fenster-OL mit acht Posten) und `luebeck-training-corridor`
   (Korridor-OL entlang dreier Straßen der Lübecker Altstadt). Das Handbuch hat ein Kapitel 11 über Abdeckungen.
 
@@ -42,6 +50,9 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 - Der Hinweis auf Abdeckflächen in der Bahndatei beginnt jetzt mit „Zur Information:“ und zählt nicht mehr für den
   Exit-Code von `check`, denn die Abdeckflächen werden gedruckt.
+- Das Programm liest eine Projektdatei von höchstens 16 MB. Eine größere lehnt es ab, bevor es sie liest; eine
+  Datei innerhalb der Grenzen für Abdeckungen braucht höchstens etwa 4 MB.
+- Die letzte Zeile von `check` zählt in der richtigen Zahl: „Mit Hinweisen: 1 von 1 Bahn, 0 von 1 Layoutblatt.“
 
 ## [0.4.0] - 2026-11-10
 

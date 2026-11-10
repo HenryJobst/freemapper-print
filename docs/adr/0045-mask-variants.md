@@ -17,7 +17,11 @@ Window and corridor orienteering hide most of the map (spec §4). Purple Pen whi
   variant that overlap, touch or nest (also in a window, where overlapping windows would show the map through it);
   a ring that crosses or touches itself or lies on one line; values that are not finite. Limits (ADR 0019): 64
   variants, 256 polygons each, 4096 points per ring, 100 000 per file, 3 different points per ring, coordinates
-  within ±2 000 000 mm; the checks of all masks share 100 million steps.
+  within ±2 000 000 mm; the checks of all masks share 100 million steps. `project::load` reads at most 16 MiB
+  (`MAX_PROJECT_FILE_BYTES`) before parsing: the largest file within these limits takes about 4 MB, and parsing a
+  35 MB file took 1.6 GB before the point limit could refuse it.
+- The spec follows this ADR (rulings R7, R9): its sketch of §5.5 writes y up, and it describes the mask as a clip
+  of the map with circular windows around the controls and a corridor drawn by hand.
 - White-outs become `whiteout-1`, `whiteout-2` … in file order, for the courses their filter names, like other
   specials (R6). `mask_for` gives a course the assignment's `mask` alone, else each of its white-outs as a mask of
   its own, unchecked and unmerged; each clips the map, so the masked areas add up (R8). A `[[masks]]` entry with a
@@ -39,10 +43,18 @@ Window and corridor orienteering hide most of the map (spec §4). Purple Pen whi
 
 ## Consequences
 
-Projects without masks print as before, byte for byte. A known gap, accepted: a white-out ring that crosses itself
+Projects without masks print as before, byte for byte. `whiteout-<n>` names a place in the course file, not an
+area (ruling R16): after a white-out is deleted or the order changes in Purple Pen, an assignment or a stand-in
+`[[masks]]` entry silently means another area. The manual says so, and `check` prints an Info line
+(`MaskNote::WhiteOutByNumber`) for each course with such a reference, with the centre of the area's box in map mm,
+y up, so that a changed target shows. Follow-up: with the pin change to freemapper-core v0.4.0, whose specials
+carry `id: Option<u32>`, key white-outs by Purple Pen's special-object id and keep `whiteout-<n>` only as a
+fallback. North lines added without a 601 symbol are sheet items and stay visible across masked paper, while the
+map's own north lines are clipped with the map (ruling R14, documented in the manual). A sheet element over a
+window gets a warning (ruling R15, ADR 0046). A known gap, accepted: a white-out ring that crosses itself
 is not checked and clips by the nonzero rule, so a loop wound against the rest shows the map, where Purple Pen fills
 it. Cost if wrong: masks copied from
 the `.omap` XML (y down) mirror.
 
 Source: M4 plan Tasks 1 and 2 and its change of 2026-11-10 (holes may overlap, replacing ruling R2); rulings R1, R5,
-R6, R8, R10, R11.
+R6, R7, R8, R9, R10, R11, R14, R15, R16; the final review of M4.

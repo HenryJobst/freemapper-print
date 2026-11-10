@@ -250,6 +250,10 @@ das Symbol 601 der Karte und liegen deshalb wie gezeichnete unter Mauern und Zä
 trotzdem durch; die setzt der Kartograf in OOM. Verbirgt ein Layout mit `hide_parts` den Kartenteil, in dem die
 Nordlinien der Karte liegen, ergänzt das Programm keine.
 
+Auf einem Blatt mit Abdeckung (Kapitel 11) verschwinden die Nordlinien der Karte, gezeichnete wie mit dem Symbol
+601 ergänzte, mit dem Rest der Karte. Hat der Symbolsatz kein Symbol 601, zeichnet das Programm stattdessen
+einfache schwarze Linien auf der Blattebene, und die bleiben auch über dem abgedeckten weißen Papier sichtbar.
+
 ### Kartenteile ausblenden
 
 `hide_parts = ["peripheral information"]` blendet den Kartenteil dieses Namens aus. Groß- und Kleinschreibung
@@ -956,7 +960,7 @@ Hinweise zum Blatt einer Bahn:
 | „Auf dem Blatt der Bahn … deckt das Element … einen Teil der Fenster der Abdeckung … ab.“ | Ein Blattelement, meist der Beschreibungskasten, oder die Fußzeile liegt im Kartenausschnitt über einem Fenster. Beim Fenster-OL sind die Fenster die einzige Karte, die der Läufer hat, und das Element nimmt ihm einen Teil davon. Versetzen Sie das Element über seinen Anker, oder legen Sie das Fenster anders, mit einem anderen Radius oder um einen anderen Posten. |
 | „Zur Information: Die Abdeckung … verbirgt im Kartenausschnitt der Bahn … nichts.“ | Nur zur Information. Die Abdeckung liegt ganz neben dem Ausschnitt, oder der Ausschnitt liegt ganz in einem Fenster. Ist das nicht gewollt, prüfen Sie die Punkte wie im Hinweis davor. |
 | „Zur Information: Im Kartenausschnitt der Bahn … verbergen die … Abdeckflächen … aus der Bahndatei nichts.“ | Dasselbe für Abdeckflächen aus Purple Pen, in einer Zeile je Bahn mit ihrer Zahl und ihren IDs (die ersten zehn, der Rest gezählt). Eine Abdeckfläche für alle Bahnen liegt oft neben dem Ausschnitt der meisten. |
-| „Auf dem Blatt der Bahn … hat die Prüfung gegen die Abdeckung ihre Grenze erreicht …“ | `check` prüft höchstens 200 000 Punkte je Blatt. Eine Bahn mit sehr langen Pflichtstrecken oder Tausenden Abdeckflächen kommt darüber; was danach kommt, bleibt ungeprüft. Sehen Sie sich das Blatt an. |
+| „Auf dem Blatt der Bahn … hat die Prüfung gegen die Abdeckung ihre Grenze erreicht …“ | `check` prüft je Blatt höchstens 200 000 Punkte und 50 Millionen Rechenschritte. Eine Bahn mit sehr langen Pflichtstrecken oder Tausenden Abdeckflächen kommt darüber; was danach kommt, bleibt ungeprüft. Sehen Sie sich das Blatt an. |
 | „Zur Information: Der Text … nutzt …, die Bahndatei hat für die Bahn … aber keinen Wert. Der Platzhalter bleibt leer.“ | Die Datei hat für die Bahn keine Länge oder keinen Anstieg. Tragen Sie sie im Bahnlegungsprogramm ein oder lassen Sie den Platzhalter aus dem Text weg. |
 | „Zur Information: Der Text … nutzt …, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.“ | Ein gemeinsamer Text mit `{course}` oder ähnlichem steht auf einem Blatt ohne Bahn. Blenden Sie den Text auf diesem Layout mit `hide_shared` aus. |
 | „Auf dem Blatt der Bahn … überdeckt die Nummer von Posten … Sie wird trotzdem dort gedruckt. …“ | Die Nummer liegt auf dem Bahnaufdruck, einem Blattelement, dem Rand des Kartenausschnitts oder einem Punkt- oder Liniensymbol der Karte. Der Hinweis schlägt eine freie Richtung und einen Abstand vor. Übernehmen Sie sie mit `numbers accept` (siehe Kapitel 8). |
@@ -1067,39 +1071,42 @@ Eine Abdeckung, die keine Bahn nutzt, meldet `check` einmal als Information.
 Den Normalfall des Fenster-OL schreibt das Programm selbst: ein rundes Fenster um jeden Posten einer Bahn.
 
 ```sh
-freemapper-print masks window stadtsprint --course A --radius 15 --include-start --include-finish --assign
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
 ```
 
 | Option | Bedeutung |
 |---|---|
 | `--course <NAME>` | die Bahn, wie in der Bahndatei. Ihre Posten bekommen die Fenster, ihr Layout gibt den Druckmaßstab. Pflicht. |
-| `--controls <LISTE\|BEREICH>` | welche Posten ein Fenster bekommen: Codes mit Kommas dazwischen (`31,32,35`) oder die Postennummern auf dem Blatt als Bereich (`3-6`). Im Bereich zählen Start und Ziel nicht mit. Ohne Angabe jeder Posten. |
+| `--controls <LISTE\|BEREICH>` | welche Posten ein Fenster bekommen: Codes mit Kommas dazwischen (`31,32,35`) oder die Postennummern auf dem Blatt als Bereich (`3-6`). Im Bereich zählen Start und Ziel nicht mit. Ohne Angabe jeder Posten. Start und Ziel bekommen ihr Fenster in jedem Fall. |
 | `--radius <MM>` | Radius jedes Fensters, 1 bis 100 mm. Ohne Angabe 15. |
-| `--radius-for <CODE=MM>` | eigener Radius für einen Posten, etwa `35=20`. Darf mehrmals stehen, nur für Posten, die ein Fenster bekommen. |
-| `--include-start` | auch der Start bekommt ein Fenster |
-| `--include-finish` | auch das Ziel bekommt ein Fenster |
+| `--radius-for <CODE=MM>` | eigener Radius für einen Posten, etwa `35=20`. Der Start hat meist den Code `STA1`, das Ziel `FIN1`. Darf mehrmals stehen, nur für Posten, die ein Fenster bekommen. |
+| `--no-start` | der Start bekommt kein Fenster |
+| `--no-finish` | das Ziel bekommt kein Fenster |
 | `--id <ID>` | ID der neuen Abdeckung. Ohne Angabe `window-<Bahn>`, mit angehängter Nummer (`-2`, `-3` …), wenn es die schon gibt. |
 | `--assign` | die Bahn wird mit der neuen Abdeckung gedruckt: Ihre Zuordnung bekommt `mask`, oder eine neue Zuordnung kommt hinzu. |
 
 Der Radius gilt in Millimetern auf dem Papier, im Druckmaßstab des Layouts, auf dem die Bahn gedruckt wird. Ein
 Fenster sieht deshalb in jedem Maßstab gleich groß aus und zeigt bei größerem Maßstab weniger Gelände: 15 mm sind
-bei 1:4000 60 m, bei 1:3000 45 m. Das Programm rechnet den Radius selbst in Karten-mm um.
+bei 1:4000 60 m, bei 1:3000 45 m. Das Programm rechnet den Radius selbst in Karten-mm um, und die Abdeckung
+behält die Karten-mm. Ändern Sie später den Druckmaßstab des Layouts oder geben Sie die Abdeckung einer Bahn auf
+einem Layout mit anderem Maßstab, haben die Fenster nicht mehr den gewünschten Radius. Löschen Sie dann die
+Abdeckung und rufen Sie den Befehl noch einmal auf. Der Kommentar über der Tabelle nennt den Maßstab, für den sie
+entstand.
 
-Start und Ziel bekommen nur mit `--include-start` und `--include-finish` ein Fenster. Fehlt eins, sagt der Befehl
-das, und `check` nennt den Start oder das Ziel als Posten unter der Abdeckung. Ein Fenster ist ein Vieleck mit
+Auch Start und Ziel bekommen ein Fenster, damit sich die Läufer am Start orientieren können. `--no-start` und
+`--no-finish` lassen sie weg; dann sagt der Befehl das, und `check` meldet sie unter der Abdeckung. Ein Fenster ist
+ein Vieleck mit
 mindestens 48 Ecken, das höchstens 0,05 mm vom Kreis abweicht. Überlappende Fenster verschmelzen. Der Umriss ist ein
 Rechteck 100 mm außerhalb der Karte, sodass kein Teil der Karte daran vorbeischaut.
 
 Die Ausgabe aus luebeck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um STA1, 43, 34, 41, 42, 38, 35, 50, 37 und FIN1 der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
 Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
-
-`STA1` und `FIN1` sind Start und Ziel, denn Purple Pen gibt ihnen keinen Code.
 
 ### Ein Korridor entlang einer Linie: `masks corridor`
 
@@ -1124,7 +1131,8 @@ achten Sie darauf, dass jeder Posten der Bahn im Korridor liegt.
 
 Auch die Breite gilt in Millimetern auf dem Papier: mit `--course` im Druckmaßstab des Layouts dieser Bahn, sonst
 im Druckmaßstab, den alle Layouts gemeinsam haben. Drucken die Layouts in verschiedenen Maßstäben, verlangt der
-Befehl `--course`. Der Korridor reicht die halbe Breite zu jeder Seite der Linie und ist an seinen Enden gerade
+Befehl `--course`. Wie beim Radius behält die Abdeckung die Breite in Karten-mm. Nach einem neuen Druckmaßstab
+löschen Sie die Abdeckung und rufen den Befehl noch einmal auf. Der Korridor reicht die halbe Breite zu jeder Seite der Linie und ist an seinen Enden gerade
 abgeschnitten. Ein Knick bis 120° behält außen eine spitze Ecke, ein schärferer wird abgeschrägt. Das Programm
 lehnt einen Korridor ab, der auf sich selbst zurückläuft, ein Stück hat, das für den Knick an seinem Ende zu kurz
 ist, oder sich selbst kreuzt. Vereinfachen Sie dann die Linie an der genannten Stelle oder nehmen Sie eine
@@ -1188,7 +1196,8 @@ Kapitel 10; hier, wann sie kommen:
 - Ein Blattelement oder die Fußzeile deckt im Kartenausschnitt einen Teil eines Fensters ab (Hinweis).
 - Die Abdeckung verbirgt im Kartenausschnitt nichts (Information). Abdeckflächen aus Purple Pen, die nichts
   verbergen, stehen in einer Zeile je Bahn.
-- Die Prüfung hat ihre Grenze von 200 000 Punkten je Blatt erreicht (Hinweis). Sehen Sie sich das Blatt an.
+- Die Prüfung hat ihre Grenze erreicht, höchstens 200 000 Punkte und 50 Millionen Rechenschritte je Blatt
+  (Hinweis). Sehen Sie sich das Blatt an.
 - Keine Bahn nutzt eine Abdeckung (Information, einmal je Lauf).
 
 ### Grenzen
@@ -1200,6 +1209,8 @@ Was das Programm noch nicht kann:
 - Die Befehle ändern und ersetzen keine Abdeckung. Zeichnen lassen sich Abdeckungen noch nicht; der Editor ist für
   M6 geplant.
 - Ein Layoutblatt ohne Bahn (`export --layout`) hat keine Abdeckung.
+- Nordlinien, die das Programm ohne Symbol 601 im Symbolsatz ergänzt, liegen auf der Blattebene und bleiben über
+  dem abgedeckten Papier sichtbar (Kapitel 6, „Nordlinien“). Die Nordlinien der Karte verschwinden mit der Karte.
 - Eine Abdeckfläche aus Purple Pen, deren Ring sich selbst kreuzt, prüft das Programm nicht. Eine Schleife, die
   gegen den Rest läuft, zeigt dort die Karte, wo Purple Pen sie abdeckt.
 

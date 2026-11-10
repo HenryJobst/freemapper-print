@@ -231,7 +231,7 @@ fit errors and the notes.
 ### Window and corridor orienteering
 
 ```sh
-freemapper-print masks window stadtsprint --course A --radius 15 --include-start --include-finish --assign
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
 freemapper-print masks corridor stadtsprint --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5" --width 12 --assign --course B
 freemapper-print check stadtsprint
 ```

@@ -241,6 +241,10 @@ whole map frame at the ground spacing of the map kind: 120 m for sprint maps (30
 walls and fences like drawn ones. They still run without gaps; the mapper sets those in OOM. A layout that hides
 the map part holding the map's own north lines with `hide_parts` gets no added ones.
 
+On a sheet with a mask (chapter 11) the north lines of the map, drawn or added with the 601 symbol, are hidden
+with the rest of the map. If the symbol set has no 601 symbol, the program draws plain black lines on the sheet
+layer instead, and those stay visible across the masked white paper.
+
 ### Hiding map parts
 
 `hide_parts = ["peripheral information"]` leaves out the map part of that name. Upper and lower case count. A
@@ -918,7 +922,7 @@ Notes about one course sheet:
 | "on the sheet of course …, the element … covers part of the windows of the mask …" | A sheet element, most often the description box, or the footer lies over a window inside the map frame. On a window course the windows are the only map the runner has, so the element takes part of it away. Move the element by its anchor, or place the window elsewhere, with another radius or around another control. |
 | "Info: the mask … hides nothing in the map frame of course …" | For information only. The mask lies wholly beside the frame, or the frame lies wholly in one window. If that is not what you meant, check the points as for the note above. |
 | "Info: in the map frame of course …, the … white-out areas … of the course file hide nothing." | The same for white-out areas from Purple Pen, in one line per course with their count and ids (the first ten, the rest counted). A white-out area for all courses often lies beside the frame of most of them. |
-| "on the sheet of course … the check against the mask reached its limit …" | `check` tests at most 200 000 points per sheet. A course with very long marked routes or thousands of white-out areas gets past that, and what comes after is not checked. Look at the sheet. |
+| "on the sheet of course … the check against the mask reached its limit …" | `check` tests at most 200 000 points and 50 million steps per sheet. A course with very long marked routes or thousands of white-out areas gets past that, and what comes after is not checked. Look at the sheet. |
 | "Info: the text … uses …, but the course file has no value for course …, so it prints empty." | The file has no length or climb for the course. Enter them in the course-setting program, or leave the placeholder out of the text. |
 | "Info: the text … uses …, which is only filled on course sheets. On this sheet it stays empty." | A shared text with `{course}` or the like prints on a sheet without course. Hide the text on that layout with `hide_shared`. |
 | "on the sheet of course … the number of control … covers …. It is printed there all the same. …" | The number lies on the overprint, a sheet element, the edge of the frame or a point or line symbol of the map. The note proposes a free direction and gap. Take it with `numbers accept` (see chapter 8). |
@@ -1025,41 +1029,45 @@ leaves two square windows open in it.
 The program writes the usual window mask itself: a round window around each control of a course.
 
 ```sh
-freemapper-print masks window stadtsprint --course A --radius 15 --include-start --include-finish --assign
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
 ```
 
 | Option | Meaning |
 |---|---|
 | `--course <NAME>` | the course, as in the course file. Its controls get the windows, and its layout gives the print scale. Required. |
-| `--controls <LIST\|RANGE>` | which controls get a window: codes separated by commas (`31,32,35`) or the control numbers on the sheet as a range (`3-6`). The range does not count the start and the finish. Default: every control. |
+| `--controls <LIST\|RANGE>` | which controls get a window: codes separated by commas (`31,32,35`) or the control numbers on the sheet as a range (`3-6`). The range does not count the start and the finish. Default: every control. The start and the finish get their window either way. |
 | `--radius <MM>` | radius of every window, 1 to 100 mm. Default: 15. |
-| `--radius-for <CODE=MM>` | a radius of its own for one control, such as `35=20`. Can be given more than once, only for controls that get a window. |
-| `--include-start` | the start gets a window too |
-| `--include-finish` | the finish gets a window too |
+| `--radius-for <CODE=MM>` | a radius of its own for one control, such as `35=20`. The start usually has the code `STA1`, the finish `FIN1`. Can be given more than once, only for controls that get a window. |
+| `--no-start` | the start gets no window |
+| `--no-finish` | the finish gets no window |
 | `--id <ID>` | id of the new mask. Default: `window-<course>`, with a number added (`-2`, `-3` …) when that is taken. |
 | `--assign` | the course prints with the new mask: its assignment gets `mask`, or a new assignment is added. |
 
 The radius counts in millimetres on paper, at the print scale of the layout the course prints on. A window
 therefore looks the same size at every scale and shows less ground at a larger scale: 15 mm are 60 m at 1:4000 and
-45 m at 1:3000. The program turns the radius into map mm itself.
+45 m at 1:3000. The program turns the radius into map mm itself, and the mask keeps the map mm. If you later
+change the print scale of the layout, or give the mask to a course on a layout with another scale, the windows
+no longer have the radius you asked for. Then delete the mask and run the command again. The comment above the
+table names the scale the mask was made for.
 
-The start and the finish get a window only with `--include-start` and `--include-finish`. If one is missing, the
-command says so, and `check` names the start or the finish as a control under the mask. A window is a polygon with
+The start and the finish get a window too, so that runners can orient themselves at the start. `--no-start` and
+`--no-finish` leave them out; the command then says so, and `check` names them as lying under the mask. A window
+is a polygon with
 at least 48 corners that strays at most 0.05 mm from the circle. Overlapping windows merge. The outline is a
 rectangle 100 mm outside the map, so no part of the map shows past it.
 
 The output from luebeck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um STA1, 43, 34, 41, 42, 38, 35, 50, 37 und FIN1 der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
 Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
 
 In English the first line reads "Added the mask "window-Fenster" to ./freemapper-print.toml: 10 windows of 15 mm
-radius on paper at 1:4000 around …". `STA1` and `FIN1` are the start and the finish, because Purple Pen gives them
-no code.
+radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 and 37 and the finish of course
+"Fenster"."
 
 ### A corridor along a line: `masks corridor`
 
@@ -1084,7 +1092,8 @@ the corridor.
 
 The width counts in millimetres on paper too: with `--course` at the print scale of that course's layout,
 otherwise at the print scale all layouts share. If the layouts print at different scales, the command asks for
-`--course`. The corridor runs half the width to each side of the line, and its ends are cut square. A turn of up to
+`--course`. As with the radius, the mask keeps the width in map mm. After changing the print scale, delete the
+mask and run the command again. The corridor runs half the width to each side of the line, and its ends are cut square. A turn of up to
 120° keeps a pointed outer corner; a sharper one is cut off. The program refuses a corridor that turns back on
 itself, has a piece too short for the turn at its end, or crosses itself. Then simplify the line at the place the
 message names, or take a smaller width. The program does not repair the line itself.
@@ -1142,7 +1151,7 @@ when they come:
 - A sheet element or the footer covers part of a window inside the map frame (note).
 - The mask hides nothing in the map frame (information). White-out areas from Purple Pen that hide nothing come in
   one line per course.
-- The check reached its limit of 200 000 points per sheet (note). Look at the sheet.
+- The check reached its limit, at most 200 000 points and 50 million steps per sheet (note). Look at the sheet.
 - No course uses a mask (information, once per run).
 
 ### Limits
@@ -1153,6 +1162,8 @@ What the program cannot do yet:
   hand.
 - The commands do not change or replace a mask. Masks cannot be drawn yet; the editor is planned for M6.
 - A layout sheet without a course (`export --layout`) has no mask.
+- North lines the program adds without a 601 symbol in the symbol set lie on the sheet layer and stay visible
+  across the masked paper (chapter 6, "North lines"). The map's own north lines are hidden with the map.
 - The program does not check a white-out area from Purple Pen whose ring crosses itself. A loop that runs against
   the rest shows the map where Purple Pen hides it.
 
