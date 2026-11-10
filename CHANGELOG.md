@@ -13,7 +13,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
-- Die gemeinsamen Bausteine kommen aus freemapper-core v0.12.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`, Vertrag der Suite). Die Ausgabe bleibt unverändert.
+- Die gemeinsamen Bausteine kommen aus freemapper-core v0.13.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`, Vertrag der Suite). Die Ausgabe bleibt unverändert.
+- Der Seitenaufbau (Karte, Druckmaßstab und Papier ergeben die fertige Seite) kommt aus freemapper-core (ADR 0053). Die Maßstabsregeln bleiben hier; der Aufbau bekommt Symbol- und Geometriefaktor vorgegeben. Die Beispiel-PDFs sind Byte für Byte gleich geblieben.
 - Der Renderer (Seitenmodell, Symbolzeichnung, PDF-Schreiber, Schrift Arimo) kommt als `freemapper-render` aus freemapper-core (ADR 0051). Die Beispiel-PDFs sind Byte für Byte gleich geblieben.
 - Tests: Jeder Testlauf liest jetzt vier Karten von freemapper (Schulhof 1:1000, Sprint 1:4000, eine Karte von freemapper 0.9.0 und eine mit unbekannter Kartenart) und vergleicht Kartenart, Titel, Randobjekte, Grundfläche und Ausdehnung mit den Erwartungswerten aus `freemapper-contract` (Entscheidung 0050). Ändert freemapper ein Tag oder einen Schlüssel der `freemapper.toml`, schlagen diese Tests fehl, bevor ein Blatt falsch gedruckt wird.
 
