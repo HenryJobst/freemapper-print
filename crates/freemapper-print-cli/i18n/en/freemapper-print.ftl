@@ -245,6 +245,48 @@ note-element-covers-course = Note: the element { $id } covers { $count ->
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
 note-masks-capped = Note: course "{ $course }" has { $total } masks, and a sheet applies at most { $applied }. The others are left out, so the map shows where only they would hide it.
+note-overprint-in-masked-area = Note: on the sheet of course "{ $course }", { $objects } { $count ->
+        [one] lies
+       *[other] lie
+    } wholly or in part where the mask hides the map. The overprint is printed there all the same, with no map under it. Add or widen a window, or check that the course has the right mask.
+masked-marked-route = { $count ->
+        [one] a marked route
+       *[other] { $count } marked routes
+    }
+masked-crossing-point = { $count ->
+        [one] a crossing point
+       *[other] { $count } crossing points
+    }
+masked-forbidden-route = { $count ->
+        [one] a forbidden route
+       *[other] { $count } forbidden routes
+    }
+masked-boundary = { $count ->
+        [one] an out-of-bounds boundary
+       *[other] { $count } out-of-bounds boundaries
+    }
+masked-out-of-bounds-area = { $count ->
+        [one] an out-of-bounds area
+       *[other] { $count } out-of-bounds areas
+    }
+masked-dangerous-area = { $count ->
+        [one] a dangerous area
+       *[other] { $count } dangerous areas
+    }
+masked-text = { $count ->
+        [one] a text from the course file
+       *[other] { $count } texts from the course file
+    }
+note-control-in-masked-area = Note: on the sheet of course "{ $course }", { $count ->
+        [one] control { $controls } lies
+       *[other] controls { $controls } lie
+    } where the mask hides the map, so runners find no map around { $count ->
+        [one] it
+       *[other] them
+    }. Add a window there, or check that the course has the right mask.
+note-mask-covers-nothing = Info: the mask "{ $mask }" hides nothing in the map frame of course "{ $course }". If it should, check its points. They are map mm with y pointing up, as OOM shows them.
+note-mask-leaves-no-window = Note: the mask "{ $mask }" hides the whole map frame of course "{ $course }", so the sheet shows no map at all. Check its windows and its points. They are map mm with y pointing up, as OOM shows them.
+note-mask-check-limited = Note: on the sheet of course "{ $course }" the check against the mask reached its limit, so part of the overprint was not checked. Look at the sheet for course symbols with no map under them.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
 note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, run numbers accept with --course "{ $course }", --control { $control } and --sheet or --layout-wide.
 note-number-gap-out-of-range = Note: on the sheet of course "{ $course }" the number of control { $control } is { $gap } mm from its circle. The rule profile allows { $min } to { $max } mm. It is printed with this gap all the same; a correction under [[numbers]] in the project file can change it.
@@ -300,6 +342,7 @@ stale-scope-layout = layout { $name }
 stale-scope-course = course "{ $name }"
 note-stale-changed-base = Note: the course file has moved the number of control { $control } since the project file corrected it. Check whether the correction still fits.
 note-stale-mask = Note: the project file gives course "{ $course }" the mask "{ $mask }", but the course file has no such white-out area. The course prints without a mask; the assignment stays in the project file.
+note-mask-unused = Info: no course uses the mask "{ $id }". Name it in an assignment with mask = "{ $id }", or delete its [[masks]] entry.
 note-map-cropped-to-course = Info: the map is { $cut } for the map frame. A course sheet shows the part around the course, so the rest is cut off on purpose.
 note-course-placeholder-not-filled = Info: the text { $id } uses { $name }, which is only filled on course sheets. On this sheet it stays empty.
 note-no-courses-to-export = Note: the course file has no course to export, so no PDF was written.

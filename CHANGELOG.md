@@ -15,6 +15,12 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   ganz sichtbar. Ohne eigene Abdeckung gelten die Abdeckflächen (White-out) aus Purple Pen, jede für sich, auch
   wenn sie sich überlappen. Ein Blatt wendet höchstens 1000 Abdeckungen an; hat eine Bahn mehr, fehlen die übrigen,
   und `check` warnt. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
+- `check` prüft Bahnblätter mit Abdeckung (ADR 0046). Es warnt, wenn ein Posten, der Start oder das Ziel dort
+  liegt, wo die Abdeckung die Karte verbirgt, und zählt je Art, was vom Bahnaufdruck dort liegt: Pflichtstrecken,
+  Querungsstellen, verbotene Strecken, Sperrgebietsgrenzen, Sperr- und Gefahrengebiete, Texte. Gedruckt wird der
+  Aufdruck trotzdem. Es warnt auch, wenn eine Abdeckung den ganzen Kartenausschnitt verbirgt, und sagt zur
+  Information, wenn sie im Ausschnitt nichts verbirgt oder keine Bahn sie nutzt. Erreicht die Prüfung ihre Grenze,
+  sagt `check`, dass es nur einen Teil geprüft hat.
 
 ### Geändert
 

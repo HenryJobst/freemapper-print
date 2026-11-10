@@ -86,3 +86,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0043](0043-omap-course-and-placement-come-from-freemapper-core.md) | Omap, course and placement come from freemapper-core | Accepted | 2026-11-09 |
 | [0044](0044-the-base-area-of-sprint-maps.md) | The base area of sprint maps | Accepted | 2026-11-09 |
 | [0045](0045-mask-variants.md) | Mask variants | Accepted | 2026-11-10 |
+| [0046](0046-checking-masks.md) | Checking masks | Accepted | 2026-11-10 |

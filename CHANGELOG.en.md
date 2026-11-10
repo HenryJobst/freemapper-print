@@ -15,6 +15,12 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   Without a mask of its own, a course gets Purple Pen's white-out areas, each on its own, also where they overlap.
   A sheet applies at most 1000 masks; when a course has more, the rest are left out and `check` warns. Sheets
   without a mask stay the same byte for byte.
+- `check` looks at course sheets with a mask (ADR 0046). It warns when a control, the start or the finish lies
+  where the mask hides the map, and counts by kind what of the course overprint lies there: marked routes,
+  crossing points, forbidden routes, out-of-bounds boundaries, out-of-bounds and dangerous areas, texts. The
+  overprint prints all the same. It also warns when a mask hides the whole map frame, and says for information
+  when a mask hides nothing in the frame or no course uses it. When the check reaches its limit, `check` says that
+  it checked only part of the sheet.
 
 ### Changed
 

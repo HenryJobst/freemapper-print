@@ -520,7 +520,7 @@ fn containment(rings: &[Ring], budget: &mut Budget) -> Result<(), MaskError> {
 }
 
 /// Whether `pt` lies inside the ring `pts` (crossing number). Points on the ring are undefined.
-fn inside(pts: &[Pt], pt: Pt) -> bool {
+pub(crate) fn inside(pts: &[Pt], pt: Pt) -> bool {
     inside_by(pts.len(), |i| pts[i], pt)
 }
 
@@ -565,9 +565,17 @@ pub fn masked_rings(mask: &Mask) -> Vec<Vec<Pt>> {
 /// Whether `pt` (internal frame) lies in the masked area of `mask`: inside an outline and in none of its holes.
 /// Points on a ring are undefined.
 pub fn contains(mask: &Mask, pt: Pt) -> bool {
-    mask.polygons
-        .iter()
-        .any(|p| inside_written(&p.outline, pt) && !p.holes.iter().any(|h| inside_written(h, pt)))
+    mask.polygons.iter().any(|p| polygon_contains(p, pt))
+}
+
+/// [`contains`] for one polygon: inside its outline and in none of its holes.
+pub fn polygon_contains(polygon: &MaskPolygon, pt: Pt) -> bool {
+    inside_written(&polygon.outline, pt) && !polygon.holes.iter().any(|h| inside_written(h, pt))
+}
+
+/// [`inside`] for a ring as written (y up), as [`contains`] reads it.
+pub(crate) fn ring_contains(points: &[[f64; 2]], pt: Pt) -> bool {
+    inside_written(points, pt)
 }
 
 /// Twice the signed area of a ring (shoelace sum); positive is counter-clockwise when the numbers are read in a

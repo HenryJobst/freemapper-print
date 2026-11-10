@@ -1633,3 +1633,77 @@ fn numbers_accept_layout_wide_takes_a_proposal_free_everywhere() {
     let o = run("en", &["check", p]);
     assert!(!stderr(&o).contains("covers the symbol"), "{}", stderr(&o));
 }
+
+/// The Viktoriapark example in a temp dir: its project, map and `.ppen`, with `extra` appended to the project
+/// file (which ends in the assignment of the course "Training").
+fn viktoriapark_with(extra: &str) -> (tempfile::TempDir, PathBuf) {
+    let example =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/berlin-viktoriapark-training");
+    let dir = tempfile::tempdir().unwrap();
+    for name in [
+        FILE_NAME,
+        "berlin-viktoriapark.omap",
+        "freemapper.toml",
+        "training.ppen",
+    ] {
+        std::fs::copy(example.join(name), dir.path().join(name)).unwrap();
+    }
+    let path = dir.path().join(FILE_NAME);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.trim_end().ends_with("layout = \"a4-4000\""), "{text}");
+    std::fs::write(&path, format!("{text}{extra}")).unwrap();
+    (dir, path)
+}
+
+#[test]
+fn check_counts_mask_warnings_but_not_mask_infos() {
+    let square = |r: i64| format!("[[[[-{r}, -{r}], [{r}, -{r}], [{r}, {r}], [-{r}, {r}]]]]");
+    let far = "[[[[900000, 900000], [900100, 900000], [900100, 900100], [900000, 900100]]]]";
+    // The example passes; a mask far from the course and a mask no course uses only inform.
+    let (_dir, path) = viktoriapark_with("");
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let extra = format!(
+        "mask = \"far\"\n[[masks]]\nid = \"far\"\npolygons = {far}\n[[masks]]\nid = \"spare\"\npolygons = {}\n",
+        square(10)
+    );
+    let (_dir, path) = viktoriapark_with(&extra);
+    for (lang, covers, unused) in [
+        (
+            "en",
+            "Info: the mask \"far\" hides nothing",
+            "Info: no course uses the mask \"spare\"",
+        ),
+        (
+            "de",
+            "Zur Information: Die Abdeckung „far“ verbirgt",
+            "Zur Information: Keine Bahn nutzt die Abdeckung „spare“",
+        ),
+    ] {
+        let o = run(lang, &["check", path.to_str().unwrap()]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(0), "{err}");
+        assert!(err.contains(covers), "{err}");
+        assert_eq!(err.matches(unused).count(), 1, "once per run: {err}");
+    }
+    // A mask over the whole map is a warning, for the frame and for every control.
+    let extra = format!(
+        "mask = \"all\"\n[[masks]]\nid = \"all\"\npolygons = {}\n",
+        square(1_000_000)
+    );
+    let (_dir, path) = viktoriapark_with(&extra);
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("Note: the mask \"all\" hides the whole map frame of course \"Training\""),
+        "{err}"
+    );
+    assert!(
+        err.contains("where the mask hides the map, so runners find no map around them"),
+        "{err}"
+    );
+    // The PDF is written all the same.
+    let o = run("en", &["export", path.to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}

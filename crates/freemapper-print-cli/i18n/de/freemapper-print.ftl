@@ -245,6 +245,48 @@ note-element-covers-course = Hinweis: Das Element { $id } deckt { $count ->
 note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
 note-masks-capped = Hinweis: Die Bahn „{ $course }“ hat { $total } Abdeckungen, ein Blatt wendet höchstens { $applied } an. Die übrigen fehlen, und wo nur sie abdecken würden, ist die Karte zu sehen.
+note-overprint-in-masked-area = Hinweis: Auf dem Blatt der Bahn „{ $course }“ { $count ->
+        [one] liegt
+       *[other] liegen
+    } { $objects } ganz oder teilweise dort, wo die Abdeckung die Karte verbirgt. Der Bahnaufdruck wird dort trotzdem gedruckt, nur ohne Karte darunter. Ergänzen oder vergrößern Sie ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
+masked-marked-route = { $count ->
+        [one] eine Pflichtstrecke
+       *[other] { $count } Pflichtstrecken
+    }
+masked-crossing-point = { $count ->
+        [one] eine Querungsstelle
+       *[other] { $count } Querungsstellen
+    }
+masked-forbidden-route = { $count ->
+        [one] eine verbotene Strecke
+       *[other] { $count } verbotene Strecken
+    }
+masked-boundary = { $count ->
+        [one] eine Sperrgebietsgrenze
+       *[other] { $count } Sperrgebietsgrenzen
+    }
+masked-out-of-bounds-area = { $count ->
+        [one] ein Sperrgebiet
+       *[other] { $count } Sperrgebiete
+    }
+masked-dangerous-area = { $count ->
+        [one] ein Gefahrengebiet
+       *[other] { $count } Gefahrengebiete
+    }
+masked-text = { $count ->
+        [one] ein Text aus der Bahndatei
+       *[other] { $count } Texte aus der Bahndatei
+    }
+note-control-in-masked-area = Hinweis: Auf dem Blatt der Bahn „{ $course }“ { $count ->
+        [one] liegt Posten { $controls }
+       *[other] liegen die Posten { $controls }
+    } dort, wo die Abdeckung die Karte verbirgt. Die Läufer finden um { $count ->
+        [one] ihn
+       *[other] sie
+    } herum keine Karte. Ergänzen Sie dort ein Fenster, oder prüfen Sie, ob die Bahn die richtige Abdeckung hat.
+note-mask-covers-nothing = Zur Information: Die Abdeckung „{ $mask }“ verbirgt im Kartenausschnitt der Bahn „{ $course }“ nichts. Falls sie es soll, prüfen Sie ihre Punkte. Sie sind Karten-mm mit der y-Achse nach oben, wie OOM sie anzeigt.
+note-mask-leaves-no-window = Hinweis: Die Abdeckung „{ $mask }“ verbirgt den ganzen Kartenausschnitt der Bahn „{ $course }“, das Blatt zeigt also gar keine Karte. Prüfen Sie ihre Fenster und ihre Punkte. Sie sind Karten-mm mit der y-Achse nach oben, wie OOM sie anzeigt.
+note-mask-check-limited = Hinweis: Auf dem Blatt der Bahn „{ $course }“ hat die Prüfung gegen die Abdeckung ihre Grenze erreicht, ein Teil des Bahnaufdrucks blieb ungeprüft. Suchen Sie auf dem Blatt nach Bahnsymbolen ohne Karte darunter.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
 note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, rufen Sie numbers accept mit --course „{ $course }“, --control { $control } und --sheet oder --layout-wide auf.
 note-number-gap-out-of-range = Hinweis: Auf dem Blatt der Bahn „{ $course }“ steht die Nummer von Posten { $control } { $gap } mm vom Kreis entfernt. Das Regelprofil erlaubt { $min } bis { $max } mm. Sie wird trotzdem mit diesem Abstand gedruckt; eine Korrektur unter [[numbers]] in der Projektdatei kann ihn ändern.
@@ -300,6 +342,7 @@ stale-scope-layout = Layout { $name }
 stale-scope-course = Bahn „{ $name }“
 note-stale-changed-base = Hinweis: Die Bahndatei hat die Nummer von Posten { $control } verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.
 note-stale-mask = Hinweis: Die Projektdatei gibt der Bahn „{ $course }“ die Abdeckung „{ $mask }“, aber die Bahndatei hat keine solche Abdeckfläche (White-out). Die Bahn wird ohne Abdeckung gedruckt; die Zuordnung bleibt in der Projektdatei.
+note-mask-unused = Zur Information: Keine Bahn nutzt die Abdeckung „{ $id }“. Nennen Sie sie in einer Zuordnung mit mask = "{ $id }", oder löschen Sie ihren Eintrag [[masks]].
 note-map-cropped-to-course = Zur Information: Die Karte ist { $cut } für den Kartenausschnitt. Ein Bahnblatt zeigt den Teil um die Bahn, der Rest wird mit Absicht abgeschnitten.
 note-course-placeholder-not-filled = Zur Information: Der Text { $id } nutzt { $name }, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.
 note-no-courses-to-export = Hinweis: Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.

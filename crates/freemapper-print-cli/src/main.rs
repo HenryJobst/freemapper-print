@@ -11,7 +11,7 @@ use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{CorrectionScope, LoadedCourses, Stale, load_courses};
+use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, load_courses};
 use freemapper_print::export::{
     ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
     select_courses, select_layouts, sheet_report,
@@ -24,8 +24,8 @@ use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, pri
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
-    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, NoBoxReason,
-    SheetNote, SheetReport, course_event_notes,
+    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem,
+    NoBoxReason, SheetNote, SheetReport, course_event_notes,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -1648,6 +1648,49 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
                 "total" => *total,
             )),
         ),
+        SheetNote::OverprintInMaskedArea {
+            course,
+            kind,
+            count,
+        } => {
+            let id = match kind {
+                MaskedObject::MarkedRoute => "masked-marked-route",
+                MaskedObject::CrossingPoint => "masked-crossing-point",
+                MaskedObject::ForbiddenRoute => "masked-forbidden-route",
+                MaskedObject::Boundary => "masked-boundary",
+                MaskedObject::OutOfBoundsArea => "masked-out-of-bounds-area",
+                MaskedObject::DangerousArea => "masked-dangerous-area",
+                MaskedObject::Text => "masked-text",
+            };
+            texts.get(
+                "note-overprint-in-masked-area",
+                Some(&args!(
+                    "course" => printable(course),
+                    "objects" => texts.get(id, Some(&args!("count" => *count))),
+                    "count" => *count,
+                )),
+            )
+        }
+        SheetNote::ControlInMaskedArea { course, controls } => texts.get(
+            "note-control-in-masked-area",
+            Some(&args!(
+                "course" => printable(course),
+                "controls" => printable(&controls.join(", ")),
+                "count" => controls.len(),
+            )),
+        ),
+        SheetNote::MaskCoversNothing { course, mask } => texts.get(
+            "note-mask-covers-nothing",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ),
+        SheetNote::MaskLeavesNoWindow { course, mask } => texts.get(
+            "note-mask-leaves-no-window",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ),
+        SheetNote::MaskCheckLimited { course } => texts.get(
+            "note-mask-check-limited",
+            Some(&args!("course" => printable(course))),
+        ),
         SheetNote::CourseValueUnknown { course, id, name } => texts.get(
             "note-course-value-unknown",
             Some(&args!(
@@ -1684,6 +1727,16 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
         SheetNote::Course(note) => course_note_line(texts, note),
         SheetNote::Fit(note) => fit_note_line(texts, note),
         SheetNote::Stale(stale) => stale_line(texts, stale),
+        SheetNote::Mask(note) => mask_note_line(texts, note),
+    }
+}
+
+/// The message for a remark about the mask variants. No wildcard arm.
+fn mask_note_line(texts: &Texts, note: &MaskNote) -> String {
+    match note {
+        MaskNote::MaskUnused { id } => {
+            texts.get("note-mask-unused", Some(&args!("id" => printable(id))))
+        }
     }
 }
 
@@ -2311,7 +2364,7 @@ mod tests {
     #[test]
     fn every_sheet_note_has_a_text_with_its_fields() {
         let s = |v: &str| v.to_string();
-        let notes: Vec<(SheetNote, Vec<&str>)> = vec![
+        let mut notes: Vec<(SheetNote, Vec<&str>)> = vec![
             (
                 SheetNote::ElementOutsidePage { id: s("logo1") },
                 vec!["logo1"],
@@ -2484,6 +2537,42 @@ mod tests {
                     total: 2345,
                 },
                 vec!["Kurz", "1000", "2345"],
+            ),
+            (
+                SheetNote::ControlInMaskedArea {
+                    course: s("Kurz"),
+                    controls: vec![s("S1"), s("31")],
+                },
+                vec!["Kurz", "S1, 31"],
+            ),
+            (
+                SheetNote::ControlInMaskedArea {
+                    course: s("Kurz"),
+                    controls: vec![s("32")],
+                },
+                vec!["Kurz", "32"],
+            ),
+            (
+                SheetNote::MaskCoversNothing {
+                    course: s("Kurz"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "fenster"],
+            ),
+            (
+                SheetNote::MaskLeavesNoWindow {
+                    course: s("Kurz"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "fenster"],
+            ),
+            (
+                SheetNote::MaskCheckLimited { course: s("Kurz") },
+                vec!["Kurz"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::MaskUnused { id: s("spare") }),
+                vec!["spare", "[[masks]]"],
             ),
             (
                 SheetNote::MapCroppedToCourse {
@@ -2687,6 +2776,32 @@ mod tests {
                 vec!["Kurz", "31", "25 mm", "5 mm"],
             ),
         ];
+        // Each kind of masked object, once and several times.
+        for kind in [
+            MaskedObject::MarkedRoute,
+            MaskedObject::CrossingPoint,
+            MaskedObject::ForbiddenRoute,
+            MaskedObject::Boundary,
+            MaskedObject::OutOfBoundsArea,
+            MaskedObject::DangerousArea,
+            MaskedObject::Text,
+        ] {
+            for count in [1, 7] {
+                let fields = if count == 1 {
+                    vec!["Kurz"]
+                } else {
+                    vec!["Kurz", "7 "]
+                };
+                notes.push((
+                    SheetNote::OverprintInMaskedArea {
+                        course: s("Kurz"),
+                        kind,
+                        count,
+                    },
+                    fields,
+                ));
+            }
+        }
         for lang in text::available() {
             let texts = Texts::new(&lang);
             let mut seen = std::collections::HashSet::new();

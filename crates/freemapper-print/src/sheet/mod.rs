@@ -7,6 +7,7 @@
 pub(crate) mod course_sheet;
 pub mod layout;
 mod logo;
+mod mask_check;
 mod north_lines;
 pub mod placeholders;
 mod reasons;
@@ -17,7 +18,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use crate::course::{CourseNote, FitNote};
-use crate::courses::Stale;
+use crate::courses::{MaskNote, Stale};
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{BASE_PART, PrintError, PrintOptions, PrintReport, render_page};
@@ -33,6 +34,7 @@ pub use course_sheet::{
 };
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
+pub use mask_check::{AREA_GRID_MM, MAX_MASK_CHECK_STEPS, MAX_MASK_SAMPLES, SAMPLE_STEP_MM};
 pub use reasons::{LogoSimplification, LogoSkipReason, MissingItem};
 pub use text::FOOTER_ID;
 
@@ -160,6 +162,26 @@ pub enum SheetNote {
         applied: usize,
         total: usize,
     },
+    /// `count` objects of the course overprint of kind `kind` lie, wholly or in part, where a mask of the sheet
+    /// hides the map (ADR 0046). They are drawn all the same, on blank paper: the mask never clips the overprint.
+    OverprintInMaskedArea {
+        course: String,
+        kind: MaskedObject,
+        count: usize,
+    },
+    /// The centres of these controls (codes, each once, in course order: start, controls, map exchanges, finish)
+    /// lie in the map frame where a mask of the sheet hides the map: the runner finds no map around them.
+    ControlInMaskedArea {
+        course: String,
+        controls: Vec<String>,
+    },
+    /// The mask `mask` hides nothing inside the map frame of the course's sheet. Informs only.
+    MaskCoversNothing { course: String, mask: String },
+    /// The mask `mask` hides the whole map frame of the sheet of a course with legs: the sheet shows no map.
+    MaskLeavesNoWindow { course: String, mask: String },
+    /// The check of the overprint against the masks reached its budget ([`MAX_MASK_SAMPLES`],
+    /// [`MAX_MASK_CHECK_STEPS`]): the rest of the overprint was not checked.
+    MaskCheckLimited { course: String },
     /// The text `id` uses the placeholder `name` (`climb_m` or `length_km`), but the course file gives no value
     /// for the course, so it prints empty. Informs only.
     CourseValueUnknown {
@@ -192,6 +214,28 @@ pub enum SheetNote {
     Fit(FitNote),
     /// An entry of the project file that no longer matches the course file.
     Stale(Stale),
+    /// A remark about the mask variants of the project file.
+    Mask(MaskNote),
+}
+
+/// A kind of course overprint object that [`SheetNote::OverprintInMaskedArea`] counts, in the order the notes
+/// come in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MaskedObject {
+    /// A marked route: a leg marked as one, or a marked-route special object.
+    MarkedRoute,
+    /// A crossing point of the course.
+    CrossingPoint,
+    /// A forbidden route (711), one cross or a row of them.
+    ForbiddenRoute,
+    /// An out-of-bounds boundary (707/708).
+    Boundary,
+    /// An out-of-bounds area (709).
+    OutOfBoundsArea,
+    /// A dangerous area.
+    DangerousArea,
+    /// A text special object, by the corner its box hangs on.
+    Text,
 }
 
 impl SheetNote {
@@ -219,6 +263,8 @@ impl SheetNote {
             ),
             SheetNote::Fit(note) => !note.is_warning(),
             SheetNote::Stale(stale) => !stale.is_warning(),
+            SheetNote::Mask(note) => !note.is_warning(),
+            SheetNote::MaskCoversNothing { .. } => true,
             _ => false,
         }
     }

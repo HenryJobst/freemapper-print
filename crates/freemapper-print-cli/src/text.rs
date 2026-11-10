@@ -310,6 +310,7 @@ mod tests {
             "courses",
             "set",
             "mask",
+            "objects",
         ] {
             args.set(name, FluentValue::from("sample"));
         }
