@@ -104,13 +104,9 @@ freemapper-print --lang de export .
 
 `export` writes `out/Training.pdf` and exits with code 0.
 
-## Open
-
-- Whether the controls sit on their objects in Purple Pen and whether it recognises the map standard `Spr2019`
-  has not been looked at in detail.
-
 ## Checked
 
+- The controls sit on the right objects in Purple Pen (reported by the user, 2026-11-10).
 - `training.ppen` opens in Purple Pen without an error; the course is there, and so is the control description
   with its symbols (reported by the user, 2026-11-10).
 - `check` and `export` as above, with the messages above.

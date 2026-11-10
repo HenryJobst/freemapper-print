@@ -103,13 +103,9 @@ freemapper-print --lang de export .
 
 `export` schreibt `out/Training.pdf` und endet mit Exit-Code 0.
 
-## Offen
-
-- Ob die Posten in Purple Pen an ihren Objekten stehen und der Kartenstandard `Spr2019` dort richtig erkannt wird,
-  ist noch nicht im Einzelnen angesehen.
-
 ## Geprüft
 
+- Die Posten liegen in Purple Pen an den richtigen Objekten (Rückmeldung des Nutzers, 2026-11-10).
 - `training.ppen` lässt sich in Purple Pen ohne Fehler öffnen; die Bahn ist da, die Postenbeschreibung mit ihren
   Symbolen auch (Rückmeldung des Nutzers, 2026-11-10).
 - `check` und `export` wie oben, mit den Meldungen von oben.
