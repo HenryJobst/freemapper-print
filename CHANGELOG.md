@@ -13,7 +13,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
   Abdeckung aus `[[masks]]`, zeigt das Blatt die Karte nur außerhalb der abgedeckten Flächen und in ihren Fenstern.
   Überlappende Fenster ergeben ein Fenster. Bahnaufdruck, Beschreibungskasten, Blattelemente und Fußzeile bleiben
   ganz sichtbar. Ohne eigene Abdeckung gelten die Abdeckflächen (White-out) aus Purple Pen, jede für sich, auch
-  wenn sie sich überlappen. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
+  wenn sie sich überlappen. Ein Blatt wendet höchstens 1000 Abdeckungen an; hat eine Bahn mehr, fehlen die übrigen,
+  und `check` warnt. Blätter ohne Abdeckung bleiben Byte für Byte gleich.
 
 ### Geändert
 

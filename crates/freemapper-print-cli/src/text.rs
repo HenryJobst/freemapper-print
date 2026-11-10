@@ -272,6 +272,7 @@ mod tests {
             "name",
             "shown",
             "total",
+            "applied",
             "reason",
             "value",
             "scale",

@@ -1636,6 +1636,18 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-overprint-cut",
             Some(&args!("course" => printable(course))),
         ),
+        SheetNote::MasksCapped {
+            course,
+            applied,
+            total,
+        } => texts.get(
+            "note-masks-capped",
+            Some(&args!(
+                "course" => printable(course),
+                "applied" => *applied,
+                "total" => *total,
+            )),
+        ),
         SheetNote::CourseValueUnknown { course, id, name } => texts.get(
             "note-course-value-unknown",
             Some(&args!(
@@ -2465,6 +2477,14 @@ mod tests {
                 vec!["Kurz", "99.9"],
             ),
             (SheetNote::OverprintCut { course: s("Kurz") }, vec!["Kurz"]),
+            (
+                SheetNote::MasksCapped {
+                    course: s("Kurz"),
+                    applied: 1000,
+                    total: 2345,
+                },
+                vec!["Kurz", "1000", "2345"],
+            ),
             (
                 SheetNote::MapCroppedToCourse {
                     overflow_mm: (12.0, 0.0),

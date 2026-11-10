@@ -244,6 +244,7 @@ note-element-covers-course = Note: the element { $id } covers { $count ->
     } of the course. Move the element with its anchor so that runners can see the course.
 note-unknown-description-symbol = Note: the descriptions of course "{ $course }" use symbol { $id }, which the course file's description standard does not have. Its cell in the description box stays empty.
 note-overprint-cut = Note: the course overprint of course "{ $course }" asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out.
+note-masks-capped = Note: course "{ $course }" has { $total } masks, and a sheet applies at most { $applied }. The others are left out, so the map shows where only they would hide it.
 note-course-value-unknown = Info: the text { $id } uses { $name }, but the course file has no value for course "{ $course }", so it prints empty.
 note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, run numbers accept with --course "{ $course }", --control { $control } and --sheet or --layout-wide.
 note-number-gap-out-of-range = Note: on the sheet of course "{ $course }" the number of control { $control } is { $gap } mm from its circle. The rule profile allows { $min } to { $max } mm. It is printed with this gap all the same; a correction under [[numbers]] in the project file can change it.

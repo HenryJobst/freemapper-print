@@ -13,7 +13,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
   `[[masks]]`, the sheet shows the map only outside the masked areas and in their windows. Overlapping windows
   make one window. The course overprint, the description box, the sheet elements and the footer stay visible.
   Without a mask of its own, a course gets Purple Pen's white-out areas, each on its own, also where they overlap.
-  Sheets without a mask stay the same byte for byte.
+  A sheet applies at most 1000 masks; when a course has more, the rest are left out and `check` warns. Sheets
+  without a mask stay the same byte for byte.
 
 ### Changed
 

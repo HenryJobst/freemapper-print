@@ -244,6 +244,7 @@ note-element-covers-course = Hinweis: Das Element { $id } deckt { $count ->
     } der Bahn ab. Versetzen Sie das Element über seinen Anker, damit die Bahn sichtbar bleibt.
 note-unknown-description-symbol = Hinweis: Die Postenbeschreibung der Bahn „{ $course }“ nutzt das Symbol { $id }, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.
 note-overprint-cut = Hinweis: Der Bahnaufdruck der Bahn „{ $course }“ verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.
+note-masks-capped = Hinweis: Die Bahn „{ $course }“ hat { $total } Abdeckungen, ein Blatt wendet höchstens { $applied } an. Die übrigen fehlen, und wo nur sie abdecken würden, ist die Karte zu sehen.
 note-course-value-unknown = Zur Information: Der Text { $id } nutzt { $name }, die Bahndatei hat für die Bahn „{ $course }“ aber keinen Wert. Der Platzhalter bleibt leer.
 note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, rufen Sie numbers accept mit --course „{ $course }“, --control { $control } und --sheet oder --layout-wide auf.
 note-number-gap-out-of-range = Hinweis: Auf dem Blatt der Bahn „{ $course }“ steht die Nummer von Posten { $control } { $gap } mm vom Kreis entfernt. Das Regelprofil erlaubt { $min } bis { $max } mm. Sie wird trotzdem mit diesem Abstand gedruckt; eine Korrektur unter [[numbers]] in der Projektdatei kann ihn ändern.

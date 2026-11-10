@@ -325,6 +325,39 @@ fn paint_run<'a>(
     }
 }
 
+/// Paints the map primitives `items` where every mask of `masks` leaves the map visible. Without masks this is
+/// [`paint_run`] alone. With masks the run gets one clip block: `q`, then each mask's rings followed by `W n`
+/// (nonzero), then the run, then `Q`. Successive clips in one graphics state intersect, so the map is hidden in the
+/// union of the masked areas, and the nesting depth stays the same however many masks there are (ruling R10). The
+/// map before and after the lower purple each get such a block, so the paint order is the same as without a mask
+/// (ruling R11); an empty run writes nothing.
+fn masked_run(
+    content: &mut Content,
+    t: &Transform,
+    masks: &[MapClip],
+    colours: &[RenderColour],
+    items: &[Primitive],
+    fonts: &mut PageFonts,
+) {
+    if masks.is_empty() {
+        paint_run(content, t, map_run(colours, items), fonts);
+        return;
+    }
+    if items.is_empty() {
+        return;
+    }
+    content.save_state();
+    for mask in masks {
+        for ring in mask.rings() {
+            path(content, t, ring, true);
+        }
+        content.clip_nonzero();
+        content.end_path();
+    }
+    paint_run(content, t, map_run(colours, items), fonts);
+    content.restore_state();
+}
+
 /// One page drawn into a content stream, before any PDF object is written: the content, the images it uses, and
 /// its MediaBox in points. The fonts it uses come beside it ([`page_body`]).
 struct PageBody<'a> {
@@ -368,36 +401,25 @@ fn page_body(page: &RenderedPage) -> Result<(PageBody<'_>, PageFonts), PdfError>
         content.clip_nonzero();
         content.end_path();
     }
-    // Each mask clips the map in a block of its own, nested in the page clip: the map shows only where every
-    // mask leaves it visible (ADR 0045). The overprint is not clipped by them.
+    // The masks clip the map, never the overprint (ADR 0045): see [`masked_run`].
     let masks: &[MapClip] = if clipped { &page.map_clips } else { &[] };
-    for mask in masks {
-        content.save_state();
-        for ring in mask.rings() {
-            path(&mut content, &t, ring, true);
-        }
-        content.clip_nonzero();
-        content.end_path();
-    }
     // The lower purple goes before the first primitive of the full-strength colour painted first
-    // (ADR 0034), or after all of them. Under a mask it goes after the whole map, outside the mask blocks:
-    // with Multiply it looks the same there (ADR 0034).
+    // (ADR 0034), or after all of them.
     let split = match overprint.below_priority {
-        Some(below) if !overprint.lower.is_empty() && masks.is_empty() => items
+        Some(below) if !overprint.lower.is_empty() => items
             .iter()
             .position(|p| p.priority <= below)
             .unwrap_or(items.len()),
         _ => items.len(),
     };
-    paint_run(
+    masked_run(
         &mut content,
         &t,
-        map_run(colours, &items[..split]),
+        masks,
+        colours,
+        &items[..split],
         &mut fonts,
     );
-    for _ in masks {
-        content.restore_state();
-    }
     let purple = overprint.colour.cmyk;
     let layer = |content: &mut Content, fonts: &mut PageFonts, shapes: &[Shape]| {
         if shapes.is_empty() {
@@ -409,10 +431,12 @@ fn page_body(page: &RenderedPage) -> Result<(PageBody<'_>, PageFonts), PdfError>
         content.restore_state();
     };
     layer(&mut content, &mut fonts, &overprint.lower);
-    paint_run(
+    masked_run(
         &mut content,
         &t,
-        map_run(colours, &items[split..]),
+        masks,
+        colours,
+        &items[split..],
         &mut fonts,
     );
     layer(&mut content, &mut fonts, &overprint.upper);
@@ -1373,71 +1397,202 @@ mod tests {
         )
     }
 
+    /// The mask blocks of a content stream as (line of `q`, line of its `Q`): blocks opened inside the page clip
+    /// whose first operator draws a ring (the Multiply blocks start with `gs`).
+    fn mask_blocks(l: &[String]) -> Vec<(usize, usize)> {
+        let mut depth = 0;
+        let mut open = None;
+        let mut out = Vec::new();
+        for (i, x) in l.iter().enumerate() {
+            match x.as_str() {
+                "q" => {
+                    depth += 1;
+                    if depth == 2 && l[i + 1].ends_with(" m") {
+                        open = Some(i);
+                    }
+                }
+                "Q" => {
+                    if depth == 2
+                        && let Some(o) = open.take()
+                    {
+                        out.push((o, i));
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// The deepest nesting of `q` blocks.
+    fn max_depth(l: &[String]) -> i32 {
+        let (mut d, mut max) = (0, 0);
+        for x in l {
+            match x.as_str() {
+                "q" => {
+                    d += 1;
+                    max = max.max(d);
+                }
+                "Q" => d -= 1,
+                _ => {}
+            }
+        }
+        max
+    }
+
+    /// Whether the map shows at `p` (page mm) under `clips` in the frame [`clip`]: inside the frame, and filled by
+    /// the nonzero rule of every clip's rings, the winding counted here from the ring edges.
+    fn shows(clips: &[MapClip], (px, py): Pt) -> bool {
+        let frame = clip();
+        let in_frame = frame.min.0 < px && px < frame.max.0 && frame.min.1 < py && py < frame.max.1;
+        in_frame
+            && clips.iter().all(|c| {
+                let mut winding = 0;
+                for r in c.rings() {
+                    for i in 0..r.len() {
+                        let (a, b) = (r[i], r[(i + 1) % r.len()]);
+                        let left = (b.0 - a.0) * (py - a.1) - (px - a.0) * (b.1 - a.1);
+                        if a.1 <= py && b.1 > py && left > 0.0 {
+                            winding += 1;
+                        } else if a.1 > py && b.1 <= py && left < 0.0 {
+                            winding -= 1;
+                        }
+                    }
+                }
+                winding != 0
+            })
+    }
+
     #[test]
     fn map_is_clipped_to_the_windows() {
         let l = lines(&masked_page(vec![window_clip()]));
         // The page clip, then the mask's block: q, three rings (frame, outline, hole), W n with the nonzero rule.
         let page_clip = line_of(&l, 0, "re");
         assert_eq!(l[page_clip + 1..page_clip + 3], ["W", "n"]);
-        let save = line_of(&l, page_clip, "q");
-        let clip_op = line_of(&l, save, "W");
-        assert_eq!(l[clip_op + 1], "n");
-        let rings = l[save..clip_op]
-            .iter()
-            .filter(|x| x.ends_with(" m"))
-            .count();
-        let closes = l[save..clip_op].iter().filter(|x| *x == "h").count();
-        assert_eq!((rings, closes), (3, 3), "frame, outline and hole");
-        // Then the whole map, also the colour the lower purple would lie under, then the block is closed.
-        let grey = line_of(&l, clip_op, "0 0 0 0.6 k");
-        let black = line_of(&l, grey, "0 0 0 1 k");
-        let restore = line_of(&l, black, "Q");
-        // The lower and the upper purple after it, with Multiply, still inside the page clip.
-        let multiply = line_of(&l, restore, "/Mul gs");
-        let lower = line_of(&l, multiply, "0 1 0 0 k");
-        let upper = line_of(&l, lower, "0 1 0 0 K");
-        assert!(save < grey && black < restore && restore < multiply && lower < upper);
-        // No map primitive after the block.
-        assert!(
-            !l[restore..]
+        let blocks = mask_blocks(&l);
+        assert_eq!(blocks.len(), 2, "before and after the lower purple: {l:?}");
+        for &(open, close) in &blocks {
+            let clip_op = line_of(&l, open, "W");
+            assert_eq!(l[clip_op + 1], "n");
+            let rings = l[open..clip_op]
                 .iter()
-                .any(|x| x == "0 0 0 1 k" || x == "0 0 0 0.6 k")
+                .filter(|x| x.ends_with(" m"))
+                .count();
+            let closes = l[open..clip_op].iter().filter(|x| *x == "h").count();
+            assert_eq!((rings, closes), (3, 3), "frame, outline and hole");
+            assert!(clip_op < close);
+        }
+        // The same clip path both times.
+        let path_of = |(open, _): (usize, usize)| l[open..line_of(&l, open, "W")].to_vec();
+        assert_eq!(path_of(blocks[0]), path_of(blocks[1]));
+        // Grey (9) in the first block, the lower purple between them with Multiply, Black (2) in the second, the
+        // upper purple after it: the order of a page without a mask.
+        let grey = line_of(&l, 0, "0 0 0 0.6 k");
+        let lower = line_of(&l, grey, "0 1 0 0 k");
+        let black = line_of(&l, lower, "0 0 0 1 k");
+        let upper = line_of(&l, black, "0 1 0 0 K");
+        assert!(blocks[0].0 < grey && grey < blocks[0].1);
+        assert!(blocks[0].1 < lower && lower < blocks[1].0);
+        assert!(blocks[1].0 < black && black < blocks[1].1 && blocks[1].1 < upper);
+        assert!(l[blocks[0].1..lower].contains(&"/Mul gs".to_string()));
+    }
+
+    #[test]
+    fn blue_still_covers_the_lower_purple_under_a_mask() {
+        // Ruling R11: Blue 100 % painted after the lower purple's place still covers it on a sheet with a mask.
+        let mut p = masked_page(vec![window_clip()]);
+        p.primitives = vec![square(9), square(2), square(1)];
+        p.colours.push(RenderColour {
+            priority: 1,
+            name: "Blue 100%".into(),
+            cmyk: [1.0, 0.0, 0.0, 0.0],
+            rgb: [0.0, 0.6, 1.0],
+            opacity: 1.0,
+        });
+        let l = lines(&p);
+        let lower = line_of(&l, 0, "0 1 0 0 k");
+        let blue_fill = line_of(&l, lower, "1 0 0 0 k");
+        let blocks = mask_blocks(&l);
+        assert!(
+            blocks[1].0 < blue_fill && blue_fill < blocks[1].1,
+            "blue under the mask"
         );
+        // Without the mask, the same order.
+        p.map_clips.clear();
+        let l = lines(&p);
+        let lower = line_of(&l, 0, "0 1 0 0 k");
+        assert!(line_of(&l, lower, "1 0 0 0 k") > lower);
     }
 
     #[test]
     fn overlapping_white_outs_hide_the_union() {
-        // Two masks (two white-outs of one course): each its own block, nested, both closed before the overprint.
+        // Two masks (two white-outs of one course): their clips one after the other in one block (ruling R10).
+        // Successive clips intersect, so the map is hidden in the union of the two outlines.
         let a = MapClip::new(clip(), [ring(10.0, 10.0, 60.0, 60.0)], []);
         let b = MapClip::new(clip(), [ring(40.0, 40.0, 90.0, 90.0)], []);
-        let l = lines(&masked_page(vec![a, b]));
-        let page_clip = line_of(&l, 0, "re");
-        let first = line_of(&l, page_clip + 3, "W");
-        let second = line_of(&l, first + 1, "W");
-        let map = line_of(&l, second, "0 0 0 0.6 k");
-        assert!(l[page_clip + 3..first].contains(&"q".to_string()));
-        assert!(l[first..second].contains(&"q".to_string()), "nested");
-        let close1 = line_of(&l, map, "Q");
-        assert_eq!(l[close1 + 1], "Q", "both blocks closed together");
-        let multiply = line_of(&l, close1, "/Mul gs");
-        assert!(close1 < multiply);
-        // Each block clips with two rings, frame and outline; the nesting intersects them, so the map is hidden in
-        // the union of the two outlines.
-        let rings =
-            |from: usize, to: usize| l[from..to].iter().filter(|x| x.ends_with(" m")).count();
-        assert_eq!((rings(page_clip + 3, first), rings(first, second)), (2, 2));
+        let clips = vec![a, b];
+        let l = lines(&masked_page(clips.clone()));
+        let blocks = mask_blocks(&l);
+        assert_eq!(blocks.len(), 2);
+        for &(open, close) in &blocks {
+            let first = line_of(&l, open, "W");
+            let second = line_of(&l, first + 1, "W");
+            assert!(second < close);
+            assert!(
+                !l[open + 1..second].contains(&"q".to_string()),
+                "not nested"
+            );
+            let rings =
+                |from: usize, to: usize| l[from..to].iter().filter(|x| x.ends_with(" m")).count();
+            assert_eq!((rings(open, first), rings(first, second)), (2, 2));
+        }
+        assert_eq!(max_depth(&l), 2, "page clip and the mask block");
+        // Hidden in either and in both, shown in neither.
+        assert!(!shows(&clips, (20.0, 20.0)));
+        assert!(!shows(&clips, (80.0, 80.0)));
+        assert!(!shows(&clips, (50.0, 50.0)));
+        assert!(shows(&clips, (80.0, 20.0)));
+    }
+
+    #[test]
+    fn many_masks_keep_the_depth() {
+        // A thousand masks still nest no deeper than one.
+        let many: Vec<MapClip> = (0..1000)
+            .map(|i| {
+                let x = f64::from(i % 40) * 2.5;
+                let y = f64::from(i / 40) * 4.0;
+                MapClip::new(clip(), [ring(x, y, x + 1.0, y + 1.0)], [])
+            })
+            .collect();
+        let l = lines(&masked_page(many));
+        assert_eq!(max_depth(&l), 2);
+        assert_eq!(l.iter().filter(|x| *x == "W").count(), 1 + 2 * 1000);
+        assert_eq!(
+            l.iter().filter(|x| *x == "q").count(),
+            lines(&masked_page(vec![window_clip()]))
+                .iter()
+                .filter(|x| *x == "q")
+                .count()
+        );
     }
 
     #[test]
     fn window_at_the_frame_edge_is_clipped() {
         // A window that reaches past the frame: the page clip stays the outer block, so nothing paints beyond the
-        // frame; the mask block lies inside it and is closed before the sheet layer.
+        // frame; the mask blocks lie inside it and are closed before the sheet layer.
         let edge = MapClip::new(
             clip(),
             [ring(-50.0, -50.0, 150.0, 150.0)],
             [ring(80.0, 40.0, 130.0, 70.0)],
         );
-        let p = masked_page(vec![edge]);
+        let clips = vec![edge];
+        // The window shows the map inside the frame and not beyond it; the outline hides it beside the window.
+        assert!(shows(&clips, (90.0, 55.0)));
+        assert!(!shows(&clips, (120.0, 55.0)));
+        assert!(!shows(&clips, (70.0, 55.0)));
+        assert!(!shows(&clips, (90.0, 30.0)));
+        let p = masked_page(clips);
         let l = lines(&p);
         let page_clip = line_of(&l, 0, "re");
         let mask = line_of(&l, page_clip + 3, "W");
@@ -1466,28 +1621,14 @@ mod tests {
     #[test]
     fn mask_does_not_clip_overprint_sheet_elements_or_footer() {
         let l = lines(&masked_page(vec![window_clip()]));
-        // Depth of the clip blocks at each line: the mask block is depth 2 (page clip 1).
-        let mut depth = 0i32;
-        let mut at = Vec::new();
-        for x in &l {
-            if x == "Q" {
-                depth -= 1;
-            }
-            at.push(depth);
-            if x == "q" {
-                depth += 1;
-            }
-        }
-        let mask_open = line_of(&l, line_of(&l, 0, "re") + 3, "q");
-        let mask_close = (mask_open + 1..l.len())
-            .find(|&i| l[i] == "Q" && at[i] == at[mask_open])
-            .unwrap();
+        let blocks = mask_blocks(&l);
+        assert_eq!(blocks.len(), 2);
         for op in ["0 1 0 0 k", "0 1 0 0 K", "S"] {
             let lines: Vec<usize> = (0..l.len()).filter(|&i| l[i].ends_with(op)).collect();
             assert!(!lines.is_empty(), "{op}");
             for i in lines {
                 assert!(
-                    !(mask_open < i && i < mask_close),
+                    !blocks.iter().any(|&(o, c)| o < i && i < c),
                     "{op} at {i} is under the mask"
                 );
             }

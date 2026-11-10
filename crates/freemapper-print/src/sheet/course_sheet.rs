@@ -23,6 +23,11 @@ use super::{
     layout_elements, render_body,
 };
 
+/// Most masks one course sheet applies, in the order of [`mask_for`]. Each is a clip of the map; a course file
+/// with thousands of white-outs would otherwise make a page that viewers take minutes to draw. The rest are left
+/// out with [`SheetNote::MasksCapped`].
+pub const MAX_APPLIED_MASKS: usize = 1000;
+
 /// What the description box of a course sheet is drawn from.
 #[derive(Debug, Clone)]
 pub struct DescriptionSource<'a> {
@@ -39,7 +44,7 @@ pub struct DescriptionSource<'a> {
 /// Notes beyond the layout sheet's: [`SheetNote::CourseOutsideFrame`], [`SheetNote::DefaultLayout`] when
 /// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`] (also
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
-/// [`SheetNote::OverprintCut`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`] and
+/// [`SheetNote::OverprintCut`], [`SheetNote::MasksCapped`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`] and
 /// [`SheetNote::NumberGapOutOfRange`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
@@ -138,8 +143,10 @@ pub fn render_course_sheet(
             page_mm.1 / 2.0 + y * gf - centre_mm.1,
         )
     };
-    page.map_clips = mask_for(&project.project, courses, &course.name)
+    let masks = mask_for(&project.project, courses, &course.name);
+    page.map_clips = masks
         .iter()
+        .take(MAX_APPLIED_MASKS)
         .map(|m| map_clip(m.mask(), page.clip, map_to_page))
         .collect();
 
@@ -192,6 +199,13 @@ pub fn render_course_sheet(
     notes.extend(elements_over_course(
         &rects, course, event, &to_page, &sizes, cf,
     ));
+    if masks.len() > MAX_APPLIED_MASKS {
+        notes.push(SheetNote::MasksCapped {
+            course: course.name.clone(),
+            applied: MAX_APPLIED_MASKS,
+            total: masks.len(),
+        });
+    }
     if page.overprint.cut {
         notes.push(SheetNote::OverprintCut {
             course: course.name.clone(),
@@ -1697,7 +1711,8 @@ mod tests {
         let text = String::from_utf8(pdf).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         let clips: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == "W").collect();
-        assert_eq!(clips.len(), 2, "page clip and mask");
+        // The page clip, then the mask's clip around the map before the lower purple and again after it (R11).
+        assert_eq!(clips.len(), 3, "page clip and the mask twice");
         let first_fill = lines.iter().position(|l| l.ends_with(" k")).unwrap();
         assert!(clips[1] < first_fill);
         // The overprint is the same as without the mask.
@@ -1752,5 +1767,76 @@ mod tests {
         // Each alone hides its own square only.
         assert!(visible(&page.map_clips[0], at(30.3, 95.3)));
         assert!(visible(&page.map_clips[1], at(-50.3, 40.3)));
+    }
+
+    #[test]
+    fn masks_beyond_the_cap_are_left_out_with_a_warning() {
+        // Ruling R10: 2000 white-outs of one course; the sheet applies the first 1000 and says so. However many
+        // masks, the content stream nests no deeper than with one.
+        let render = |count: usize| {
+            let (_dir, project, map, mut courses) = course_project(A4);
+            for i in 0..count {
+                let (x, y) = ((i % 50) as f64 * 3.0 - 75.0, (i / 50) as f64 * 3.0 - 60.0);
+                courses.white_outs.push(crate::courses::WhiteOut {
+                    mask: mask(
+                        &crate::project::white_out_id(i + 1),
+                        sq(x, y, x + 1.0, y + 1.0),
+                        Vec::new(),
+                    ),
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+            let layout = layout_for(&project.project, "Kurz").0;
+            let (page, report) = render_course_sheet(
+                &project,
+                &map,
+                &courses,
+                course(&courses, "Kurz"),
+                layout,
+                &LogoCache::new(),
+            )
+            .unwrap();
+            let pdf = crate::render::pdf::content_of(
+                &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                    .unwrap()
+                    .0,
+            );
+            let (mut depth, mut max) = (0, 0);
+            for line in String::from_utf8(pdf).unwrap().lines() {
+                match line {
+                    "q" => {
+                        depth += 1;
+                        max = max.max(depth);
+                    }
+                    "Q" => depth -= 1,
+                    _ => {}
+                }
+            }
+            (page.map_clips.len(), report.notes, max)
+        };
+        let (applied, notes, depth) = render(2000);
+        assert_eq!(applied, MAX_APPLIED_MASKS);
+        let capped: Vec<&SheetNote> = notes
+            .iter()
+            .filter(|n| matches!(n, SheetNote::MasksCapped { .. }))
+            .collect();
+        assert_eq!(
+            capped,
+            [&SheetNote::MasksCapped {
+                course: "Kurz".into(),
+                applied: 1000,
+                total: 2000,
+            }]
+        );
+        assert!(!capped[0].is_info(), "a warning");
+        let (one, notes, depth_one) = render(1);
+        assert_eq!(one, 1);
+        assert!(
+            !notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::MasksCapped { .. }))
+        );
+        assert_eq!(depth, depth_one);
+        assert_eq!(render(MAX_APPLIED_MASKS).0, MAX_APPLIED_MASKS);
     }
 }

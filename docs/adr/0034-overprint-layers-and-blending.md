@@ -65,15 +65,13 @@ highest number first; it does not say which colour is black, brown or blue.
 - `RenderedPage::overprint` is empty by default. An empty overprint writes no ExtGState and no extra block, so
   pages without a course stay byte for byte as before (`existing_outputs_unchanged`).
 - Masks (ADR 0045) clip the map to their windows and paint no white. White painted after the map would also
-  cover the lower purple, which lies among the map primitives. Each mask of a sheet is a clip block of its own
-  inside the frame's clip, and every map primitive lies inside these blocks, the base area included. The
-  overprint and the sheet layer lie outside them.
-- With a mask the lower layer goes after the whole map, after the mask blocks are closed. At its usual place it
-  would sit inside them and lose its circles and legs outside the windows. Under black it looks the same with
-  Multiply: black over the purple and the purple multiplied with black are both black. A full-strength colour
-  other than black that is painted after the usual place (blue or brown 100 %) is darkened by the purple instead
-  of covering it. The Lübeck map paints no such colour (see Consequences). Without a mask the writer keeps the
-  usual place, byte for byte.
+  cover the lower purple, which lies among the map primitives. The masks' clips form one block inside the frame's
+  clip, and every map primitive lies inside such a block, the base area included. The overprint and the sheet
+  layer lie outside.
+- With a mask the writer closes the block before the lower layer and opens the same block again after it (ruling
+  R11): the map up to `below_priority`, the lower purple, the rest of the map, the upper purple. The paint order is
+  the one of a sheet without a mask, so blue, brown and black 100 % still cover the lower purple; the clip path is
+  written twice. Without a mask nothing changes, byte for byte.
 
 ## Consequences
 
@@ -87,4 +85,4 @@ highest number first; it does not say which colour is black, brown or blue.
 - Cost if wrong: one function chooses the place of the lower layer, and the writer only reads `below_priority`.
 
 Amended in the final fix wave of M3: the course factor (ruling R35) and the crosses of a forbidden route.
-Amended in M4 Task 2: masks clip the map, and with a mask the lower layer goes after the map (rulings R3, R5).
+Amended in M4 Task 2: masks clip the map, and the lower layer keeps its place under a mask (rulings R5, R11).

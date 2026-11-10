@@ -28,7 +28,8 @@ use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem
 use crate::render::symbols::{Cap, Join};
 
 pub use course_sheet::{
-    course_centre, course_event_notes, course_file_stem, course_length_m, render_course_sheet,
+    MAX_APPLIED_MASKS, course_centre, course_event_notes, course_file_stem, course_length_m,
+    render_course_sheet,
 };
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
@@ -152,6 +153,13 @@ pub enum SheetNote {
     /// A limit ([`crate::overprint::MAX_REPEATS`]) left out hatch lines, dashes or crosses of the course
     /// overprint.
     OverprintCut { course: String },
+    /// The course has `total` masks, more than a sheet applies ([`MAX_APPLIED_MASKS`]): only the first `applied`
+    /// hide the map, and the map shows where only the others would hide it.
+    MasksCapped {
+        course: String,
+        applied: usize,
+        total: usize,
+    },
     /// The text `id` uses the placeholder `name` (`climb_m` or `length_km`), but the course file gives no value
     /// for the course, so it prints empty. Informs only.
     CourseValueUnknown {

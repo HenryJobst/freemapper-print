@@ -1,13 +1,16 @@
 //! Pages without a course have an empty overprint, so the M2 example exports stay byte for byte as
 //! committed (M3 Task 6, ADR 0034). Course sheets without a mask stay byte for byte as committed too (M4 Task 2,
-//! ADR 0045).
+//! ADR 0045), and so do the `render` outputs of `examples/luebeck-scales`, which never have a mask.
 
 use std::path::PathBuf;
 
 use freemapper_print::courses::{load_courses, mask_for};
 use freemapper_print::export::{course_pdf_paths, course_sheet_pdf, sheet_pdf};
 use freemapper_print::omap::read::read_map_file;
+use freemapper_print::print::{Orientation, Paper, PrintOptions, print_map};
 use freemapper_print::project;
+use freemapper_print::project::SheetLang;
+use freemapper_print::scale::infer_kind;
 use freemapper_print::sheet::LogoCache;
 
 #[test]
@@ -60,4 +63,30 @@ fn no_mask_output_unchanged() {
         }
     }
     assert_eq!(compared, 7);
+}
+
+#[test]
+fn render_outputs_unchanged() {
+    // The commands of the example's README: `render luebeck.omap --paper a4` and `--paper a3 --scale 3000`, in German.
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/luebeck-scales");
+    let path = dir.join("luebeck.omap");
+    let map = read_map_file(&path).unwrap();
+    let kind = infer_kind(&map, &path).unwrap();
+    for (file, paper, scale) in [
+        ("luebeck-4000-a4.pdf", Paper::A4, None),
+        ("luebeck-3000-a3.pdf", Paper::A3, Some(3000)),
+    ] {
+        let options = PrintOptions {
+            print_scale: scale,
+            kind,
+            paper,
+            orientation: Orientation::Auto,
+            centre: None,
+            show_sheet_objects: false,
+            frame_margin_mm: None,
+        };
+        let (pdf, _, _) = print_map(&map, &options, "luebeck", SheetLang::De).unwrap();
+        let committed = std::fs::read(dir.join(file)).unwrap();
+        assert!(pdf == committed, "{file} differs from the committed render");
+    }
 }
