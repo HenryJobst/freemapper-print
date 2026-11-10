@@ -1633,3 +1633,518 @@ fn numbers_accept_layout_wide_takes_a_proposal_free_everywhere() {
     let o = run("en", &["check", p]);
     assert!(!stderr(&o).contains("covers the symbol"), "{}", stderr(&o));
 }
+
+/// The Viktoriapark example in a temp dir: its project, map and `.ppen`, with `extra` appended to the project
+/// file (which ends in the assignment of the course "Training").
+fn viktoriapark_with(extra: &str) -> (tempfile::TempDir, PathBuf) {
+    let example =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/berlin-viktoriapark-training");
+    let dir = tempfile::tempdir().unwrap();
+    for name in [
+        FILE_NAME,
+        "berlin-viktoriapark.omap",
+        "freemapper.toml",
+        "training.ppen",
+    ] {
+        std::fs::copy(example.join(name), dir.path().join(name)).unwrap();
+    }
+    let path = dir.path().join(FILE_NAME);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.trim_end().ends_with("layout = \"a4-4000\""), "{text}");
+    std::fs::write(&path, format!("{text}{extra}")).unwrap();
+    (dir, path)
+}
+
+#[test]
+fn check_counts_mask_warnings_but_not_mask_infos() {
+    let square = |r: i64| format!("[[[[-{r}, -{r}], [{r}, -{r}], [{r}, {r}], [-{r}, {r}]]]]");
+    let far = "[[[[900000, 900000], [900100, 900000], [900100, 900100], [900000, 900100]]]]";
+    // The example passes; a mask far from the course and a mask no course uses only inform.
+    let (_dir, path) = viktoriapark_with("");
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let extra = format!(
+        "mask = \"far\"\n[[masks]]\nid = \"far\"\npolygons = {far}\n[[masks]]\nid = \"spare\"\npolygons = {}\n",
+        square(10)
+    );
+    let (_dir, path) = viktoriapark_with(&extra);
+    for (lang, covers, unused) in [
+        (
+            "en",
+            "Info: the mask \"far\" hides nothing",
+            "Info: no course uses the mask \"spare\"",
+        ),
+        (
+            "de",
+            "Zur Information: Die Abdeckung „far“ verbirgt",
+            "Zur Information: Keine Bahn nutzt die Abdeckung „spare“",
+        ),
+    ] {
+        let o = run(lang, &["check", path.to_str().unwrap()]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(0), "{err}");
+        assert!(err.contains(covers), "{err}");
+        assert_eq!(err.matches(unused).count(), 1, "once per run: {err}");
+    }
+    // A mask over the whole map is a warning, for the frame and for every control.
+    let extra = format!(
+        "mask = \"all\"\n[[masks]]\nid = \"all\"\npolygons = {}\n",
+        square(1_000_000)
+    );
+    let (_dir, path) = viktoriapark_with(&extra);
+    let o = run("en", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("Note: the mask \"all\" hides the whole map frame of course \"Training\""),
+        "{err}"
+    );
+    // The start and the finish by kind, the controls by code, with "and" as masks window lists them.
+    assert!(
+        err.contains(
+            "Note: on the sheet of course \"Training\", the start, controls 34, 52, 41, 47, 38, 56, 43, 49, 35 \
+             and 60 and the finish lie where the mask hides the map, so runners find no map there."
+        ),
+        "{err}"
+    );
+    assert!(!err.contains("STA1") && !err.contains("FIN1"), "{err}");
+    let o = run("de", &["check", path.to_str().unwrap()]);
+    let err = stderr(&o);
+    assert!(
+        err.contains(
+            "Hinweis: Auf dem Blatt der Bahn „Training“ liegen der Start, die Posten 34, 52, 41, 47, 38, 56, 43, 49, \
+             35 und 60 und das Ziel dort, wo die Abdeckung die Karte verbirgt."
+        ) && err.contains("Mit Hinweisen: 1 von 1 Bahn, 0 von 1 Layoutblatt."),
+        "{err}"
+    );
+    // The PDF is written all the same.
+    let o = run("en", &["export", path.to_str().unwrap()]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+}
+
+#[test]
+fn check_folds_idle_white_outs_and_names_white_outs_by_number() {
+    // Three white-outs of the course file far outside the frame, for all courses.
+    let (dir, path) = viktoriapark_with("");
+    let ppen = dir.path().join("training.ppen");
+    let text = std::fs::read_to_string(&ppen).unwrap();
+    let specials: String = (0..3)
+        .map(|i| {
+            let x = 900 + 100 * i;
+            format!(
+                "<special-object id=\"{}\" kind=\"white-out\"><location x=\"{x}\" y=\"900\" />\
+                 <location x=\"{}\" y=\"900\" /><location x=\"{}\" y=\"950\" />\
+                 <courses all=\"true\" /></special-object>\n",
+                100 + i,
+                x + 50,
+                x + 50
+            )
+        })
+        .collect();
+    std::fs::write(
+        &ppen,
+        text.replace(
+            "</course-scribe-event>",
+            &format!("{specials}</course-scribe-event>"),
+        ),
+    )
+    .unwrap();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let line = "Info: in the map frame of course \"Training\", the 3 white-out areas whiteout-1, whiteout-2 \
+                and whiteout-3 of the course file hide nothing.";
+    assert_eq!(err.matches(line).count(), 1, "{err}");
+    assert!(
+        !err.contains("by number") && !err.contains("takes the place"),
+        "{err}"
+    );
+    // A [[masks]] table standing in for the second white-out: its own line, and the line that names the area.
+    let mut project = std::fs::read_to_string(&path).unwrap();
+    project.push_str(
+        "\n[[masks]]\nid = \"whiteout-2\"\npolygons = [[[[800, 800], [850, 800], [850, 850]]]]\n",
+    );
+    std::fs::write(&path, &project).unwrap();
+    let o = run("de", &["check", p]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains(
+            "Zur Information: Auf dem Blatt der Bahn „Training“ tritt die Tabelle [[masks]] mit der ID whiteout-2 \
+             an die Stelle der Abdeckfläche aus der Bahndatei, die um 1025, 925 liegt (Karten-mm, y nach oben)."
+        ),
+        "{err}"
+    );
+    assert!(
+        err.contains("Zur Information: Die Abdeckung „whiteout-2“ verbirgt im Kartenausschnitt der Bahn „Training“ nichts.")
+            && err.contains(
+                "Im Kartenausschnitt der Bahn „Training“ verbergen die 2 Abdeckflächen whiteout-1 und whiteout-3 \
+                 aus der Bahndatei nichts."
+            ),
+        "{err}"
+    );
+}
+
+// ---- masks window, masks corridor (ADR 0047) ----
+
+#[test]
+fn masks_window_appends_and_keeps_comments() {
+    // Viktoriapark ends in the assignment of "Training", which gets the mask in its own table.
+    let (_dir, path) = viktoriapark_with("");
+    let old = std::fs::read_to_string(&path).unwrap();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Training",
+            "--radius-for",
+            "41=20",
+            "--assign",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let new = std::fs::read_to_string(&path).unwrap();
+    // The line goes right after the header of the assignment; the rest stays as it was.
+    let expected = old.replacen(
+        "[[assignments]]\ncourse = \"Training\"",
+        "[[assignments]]\nmask = \"window-Training\"\ncourse = \"Training\"",
+        1,
+    );
+    assert_ne!(expected, old);
+    assert!(new.starts_with(&expected), "{new}");
+    assert!(
+        new.contains("# Windows of 15 mm radius on paper at 1:4000 around ")
+            && new.contains(
+                "made by masks window.\n# Control 41 has a window of 20 mm radius.\n[[masks]]\n"
+            ),
+        "{new}"
+    );
+    let loaded = project::load(&path).unwrap();
+    let mask = &loaded.project.masks[0];
+    assert_eq!(mask.id, "window-Training");
+    let a = &loaded.project.assignments[0];
+    assert_eq!(a.mask.as_deref(), Some("window-Training"));
+    // The start and the finish get their windows by default, named by kind (ruling R13).
+    assert!(
+        err.contains("Added the mask \"window-Training\"")
+            && err.contains(
+                "12 windows of 15 mm radius on paper at 1:4000 around the start, controls 34, 52, 41, 47, 38, 56, \
+                 43, 49, 35 and 60 and the finish of course \"Training\"."
+            )
+            && err.contains("Control 41 has a window of 20 mm radius.")
+            && !err.contains("no window")
+            && err.contains("Course \"Training\" prints with it now, on layout a4-4000.")
+            && err.contains("Run check"),
+        "{err}"
+    );
+    assert!(
+        new.contains("around the start, controls 34, 52,") && !new.contains("STA1"),
+        "{new}"
+    );
+    // check finds every stop in a window.
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert!(!err.contains("where the mask hides the map"), "{err}");
+    // In German, without start and finish, a second mask by its own id: the controls 1 and 2 by number.
+    let (_dir, path) = viktoriapark_with("");
+    let p = path.to_str().unwrap();
+    let o = run(
+        "de",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Training",
+            "--controls",
+            "1-2",
+            "--radius",
+            "12.5",
+            "--no-start",
+            "--no-finish",
+            "--id",
+            "fenster",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains("Abdeckung „fenster“ in")
+            && err.contains("2 Fenster mit 12,5 mm Radius auf dem Papier bei 1:4000")
+            && err.contains("um die Posten 34 und 52 der Bahn „Training“.")
+            && err.contains(
+                "Start und Ziel haben kein Fenster, deshalb nennt check sie. Ohne --no-start und --no-finish \
+                 bekommen sie eins."
+            )
+            && err.contains("Noch nutzt keine Bahn sie."),
+        "{err}"
+    );
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.masks[0].polygons[0].holes.len(), 2);
+    assert_eq!(loaded.project.assignments[0].mask, None);
+}
+
+#[test]
+fn masks_corridor_appends_and_assigns() {
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "corridor",
+            p,
+            "--points",
+            "-60,70; 20,-30;70,30",
+            "--assign",
+            "--course",
+            "Eng",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(new.starts_with(&old), "{new}");
+    assert!(
+        new.contains(
+            "# Corridor 10 mm wide on paper at 1:4000, made by masks corridor from these points:\n\
+             # --points \"-60,70;20,-30;70,30\"\n[[masks]]\n"
+        ),
+        "{new}"
+    );
+    let loaded = project::load(&path).unwrap();
+    assert_eq!(loaded.project.masks[0].id, "corridor-1");
+    let a = &loaded.project.assignments[0];
+    assert_eq!(
+        (a.course.as_str(), a.layout.as_str(), a.mask.as_deref()),
+        ("Eng", "a3", Some("corridor-1"))
+    );
+    assert!(
+        err.contains("Added the mask \"corridor-1\"")
+            && err.contains("a corridor 10 mm wide on paper at 1:4000 along 3 points")
+            && err.contains("Course \"Eng\" prints with it now, on layout a3."),
+        "{err}"
+    );
+    // The corridor runs over the controls, so check finds nothing in the masked area there.
+    let o = run("en", &["check", p]);
+    let err = stderr(&o);
+    assert!(!err.contains("where the mask hides the map"), "{err}");
+    // A second one without --course takes the scale all layouts share and the next number; German texts.
+    let o = run(
+        "de",
+        &[
+            "masks", "corridor", p, "--points", "0,0;10,0", "--width", "6",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains("Abdeckung „corridor-2“")
+            && err.contains("ein Korridor 6 mm breit auf dem Papier bei 1:4000 entlang 2 Punkten"),
+        "{err}"
+    );
+    assert_eq!(project::load(&path).unwrap().project.masks.len(), 2);
+}
+
+#[test]
+fn masks_refuses_a_duplicate_id() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let args = ["masks", "window", p, "--course", "Eng", "--id", "m"];
+    assert_eq!(run("en", &args).status.code(), Some(0));
+    let done = std::fs::read_to_string(&path).unwrap();
+    for (lang, hint) in [
+        ("en", "has a mask \"m\" already"),
+        ("de", "hat schon eine Abdeckung „m“"),
+    ] {
+        let o = run(lang, &args);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        let o = run(
+            lang,
+            &["masks", "corridor", p, "--points", "0,0;10,0", "--id", "m"],
+        );
+        assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    }
+    // Without --id the default is made unique.
+    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let ids: Vec<String> = project::load(&path)
+        .unwrap()
+        .project
+        .masks
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(ids, ["m", "window-Eng", "window-Eng-2"]);
+}
+
+#[test]
+fn masks_refuses_a_second_mask_for_a_course() {
+    let (_ws, path, _) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let o = run("en", &["masks", "window", p, "--course", "Eng", "--assign"]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let done = std::fs::read_to_string(&path).unwrap();
+    for (lang, hint) in [
+        ("en", "prints with the mask \"window-Eng\" already"),
+        ("de", "wird schon mit der Abdeckung „window-Eng“ gedruckt"),
+    ] {
+        let o = run(
+            lang,
+            &[
+                "masks", "corridor", p, "--points", "0,0;10,0", "--course", "Eng", "--assign",
+            ],
+        );
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+    }
+}
+
+#[test]
+fn masks_usage_errors_in_both_languages() {
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    let cases: [(&[&str], &str, &str); 7] = [
+        (
+            &["masks", "corridor", p, "--points", "0,0;100,0;90,8"],
+            "turns too sharply at 100, 0",
+            "knickt bei 100, 0 für seine Breite zu scharf ab",
+        ),
+        (
+            &[
+                "masks",
+                "corridor",
+                p,
+                "--points",
+                "0,0;100,0;100,50;50,50;50,-50",
+            ],
+            "crosses itself near",
+            "kreuzt sich selbst bei",
+        ),
+        (
+            &["masks", "corridor", p, "--points", "0,0 10,0"],
+            "--points takes points as x,y;x,y",
+            "--points nimmt Punkte als x,y;x,y",
+        ),
+        (
+            &["masks", "window", p, "--course", "Eng", "--radius", "0.5"],
+            "0.5 mm is outside 1 to 100 mm",
+            "0,5 mm liegt außerhalb von 1 bis 100 mm",
+        ),
+        (
+            &["masks", "window", p, "--course", "Eng", "--controls", "2-5"],
+            "the control numbers 1 to 2, so the range 2-5 does not fit",
+            "die Postennummern 1 bis 2, deshalb passt der Bereich 2-5 nicht",
+        ),
+        (
+            &[
+                "masks",
+                "window",
+                p,
+                "--course",
+                "Eng",
+                "--controls",
+                "31,99",
+            ],
+            // The list names the start and the finish by kind, with the code to type.
+            "has no control 99; its controls are start (",
+            "hat keinen Posten 99; ihre Posten sind Start (",
+        ),
+        (
+            &[
+                "masks",
+                "window",
+                p,
+                "--course",
+                "Eng",
+                "--radius-for",
+                "35",
+            ],
+            "--radius-for takes CODE=MM",
+            "--radius-for nimmt CODE=MM",
+        ),
+    ];
+    for (args, en, de) in cases {
+        for (lang, text) in [("en", en), ("de", de)] {
+            let o = run(lang, args);
+            let err = stderr(&o);
+            assert_eq!(o.status.code(), Some(2), "{lang} {args:?}: {err}");
+            assert!(err.contains(text), "{lang}: {err}");
+        }
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    // --assign needs --course for a corridor (clap), an unknown course is a usage error too.
+    let o = run(
+        "en",
+        &["masks", "corridor", p, "--points", "0,0;1,0", "--assign"],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    let o = run("en", &["masks", "window", p, "--course", "Nope"]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    // The help says that sizes are print mm and that no corridor is drawn by itself.
+    let o = run("de", &["masks", "window", "--help"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("Druck-mm")
+            && out.contains("--no-start")
+            && out.contains("löschen Sie die Abdeckung und rufen Sie den Befehl noch einmal auf"),
+        "{out}"
+    );
+    let o = run("en", &["masks", "corridor", "--help"]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("does not draw one by itself")
+            && out.contains(
+                "After changing the print scale, delete the mask and run the command again."
+            ),
+        "{out}"
+    );
+}
+
+#[test]
+fn masks_refuse_a_new_assignment_next_to_inline_assignments() {
+    let (_ws, path, old) = numbers_workspace();
+    // Assignments as an inline array: a new [[assignments]] table would not load, so --assign is refused.
+    let inline = format!("assignments = []\n{old}");
+    std::fs::write(&path, &inline).unwrap();
+    let p = path.to_str().unwrap();
+    for (lang, hint) in [
+        ("en", "cannot add one for course \"Eng\""),
+        ("de", "für die Bahn „Eng“ keine neue anhängen"),
+    ] {
+        let o = run(lang, &["masks", "window", p, "--course", "Eng", "--assign"]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(hint), "{lang}: {err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+    }
+}
+
+#[test]
+fn masks_restore_the_file_when_it_no_longer_loads() {
+    let (_ws, path, old) = numbers_workspace();
+    // An inline `masks` array makes the appended table a duplicate key.
+    let broken = format!("masks = []\n{old}");
+    std::fs::write(&path, &broken).unwrap();
+    let o = run(
+        "en",
+        &["masks", "window", path.to_str().unwrap(), "--course", "Eng"],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("does not load with the new mask"), "{err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+}

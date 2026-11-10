@@ -7,6 +7,7 @@
 pub(crate) mod course_sheet;
 pub mod layout;
 mod logo;
+mod mask_check;
 mod north_lines;
 pub mod placeholders;
 mod reasons;
@@ -17,7 +18,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use crate::course::{CourseNote, FitNote};
-use crate::courses::Stale;
+use crate::courses::{MaskNote, Stale};
 use crate::omap::{MapCoord, MapDocument, OmapError};
 use crate::print::Orientation;
 use crate::print::{BASE_PART, PrintError, PrintOptions, PrintReport, render_page};
@@ -28,10 +29,12 @@ use crate::render::page::{DirectColour, PaperBox, RenderedPage, Shape, SheetItem
 use crate::render::symbols::{Cap, Join};
 
 pub use course_sheet::{
-    course_centre, course_event_notes, course_file_stem, course_length_m, render_course_sheet,
+    MAX_APPLIED_MASKS, course_centre, course_event_notes, course_file_stem, course_length_m,
+    render_course_sheet,
 };
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
+pub use mask_check::{AREA_GRID_MM, MAX_MASK_CHECK_STEPS, MAX_MASK_SAMPLES, SAMPLE_STEP_MM};
 pub use reasons::{LogoSimplification, LogoSkipReason, MissingItem};
 pub use text::FOOTER_ID;
 
@@ -152,6 +155,45 @@ pub enum SheetNote {
     /// A limit ([`crate::overprint::MAX_REPEATS`]) left out hatch lines, dashes or crosses of the course
     /// overprint.
     OverprintCut { course: String },
+    /// The course has `total` masks, more than a sheet applies ([`MAX_APPLIED_MASKS`]): only the first `applied`
+    /// hide the map, and the map shows where only the others would hide it.
+    MasksCapped {
+        course: String,
+        applied: usize,
+        total: usize,
+    },
+    /// `count` objects of the course overprint of kind `kind` lie, wholly or in part, where a mask of the sheet
+    /// hides the map (ADR 0046). They are drawn all the same, on blank paper: the mask never clips the overprint.
+    OverprintInMaskedArea {
+        course: String,
+        kind: MaskedObject,
+        count: usize,
+    },
+    /// The centres of these stops (each code once, in course order: start, controls, map exchanges, finish) lie in
+    /// the map frame where a mask of the sheet hides the map: the runner finds no map around them. The start and
+    /// the finish are named by kind (ruling R13).
+    ControlInMaskedArea {
+        course: String,
+        controls: Vec<crate::courses::StopName>,
+    },
+    /// The mask `mask`, a `[[masks]]` entry, hides nothing inside the map frame of the course's sheet. Informs only.
+    MaskCoversNothing { course: String, mask: String },
+    /// These white-outs of the course file (ids `whiteout-<n>`, in the order the sheet applies them) hide nothing
+    /// inside the map frame of the course's sheet: one note per course, however many there are (ruling R12).
+    /// Informs only.
+    WhiteOutsCoverNothing { course: String, ids: Vec<String> },
+    /// The element `element` (an id, or `footer`) covers part of a window (a hole) of the mask `mask` inside the
+    /// map frame: on a masked sheet the windows are the only map there is (ruling R15).
+    ElementCoversWindow {
+        course: String,
+        element: String,
+        mask: String,
+    },
+    /// The mask `mask` hides the whole map frame of the sheet of a course with legs: the sheet shows no map.
+    MaskLeavesNoWindow { course: String, mask: String },
+    /// The check of the overprint against the masks reached its budget ([`MAX_MASK_SAMPLES`],
+    /// [`MAX_MASK_CHECK_STEPS`]): the rest of the overprint was not checked.
+    MaskCheckLimited { course: String },
     /// The text `id` uses the placeholder `name` (`climb_m` or `length_km`), but the course file gives no value
     /// for the course, so it prints empty. Informs only.
     CourseValueUnknown {
@@ -184,6 +226,28 @@ pub enum SheetNote {
     Fit(FitNote),
     /// An entry of the project file that no longer matches the course file.
     Stale(Stale),
+    /// A remark about the mask variants of the project file.
+    Mask(MaskNote),
+}
+
+/// A kind of course overprint object that [`SheetNote::OverprintInMaskedArea`] counts, in the order the notes
+/// come in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MaskedObject {
+    /// A marked route: a leg marked as one, or a marked-route special object.
+    MarkedRoute,
+    /// A crossing point of the course.
+    CrossingPoint,
+    /// A forbidden route (711), one cross or a row of them.
+    ForbiddenRoute,
+    /// An out-of-bounds boundary (707/708).
+    Boundary,
+    /// An out-of-bounds area (709).
+    OutOfBoundsArea,
+    /// A dangerous area.
+    DangerousArea,
+    /// A text special object, by the corner its box hangs on.
+    Text,
 }
 
 impl SheetNote {
@@ -201,16 +265,18 @@ impl SheetNote {
             SheetNote::NoDescriptionBox { reason, .. } => {
                 matches!(reason, NoBoxReason::IofXml | NoBoxReason::NoElement)
             }
-            // A course note informs unless something of the course file is left out of the print.
+            // A course note informs unless something of the course file is left out of the print. The reader still
+            // names the white-out note for M4; white-outs print as masks now (ADR 0045), so it only informs.
             SheetNote::Course(note) => !matches!(
                 note,
-                CourseNote::WhiteOutLaterInM4
-                    | CourseNote::AlternativeControls(_)
+                CourseNote::AlternativeControls(_)
                     | CourseNote::Variations(_)
                     | CourseNote::UnknownElement(_)
             ),
             SheetNote::Fit(note) => !note.is_warning(),
             SheetNote::Stale(stale) => !stale.is_warning(),
+            SheetNote::Mask(note) => !note.is_warning(),
+            SheetNote::MaskCoversNothing { .. } | SheetNote::WhiteOutsCoverNothing { .. } => true,
             _ => false,
         }
     }
@@ -716,6 +782,7 @@ mod tests {
                 print: PrintSettings::default(),
                 shared,
                 layouts: vec![layout.clone()],
+                masks: Vec::new(),
                 assignments: Vec::new(),
                 numbers: Vec::new(),
             },

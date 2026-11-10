@@ -14,8 +14,8 @@ gibt es ein Beispiel, sobald das Programm sie drucken kann:
 | `schoolyard` | eine Schulhofkarte in 1:1000 auf A4; wartet auf eine Schulhofkarte in den Beispielen von freemapper (Version 0.8.0 hat keine) | geplant |
 | [`luebeck-competition-courses`](luebeck-competition-courses/) | derselbe Wettkampf mit drei Bahnen aus Purple Pen, Postenbeschreibung, Postennummern (eine mit `numbers accept` korrigiert), Sperrgebiet, verbotener Querung und markierter Strecke zum Ziel, dazu dieselben Bahnen als IOF-XML 3.0 ohne Beschreibung | M3 |
 | [`berlin-viktoriapark-training`](berlin-viktoriapark-training/) | ein Vereinstraining im Berliner Viktoriapark: eine Bahn aus Purple Pen auf A4 in 1:4000 mit Postenbeschreibung, auf der Karte aus Version 0.8.0 von freemapper | M3 |
-| `luebeck-training-window` | Fenster-OL mit einer Abdeckungsvariante | M4 |
-| `luebeck-training-corridor` | Korridor-OL mit einer Abdeckungsvariante | M4 |
+| [`luebeck-training-window`](luebeck-training-window/) | ein Fenster-OL in der Lübecker Altstadt: Karte nur in runden Fenstern um Start, Posten und Ziel, gebaut mit `masks window`, ein Fenster größer als die anderen | M4 |
+| [`luebeck-training-corridor`](luebeck-training-corridor/) | ein Korridor-OL auf derselben Karte: Karte nur in einem 12 mm breiten Korridor entlang dreier Straßen, die Linie von Hand gewählt und mit `masks corridor` gebaut | M4 |
 
 Alle Karten stammen aus freemapper 0.8.0 (Commit `a2b41b4`). Als Sprintkarten liegen sie auf der hellbraunen
 Grundfläche (ADR 0044), und die Parks sind gelb.

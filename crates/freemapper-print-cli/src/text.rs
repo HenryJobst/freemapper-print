@@ -104,6 +104,7 @@ mod tests {
         "init-",
         "list-",
         "logo-",
+        "masks-",
         "missing-",
         "note-",
         "number-",
@@ -272,6 +273,7 @@ mod tests {
             "name",
             "shown",
             "total",
+            "applied",
             "reason",
             "value",
             "scale",
@@ -308,6 +310,17 @@ mod tests {
             "proposal",
             "courses",
             "set",
+            "mask",
+            "objects",
+            "x",
+            "y",
+            "which",
+            "problem",
+            "radius",
+            "points",
+            "scales",
+            "ids",
+            "codes",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

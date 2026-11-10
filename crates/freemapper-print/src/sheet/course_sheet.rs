@@ -5,22 +5,29 @@
 use std::collections::HashSet;
 
 use crate::course::{Course, CourseKind, FittedEvent, SourceFormat, Special};
-use crate::courses::{LoadedCourses, layout_for};
+use crate::courses::{LoadedCourses, MaskRef, layout_for, mask_for};
 use crate::describe::{DescriptionHeader, description_box, has_descriptions, moved};
+use crate::mask::{Mask, to_internal};
 use crate::numbers::{place_on_sheet, resolve};
 use crate::omap::{MapCoord, MapDocument};
 use crate::overprint::{applies, control_count, on_map, overprint};
 use crate::print::Orientation;
 use crate::project::{ElementKind, ElementSpec, LayoutSpec, LoadedProject};
-use crate::render::page::{Pt, RenderedPage};
+use crate::render::page::{MapClip, PaperBox, Pt, RenderedPage};
 use crate::scale::geometry_factor;
 
 use super::layout::{anchor_point, inside};
+use super::mask_check::Applied;
 use super::placeholders::CourseValues;
 use super::{
     LogoCache, NoBoxReason, PlacedElement, SheetContext, SheetError, SheetNote, SheetReport,
     layout_elements, render_body,
 };
+
+/// Most masks one course sheet applies, in the order of [`mask_for`]. Each is a clip of the map; a course file
+/// with thousands of white-outs would otherwise make a page that viewers take minutes to draw. The rest are left
+/// out with [`SheetNote::MasksCapped`].
+pub const MAX_APPLIED_MASKS: usize = 1000;
 
 /// What the description box of a course sheet is drawn from.
 #[derive(Debug, Clone)]
@@ -38,8 +45,11 @@ pub struct DescriptionSource<'a> {
 /// Notes beyond the layout sheet's: [`SheetNote::CourseOutsideFrame`], [`SheetNote::DefaultLayout`] when
 /// `layout` is the first layout taken for a course without assignment, [`SheetNote::NoDescriptionBox`] (also
 /// when the layout has no `control_descriptions` element), [`SheetNote::UnknownDescriptionSymbol`],
-/// [`SheetNote::OverprintCut`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`] and
-/// [`SheetNote::NumberGapOutOfRange`]. The notes of the course file as a whole
+/// [`SheetNote::OverprintCut`], [`SheetNote::MasksCapped`], [`SheetNote::CourseValueUnknown`], [`SheetNote::NumberConflict`],
+/// [`SheetNote::NumberGapOutOfRange`] and the notes of the check against the masks (ADR 0046):
+/// [`SheetNote::ElementCoversWindow`], [`SheetNote::MaskCoversNothing`], [`SheetNote::WhiteOutsCoverNothing`],
+/// [`SheetNote::MaskLeavesNoWindow`], [`SheetNote::ControlInMaskedArea`],
+/// [`SheetNote::OverprintInMaskedArea`] and [`SheetNote::MaskCheckLimited`]. The notes of the course file as a whole
 /// come from [`course_event_notes`].
 pub fn render_course_sheet(
     project: &LoadedProject,
@@ -129,6 +139,20 @@ pub fn render_course_sheet(
         &page.colours,
         &page.primitives,
     );
+    // Each mask of the course clips the map on its own (ADR 0045, ruling R8): page x of a map point in mm, as
+    // `to_page` places a course coordinate.
+    let map_to_page = move |(x, y): Pt| -> Pt {
+        (
+            page_mm.0 / 2.0 + x * gf - centre_mm.0,
+            page_mm.1 / 2.0 + y * gf - centre_mm.1,
+        )
+    };
+    let masks = mask_for(&project.project, courses, &course.name);
+    page.map_clips = masks
+        .iter()
+        .take(MAX_APPLIED_MASKS)
+        .map(|m| map_clip(m.mask(), page.clip, map_to_page))
+        .collect();
 
     let notes = &mut report.notes;
     notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
@@ -179,6 +203,51 @@ pub fn render_course_sheet(
     notes.extend(elements_over_course(
         &rects, course, event, &to_page, &sizes, cf,
     ));
+    // What the masks the sheet applies hide of the course (ADR 0046). Page mm back to the internal frame, the
+    // inverse of `map_to_page`.
+    let page_to_map = move |(x, y): Pt| -> Pt {
+        (
+            (x - page_mm.0 / 2.0 + centre_mm.0) / gf,
+            (y - page_mm.1 / 2.0 + centre_mm.1) / gf,
+        )
+    };
+    let clipped: Vec<&Mask> = masks
+        .iter()
+        .take(MAX_APPLIED_MASKS)
+        .map(|m| m.mask())
+        .collect();
+    notes.extend(super::mask_check::elements_over_windows(
+        &course.name,
+        &rects,
+        &clipped,
+        frame,
+        &map_to_page,
+    ));
+    let applied: Vec<Applied<'_>> = masks
+        .iter()
+        .take(MAX_APPLIED_MASKS)
+        .map(|m| Applied {
+            mask: m.mask(),
+            white_out: matches!(m, MaskRef::WhiteOut(_)),
+        })
+        .collect();
+    notes.extend(super::mask_check::mask_notes(
+        course,
+        event,
+        &applied,
+        frame,
+        &to_page,
+        &page_to_map,
+        &sizes,
+        cf,
+    ));
+    if masks.len() > MAX_APPLIED_MASKS {
+        notes.push(SheetNote::MasksCapped {
+            course: course.name.clone(),
+            applied: MAX_APPLIED_MASKS,
+            total: masks.len(),
+        });
+    }
     if page.overprint.cut {
         notes.push(SheetNote::OverprintCut {
             course: course.name.clone(),
@@ -204,6 +273,21 @@ pub fn render_course_sheet(
         });
     }
     Ok((page, report))
+}
+
+/// The clip of `mask` in `frame`: its outlines and holes, written in map mm with y up, on the page by `to_page`
+/// (internal map mm, y down, to page mm). [`MapClip::new`] sets the orientation of the rings on the page.
+pub(crate) fn map_clip(mask: &Mask, frame: PaperBox, to_page: impl Fn(Pt) -> Pt) -> MapClip {
+    let on_page = |ring: &Vec<[f64; 2]>| -> Vec<Pt> {
+        ring.iter().map(|&p| to_page(to_internal(p))).collect()
+    };
+    MapClip::new(
+        frame,
+        mask.polygons.iter().map(|p| on_page(&p.outline)),
+        mask.polygons
+            .iter()
+            .flat_map(|p| p.holes.iter().map(on_page)),
+    )
 }
 
 /// The description box a `control_descriptions` element draws on a course sheet, hung on its anchor; `None`
@@ -322,12 +406,13 @@ fn elements_over_course(
 }
 
 /// The notes of the course file as a whole, once per run: what the reader left out or found, what the fit
-/// found, and the entries of the project file that no longer match the course file.
+/// found, the entries of the project file that no longer match the course file, and the masks no course uses.
 pub fn course_event_notes(courses: &LoadedCourses) -> Vec<SheetNote> {
     let course = courses.notes.iter().cloned().map(SheetNote::Course);
     let fit = courses.fit_notes.iter().cloned().map(SheetNote::Fit);
     let stale = courses.stale.iter().cloned().map(SheetNote::Stale);
-    course.chain(fit).chain(stale).collect()
+    let masks = courses.mask_notes.iter().cloned().map(SheetNote::Mask);
+    course.chain(fit).chain(stale).chain(masks).collect()
 }
 
 /// The map positions of the stops of `course` and the bends of its legs.
@@ -346,8 +431,8 @@ fn stops_and_bends<'a>(
     stops.chain(bends)
 }
 
-/// The points of `special` when it applies to the course named `course` (white-out is not drawn yet and does
-/// not count).
+/// The points of `special` when it applies to the course named `course`. A white-out does not count: it is no
+/// overprint shape but a mask, which hides the map and never widens the frame (ADR 0045).
 fn special_points(special: &Special<MapCoord>, course: &str) -> Vec<MapCoord> {
     match special {
         Special::OutOfBounds { rings, courses } | Special::Dangerous { rings, courses }
@@ -1525,5 +1610,849 @@ mod tests {
             assert!(close(p.line, 0.35 * 4.0 / 3.0), "{p:?}");
             assert!(close(p.start_side, 7.0 * 4.0 / 3.0), "{p:?}");
         }
+    }
+
+    // --- Masks (ADR 0045) ---
+
+    /// Whether the nonzero rule fills `p` with the rings of `clip`: the map shows there. The winding number of each
+    /// ring is counted here from its edges, so this checks the orientation [`MapClip::new`] gives the rings, not
+    /// the text of the PDF.
+    fn visible(clip: &MapClip, (px, py): Pt) -> bool {
+        let mut winding = 0i32;
+        for ring in clip.rings() {
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                let left = (b.0 - a.0) * (py - a.1) - (px - a.0) * (b.1 - a.1);
+                if a.1 <= py && b.1 > py && left > 0.0 {
+                    winding += 1;
+                } else if a.1 > py && b.1 <= py && left < 0.0 {
+                    winding -= 1;
+                }
+            }
+        }
+        winding != 0
+    }
+
+    /// A mask of one polygon, points as written (map mm, y up).
+    fn mask(id: &str, outline: Vec<[f64; 2]>, holes: Vec<Vec<[f64; 2]>>) -> Mask {
+        Mask {
+            id: id.into(),
+            polygons: vec![crate::mask::MaskPolygon { outline, holes }],
+        }
+    }
+
+    /// A square from (`x0`, `y0`) to (`x1`, `y1`), counter-clockwise with y up.
+    fn sq(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<[f64; 2]> {
+        vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+    }
+
+    #[test]
+    fn map_clip_ignores_ring_orientation() {
+        // The same mask written counter-clockwise and clockwise, once with a closing point equal to the first:
+        // the clip has the same rings with the same orientation on the page, and shows the map in the same places.
+        let rev = |mut r: Vec<[f64; 2]>| {
+            r.reverse();
+            r
+        };
+        let ccw = mask(
+            "m",
+            sq(0.0, 0.0, 100.0, 100.0),
+            vec![sq(10.0, 10.0, 30.0, 30.0)],
+        );
+        let cw = mask(
+            "m",
+            rev(sq(0.0, 0.0, 100.0, 100.0)),
+            vec![rev(sq(10.0, 10.0, 30.0, 30.0))],
+        );
+        let mut closed_outline = sq(0.0, 0.0, 100.0, 100.0);
+        closed_outline.push(closed_outline[0]);
+        let closed = mask("m", closed_outline, vec![sq(10.0, 10.0, 30.0, 30.0)]);
+        let to_page = |(x, y): Pt| (x + 100.0, y + 150.0);
+        let frame = PaperBox {
+            min: (50.0, 0.0),
+            max: (250.0, 200.0),
+        };
+        // Twice the shoelace sum in page mm (y down): negative runs counter-clockwise on paper.
+        let area = |r: &[Pt]| -> f64 {
+            (0..r.len())
+                .map(|i| {
+                    let (p, q) = (r[i], r[(i + 1) % r.len()]);
+                    p.0 * q.1 - q.0 * p.1
+                })
+                .sum()
+        };
+        let clips: Vec<MapClip> = [&ccw, &cw, &closed]
+            .into_iter()
+            .map(|m| map_clip(m, frame, to_page))
+            .collect();
+        for clip in &clips {
+            let signs: Vec<bool> = clip.rings().iter().map(|r| area(r) < 0.0).collect();
+            // The frame and the hole counter-clockwise on paper, the outline clockwise.
+            assert_eq!(signs, [true, false, true]);
+        }
+        for at in [(5.3, -5.3), (20.3, -20.3), (50.3, -50.3), (120.3, -5.3)] {
+            let shown = visible(&clips[0], to_page(at));
+            assert_eq!(shown, !crate::mask::contains(&ccw, at), "{at:?}");
+            for clip in &clips[1..] {
+                assert_eq!(visible(clip, to_page(at)), shown, "{at:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn overlapping_holes_unite() {
+        // Two windows that overlap, one written counter-clockwise and one clockwise: the clip shows the map in
+        // both and in their overlap, and hides it in the outline outside them, exactly where `contains` says the
+        // mask is not.
+        let mut second = sq(-10.0, -30.0, 50.0, 30.0);
+        second.reverse();
+        let m = mask(
+            "w",
+            sq(-100.0, -100.0, 100.0, 100.0),
+            vec![sq(-50.0, -30.0, 10.0, 30.0), second],
+        );
+        // A page transform as a sheet has one: scale 1.5, shifted; the frame wider than the outline.
+        let to_page = |(x, y): Pt| (x * 1.5 + 200.0, y * 1.5 + 150.0);
+        let frame = PaperBox {
+            min: (200.0 - 180.0, 150.0 - 180.0),
+            max: (200.0 + 180.0, 150.0 + 180.0),
+        };
+        let clip = map_clip(&m, frame, to_page);
+        assert_eq!(clip.rings().len(), 4);
+        let mut checked = 0;
+        for i in 0..42 {
+            for j in 0..42 {
+                // Never on a ring: no sample coordinate is a multiple of 10.
+                let at = (-117.3 + f64::from(i) * 5.7, -117.7 + f64::from(j) * 5.7);
+                let p = to_page(at);
+                assert!(
+                    frame.min.0 < p.0
+                        && p.0 < frame.max.0
+                        && frame.min.1 < p.1
+                        && p.1 < frame.max.1
+                );
+                assert_eq!(
+                    visible(&clip, to_page(at)),
+                    !crate::mask::contains(&m, at),
+                    "{at:?}"
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 42 * 42);
+        // The overlap, each window alone, the outline, and the frame outside the outline.
+        assert!(visible(&clip, to_page((0.3, 0.3))));
+        assert!(visible(&clip, to_page((-40.3, 0.3))));
+        assert!(visible(&clip, to_page((40.3, 0.3))));
+        assert!(!visible(&clip, to_page((0.3, 60.3))));
+        assert!(visible(&clip, to_page((110.3, 110.3))));
+    }
+
+    #[test]
+    fn mask_hides_the_base_area_outside_windows() {
+        // A sprint map with its base area and a mask with one window around control 31 (20, -30 in the file, y
+        // up): the base area is a map primitive like the others, painted first, inside the mask's block.
+        use crate::print::base_fixture::{base_part, with_walkable_area};
+        let body = format!(
+            "{A4}[[masks]]\nid = \"w\"\npolygons = [[[[-2000, -2000], [2000, -2000], [2000, 2000], [-2000, 2000]], \
+             [[5, -45], [35, -45], [35, -15], [5, -15]]]]\n[[assignments]]\ncourse = \"Kurz\"\nlayout = \"a4\"\n\
+             mask = \"w\"\n"
+        );
+        let (_dir, project, map, courses) = course_project(&body);
+        let mut based = map.clone();
+        based.symbol_set = with_walkable_area(&map.symbol_set);
+        let part = base_part(
+            &based.symbol_set,
+            (-1_000_000, -1_000_000),
+            (1_200_000, 900_000),
+        );
+        based.parts.insert(0, part);
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &based,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        assert!(page.primitives[0].base, "the base area is painted first");
+        let [clip] = page.map_clips.as_slice() else {
+            panic!("one mask: {:?}", page.map_clips.len())
+        };
+        let gf = report.print.geometry_factor;
+        let at = |x: i32, y: i32| on_page(&page, gf, MapCoord::new(x, y));
+        // Control 31 in the window; the start (-50, 60 in the file) and the finish (60, 20) under the mask, both in
+        // the frame. The internal frame has y down.
+        let frame = page.clip;
+        for p in [
+            at(20_000, 30_000),
+            at(-50_000, -60_000),
+            at(60_000, -20_000),
+        ] {
+            assert!(
+                frame.min.0 < p.0 && p.0 < frame.max.0 && frame.min.1 < p.1 && p.1 < frame.max.1
+            );
+        }
+        assert!(visible(clip, at(20_000, 30_000)));
+        assert!(!visible(clip, at(-50_000, -60_000)));
+        assert!(!visible(clip, at(60_000, -20_000)));
+        // In the PDF the first fill, the base area's, comes after the mask's clip.
+        let pdf = crate::render::pdf::content_of(
+            &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                .unwrap()
+                .0,
+        );
+        let text = String::from_utf8(pdf).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let clips: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == "W").collect();
+        // The page clip, then the mask's clip around the map before the lower purple and again after it (R11).
+        assert_eq!(clips.len(), 3, "page clip and the mask twice");
+        let first_fill = lines.iter().position(|l| l.ends_with(" k")).unwrap();
+        assert!(clips[1] < first_fill);
+        // The overprint is the same as without the mask.
+        let (plain, _, _) = sheet(A4, "Kurz");
+        assert_eq!(plain.overprint.upper, page.overprint.upper);
+        assert!(plain.map_clips.is_empty());
+    }
+
+    #[test]
+    fn overlapping_windows_unite_in_the_pdf() {
+        // End to end (ADR 0047): a window mask generated for Kurz, whose controls 31 and 32 are moved 20 mm apart,
+        // written to the project file and printed. Windows of 15 mm overlap; the map shows in both and between.
+        use crate::mask_build::{Selection, WindowOptions, map_extent, windows};
+        let (_dir, project, map, mut courses) = course_project(A4);
+        let control = courses
+            .event
+            .controls
+            .iter_mut()
+            .find(|c| c.code == "32")
+            .unwrap();
+        // 31 is at (20, -30) with y up, (20 000, 30 000) µm in the internal frame.
+        control.position = Some(MapCoord::new(40_000, 30_000));
+        let options = WindowOptions {
+            selection: Selection::All,
+            start: false,
+            finish: false,
+            radius_mm: 15.0,
+            per_control: Default::default(),
+            // The layout prints at the map scale.
+            map_mm_per_print_mm: 1.0,
+        };
+        let (mask, list) = windows(
+            "window-Kurz",
+            course(&courses, "Kurz"),
+            &courses.event,
+            &options,
+            map_extent(&map),
+        )
+        .unwrap();
+        assert_eq!(list.len(), 2);
+        let project =
+            crate::project::append_mask(&project.path, &mask, Some(("Kurz", "a4")), "").unwrap();
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &map,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        let [clip] = page.map_clips.as_slice() else {
+            panic!("one mask: {:?}", page.map_clips.len())
+        };
+        let gf = report.print.geometry_factor;
+        let at = |x: i32, y: i32| on_page(&page, gf, MapCoord::new(x, y));
+        // Each centre, the overlap between them, and 14 mm out from each.
+        for p in [
+            (20_000, 30_000),
+            (40_000, 30_000),
+            (30_000, 30_000),
+            (6_100, 30_000),
+            (53_900, 30_000),
+        ] {
+            assert!(visible(clip, at(p.0, p.1)), "{p:?}");
+        }
+        // Beside both windows, and the start, which has no window by default, are under the mask.
+        for p in [
+            (30_000, 50_000),
+            (30_000, 10_000),
+            (4_000, 30_000),
+            (-50_000, -60_000),
+        ] {
+            assert!(!visible(clip, at(p.0, p.1)), "{p:?}");
+        }
+        // The start and the finish are named by `check`; the controls are not.
+        let named: Vec<&crate::courses::StopName> = report
+            .notes
+            .iter()
+            .filter_map(|n| match n {
+                SheetNote::ControlInMaskedArea { controls, .. } => Some(controls),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(named, [&start(), &finish()]);
+        // The PDF clips the map with the mask (around the map before and after the lower purple).
+        let pdf = crate::render::pdf::content_of(
+            &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                .unwrap()
+                .0,
+        );
+        let text = String::from_utf8(pdf).unwrap();
+        assert_eq!(text.lines().filter(|l| *l == "W").count(), 3);
+    }
+
+    #[test]
+    fn white_outs_of_a_course_each_clip_the_map() {
+        // Ruling R8: two overlapping white-outs of one course are two masks; the map is hidden in either.
+        let (_dir, project, map, mut courses) = course_project(A4);
+        for (i, ring) in [sq(-60.0, 30.0, 0.0, 90.0), sq(-20.0, 50.0, 40.0, 100.0)]
+            .into_iter()
+            .enumerate()
+        {
+            courses.white_outs.push(crate::courses::WhiteOut {
+                mask: mask(&crate::project::white_out_id(i + 1), ring, Vec::new()),
+                courses: crate::course::CourseFilter::All,
+            });
+        }
+        let layout = layout_for(&project.project, "Kurz").0;
+        let (page, report) = render_course_sheet(
+            &project,
+            &map,
+            &courses,
+            course(&courses, "Kurz"),
+            layout,
+            &LogoCache::new(),
+        )
+        .unwrap();
+        assert_eq!(page.map_clips.len(), 2);
+        let gf = report.print.geometry_factor;
+        let at = |x: f64, y: f64| {
+            on_page(
+                &page,
+                gf,
+                MapCoord::new((x * 1000.0) as i32, (-y * 1000.0) as i32),
+            )
+        };
+        let frame = page.clip;
+        let shown = |p: Pt| {
+            assert!(
+                frame.min.0 < p.0 && p.0 < frame.max.0 && frame.min.1 < p.1 && p.1 < frame.max.1
+            );
+            page.map_clips.iter().all(|c| visible(c, p))
+        };
+        assert!(!shown(at(-50.3, 40.3)), "in the first only");
+        assert!(!shown(at(30.3, 95.3)), "in the second only");
+        assert!(!shown(at(-10.3, 60.3)), "in both");
+        assert!(shown(at(60.3, 10.3)), "in neither");
+        // Each alone hides its own square only.
+        assert!(visible(&page.map_clips[0], at(30.3, 95.3)));
+        assert!(visible(&page.map_clips[1], at(-50.3, 40.3)));
+    }
+
+    #[test]
+    fn masks_beyond_the_cap_are_left_out_with_a_warning() {
+        // Ruling R10: 2000 white-outs of one course; the sheet applies the first 1000 and says so. However many
+        // masks, the content stream nests no deeper than with one.
+        let render = |count: usize| {
+            let (_dir, project, map, mut courses) = course_project(A4);
+            for i in 0..count {
+                let (x, y) = ((i % 50) as f64 * 3.0 - 75.0, (i / 50) as f64 * 3.0 - 60.0);
+                courses.white_outs.push(crate::courses::WhiteOut {
+                    mask: mask(
+                        &crate::project::white_out_id(i + 1),
+                        sq(x, y, x + 1.0, y + 1.0),
+                        Vec::new(),
+                    ),
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+            let layout = layout_for(&project.project, "Kurz").0;
+            let (page, report) = render_course_sheet(
+                &project,
+                &map,
+                &courses,
+                course(&courses, "Kurz"),
+                layout,
+                &LogoCache::new(),
+            )
+            .unwrap();
+            let pdf = crate::render::pdf::content_of(
+                &crate::render::pdf::write_pdf(&page, &crate::render::pdf::PdfMeta::new("t"))
+                    .unwrap()
+                    .0,
+            );
+            let (mut depth, mut max) = (0, 0);
+            for line in String::from_utf8(pdf).unwrap().lines() {
+                match line {
+                    "q" => {
+                        depth += 1;
+                        max = max.max(depth);
+                    }
+                    "Q" => depth -= 1,
+                    _ => {}
+                }
+            }
+            (page.map_clips.len(), report.notes, max)
+        };
+        let (applied, notes, depth) = render(2000);
+        assert_eq!(applied, MAX_APPLIED_MASKS);
+        let capped: Vec<&SheetNote> = notes
+            .iter()
+            .filter(|n| matches!(n, SheetNote::MasksCapped { .. }))
+            .collect();
+        assert_eq!(
+            capped,
+            [&SheetNote::MasksCapped {
+                course: "Kurz".into(),
+                applied: 1000,
+                total: 2000,
+            }]
+        );
+        assert!(!capped[0].is_info(), "a warning");
+        let (one, notes, depth_one) = render(1);
+        assert_eq!(one, 1);
+        assert!(
+            !notes
+                .iter()
+                .any(|n| matches!(n, SheetNote::MasksCapped { .. }))
+        );
+        assert_eq!(depth, depth_one);
+        assert_eq!(render(MAX_APPLIED_MASKS).0, MAX_APPLIED_MASKS);
+    }
+
+    // --- check against the masks (ADR 0046) ---
+
+    /// A course coordinate from map mm as written in masks and the course file (y up).
+    fn up(x: f64, y: f64) -> MapCoord {
+        MapCoord::new((x * 1000.0) as i32, (-y * 1000.0) as i32)
+    }
+
+    /// The project body with one mask `w` of `polygons` (TOML) assigned to Kurz on the A4 layout.
+    fn with_mask(polygons: &str) -> String {
+        format!(
+            "{A4}[[masks]]\nid = \"w\"\npolygons = {polygons}\n[[assignments]]\ncourse = \"Kurz\"\n\
+             layout = \"a4\"\nmask = \"w\"\n"
+        )
+    }
+
+    /// The whole map hidden, with the window `window` (TOML ring), e.g. around control 31.
+    fn hidden_but(window: &str) -> String {
+        with_mask(&format!(
+            "[[[[-2000, -2000], [2000, -2000], [2000, 2000], [-2000, 2000]], {window}]]"
+        ))
+    }
+
+    const AROUND_31: &str = "[[5, -45], [35, -45], [35, -15], [5, -15]]";
+    /// A window around the whole course of Kurz and the specials of [`specials_of_every_kind`].
+    const AROUND_ALL: &str = "[[-70, -140], [120, -140], [120, 80], [-70, 80]]";
+
+    fn square_ring(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<MapCoord> {
+        vec![up(x0, y0), up(x1, y0), up(x1, y1), up(x0, y1)]
+    }
+
+    /// Kurz with every kind of object `check` looks at under a mask, all outside the window around 31 and inside
+    /// [`AROUND_ALL`]: the leg S1-31 a marked route, control 32 a crossing point, two marked routes, a forbidden
+    /// route, a boundary, an out-of-bounds and a dangerous area, a text. The other course does not count.
+    fn specials_of_every_kind(courses: &mut LoadedCourses) {
+        use crate::course::{ControlKind, CourseFilter};
+        let kurz = || CourseFilter::Only(vec!["Kurz".into()]);
+        let c = courses
+            .event
+            .courses
+            .iter_mut()
+            .find(|c| c.name == "Kurz")
+            .unwrap();
+        c.legs[0].marked_route = true;
+        c.stops[2].kind = Some(ControlKind::CrossingPoint);
+        courses.event.specials.extend([
+            Special::MarkedRoute {
+                path: vec![up(-60.0, 0.0), up(-20.0, 0.0)],
+                courses: CourseFilter::All,
+            },
+            Special::MarkedRoute {
+                path: vec![up(-60.0, -60.0), up(-20.0, -60.0)],
+                courses: kurz(),
+            },
+            Special::MarkedRoute {
+                path: vec![up(-60.0, -70.0), up(-20.0, -70.0)],
+                courses: CourseFilter::Only(vec!["D/H 12".into()]),
+            },
+            Special::ForbiddenRoute {
+                path: vec![up(-30.0, 30.0)],
+                courses: kurz(),
+            },
+            Special::Boundary {
+                path: vec![up(70.0, -60.0), up(90.0, -60.0)],
+                courses: kurz(),
+            },
+            Special::OutOfBounds {
+                rings: vec![square_ring(60.0, -100.0, 80.0, -80.0)],
+                courses: kurz(),
+            },
+            Special::Dangerous {
+                rings: vec![square_ring(-40.0, -110.0, -30.0, -100.0)],
+                courses: kurz(),
+            },
+            Special::Text {
+                pt: up(0.0, 40.0),
+                text: "Wasser".into(),
+                size_mm: 3.0,
+                courses: kurz(),
+            },
+        ]);
+    }
+
+    /// The stops of Kurz as `ControlInMaskedArea` names them: the start and the finish by kind.
+    fn start() -> crate::courses::StopName {
+        crate::courses::StopName::Start("S1".into())
+    }
+
+    fn finish() -> crate::courses::StopName {
+        crate::courses::StopName::Finish("F1".into())
+    }
+
+    fn control(code: &str) -> crate::courses::StopName {
+        crate::courses::StopName::Control(code.into())
+    }
+
+    /// The notes about masks of a sheet report.
+    fn mask_check_notes(report: &SheetReport) -> Vec<&SheetNote> {
+        report
+            .notes
+            .iter()
+            .filter(|n| {
+                matches!(
+                    n,
+                    SheetNote::OverprintInMaskedArea { .. }
+                        | SheetNote::ControlInMaskedArea { .. }
+                        | SheetNote::MaskCoversNothing { .. }
+                        | SheetNote::WhiteOutsCoverNothing { .. }
+                        | SheetNote::MaskLeavesNoWindow { .. }
+                        | SheetNote::MaskCheckLimited { .. }
+                )
+            })
+            .collect()
+    }
+
+    fn in_mask(kind: super::super::MaskedObject, count: usize) -> SheetNote {
+        SheetNote::OverprintInMaskedArea {
+            course: "Kurz".into(),
+            kind,
+            count,
+        }
+    }
+
+    #[test]
+    fn check_warns_for_control_in_masked_area() {
+        // Only control 31 has a window; the start, 32 and the finish lie in the frame where the map is hidden.
+        let (_, report) = ppen_sheet(&hidden_but(AROUND_31), "Kurz", |_| {});
+        let notes = mask_check_notes(&report);
+        let want = SheetNote::ControlInMaskedArea {
+            course: "Kurz".into(),
+            controls: vec![start(), control("32"), finish()],
+        };
+        assert_eq!(notes, [&want]);
+        assert!(!want.is_info(), "a warning");
+        assert!(report.needs_attention());
+        // The overprint is drawn all the same.
+        let (plain, _) = ppen_sheet(A4, "Kurz", |_| {});
+        let (masked, _) = ppen_sheet(&hidden_but(AROUND_31), "Kurz", |_| {});
+        assert_eq!(plain.overprint.lower, masked.overprint.lower);
+        assert_eq!(plain.overprint.upper, masked.overprint.upper);
+    }
+
+    #[test]
+    fn check_warns_for_overprint_in_masked_area() {
+        use super::super::MaskedObject::*;
+        let (page, report) = ppen_sheet(&hidden_but(AROUND_31), "Kurz", specials_of_every_kind);
+        let notes = mask_check_notes(&report);
+        let want = [
+            SheetNote::ControlInMaskedArea {
+                course: "Kurz".into(),
+                controls: vec![start(), finish()],
+            },
+            // The leg from S1 and two of the three marked routes; the third belongs to D/H 12.
+            in_mask(MarkedRoute, 3),
+            in_mask(CrossingPoint, 1),
+            in_mask(ForbiddenRoute, 1),
+            in_mask(Boundary, 1),
+            in_mask(OutOfBoundsArea, 1),
+            in_mask(DangerousArea, 1),
+            in_mask(Text, 1),
+        ];
+        assert_eq!(notes, want.iter().collect::<Vec<_>>());
+        assert!(want.iter().all(|n| !n.is_info()));
+        // Masked or not, every object is drawn.
+        let (plain, _) = ppen_sheet(A4, "Kurz", specials_of_every_kind);
+        assert_eq!(plain.overprint.upper, page.overprint.upper);
+        assert_eq!(plain.overprint.lower, page.overprint.lower);
+    }
+
+    #[test]
+    fn no_warning_when_the_overprint_lies_in_a_window() {
+        let (_, report) = ppen_sheet(&hidden_but(AROUND_ALL), "Kurz", specials_of_every_kind);
+        assert_eq!(mask_check_notes(&report), Vec::<&SheetNote>::new());
+        // Without a mask there is nothing to check.
+        let (_, plain) = ppen_sheet(A4, "Kurz", specials_of_every_kind);
+        assert_eq!(mask_check_notes(&plain), Vec::<&SheetNote>::new());
+    }
+
+    #[test]
+    fn an_area_round_a_window_counts_by_its_inside() {
+        // An out-of-bounds area whose outline lies wholly in a window, while a second white-out hides a square
+        // inside it: its hatch is drawn over blank paper there.
+        let (_, report) = ppen_sheet(A4, "Kurz", |c| {
+            let masks = [
+                mask(
+                    "whiteout-1",
+                    sq(-2000.0, -2000.0, 2000.0, 2000.0),
+                    vec![sq(-70.0, -140.0, 120.0, 80.0)],
+                ),
+                mask("whiteout-2", sq(0.0, -60.0, 20.0, -40.0), Vec::new()),
+            ];
+            for m in masks {
+                c.white_outs.push(crate::courses::WhiteOut {
+                    mask: m,
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+            c.event.specials.push(Special::OutOfBounds {
+                rings: vec![square_ring(-10.0, -70.0, 30.0, -35.0)],
+                courses: crate::course::CourseFilter::All,
+            })
+        });
+        assert_eq!(
+            mask_check_notes(&report),
+            [&in_mask(super::super::MaskedObject::OutOfBoundsArea, 1)]
+        );
+    }
+
+    #[test]
+    fn mask_covers_nothing_is_info() {
+        let far = with_mask("[[[[1000, 1000], [1100, 1000], [1100, 1100], [1000, 1100]]]]");
+        let (_, report) = ppen_sheet(&far, "Kurz", specials_of_every_kind);
+        let want = SheetNote::MaskCoversNothing {
+            course: "Kurz".into(),
+            mask: "w".into(),
+        };
+        assert_eq!(mask_check_notes(&report), [&want]);
+        assert!(want.is_info());
+        let (_, plain) = ppen_sheet(A4, "Kurz", specials_of_every_kind);
+        assert_eq!(report.needs_attention(), plain.needs_attention());
+        // A frame wholly inside a window sees nothing hidden either.
+        let (_, report) = ppen_sheet(
+            &hidden_but("[[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]]"),
+            "Kurz",
+            |_| {},
+        );
+        assert_eq!(mask_check_notes(&report), [&want]);
+    }
+
+    #[test]
+    fn description_box_over_a_window_is_noted() {
+        // A window course: the box in the frame's top-right corner. With the only window round control 31 at the
+        // frame centre, the box lies over masked paper only; with a window over the whole frame it covers part of
+        // that window and hides map the sheet would show (ruling R15).
+        let covers = |report: &SheetReport| -> Vec<SheetNote> {
+            report
+                .notes
+                .iter()
+                .filter(|n| matches!(n, SheetNote::ElementCoversWindow { .. }))
+                .cloned()
+                .collect()
+        };
+        let boxed = |window: &str| {
+            format!(
+                "{}[[masks]]\nid = \"w\"\npolygons = [[[[-2000, -2000], [2000, -2000], [2000, 2000], \
+                 [-2000, 2000]], {window}]]\n[[assignments]]\ncourse = \"Kurz\"\nlayout = \"a4\"\nmask = \"w\"\n",
+                with_box(TOP_RIGHT, "")
+            )
+        };
+        let (_, report) = ppen_sheet(&boxed(AROUND_31), "Kurz", as_ppen);
+        assert_eq!(covers(&report), Vec::<SheetNote>::new());
+        let (_, report) = ppen_sheet(
+            &boxed("[[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]]"),
+            "Kurz",
+            as_ppen,
+        );
+        let over = |element: &str| SheetNote::ElementCoversWindow {
+            course: "Kurz".into(),
+            element: element.into(),
+            mask: "w".into(),
+        };
+        // The layout has no passe-partout, so the footer sits in the frame and covers the window too.
+        assert_eq!(covers(&report), [over("descriptions"), over("footer")]);
+        assert!(!over("descriptions").is_info() && report.needs_attention());
+        // No mask, no such note.
+        let (_, report) = ppen_sheet(&with_box(TOP_RIGHT, ""), "Kurz", as_ppen);
+        assert_eq!(covers(&report), Vec::<SheetNote>::new());
+    }
+
+    #[test]
+    fn white_outs_that_hide_nothing_fold_into_one_line() {
+        // Three white-outs of the course file far outside the frame: one Info line for the course, with all three
+        // ids, instead of one per white-out (ruling R12).
+        let far = |i: f64| {
+            mask(
+                "",
+                sq(1000.0 + 200.0 * i, 1000.0, 1100.0 + 200.0 * i, 1100.0),
+                vec![],
+            )
+        };
+        let add = |c: &mut LoadedCourses, n: usize| {
+            for i in 0..n {
+                let mut m = far(i as f64);
+                m.id = format!("whiteout-{}", i + 1);
+                c.white_outs.push(crate::courses::WhiteOut {
+                    mask: m,
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+        };
+        let (_, report) = ppen_sheet(A4, "Kurz", |c| add(c, 3));
+        let want = SheetNote::WhiteOutsCoverNothing {
+            course: "Kurz".into(),
+            ids: vec![
+                "whiteout-1".into(),
+                "whiteout-2".into(),
+                "whiteout-3".into(),
+            ],
+        };
+        assert_eq!(mask_check_notes(&report), [&want]);
+        assert!(want.is_info());
+        // A `[[masks]]` entry standing in for the second keeps a line of its own.
+        let stand_in = format!(
+            "{A4}[[masks]]\nid = \"whiteout-2\"\npolygons = [[[[900, 900], [950, 900], [950, 950]]]]\n"
+        );
+        let (_, report) = ppen_sheet(&stand_in, "Kurz", |c| add(c, 3));
+        assert_eq!(
+            mask_check_notes(&report),
+            [
+                &SheetNote::MaskCoversNothing {
+                    course: "Kurz".into(),
+                    mask: "whiteout-2".into(),
+                },
+                &SheetNote::WhiteOutsCoverNothing {
+                    course: "Kurz".into(),
+                    ids: vec!["whiteout-1".into(), "whiteout-3".into()],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn mask_leaves_no_window_is_warning() {
+        let all = with_mask("[[[[-2000, -2000], [2000, -2000], [2000, 2000], [-2000, 2000]]]]");
+        let (_, report) = ppen_sheet(&all, "Kurz", |_| {});
+        let none_left = SheetNote::MaskLeavesNoWindow {
+            course: "Kurz".into(),
+            mask: "w".into(),
+        };
+        let controls = SheetNote::ControlInMaskedArea {
+            course: "Kurz".into(),
+            controls: vec![start(), control("31"), control("32"), finish()],
+        };
+        assert_eq!(mask_check_notes(&report), [&none_left, &controls]);
+        assert!(!none_left.is_info());
+        // A window in the frame, however small, leaves the map there.
+        let (_, report) = ppen_sheet(&hidden_but(AROUND_31), "Kurz", |_| {});
+        assert!(!report.notes.contains(&none_left));
+    }
+
+    #[test]
+    fn any_of_several_masks_hides() {
+        // Ruling R8: two white-outs, one over control 31, one over the finish. Each hides its own control.
+        let (_, report) = ppen_sheet(A4, "Kurz", |courses| {
+            for (i, ring) in [sq(5.0, -45.0, 35.0, -15.0), sq(50.0, 10.0, 70.0, 30.0)]
+                .into_iter()
+                .enumerate()
+            {
+                courses.white_outs.push(crate::courses::WhiteOut {
+                    mask: mask(&crate::project::white_out_id(i + 1), ring, Vec::new()),
+                    courses: crate::course::CourseFilter::All,
+                });
+            }
+        });
+        assert_eq!(
+            mask_check_notes(&report),
+            [&SheetNote::ControlInMaskedArea {
+                course: "Kurz".into(),
+                controls: vec![control("31"), finish()],
+            }]
+        );
+    }
+
+    #[test]
+    fn sampling_budget_is_bounded() {
+        // A hostile marked route: 10 000 points zigzagging across the window, kilometres of path. The check stops
+        // at its budget and says so; it finds nothing hidden, because the route stays in the window. The check is
+        // called on its own: drawing the route's dashes takes far longer than checking it.
+        let (_dir, project, _map, mut courses) = course_project(&hidden_but(AROUND_ALL));
+        let path = (0..10_000)
+            .map(|i| {
+                if i % 2 == 0 {
+                    up(-60.0, -130.0)
+                } else {
+                    up(110.0, 70.0)
+                }
+            })
+            .collect();
+        courses.event.specials.push(Special::MarkedRoute {
+            path,
+            courses: crate::course::CourseFilter::All,
+        });
+        let assigned = mask_for(&project.project, &courses, "Kurz");
+        let masks: Vec<Applied<'_>> = assigned
+            .iter()
+            .map(|m| Applied {
+                mask: m.mask(),
+                white_out: false,
+            })
+            .collect();
+        // Page = map mm shifted, the frame 200 by 280 mm round the course.
+        let to_page = |c: MapCoord| {
+            (
+                f64::from(c.x) / 1000.0 + 100.0,
+                f64::from(c.y) / 1000.0 + 140.0,
+            )
+        };
+        let page_to_map = |(x, y): Pt| (x - 100.0, y - 140.0);
+        let frame = PaperBox {
+            min: (0.0, 0.0),
+            max: (200.0, 280.0),
+        };
+        let kind = project.project.map.kind;
+        let started = std::time::Instant::now();
+        let notes = super::super::mask_check::mask_notes(
+            course(&courses, "Kurz"),
+            &courses.event,
+            &masks,
+            frame,
+            &to_page,
+            &page_to_map,
+            &project.rules.course_symbol(kind),
+            1.0,
+        );
+        let limited = SheetNote::MaskCheckLimited {
+            course: "Kurz".into(),
+        };
+        assert_eq!(notes, std::slice::from_ref(&limited));
+        assert!(!limited.is_info());
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    }
+
+    #[test]
+    fn unused_mask_is_printed_once_per_run() {
+        let body =
+            format!("{A4}[[masks]]\nid = \"spare\"\npolygons = [[[[0, 0], [10, 0], [10, 10]]]]\n");
+        let (_dir, _project, _map, courses) = course_project(&body);
+        let unused = SheetNote::Mask(crate::courses::MaskNote::MaskUnused { id: "spare".into() });
+        assert!(course_event_notes(&courses).contains(&unused));
+        assert!(unused.is_info());
     }
 }

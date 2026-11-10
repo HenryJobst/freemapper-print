@@ -58,10 +58,22 @@ Neu in 0.3.0 (Meilenstein M3):
   IOF-XML, prüft den Kartenmaßstab, vergleicht die Posten mit Breite und Länge und hält bei einer zweifelhaften
   Einpassung an.
 
+Auf `main`, noch nicht veröffentlicht (Meilenstein M4):
+
+- Abdeckungen für Fenster- und Korridor-OL: Eine Abdeckung verbirgt die Karte auf dem Blatt einer Bahn bis auf
+  Fenster oder einen Korridor. Bahnaufdruck, Postenbeschreibung, Titel und Fußzeile bleiben überall stehen, auch
+  die Strecken zwischen den Fenstern;
+- `masks window` legt runde Fenster um die Posten einer Bahn, mit einem Radius in Millimetern auf dem Papier und
+  auf Wunsch einem eigenen Radius je Posten;
+- `masks corridor` macht aus einer Linie, die Sie vorgeben, einen Korridor mit einstellbarer Breite. Einen
+  automatischen Korridor gibt es nicht, denn kein Regelwerk sagt, wo er verläuft;
+- Abdeckungen lassen sich auch von Hand in die Projektdatei schreiben; das White-out aus Purple Pen druckt das
+  Programm als Abdeckung der Bahnen, für die es gilt;
+- `check` warnt vor Posten, Pflichtstrecken, Sperrgebieten und anderem Bahnaufdruck, die unter einer Abdeckung
+  liegen.
+
 Geplant ist:
 
-- Abdeckungen für Fenster- und Korridor-OL in Varianten, die man einzelnen Bahnen zuordnet; das White-out aus
-  Purple Pen wird schon gelesen, aber noch nicht gedruckt (M4);
 - Bedienung über einen KI-Assistenten (MCP, M5) und einen Editor im Browser (M6);
 - später OCAD-Karten.
 
@@ -81,6 +93,20 @@ um und liegt bis dahin noch in diesem Repository.
 
 Fertige Beispiele liegen in [`examples/`](examples/README.md). Ein Klick auf ein Bild öffnet das Beispiel mit
 den PDFs.
+
+<a href="examples/luebeck-training-window/README.md"><img src="examples/luebeck-training-window/preview.jpg" width="640"
+alt="Ein Fenster-OL in Lübeck, A4 in 1:4000: die Karte nur in runden Fenstern um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken"></a>
+
+**Fenster-OL** ([`luebeck-training-window`](examples/luebeck-training-window/README.md)): eine Trainingsbahn mit
+acht Posten in der Lübecker Altstadt, auf A4 in 1:4000. Die Karte zeigt sich nur in Fenstern von 15 mm Radius um
+Start, Posten und Ziel, eines davon größer. Die Abdeckung schreibt `masks window`.
+
+<a href="examples/luebeck-training-corridor/README.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
+alt="Ein Korridor-OL in Lübeck, A4 in 1:4000: die Karte nur in einem Streifen entlang dreier Straßen"></a>
+
+**Korridor-OL** ([`luebeck-training-corridor`](examples/luebeck-training-corridor/README.md)): eine kurze Bahn mit
+sieben Posten in einem 12 mm breiten Korridor entlang dreier Straßen der Altstadt. Die Linie ist von Hand gewählt,
+`masks corridor` macht daraus die Abdeckung.
 
 <a href="examples/luebeck-competition-courses/README.md"><img src="examples/luebeck-competition-courses/preview.jpg" width="640"
 alt="Das Blatt der Bahn A eines Stadtsprints in Lübeck, A4 in 1:4000, mit der Bahn in Violett und der Postenbeschreibung oben rechts"></a>
@@ -109,7 +135,7 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 **Lübeck in zwei Maßstäben** ([`luebeck-scales`](examples/luebeck-scales/README.md)): dieselbe Sprintkarte in
 1:4000 auf A4 und in 1:3000 auf A3, gedruckt mit `render`. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf
-133 %. Der nächste Meilenstein bringt Fenster- und Korridor-OL (M4).
+133 %.
 
 ## Status
 
@@ -117,8 +143,8 @@ Aktuelle Version ist [v0.4.0](https://github.com/HenryJobst/freemapper-print/rel
 10. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
-Postennummern (M3) gehören dazu. Abdeckungen für Fenster- und Korridor-OL
-(M4) folgen. Die erste Version richtet sich an Vereinstrainings in Stadt und
+Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, ist auf `main`
+fertig und noch nicht veröffentlicht. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).
@@ -212,6 +238,22 @@ setzen Sie einen eigenen Platz.
 exportiert nur diese Bahnen, `--single-file` schreibt alle Bahnen in ein PDF mit einer Seite je Bahn, und
 `--layout` exportiert ein Layout ohne Bahnen. Das [Handbuch](docs/manual/de.md#8-bahnen) geht die Schlüssel der
 Projektdatei, die Einpassungsfehler und die Hinweise durch.
+
+### Fenster- und Korridor-OL
+
+```sh
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
+freemapper-print masks corridor stadtsprint --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5" --width 12 --assign --course B
+freemapper-print check stadtsprint
+```
+
+`masks window` legt um jeden Posten der Bahn A ein rundes Fenster, auch um Start und Ziel, und `--assign` druckt
+die Bahn damit. Der Radius gilt in Millimetern auf dem Papier; `--controls` wählt Posten aus, `--radius-for 35=20`
+gibt einem Posten ein größeres Fenster. `masks corridor` legt einen Korridor von 12 mm Breite entlang der Punkte,
+in Karten-mm mit der y-Achse nach oben, wie die Statusleiste von OOM sie zeigt. Beide hängen eine Tabelle
+`[[masks]]` an die Projektdatei an; alles davor bleibt unverändert. `check` meldet danach Posten und
+Bahnaufdruck, die unter der Abdeckung liegen. Das [Handbuch](docs/manual/de.md#11-abdeckungen-für-fenster--und-korridor-ol)
+beschreibt die Abdeckungen, ihre Grenzen und das White-out aus Purple Pen.
 
 ### Nur die Karte
 

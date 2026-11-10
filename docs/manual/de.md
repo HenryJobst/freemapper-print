@@ -2,7 +2,7 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 5 bis 10. Am Ende soll es
+Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 5 bis 11. Am Ende soll es
 Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern führen,
 auch ohne Erfahrung mit der Kommandozeile.
 
@@ -18,7 +18,7 @@ Kapitel:
 8. [Bahnen](#8-bahnen)
 9. [Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop](#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop)
 10. [Meldungen und was zu tun ist](#10-meldungen-und-was-zu-tun-ist)
-11. Abdeckungen für Fenster- und Korridor-OL (geplant, M4)
+11. [Abdeckungen für Fenster- und Korridor-OL](#11-abdeckungen-für-fenster--und-korridor-ol)
 
 Das Programm spricht Deutsch oder Englisch. Es nimmt die Sprache aus `--lang de` oder `--lang en`, sonst aus
 den Umgebungsvariablen `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` und `LANG`. Die Meldungen in diesem Handbuch
@@ -250,6 +250,10 @@ das Symbol 601 der Karte und liegen deshalb wie gezeichnete unter Mauern und Zä
 trotzdem durch; die setzt der Kartograf in OOM. Verbirgt ein Layout mit `hide_parts` den Kartenteil, in dem die
 Nordlinien der Karte liegen, ergänzt das Programm keine.
 
+Auf einem Blatt mit Abdeckung (Kapitel 11) verschwinden die Nordlinien der Karte, gezeichnete wie mit dem Symbol
+601 ergänzte, mit dem Rest der Karte. Hat der Symbolsatz kein Symbol 601, zeichnet das Programm stattdessen
+einfache schwarze Linien auf der Blattebene, und die bleiben auch über dem abgedeckten weißen Papier sichtbar.
+
 ### Kartenteile ausblenden
 
 `hide_parts = ["peripheral information"]` blendet den Kartenteil dieses Namens aus. Groß- und Kleinschreibung
@@ -445,9 +449,12 @@ Noch nicht alles in einer Datei wird gedruckt:
 - Eine Bahn mit Varianten (Gabelungen und Schleifen in Purple Pen) fehlt, ebenso eine Bahn mit alternativen
   Posten an einer Stelle. `check` sagt, welche. Der IOF-XML-Export von Purple Pen schreibt jede Variante als eigene
   Bahn, und die wird ein eigenes Blatt.
-- Abdeckflächen (White-out) werden gelesen, aber nicht gedruckt. Sie warten auf die Abdeckungen einer späteren
-  Version (M4). `check` meldet sie mit einem Hinweis, damit eine fehlende Abdeckung nicht unbemerkt bleibt.
 - Ein Element, das das Programm nicht kennt, wird übersprungen, mit einem Hinweis.
+
+Abdeckflächen (White-out) druckt das Programm als Abdeckungen der Bahnen, für die sie gelten, jede für sich, auch
+wenn sie sich überlappen (ADR 0045). Dort fehlt die Karte; Bahnaufdruck, Beschreibungskasten und Fußzeile bleiben.
+Nennt die Zuordnung einer Bahn eine eigene Abdeckung, gilt nur diese. `check` nennt die Abdeckflächen zur
+Information. Abdeckungen für Fenster- und Korridor-OL beschreibt Kapitel 11.
 
 ### Die Datei verknüpfen: die lebende Verbindung
 
@@ -568,6 +575,8 @@ das Layout, dem die Bahn zugeordnet ist, mit diesen Änderungen:
   Posten). Ein Platzhalter bleibt leer, mit einer Zeile „Zur Information“, wenn die Datei für die Bahn keinen Wert
   hat oder das Blatt keine Bahn hat. Zum Beispiel nennt `"{event} · Bahn {course}"` die Bahn im Titelblock.
   `init --courses` schreibt `{event} · {course}`.
+- Nennt die Zuordnung der Bahn eine Abdeckung, oder hat die Bahn Abdeckflächen aus Purple Pen, fehlt die Karte in
+  der abgedeckten Fläche. Der Bahnaufdruck und die Blattelemente bleiben (Kapitel 11).
 
 Das Programm prüft auch, dass kein Blattelement einen Teil der Bahn verdeckt. Deckt ein Titelblock, Logo, Text,
 eine Kontrollstrecke, Fußzeile oder die Postenbeschreibung einen Posten, den Start oder das Ziel ab, warnt
@@ -768,7 +777,10 @@ die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papie
 folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
 
 Auch ein Bahnblatt kommt aus `export` (Kapitel 8). Für den Maßstab gelten dieselben Regeln wie bei einem
-Layoutblatt. In einem PDF aus `--single-file` hat jede Seite das Papier ihres Layouts, und der Druckdialog muss
+Layoutblatt. Ein Bahnblatt zeigt die Karte im Kartenausschnitt, darüber den Bahnaufdruck in Violett, den
+Beschreibungskasten und die Blattelemente. Hat die Bahn eine Abdeckung für Fenster- oder Korridor-OL (Kapitel 11),
+bleibt das Papier in der abgedeckten Fläche weiß; Bahnaufdruck, Beschreibungskasten, Titel, Kontrollstrecke und
+Fußzeile druckt das Programm trotzdem vollständig. Für den Druck ändert das nichts. In einem PDF aus `--single-file` hat jede Seite das Papier ihres Layouts, und der Druckdialog muss
 jede Seite in Originalgröße drucken.
 
 ### In Originalgröße drucken
@@ -892,7 +904,7 @@ Fehler in der Projektdatei halten `check` und `export` an. Die Meldung nennt Dat
 Schlüssel, etwa ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm`
 ``. Fehlt der Schlüssel, nennt sie die Zeile der Tabelle, in die er gehört. Diese Texte kommen aus der Bibliothek
 und sind vorerst Englisch. Nur die Meldung zu `hide_parts = ["base"]` (siehe „Die Grundfläche von Sprintkarten“ in
-Kapitel 6) kommt schon auf Deutsch.
+Kapitel 6) kommt schon auf Deutsch. Die Regeln für Abdeckungen und ihre Meldungen stehen in Kapitel 11.
 
 ### Hinweise zu den Bahnen
 
@@ -913,7 +925,7 @@ nicht für den Exit-Code.
 | „Zur Information: … nur geografische Koordinaten. Die Georeferenzierung der Karte hat sie platziert.“ | Für diese Posten hat die Bahndatei keine Kartenposition. Prüfen Sie einen davon auf dem Blatt. |
 | „Zur Information: Die Bahndatei hat keine Postenbeschreibungen.“ | Die Datei ist IOF-XML oder eine `.ppen` ohne Beschreibungen. |
 | „Die Bahndatei enthält das Element …, das diese Version nicht liest. Es fehlt auf den Blättern.“ | Das Element fehlt auf den Blättern. Sehen Sie in Ihrem Bahnlegungsprogramm nach, was es ist. |
-| „Die Bahndatei hat Abdeckflächen (White-out). Diese Version lässt sie weg; spätere Versionen machen Masken daraus.“ | Das White-out aus Purple Pen wird gelesen, aber noch nicht gedruckt. Es wartet auf die Abdeckungen (M4). Bis dahin zeigen die Blätter die Karte unter der Abdeckfläche. |
+| „Zur Information: Die Bahndatei hat Abdeckflächen (White-out). Jede deckt die Karte auf den Bahnen ab, für die sie gilt, außer wenn die Zuordnung einer Bahn eine eigene Abdeckung nennt.“ | Nur zur Information. Das White-out aus Purple Pen deckt die Karte auf den Bahnen ab, für die es in Purple Pen gilt. Prüfen Sie auf den Blättern, ob das so gewollt ist; eine eigene Abdeckung in der Zuordnung ersetzt es für diese Bahn. |
 | „Die Bahn … hat Gabelungen oder Schleifen (Varianten in Purple Pen) … die Bahn fehlt deshalb.“ | Die Bahn fehlt mit Absicht. Exportieren Sie die Bahnen aus Purple Pen als IOF-XML, das jede Variante als eigene Bahn schreibt. |
 | „Die Bahn … bietet an einer Stelle alternative Posten an … die Bahn fehlt deshalb.“ | Diese Version kann das nicht drucken. Teilen Sie die Bahn im Bahnlegungsprogramm auf. |
 | „Zur Information: Die Bahnen … sind die Varianten der Gabelung …. Jede wird als eigenes Blatt gedruckt.“ | Nur zur Information. |
@@ -923,6 +935,9 @@ nicht für den Exit-Code.
 | „Die Projektdatei ordnet die Bahn … einem Layout zu, die Bahndatei hat aber keine solche Bahn. Die Zuordnung bleibt …“ | Die Bahn wurde in der Bahndatei umbenannt oder gelöscht. Korrigieren Sie den Namen in der Projektdatei oder löschen Sie den Eintrag. |
 | „Die Projektdatei korrigiert die Nummer von Posten … für …, die Bahndatei hat dort aber keinen solchen Posten. Die Korrektur bleibt …“ | Der Posten wurde umnummeriert oder entfernt, oder er gehört nicht zu dieser Bahn. Korrigieren Sie den Code oder löschen Sie den Eintrag. |
 | „Die Bahndatei hat die Nummer von Posten … verschoben, seit die Projektdatei sie korrigiert. Prüfen Sie, ob die Korrektur noch passt.“ | Jemand hat die Nummer im Bahnlegungsprogramm verschoben, nachdem Sie die Korrektur gemacht haben. Sehen Sie sich das Blatt an. Passt die Korrektur noch, bleibt der Hinweis, bis Sie den Eintrag löschen und mit `numbers accept --direction … --gap …` neu schreiben. Passt sie nicht, löschen Sie den Eintrag. |
+| „Zur Information: Keine Bahn nutzt die Abdeckung … Nennen Sie sie in einer Zuordnung …“ | Ein Eintrag `[[masks]]` gilt für keine Bahn. Keine Zuordnung nennt ihn mit `mask`, und keine Abdeckfläche der Bahndatei hat seine ID. Tragen Sie `mask = "…"` in die Zuordnung der Bahn ein, oder löschen Sie den Eintrag. Der Hinweis kommt einmal je Lauf. |
+| „Die Projektdatei gibt der Bahn … die Abdeckung …, aber die Bahndatei hat keine solche Abdeckfläche (White-out). …“ | Die Zuordnung nennt eine Abdeckfläche aus Purple Pen, die es in der Bahndatei nicht mehr gibt. Die Bahn wird ohne Abdeckung gedruckt. Korrigieren Sie die Nummer, nennen Sie eine eigene Abdeckung, oder löschen Sie die Zeile `mask`. |
+| „Zur Information: Die Bahn … wird mit der Abdeckfläche whiteout-… aus der Bahndatei gedruckt, die um … liegt …“ und „Zur Information: Auf dem Blatt der Bahn … tritt die Tabelle [[masks]] mit der ID whiteout-… an die Stelle der Abdeckfläche …“ | Die Projektdatei nennt eine Abdeckfläche mit ihrer Nummer, und die Nummer zählt die Flächen in der Reihenfolge der Bahndatei. Sehen Sie in OOM nach, ob die Fläche um diesen Punkt die gemeinte ist. Wurde in Purple Pen eine Abdeckfläche gelöscht, kann die Nummer auf eine andere zeigen. |
 | „Die Bahndatei hat keine Bahn zum Exportieren, deshalb wurde kein PDF geschrieben.“ | Die Datei hat keine Bahn, oder jede Bahn fehlt. Siehe die Hinweise davor. |
 
 Hinweise zum Blatt einer Bahn:
@@ -938,6 +953,14 @@ Hinweise zum Blatt einer Bahn:
 | „Das Element … deckt den Posten … der Bahn ab. Versetzen Sie das Element über seinen Anker …“ | Ein Titelblock, Logo, Text, eine Fußzeile oder der Kasten liegt auf einem Posten, dem Start oder dem Ziel. Versetzen Sie das Element. |
 | „Die Postenbeschreibung der Bahn … nutzt das Symbol …, das der Beschreibungsstandard der Bahndatei nicht kennt. Sein Kästchen bleibt leer.“ | Die Symbol-ID gibt es im Standard der Datei (2004, 2018 oder 2024) nicht. Wählen Sie in Purple Pen ein anderes Symbol. |
 | „Der Bahnaufdruck der Bahn … verlangt mehr Schraffurlinien, Striche oder Kreuze, als ein Blatt zeichnet, deshalb fehlen einige.“ | Ein Sonderobjekt ist sehr groß, oder die Datei ist beschädigt. Verkleinern oder teilen Sie die Fläche. |
+| „Die Bahn … hat … Abdeckungen, ein Blatt wendet höchstens 1000 an. Die übrigen fehlen …“ | Meist hat die Bahndatei sehr viele Abdeckflächen (White-out). Fassen Sie sie in Purple Pen zu wenigen größeren zusammen, oder geben Sie der Bahn in der Zuordnung eine eigene Abdeckung. |
+| „Auf dem Blatt der Bahn … liegen die Posten … dort, wo die Abdeckung die Karte verbirgt …“ | Der Mittelpunkt dieser Posten (auch Start, Ziel oder Kartenwechsel) liegt im Kartenausschnitt in einer abgedeckten Fläche. Die Läufer sähen um den Kreis keine Karte. Beim Fenster-OL fehlt meist ein Fenster; ergänzen Sie es in der Abdeckung. Prüfen Sie auch, ob die Zuordnung die richtige Abdeckung nennt. |
+| „Auf dem Blatt der Bahn … liegt eine Pflichtstrecke ganz oder teilweise dort, wo die Abdeckung die Karte verbirgt …“ | Der Hinweis zählt je Art, was vom Bahnaufdruck in einer abgedeckten Fläche liegt: Pflichtstrecken (auch abgeflaggte Strecken zwischen Posten), Querungsstellen, verbotene Strecken, Sperrgebietsgrenzen, Sperrgebiete, Gefahrengebiete und Texte aus der Bahndatei. Gedruckt wird alles, aber ohne Karte darunter. Vergrößern Sie das Fenster oder legen Sie eines an. Ist es gewollt, etwa ein Sperrgebiet am Rand, können Sie den Hinweis stehen lassen. Gewöhnliche Strecken und Postennummern zählen nicht, denn beim Fenster-OL laufen sie ohnehin über abgedeckte Flächen. |
+| „Die Abdeckung … verbirgt den ganzen Kartenausschnitt der Bahn …, das Blatt zeigt also gar keine Karte.“ | Kein Fenster der Abdeckung liegt im Kartenausschnitt. Meist sind die Punkte in der falschen y-Richtung geschrieben: Abdeckungen nehmen Karten-mm mit der y-Achse nach oben, wie die Statusleiste von OOM sie zeigt, nicht wie die `.omap`-Datei sie speichert. |
+| „Auf dem Blatt der Bahn … deckt das Element … einen Teil der Fenster der Abdeckung … ab.“ | Ein Blattelement, meist der Beschreibungskasten, oder die Fußzeile liegt im Kartenausschnitt über einem Fenster. Beim Fenster-OL sind die Fenster die einzige Karte, die der Läufer hat, und das Element nimmt ihm einen Teil davon. Versetzen Sie das Element über seinen Anker, oder legen Sie das Fenster anders, mit einem anderen Radius oder um einen anderen Posten. |
+| „Zur Information: Die Abdeckung … verbirgt im Kartenausschnitt der Bahn … nichts.“ | Nur zur Information. Die Abdeckung liegt ganz neben dem Ausschnitt, oder der Ausschnitt liegt ganz in einem Fenster. Ist das nicht gewollt, prüfen Sie die Punkte wie im Hinweis davor. |
+| „Zur Information: Im Kartenausschnitt der Bahn … verbergen die … Abdeckflächen … aus der Bahndatei nichts.“ | Dasselbe für Abdeckflächen aus Purple Pen, in einer Zeile je Bahn mit ihrer Zahl und ihren IDs (die ersten zehn, der Rest gezählt). Eine Abdeckfläche für alle Bahnen liegt oft neben dem Ausschnitt der meisten. |
+| „Auf dem Blatt der Bahn … hat die Prüfung gegen die Abdeckung ihre Grenze erreicht …“ | `check` prüft je Blatt höchstens 200 000 Punkte und 50 Millionen Rechenschritte. Eine Bahn mit sehr langen Pflichtstrecken oder Tausenden Abdeckflächen kommt darüber; was danach kommt, bleibt ungeprüft. Sehen Sie sich das Blatt an. |
 | „Zur Information: Der Text … nutzt …, die Bahndatei hat für die Bahn … aber keinen Wert. Der Platzhalter bleibt leer.“ | Die Datei hat für die Bahn keine Länge oder keinen Anstieg. Tragen Sie sie im Bahnlegungsprogramm ein oder lassen Sie den Platzhalter aus dem Text weg. |
 | „Zur Information: Der Text … nutzt …, der nur auf Bahnblättern gefüllt wird. Auf diesem Blatt bleibt er leer.“ | Ein gemeinsamer Text mit `{course}` oder ähnlichem steht auf einem Blatt ohne Bahn. Blenden Sie den Text auf diesem Layout mit `hide_shared` aus. |
 | „Auf dem Blatt der Bahn … überdeckt die Nummer von Posten … Sie wird trotzdem dort gedruckt. …“ | Die Nummer liegt auf dem Bahnaufdruck, einem Blattelement, dem Rand des Kartenausschnitts oder einem Punkt- oder Liniensymbol der Karte. Der Hinweis schlägt eine freie Richtung und einen Abstand vor. Übernehmen Sie sie mit `numbers accept` (siehe Kapitel 8). |
@@ -984,3 +1007,256 @@ Fehler von `export` und `numbers accept` zu Namen:
 - „--direction braucht eine endliche Zahl, und --gap muss größer als 0 und höchstens … mm sein“.
 - „das Projekt … lässt sich mit der neuen Korrektur nicht laden, deshalb blieb es unverändert“: Das Programm hat die
   Datei wiederhergestellt. Melden Sie das, denn es sollte nicht vorkommen.
+
+## 11. Abdeckungen für Fenster- und Korridor-OL
+
+Beim Fenster-OL zeigt das Blatt die Karte nur in kleinen Fenstern um die Posten, dazwischen ist das Papier weiß.
+Die Läufer überbrücken die Lücken mit Kompass und Entfernungsgefühl und lesen erst im nächsten Fenster wieder
+Karte.
+
+Beim Korridor-OL zeigt das Blatt die Karte nur in einem schmalen Streifen, und alle Posten liegen darin. Wer den
+Korridor verlässt, hat keine Karte mehr, also muss man die Richtung genau halten.
+
+Für beides gibt es in der Projektdatei Abdeckungen (`[[masks]]`). Eine Abdeckung verbirgt die Karte in einer
+Fläche. Sie gehört zur Zuordnung einer Bahn und gilt nur auf deren Blatt. Nie abgedeckt werden der Bahnaufdruck
+(Start, Posten, Strecken, Nummern, Ziel und die Sonderobjekte), der Beschreibungskasten, der Titelblock, die
+Kontrollstrecke, andere Blattelemente, die Rahmenlinie und die Fußzeile. Auch die Strecken zwischen den Fenstern
+druckt das Programm immer, denn die Läufer brauchen die Richtung, und ohne die Linie gewinnt das Training nichts.
+
+Zwei Beispiele gehen alles mit jedem Befehl durch:
+[examples/luebeck-training-window](../../examples/luebeck-training-window/README.md) für Fenster-OL und
+[examples/luebeck-training-corridor](../../examples/luebeck-training-corridor/README.md) für Korridor-OL.
+
+### Die Abdeckung in der Projektdatei
+
+```toml
+[[assignments]]
+course = "Fenster"
+layout = "a4-4000"
+mask = "halbe-karte"
+
+[[masks]]
+id = "halbe-karte"
+polygons = [
+    [
+        [[0.0, -110.0], [150.0, -110.0], [150.0, 110.0], [0.0, 110.0]],
+        [[40.0, -75.0], [60.0, -75.0], [60.0, -55.0], [40.0, -55.0]],
+        [[70.0, 0.0], [90.0, 0.0], [90.0, 25.0], [70.0, 25.0]],
+    ],
+]
+```
+
+Diese Abdeckung verbirgt auf dem Blatt der Bahn „Fenster“ aus luebeck-training-window die östliche Hälfte der
+Karte und lässt darin zwei eckige Fenster offen.
+
+- `id` ist der Name der Abdeckung: 1 bis 64 Zeichen, keine Steuerzeichen, in der Datei nur einmal.
+- `polygons` ist eine Liste von Polygonen. Jedes Polygon ist eine Liste von Ringen, jeder Ring eine Liste von
+  Punkten `[x, y]`. Der erste Ring ist der Umriss, jeder weitere ein Loch, also ein Fenster. Den ersten Punkt am
+  Ende zu wiederholen ist nicht nötig. Ob ein Ring im oder gegen den Uhrzeigersinn läuft, ist gleich.
+- Abgedeckt ist, was im Umriss liegt und in keinem seiner Löcher. Außerhalb jedes Umrisses und in jedem Loch zeigt
+  das Blatt die Karte. Löcher dürfen sich überlappen, sie verschmelzen dann zu einem Fenster.
+- Die Punkte sind Millimeter auf der Karte im Kartenmaßstab mit der y-Achse nach oben, genau so, wie OOM sie in
+  der Statusleiste anzeigt, wenn die Koordinatenanzeige auf Kartenkoordinaten steht. Das ist dieselbe Regel wie
+  bei `centre_map_mm` (Kapitel 6). Die `.omap`-Datei speichert y nach unten. Wer Punkte von dort kopiert, bekommt
+  eine gespiegelte Abdeckung, und `check` meldet dann meist, dass die Abdeckung den ganzen Kartenausschnitt
+  verbirgt oder nichts.
+- In `[[assignments]]` nennt `mask` die Abdeckung, mit der die Bahn gedruckt wird. Eine Bahn hat höchstens eine
+  Abdeckung, mehrere Bahnen dürfen dieselbe nutzen. Eine Bahn ohne `mask` bekommt die Abdeckflächen (White-out)
+  ihrer Bahndatei, siehe unten.
+
+Eine Abdeckung, die keine Bahn nutzt, meldet `check` einmal als Information.
+
+### Fenster um die Posten: `masks window`
+
+Den Normalfall des Fenster-OL schreibt das Programm selbst: ein rundes Fenster um jeden Posten einer Bahn.
+
+```sh
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
+```
+
+| Option | Bedeutung |
+|---|---|
+| `--course <NAME>` | die Bahn, wie in der Bahndatei. Ihre Posten bekommen die Fenster, ihr Layout gibt den Druckmaßstab. Pflicht. |
+| `--controls <LISTE\|BEREICH>` | welche Posten ein Fenster bekommen: Codes mit Kommas dazwischen (`31,32,35`) oder die Postennummern auf dem Blatt als Bereich (`3-6`). Im Bereich zählen Start und Ziel nicht mit. Ohne Angabe jeder Posten. Start und Ziel bekommen ihr Fenster in jedem Fall. |
+| `--radius <MM>` | Radius jedes Fensters, 1 bis 100 mm. Ohne Angabe 15. |
+| `--radius-for <CODE=MM>` | eigener Radius für einen Posten, etwa `35=20`. Der Start hat meist den Code `STA1`, das Ziel `FIN1`. Darf mehrmals stehen, nur für Posten, die ein Fenster bekommen. |
+| `--no-start` | der Start bekommt kein Fenster |
+| `--no-finish` | das Ziel bekommt kein Fenster |
+| `--id <ID>` | ID der neuen Abdeckung. Ohne Angabe `window-<Bahn>`, mit angehängter Nummer (`-2`, `-3` …), wenn es die schon gibt. |
+| `--assign` | die Bahn wird mit der neuen Abdeckung gedruckt: Ihre Zuordnung bekommt `mask`, oder eine neue Zuordnung kommt hinzu. |
+
+Der Radius gilt in Millimetern auf dem Papier, im Druckmaßstab des Layouts, auf dem die Bahn gedruckt wird. Ein
+Fenster sieht deshalb in jedem Maßstab gleich groß aus und zeigt bei größerem Maßstab weniger Gelände: 15 mm sind
+bei 1:4000 60 m, bei 1:3000 45 m. Das Programm rechnet den Radius selbst in Karten-mm um, und die Abdeckung
+behält die Karten-mm. Ändern Sie später den Druckmaßstab des Layouts oder geben Sie die Abdeckung einer Bahn auf
+einem Layout mit anderem Maßstab, haben die Fenster nicht mehr den gewünschten Radius. Löschen Sie dann die
+Abdeckung und rufen Sie den Befehl noch einmal auf. Der Kommentar über der Tabelle nennt den Maßstab, für den sie
+entstand.
+
+Auch Start und Ziel bekommen ein Fenster, damit sich die Läufer am Start orientieren können. `--no-start` und
+`--no-finish` lassen sie weg; dann sagt der Befehl das, und `check` meldet sie unter der Abdeckung. Ein Fenster ist
+ein Vieleck mit
+mindestens 48 Ecken, das höchstens 0,05 mm vom Kreis abweicht. Überlappende Fenster verschmelzen. Der Umriss ist ein
+Rechteck 100 mm außerhalb der Karte, sodass kein Teil der Karte daran vorbeischaut.
+
+Die Ausgabe aus luebeck-training-window:
+
+```
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
+Posten 34 hat ein Fenster mit 20 mm Radius.
+Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
+Mit check sehen Sie das Ergebnis.
+```
+
+### Ein Korridor entlang einer Linie: `masks corridor`
+
+Einen automatischen Korridor gibt es nicht. Kein Regelwerk legt fest, wo ein Korridor verläuft; das entscheidet
+der Bahnleger. Sie geben die Linie vor, das Programm macht daraus den Streifen.
+
+```sh
+freemapper-print masks corridor stadtsprint --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5" --width 12 --assign --course A
+```
+
+| Option | Bedeutung |
+|---|---|
+| `--points <X,Y;X,Y;…>` | die Linie als Punkte in Karten-mm mit der y-Achse nach oben, wie OOMs Statusleiste sie zeigt, Dezimalstellen mit Punkt. Mindestens 2 verschiedene Punkte, höchstens 1000. Pflicht. |
+| `--width <MM>` | Breite des Korridors, 1 bis 100 mm. Ohne Angabe 10. |
+| `--course <NAME>` | die Bahn, deren Layout den Druckmaßstab für die Breite gibt |
+| `--assign` | die Bahn aus `--course` wird mit dem Korridor gedruckt. Braucht `--course`. |
+| `--id <ID>` | ID der neuen Abdeckung. Ohne Angabe `corridor-<n>` mit der ersten freien Nummer. |
+
+Die Punkte suchen Sie in OOM: Zeigen Sie auf eine Stelle der Straße und lesen Sie die beiden Zahlen in der
+Statusleiste ab, genau wie für `centre_map_mm`. Setzen Sie einen Punkt an jede Kreuzung und an jeden Knick und
+achten Sie darauf, dass jeder Posten der Bahn im Korridor liegt.
+
+Auch die Breite gilt in Millimetern auf dem Papier: mit `--course` im Druckmaßstab des Layouts dieser Bahn, sonst
+im Druckmaßstab, den alle Layouts gemeinsam haben. Drucken die Layouts in verschiedenen Maßstäben, verlangt der
+Befehl `--course`. Wie beim Radius behält die Abdeckung die Breite in Karten-mm. Nach einem neuen Druckmaßstab
+löschen Sie die Abdeckung und rufen den Befehl noch einmal auf. Der Korridor reicht die halbe Breite zu jeder Seite der Linie und ist an seinen Enden gerade
+abgeschnitten. Ein Knick bis 120° behält außen eine spitze Ecke, ein schärferer wird abgeschrägt. Das Programm
+lehnt einen Korridor ab, der auf sich selbst zurückläuft, ein Stück hat, das für den Knick an seinem Ende zu kurz
+ist, oder sich selbst kreuzt. Vereinfachen Sie dann die Linie an der genannten Stelle oder nehmen Sie eine
+kleinere Breite. Das Programm repariert die Linie nicht selbst.
+
+Der Kommentar über der neuen Tabelle wiederholt die Punkte als `--points "…"`, damit Sie den Befehl später wieder
+aufrufen können. Eine Abzweigung oder einen zweiten Korridor für dieselbe Bahn schreibt der Befehl nicht. Rufen Sie
+ihn dafür ohne `--assign` mit `--id` für jedes Stück auf und kopieren Sie danach den zweiten Ring (das Loch) des
+einen Stücks in das Polygon des anderen. Löcher dürfen sich überlappen. Die Tabelle, die Sie dann nicht mehr
+brauchen, löschen Sie.
+
+### Was beide Befehle in die Datei schreiben
+
+Beide hängen die neue Tabelle `[[masks]]` als Text ans Ende der Projektdatei, mit einem Kommentar, wie sie
+entstand. Mit `--assign` bekommt die Zuordnung der Bahn eine Zeile `mask = "…"` direkt unter ihrer Kopfzeile
+`[[assignments]]`, oder eine neue Zuordnung folgt nach der Tabelle. Alles andere bleibt, wie es ist, auch die
+Kommentare und die Zeilenenden. Danach lädt das Programm die Datei neu und stellt den alten Inhalt wieder her, wenn
+das scheitert.
+
+Eine vorhandene Abdeckung ändern die Befehle nie. Eine ID, die es schon gibt, und eine Bahn, die schon mit einer
+anderen Abdeckung gedruckt wird, lehnen sie mit Exit-Code 2 ab. Für einen neuen Radius oder eine neue Linie löschen
+Sie die Tabelle und die Zeile `mask = "…"` und rufen den Befehl noch einmal auf. Danach zeigt `check` das Ergebnis.
+
+### Abdeckflächen aus Purple Pen
+
+Purple Pen kennt Abdeckflächen (White-out). Das Programm druckt sie als Abdeckungen mit den IDs `whiteout-1`,
+`whiteout-2` … in der Reihenfolge der Datei, auf den Bahnen, für die sie in Purple Pen gelten. Eine Bahn ohne
+`mask` in ihrer Zuordnung bekommt jede ihrer Abdeckflächen, jede für sich, auch wenn sie sich überlappen.
+`check` nennt die Abdeckflächen einmal zur Information.
+
+- Nennt die Zuordnung einer Bahn eine eigene Abdeckung, gilt nur diese, und die Abdeckflächen fallen für diese
+  Bahn weg.
+- `mask = "whiteout-2"` druckt die Bahn nur mit der zweiten Abdeckfläche.
+- Eine Tabelle `[[masks]]` mit der ID `whiteout-2` tritt an die Stelle der zweiten Abdeckfläche.
+- Hat die Bahndatei die genannte Abdeckfläche nicht mehr, meldet `check` das, und die Bahn wird ohne Abdeckung
+  gedruckt. Die Zuordnung bleibt in der Projektdatei.
+
+Die Nummer in `whiteout-<n>` ist die Stelle der Fläche in der Bahndatei, kein Name. Löschen Sie in Purple Pen eine
+Abdeckfläche oder ändert sich ihre Reihenfolge, meint `whiteout-2` eine andere Fläche, und das Programm merkt es
+nicht. Prüfen Sie nach einer solchen Änderung die Zuordnungen und die Tabellen `[[masks]]`. Dabei hilft `check` mit
+einer Zeile zur Information für jede Bahn, deren Zuordnung eine Abdeckfläche mit ihrer Nummer nennt oder auf deren
+Blatt eine Tabelle `[[masks]]` an die Stelle einer Abdeckfläche tritt. Die Zeile nennt die Mitte der Fläche in
+Karten-mm mit der y-Achse nach oben, so finden Sie sie in OOM.
+
+Ein Blatt wendet höchstens 1000 Abdeckungen an. Hat eine Bahn mehr Abdeckflächen, fehlen die übrigen, und `check`
+warnt.
+
+### Was `check` zu Abdeckungen meldet
+
+`check` prüft jedes Blatt gegen die Abdeckungen, die es anwendet. Die Meldungen stehen mit ihrer Abhilfe in
+Kapitel 10; hier, wann sie kommen:
+
+- Ein Posten, der Start, das Ziel oder ein Kartenwechsel liegt mit seinem Mittelpunkt in einer abgedeckten Fläche
+  (Hinweis). Beim Fenster-OL fehlt meist ein Fenster, beim Korridor-OL liegt der Posten neben dem Korridor. Ergänzen
+  Sie das Fenster, verlegen Sie die Linie, oder prüfen Sie, ob die Zuordnung die richtige Abdeckung nennt.
+- Pflichtstrecken, Querungsstellen, verbotene Strecken, Sperrgebiete und ihre Grenzen, Gefahrengebiete oder Texte
+  der Bahndatei liegen ganz oder teilweise unter der Abdeckung (Hinweis, je Art mit ihrer Zahl). Der Läufer sähe
+  sie ohne Karte darunter. Vergrößern Sie ein Fenster oder legen Sie eins an; ist es gewollt, lassen Sie den
+  Hinweis stehen. Gewöhnliche Strecken und Postennummern zählen nicht.
+- Die Abdeckung verbirgt den ganzen Kartenausschnitt (Hinweis). Meist ist y falsch herum geschrieben.
+- Ein Blattelement oder die Fußzeile deckt im Kartenausschnitt einen Teil eines Fensters ab (Hinweis).
+- Die Abdeckung verbirgt im Kartenausschnitt nichts (Information). Abdeckflächen aus Purple Pen, die nichts
+  verbergen, stehen in einer Zeile je Bahn.
+- Die Prüfung hat ihre Grenze erreicht, höchstens 200 000 Punkte und 50 Millionen Rechenschritte je Blatt
+  (Hinweis). Sehen Sie sich das Blatt an.
+- Keine Bahn nutzt eine Abdeckung (Information, einmal je Lauf).
+
+### Grenzen
+
+Was das Programm noch nicht kann:
+
+- Es legt keinen Korridor von selbst und keine Fenster um Strecken. Andere Formen als Kreise und Korridore
+  schreiben Sie von Hand.
+- Die Befehle ändern und ersetzen keine Abdeckung. Zeichnen lassen sich Abdeckungen noch nicht; der Editor ist für
+  M6 geplant.
+- Ein Layoutblatt ohne Bahn (`export --layout`) hat keine Abdeckung.
+- Nordlinien, die das Programm ohne Symbol 601 im Symbolsatz ergänzt, liegen auf der Blattebene und bleiben über
+  dem abgedeckten Papier sichtbar (Kapitel 6, „Nordlinien“). Die Nordlinien der Karte verschwinden mit der Karte.
+- Eine Abdeckfläche aus Purple Pen, deren Ring sich selbst kreuzt, prüft das Programm nicht. Eine Schleife, die
+  gegen den Rest läuft, zeigt dort die Karte, wo Purple Pen sie abdeckt.
+
+Für Abdeckungen, die Sie von Hand schreiben, prüft das Programm beim Laden:
+
+| Regel | Grund |
+|---|---|
+| Ein Ring hat mindestens 3 verschiedene Punkte, die nicht auf einer Linie liegen. | Sonst umschließt er keine Fläche. |
+| Ein Ring kreuzt und berührt sich nicht selbst. | Bei einem Ring, der sich kreuzt, ist nicht klar, was innen liegt. |
+| Ein Loch liegt ganz im Umriss seines Polygons und berührt ihn nicht. | Ein Loch außerhalb des Umrisses deckt nichts auf; was gemeint war, bleibt offen. |
+| Die Umrisse einer Abdeckung überlappen sich nicht, berühren sich nicht und liegen nicht ineinander. | In einer Überlappung würde die Karte wieder sichtbar. Für zwei Flächen, die sich berühren, zeichnen Sie einen Umriss um beide. |
+| Jede Zahl ist endlich und liegt zwischen −2 000 000 und 2 000 000 mm. | Das ist die Reichweite einer OOM-Karte. |
+| Höchstens 64 Abdeckungen je Datei, 256 Polygone je Abdeckung, 4096 Punkte je Ring, 100 000 Punkte in der ganzen Datei, 100 Millionen Rechenschritte für alle Prüfungen zusammen. | Die Grenzen schützen vor kaputten oder feindlichen Dateien. Ein Fenster aus `masks window` hat etwa 50 Punkte, die zehn Fenster aus luebeck-training-window zusammen etwa 500. |
+| Die Projektdatei ist höchstens 16 MB groß. | Die Abdeckungen einer Datei innerhalb der übrigen Grenzen brauchen höchstens etwa 4 MB. Eine größere Datei würde beim Lesen Gigabytes an Speicher belegen, bevor diese Grenzen sie ablehnen könnten. |
+
+Eine verletzte Regel hält `check` und `export` an. Die Meldung ist vorerst englisch und nennt Datei, Zeile, Spalte
+und das Feld, zum Beispiel:
+
+```
+./freemapper-print.toml:74:9: field `masks[0].polygons[0][2]`: the hole must lie wholly inside the outline of its polygon (the first ring) and not touch it
+```
+
+`polygons[0][2]` ist der dritte Ring des ersten Polygons, also das zweite Loch.
+
+### Fehler der Befehle
+
+Diese Meldungen beenden `masks window` und `masks corridor` mit Exit-Code 2, die Projektdatei bleibt unverändert:
+
+- „die Projektdatei hat schon eine Abdeckung …“: Wählen Sie mit `--id` eine andere ID.
+- „die Bahn … wird schon mit der Abdeckung … gedruckt“: Ändern Sie die Zuordnung von Hand; das Programm ersetzt
+  keine Abdeckung.
+- „die Zuordnung der Bahn … steht nicht als eigene Tabelle [[assignments]] in der Datei …“: Tragen Sie
+  `mask = "…"` von Hand ein. „die Zuordnungen stehen nicht als Tabellen [[assignments]] in der Datei …“ kommt für
+  eine Bahn ohne Zuordnung, wenn die Datei ihre Zuordnungen als `assignments = [...]` schreibt: Tragen Sie die
+  Zuordnung mit `mask = "…"` von Hand ein.
+- „… mm liegt außerhalb von 1 bis 100 mm …“: Radius und Breite sind Druck-mm.
+- „--controls nimmt Postencodes mit Kommas dazwischen …“ und „die Bahn … hat die Postennummern 1 bis …“: Prüfen Sie
+  die Auswahl.
+- „Posten … bekommt kein Fenster, deshalb kann --radius-for seinen Radius nicht setzen“: Nehmen Sie den Posten in
+  `--controls` auf oder lassen Sie `--radius-for` für ihn weg.
+- „--points nimmt Punkte als x,y;x,y;… in Karten-mm …“: Trennen Sie die Punkte mit Semikolon, x und y mit Komma,
+  Dezimalstellen mit Punkt.
+- „der Korridor knickt bei … für seine Breite zu scharf ab …“ und „der Korridor kreuzt sich selbst bei …“:
+  Vereinfachen Sie die Linie dort oder verringern Sie die Breite.
+- „die Layouts drucken in verschiedenen Maßstäben …“: Geben Sie `--course` an.
+
+Mit Exit-Code 1 endet ein Befehl, wenn sich Projekt, Karte oder Bahndatei nicht laden oder die Datei nicht
+schreiben lässt, oder wenn die geänderte Datei nicht lädt. Im letzten Fall stellt das Programm den alten Inhalt
+wieder her.

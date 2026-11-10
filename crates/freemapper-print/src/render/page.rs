@@ -40,6 +40,63 @@ pub struct RenderedPage {
     /// ([`Overprint::below_priority`]), its upper layer after them, both before the sheet layer. Empty
     /// on a page without a course.
     pub overprint: Overprint,
+    /// The masks of the page (ADR 0045): the map primitives are painted only where every one of them leaves the
+    /// map visible, so the map is hidden in the union of their masked areas. The overprint, the sheet layer and
+    /// everything outside `clip` are not affected. Empty on a page without a mask.
+    pub map_clips: Vec<MapClip>,
+}
+
+/// Where the map stays visible under one mask: rings in page mm (y down) for the nonzero rule. The frame and the
+/// windows (holes) run counter-clockwise on paper, the outlines of the masked areas clockwise. A point in the frame
+/// outside every outline winds once and shows the map; inside an outline the frame and the outline cancel; in a
+/// window, or where windows overlap, the count is one or more again, so overlapping windows unite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapClip {
+    rings: Vec<Vec<Pt>>,
+}
+
+impl MapClip {
+    /// The clip of the `outlines` and `holes` (page mm, either orientation) in `frame`. The orientation of each
+    /// ring is set here by its signed area on paper, so a mask written clockwise or counter-clockwise clips the
+    /// same. A ring of fewer than 3 points has no area and is left out.
+    pub fn new(
+        frame: PaperBox,
+        outlines: impl IntoIterator<Item = Vec<Pt>>,
+        holes: impl IntoIterator<Item = Vec<Pt>>,
+    ) -> Self {
+        let (a, b) = (frame.min, frame.max);
+        let mut rings = vec![turned(vec![a, (b.0, a.1), b, (a.0, b.1)], true)];
+        let usable = |r: &Vec<Pt>| r.len() >= 3;
+        rings.extend(
+            outlines
+                .into_iter()
+                .filter(usable)
+                .map(|r| turned(r, false)),
+        );
+        rings.extend(holes.into_iter().filter(usable).map(|r| turned(r, true)));
+        MapClip { rings }
+    }
+
+    /// The frame ring first, then the outlines, then the holes.
+    pub fn rings(&self) -> &[Vec<Pt>] {
+        &self.rings
+    }
+}
+
+/// `ring` running counter-clockwise on paper (`ccw`) or clockwise. On paper y points down, so a ring that runs
+/// counter-clockwise as seen has a negative shoelace sum in page mm.
+fn turned(mut ring: Vec<Pt>, ccw: bool) -> Vec<Pt> {
+    let n = ring.len();
+    let twice_area: f64 = (0..n)
+        .map(|i| {
+            let (p, q) = (ring[i], ring[(i + 1) % n]);
+            p.0 * q.1 - q.0 * p.1
+        })
+        .sum();
+    if (twice_area < 0.0) != ccw {
+        ring.reverse();
+    }
+    ring
 }
 
 /// Shapes painted over the map in one colour with the blend mode Multiply, in two layers: the course

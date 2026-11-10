@@ -7,6 +7,8 @@
 pub mod courses;
 pub mod describe;
 pub mod export;
+pub mod mask;
+pub mod mask_build;
 pub mod numbers;
 pub mod output;
 pub mod overprint;
@@ -244,6 +246,7 @@ mod boundaries {
             "render",
             &[
                 "rules",
+                "mask",
                 "output",
                 "scale",
                 "overprint",
@@ -297,6 +300,17 @@ mod boundaries {
         ] {
             assert!(lib.contains(line), "missing: {line}");
         }
+    }
+
+    #[test]
+    fn mask_knows_no_other_module() {
+        // `mask` is to move into a core crate (ADR 0045): it reaches nothing of this crate and no core crate.
+        let text =
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/mask.rs"))
+                .unwrap();
+        assert!(reached(&text).is_empty(), "{:?}", reached(&text));
+        assert!(forbidden_in(&text, &[]).is_empty());
+        assert!(!text.contains("freemapper_"));
     }
 
     #[test]

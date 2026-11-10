@@ -21,7 +21,7 @@ highest number first; it does not say which colour is black, brown or blue.
   - Upper: control numbers, map exchanges, out-of-bounds and dangerous-area hatches, forbidden routes (711,
     upper purple in ISOM 2017-2 section 3.7, one point or several), marked routes (legs and specials) and
     texts.
-  - White-out is left for masks (M4).
+  - White-out is no overprint shape. It becomes a mask (ADR 0045).
 - Sizes are the rule profile's course symbol sizes times the course factor (ruling R35): the size factor of the
   print scale's row in the symbol size table (ADR 0018, ADR 0031), `RuleSet::course_factor`. The profile gives
   course symbols at the base scale, and ISOM 2017-2 section 3.7 and ISSprOM 2019-2 section 4.7 enlarge them with
@@ -64,9 +64,14 @@ highest number first; it does not say which colour is black, brown or blue.
   the map under every number and route.
 - `RenderedPage::overprint` is empty by default. An empty overprint writes no ExtGState and no extra block, so
   pages without a course stay byte for byte as before (`existing_outputs_unchanged`).
-- Masks (M4) will clip the map to their holes. They will not paint white over the map. White painted after
-  the map would also cover the lower purple, which lies among the map primitives; a clip leaves both layers
-  intact and keeps the overprint where the course setter put it.
+- Masks (ADR 0045) clip the map to their windows and paint no white. White painted after the map would also
+  cover the lower purple, which lies among the map primitives. The masks' clips form one block inside the frame's
+  clip, and every map primitive lies inside such a block, the base area included. The overprint and the sheet
+  layer lie outside.
+- With a mask the writer closes the block before the lower layer and opens the same block again after it (ruling
+  R11): the map up to `below_priority`, the lower purple, the rest of the map, the upper purple. The paint order is
+  the one of a sheet without a mask, so blue, brown and black 100 % still cover the lower purple; the clip path is
+  written twice. Without a mask nothing changes, byte for byte.
 
 ## Consequences
 
@@ -80,3 +85,4 @@ highest number first; it does not say which colour is black, brown or blue.
 - Cost if wrong: one function chooses the place of the lower layer, and the writer only reads `below_priority`.
 
 Amended in the final fix wave of M3: the course factor (ruling R35) and the crosses of a forbidden route.
+Amended in M4 Task 2: masks clip the map, and the lower layer keeps its place under a mask (rulings R5, R11).

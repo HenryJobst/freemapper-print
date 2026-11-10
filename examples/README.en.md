@@ -14,8 +14,8 @@ as the program can print it:
 | `schoolyard` | a schoolyard map at 1:1000 on A4; waits for a schoolyard map among freemapper's examples (version 0.8.0 has none) | planned |
 | [`luebeck-competition-courses`](luebeck-competition-courses/) | the same competition with three courses from Purple Pen, control descriptions, control numbers (one corrected with `numbers accept`), an out-of-bounds area, a forbidden crossing and a marked route to the finish, plus the same courses as IOF XML 3.0 without descriptions | M3 |
 | [`berlin-viktoriapark-training`](berlin-viktoriapark-training/) | a club training in Berlin's Viktoriapark: one course from Purple Pen on A4 at 1:4000 with control descriptions, on the map from freemapper version 0.8.0 | M3 |
-| `luebeck-training-window` | window orienteering with a mask variant | M4 |
-| `luebeck-training-corridor` | corridor orienteering with a mask variant | M4 |
+| [`luebeck-training-window`](luebeck-training-window/) | window orienteering in Lübeck's old town: map only in round windows around start, controls and finish, built with `masks window`, one window larger than the others | M4 |
+| [`luebeck-training-corridor`](luebeck-training-corridor/) | corridor orienteering on the same map: map only in a corridor 12 mm wide along three streets, the line chosen by hand and built with `masks corridor` | M4 |
 
 All maps come from freemapper 0.8.0 (commit `a2b41b4`). As sprint maps they lie on the light brown base area
 (ADR 0044), and the parks are yellow.

@@ -1,0 +1,84 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Korridortraining Lübeck"
+date = 2027-05-26
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "luebeck.omap"
+courses = "training.ppen"
+
+[map]
+kind = "sprint"
+# Vorschlag für Sprintkarten. An der Karte prüfen und bestätigen.
+# Der Informationsblock der Karte nennt ebenfalls 2 m.
+contour_interval_m = 2.0
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Zwei Zeilen statt der vier aus den Kartennotizen, wie im Beispiel luebeck-competition-layouts.
+[print]
+copyright = """
+© OpenStreetMap contributors, ODbL · © GeoBasis-DE/LVermGeo SH/CC BY 4.0 (Quelle verändert), Lizenz: https://creativecommons.org/licenses/by/4.0/
+Karte erstellt mit freemapper – https://github.com/HenryJobst/freemapper
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event}",
+    "{date} · {length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# A4 im Maßstab der Karte. Ein Bahnblatt schneidet die Karte mit Absicht auf die Bahn zu (crop).
+
+[[layouts]]
+id = "a4-4000"
+paper = "A4"
+orientation = "landscape"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+[[assignments]]
+mask = "altstadt"
+course = "Korridor"
+layout = "a4-4000"
+
+# Korridor 12 mm breit auf dem Papier bei 1:4000, erzeugt mit masks corridor aus diesen Punkten:
+# --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5;12,56;84,41;101,35"
+[[masks]]
+id = "altstadt"
+polygons = [
+    [
+        [
+            [-232.0, -234.0], [232.0, -234.0], [232.0, 203.0], [-232.0, 203.0],
+        ],
+        [
+            [-92.393, 8.287], [-59.556, 10.442], [-32.661, 4.643], [-20.301, 64.961],
+            [12.886, 61.944], [85.618, 46.792], [102.997, 40.658], [99.003, 29.342],
+            [82.382, 35.208], [11.114, 50.056], [-10.699, 52.039], [-23.339, -9.643],
+            [-60.444, -1.642], [-91.607, -3.687],
+        ],
+    ],
+]

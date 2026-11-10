@@ -11,11 +11,14 @@ use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{CorrectionScope, LoadedCourses, Stale, load_courses};
+use freemapper_print::courses::{
+    CorrectionScope, LoadedCourses, MaskNote, Stale, StopName, load_courses,
+};
 use freemapper_print::export::{
     ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
     select_courses, select_layouts, sheet_report,
 };
+use freemapper_print::mask_build::{self, BuildError, Selection, WindowOptions};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
@@ -24,8 +27,8 @@ use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, pri
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
-    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MissingItem, NoBoxReason,
-    SheetNote, SheetReport, course_event_notes,
+    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem,
+    NoBoxReason, SheetNote, SheetReport, course_event_notes,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -47,6 +50,7 @@ enum Commands {
     Check(CheckArgs),
     Export(ExportArgs),
     Numbers(NumbersArgs),
+    Masks(MasksArgs),
 }
 
 #[derive(Args)]
@@ -124,6 +128,54 @@ struct AcceptArgs {
     direction: Option<f64>,
     #[arg(long, requires = "direction", allow_negative_numbers = true)]
     gap: Option<f64>,
+}
+
+#[derive(Args)]
+struct MasksArgs {
+    #[command(subcommand)]
+    command: MasksCommand,
+}
+
+#[derive(Subcommand)]
+enum MasksCommand {
+    Window(WindowArgs),
+    Corridor(CorridorArgs),
+}
+
+#[derive(Args)]
+struct WindowArgs {
+    project: PathBuf,
+    #[arg(long, value_name = "NAME")]
+    course: String,
+    #[arg(long, value_name = "LIST|RANGE")]
+    controls: Option<String>,
+    #[arg(long, value_name = "MM", allow_negative_numbers = true)]
+    radius: Option<f64>,
+    #[arg(long = "radius-for", value_name = "CODE=MM")]
+    radius_for: Vec<String>,
+    #[arg(long)]
+    no_start: bool,
+    #[arg(long)]
+    no_finish: bool,
+    #[arg(long, value_name = "ID")]
+    id: Option<String>,
+    #[arg(long)]
+    assign: bool,
+}
+
+#[derive(Args)]
+struct CorridorArgs {
+    project: PathBuf,
+    #[arg(long, value_name = "X,Y;X,Y;…", allow_hyphen_values = true)]
+    points: String,
+    #[arg(long, value_name = "MM", allow_negative_numbers = true)]
+    width: Option<f64>,
+    #[arg(long, value_name = "ID")]
+    id: Option<String>,
+    #[arg(long, requires = "course")]
+    assign: bool,
+    #[arg(long, value_name = "NAME")]
+    course: Option<String>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -471,6 +523,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             new.assignments.push(project::Assignment {
                 course: name.clone(),
                 layout: layout.id.clone(),
+                mask: None,
             });
         }
         if !plan.iof {
@@ -946,6 +999,475 @@ fn layout_conflicts(
         }
     }
     Ok(blocked)
+}
+
+/// The message for a mask that could not be built: a usage error (exit 2).
+fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
+    let point = |p: [f64; 2]| {
+        args!(
+            "x" => short_decimal(texts, p[0], 3),
+            "y" => short_decimal(texts, p[1], 3),
+        )
+    };
+    let (id, a) = match err {
+        BuildError::SizeOutOfRange { value } => (
+            "error-masks-size",
+            args!(
+                "value" => if value.is_finite() { short_decimal(texts, value, 3) } else { value.to_string() },
+                "min" => short_decimal(texts, mask_build::MIN_SIZE_MM, 1),
+                "max" => short_decimal(texts, mask_build::MAX_SIZE_MM, 1),
+            ),
+        ),
+        BuildError::BadSelection { text } => {
+            ("error-masks-selection", args!("text" => printable(&text)))
+        }
+        BuildError::UnknownControl { code, known } => (
+            "error-unknown-control",
+            args!(
+                "course" => printable(course),
+                "control" => printable(&code),
+                "known" => stops_with_codes(texts, &known),
+            ),
+        ),
+        BuildError::RangeOutOfCourse { from, to, count } => (
+            "error-masks-range",
+            args!(
+                "course" => printable(course),
+                "from" => from.to_string(),
+                "to" => to.to_string(),
+                "count" => count,
+            ),
+        ),
+        BuildError::RadiusForUnselected { code } => (
+            "error-masks-radius-unselected",
+            args!("control" => printable(&code)),
+        ),
+        BuildError::NoControls => (
+            "error-masks-no-controls",
+            args!("course" => printable(course)),
+        ),
+        BuildError::NoPosition { code } => (
+            "error-masks-no-position",
+            args!("control" => printable(&code)),
+        ),
+        BuildError::TooManyPoints => (
+            "error-masks-too-many-points",
+            args!("max" => freemapper_print::mask::MAX_TOTAL_POINTS.to_string()),
+        ),
+        BuildError::BadPoints { text } => ("error-masks-points", args!("text" => printable(&text))),
+        BuildError::TooFewPoints => ("error-masks-too-few-points", FluentArgs::new()),
+        BuildError::TooManyCorridorPoints => (
+            "error-masks-too-many-corridor-points",
+            args!("max" => mask_build::MAX_CORRIDOR_POINTS.to_string()),
+        ),
+        BuildError::PointOutOfReach { at } => ("error-masks-point-out-of-reach", point(at)),
+        BuildError::SharpTurn { at } => ("error-masks-sharp-turn", point(at)),
+        BuildError::SelfIntersecting { near } => ("error-masks-self-intersecting", point(near)),
+        BuildError::Invalid(problem) => (
+            "error-masks-invalid",
+            args!("problem" => problem.to_string()),
+        ),
+    };
+    UsageError(texts.get(id, Some(&a))).into()
+}
+
+/// Map mm per print mm when the map is printed at 1:`print_scale`.
+fn map_mm_per_print_mm(texts: &Texts, map: &MapDocument, print_scale: u32) -> anyhow::Result<f64> {
+    let map_scale = map.georef.scale_denominator;
+    if map_scale == 0 {
+        bail!(texts.plain("error-masks-map-scale"));
+    }
+    Ok(f64::from(print_scale) / f64::from(map_scale))
+}
+
+/// The id a new mask gets: `given` after the checks of the project file, else `default` made unique. A taken id is
+/// a usage error.
+fn new_mask_id(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    given: Option<&str>,
+    default: impl FnOnce(&[&str]) -> String,
+) -> anyhow::Result<String> {
+    let taken: Vec<&str> = loaded.project.masks.iter().map(|m| m.id.as_str()).collect();
+    let Some(id) = given else {
+        return Ok(default(&taken));
+    };
+    let count = id.chars().count();
+    if count == 0
+        || count > freemapper_print::mask::MAX_ID_CHARS
+        || id.chars().any(char::is_control)
+    {
+        return Err(UsageError(texts.get(
+            "error-masks-id",
+            Some(&args!("max" => freemapper_print::mask::MAX_ID_CHARS.to_string())),
+        ))
+        .into());
+    }
+    if taken.contains(&id) {
+        return Err(UsageError(
+            texts.get("error-masks-id-taken", Some(&args!("id" => printable(id)))),
+        )
+        .into());
+    }
+    Ok(id.to_string())
+}
+
+/// Refuses `--assign` for a course whose assignment names another mask (exit 2).
+fn check_assignable(texts: &Texts, loaded: &LoadedProject, course: &str) -> anyhow::Result<()> {
+    let other = loaded
+        .project
+        .assignments
+        .iter()
+        .find(|a| a.course == course)
+        .and_then(|a| a.mask.as_deref());
+    match other {
+        Some(mask) => Err(UsageError(texts.get(
+            "error-masks-course-has-mask",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ))
+        .into()),
+        None => Ok(()),
+    }
+}
+
+/// Writes `mask` with [`project::append_mask`] and says what went wrong in the user's language.
+fn write_mask(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    mask: &freemapper_print::mask::Mask,
+    assign: Option<(&str, &str)>,
+    comment: &str,
+) -> anyhow::Result<()> {
+    project::append_mask(&loaded.path, mask, assign, comment).map_err(|err| {
+        let path = loaded.path.display().to_string();
+        match err {
+            project::ProjectError::DuplicateId { id, .. } => {
+                UsageError(texts.get("error-masks-id-taken", Some(&args!("id" => printable(&id)))))
+                    .into()
+            }
+            project::ProjectError::CourseHasMask { course, mask, .. } => UsageError(texts.get(
+                "error-masks-course-has-mask",
+                Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
+            ))
+            .into(),
+            project::ProjectError::AssignmentNotEditable {
+                course, mask, new, ..
+            } => UsageError(texts.get(
+                if new {
+                    "error-masks-assignments-inline"
+                } else {
+                    "error-masks-assignment-inline"
+                },
+                Some(&args!("course" => printable(&course), "id" => printable(&mask))),
+            ))
+            .into(),
+            err @ project::ProjectError::Write { .. } => anyhow::Error::new(err)
+                .context(texts.get("error-write-file", Some(&args!("path" => path)))),
+            // A file that no longer loads has been put back as it was.
+            err => anyhow::Error::new(err)
+                .context(texts.get("error-load-changed-mask", Some(&args!("path" => path)))),
+        }
+    })?;
+    Ok(())
+}
+
+/// The closing lines after a mask is written: who prints with it, and `check`.
+fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<(&str, &str)>) {
+    match assigned {
+        Some((course, layout)) => eprintln!(
+            "{}",
+            texts.get(
+                "masks-assigned",
+                Some(&args!("course" => printable(course), "layout" => printable(layout))),
+            )
+        ),
+        None => eprintln!(
+            "{}",
+            texts.get("masks-not-assigned", Some(&args!("id" => printable(id))))
+        ),
+    }
+    eprintln!("{}", texts.plain("masks-run-check"));
+}
+
+/// `masks window`: appends a mask with circular windows around the controls of a course (ADR 0047).
+fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
+    let usage = |id: &str, a: FluentArgs| UsageError(texts.get(id, Some(&a)));
+    let loaded = load_project(texts, &args.project)?;
+    let map = read_map(texts, &loaded.map_path())?;
+    let Some(courses) = read_courses(texts, &loaded, &map)? else {
+        return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
+    };
+    let course = find_course(texts, &courses, &args.course)?;
+    let selection = match &args.controls {
+        Some(text) => Selection::parse(text).map_err(|e| build_error(texts, e, &course.name))?,
+        None => Selection::All,
+    };
+    let mut per_control = std::collections::BTreeMap::new();
+    for item in &args.radius_for {
+        let parsed = item.rsplit_once('=').and_then(|(code, mm)| {
+            let mm: f64 = mm.trim().parse().ok()?;
+            let code = code.trim();
+            (!code.is_empty()).then(|| (code.to_string(), mm))
+        });
+        let Some((code, mm)) = parsed else {
+            return Err(usage("error-masks-radius-for", args!("text" => printable(item))).into());
+        };
+        per_control.insert(code, mm);
+    }
+    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
+    let print_scale = layout.print_scale.unwrap_or(map.georef.scale_denominator);
+    let options = WindowOptions {
+        selection,
+        start: !args.no_start,
+        finish: !args.no_finish,
+        radius_mm: args.radius.unwrap_or(mask_build::DEFAULT_RADIUS_MM),
+        per_control,
+        map_mm_per_print_mm: map_mm_per_print_mm(texts, &map, print_scale)?,
+    };
+    let id = new_mask_id(texts, &loaded, args.id.as_deref(), |taken| {
+        mask_build::window_id(&course.name, taken)
+    })?;
+    if args.assign {
+        check_assignable(texts, &loaded, &course.name)?;
+    }
+    let (mask, windows) = mask_build::windows(
+        &id,
+        course,
+        &courses.event,
+        &options,
+        mask_build::map_extent(&map),
+    )
+    .map_err(|e| build_error(texts, e, &course.name))?;
+    let stops: Vec<StopName> = windows.iter().map(|w| w.stop.clone()).collect();
+    let radius = short_decimal(texts, options.radius_mm, 2);
+    let summary = args!(
+        "id" => printable(&id),
+        "count" => windows.len(),
+        "controls" => stops_phrase(texts, &stops, true),
+        "course" => printable(&course.name),
+        "radius" => radius,
+        "scale" => print_scale.to_string(),
+    );
+    // The windows whose radius differs from the default, one line each.
+    let own_radius: Vec<String> = windows
+        .iter()
+        .filter(|w| w.radius_mm != options.radius_mm)
+        .map(|w| {
+            texts.get(
+                "masks-window-radius-for",
+                Some(&args!(
+                    "kind" => stop_kind(&w.stop),
+                    "control" => printable(w.stop.code()),
+                    "radius" => short_decimal(texts, w.radius_mm, 2),
+                )),
+            )
+        })
+        .collect();
+    let mut comment = texts.get("masks-window-comment", Some(&summary));
+    for line in &own_radius {
+        comment.push('\n');
+        comment.push_str(line);
+    }
+    let assign = args
+        .assign
+        .then_some((course.name.as_str(), layout.id.as_str()));
+    write_mask(texts, &loaded, &mask, assign, &comment)?;
+    let mut summary = summary;
+    summary.set("path", loaded.path.display().to_string());
+    eprintln!("{}", texts.get("masks-window-written", Some(&summary)));
+    for line in &own_radius {
+        eprintln!("{line}");
+    }
+    use freemapper_print::course::model::ControlKind;
+    // A start or finish of the course whose code got no window: check names it.
+    let without_window = |kind: ControlKind| {
+        course.stops.iter().any(|s| {
+            let of_kind = courses
+                .event
+                .controls
+                .iter()
+                .find(|c| c.code == s.control)
+                .is_some_and(|c| s.kind.unwrap_or(c.kind) == kind);
+            of_kind && !windows.iter().any(|w| w.stop.code() == s.control)
+        })
+    };
+    let (start, finish) = (
+        without_window(ControlKind::Start),
+        without_window(ControlKind::Finish),
+    );
+    let which = match (start, finish) {
+        (true, true) => Some("both"),
+        (true, false) => Some("start"),
+        (false, true) => Some("finish"),
+        (false, false) => None,
+    };
+    if let Some(which) = which {
+        eprintln!(
+            "{}",
+            texts.get("masks-no-start-finish", Some(&args!("which" => which)))
+        );
+    }
+    mask_written_lines(texts, &id, assign);
+    Ok(0)
+}
+
+/// `start`, `finish` or `control`: a selector for the messages that name a stop by kind.
+fn stop_kind(stop: &StopName) -> &'static str {
+    match stop {
+        StopName::Start(_) => "start",
+        StopName::Control(_) => "control",
+        StopName::Finish(_) => "finish",
+    }
+}
+
+/// `stops` (course order) as a phrase in the user's language (ruling R13): the start and the finish by kind, the
+/// controls between them by code, those next to each other in one group ("controls 31, 32 and 33"). `accusative`
+/// picks the German article for an object ("um den Start").
+fn stops_phrase(texts: &Texts, stops: &[StopName], accusative: bool) -> String {
+    let mut items: Vec<String> = Vec::new();
+    let mut group: Vec<String> = Vec::new();
+    let flush = |group: &mut Vec<String>, items: &mut Vec<String>| {
+        if !group.is_empty() {
+            let count = group.len();
+            let codes = join_and(texts, std::mem::take(group));
+            items.push(texts.get(
+                "stop-controls",
+                Some(&args!("codes" => codes, "count" => count)),
+            ));
+        }
+    };
+    for stop in stops {
+        match stop {
+            StopName::Control(code) => group.push(printable(code)),
+            other => {
+                flush(&mut group, &mut items);
+                let id = match (other, accusative) {
+                    (StopName::Start(_), false) => "stop-start",
+                    (StopName::Start(_), true) => "stop-start-acc",
+                    _ => "stop-finish",
+                };
+                items.push(texts.plain(id));
+            }
+        }
+    }
+    flush(&mut group, &mut items);
+    join_and(texts, items)
+}
+
+/// `stops` as a list of the codes the user can type, the start and the finish with their kind: "31, 32, start
+/// (STA1) and finish (FIN1)".
+fn stops_with_codes(texts: &Texts, stops: &[StopName]) -> String {
+    let items = stops
+        .iter()
+        .map(|stop| match stop {
+            StopName::Control(code) => printable(code),
+            StopName::Start(code) => {
+                texts.get("stop-start-code", Some(&args!("code" => printable(code))))
+            }
+            StopName::Finish(code) => {
+                texts.get("stop-finish-code", Some(&args!("code" => printable(code))))
+            }
+        })
+        .collect();
+    join_and(texts, items)
+}
+
+/// The course `name` of the course file, or a usage error that lists the courses.
+fn find_course<'a>(
+    texts: &Texts,
+    courses: &'a LoadedCourses,
+    name: &str,
+) -> anyhow::Result<&'a freemapper_print::course::model::Course<freemapper_print::omap::MapCoord>> {
+    courses
+        .event
+        .courses
+        .iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| {
+            let known: Vec<String> = courses
+                .event
+                .courses
+                .iter()
+                .map(|c| c.name.clone())
+                .collect();
+            UsageError(texts.get(
+                "error-unknown-course",
+                Some(&args!("name" => printable(name), "known" => quoted_list(texts, &known))),
+            ))
+            .into()
+        })
+}
+
+/// `masks corridor`: appends a mask with a corridor along the polyline the user gives (ADR 0047).
+fn masks_corridor(texts: &Texts, args: &CorridorArgs) -> anyhow::Result<u8> {
+    let loaded = load_project(texts, &args.project)?;
+    let map = read_map(texts, &loaded.map_path())?;
+    let points = mask_build::parse_points(&args.points).map_err(|e| build_error(texts, e, ""))?;
+    let map_scale = map.georef.scale_denominator;
+    let scale_of = |l: &LayoutSpec| l.print_scale.unwrap_or(map_scale);
+    // The width is print mm, so it needs the print scale: the course's layout, or the one all layouts share.
+    let (course, layout) = match &args.course {
+        Some(name) => {
+            let Some(courses) = read_courses(texts, &loaded, &map)? else {
+                return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
+            };
+            let course = find_course(texts, &courses, name)?.name.clone();
+            let layout = freemapper_print::courses::layout_for(&loaded.project, &course).0;
+            (Some(course), layout)
+        }
+        None => {
+            let mut scales: Vec<u32> = loaded.project.layouts.iter().map(scale_of).collect();
+            scales.sort_unstable();
+            scales.dedup();
+            if scales.len() > 1 {
+                let scales: Vec<String> = scales.iter().map(|s| format!("1:{s}")).collect();
+                return Err(UsageError(texts.get(
+                    "error-masks-scales",
+                    Some(&args!("scales" => join_and(texts, scales))),
+                ))
+                .into());
+            }
+            (None, &loaded.project.layouts[0])
+        }
+    };
+    let print_scale = scale_of(layout);
+    let width = args.width.unwrap_or(mask_build::DEFAULT_WIDTH_MM);
+    let k = map_mm_per_print_mm(texts, &map, print_scale)?;
+    let id = new_mask_id(texts, &loaded, args.id.as_deref(), mask_build::corridor_id)?;
+    if args.assign
+        && let Some(course) = &course
+    {
+        check_assignable(texts, &loaded, course)?;
+    }
+    let polygon = mask_build::corridor(&points, width, k, mask_build::map_extent(&map))
+        .map_err(|e| build_error(texts, e, course.as_deref().unwrap_or("")))?;
+    let mask = freemapper_print::mask::Mask {
+        id: id.clone(),
+        polygons: vec![polygon],
+    };
+    let summary = args!(
+        "id" => printable(&id),
+        "count" => points.len(),
+        "width" => short_decimal(texts, width, 2),
+        "scale" => print_scale.to_string(),
+    );
+    // The points as read, so that the command can be run again from the comment.
+    let written: Vec<String> = points.iter().map(|[x, y]| format!("{x},{y}")).collect();
+    let comment = format!(
+        "{}\n--points \"{}\"",
+        texts.get("masks-corridor-comment", Some(&summary)),
+        written.join(";")
+    );
+    let assigned = match (&course, args.assign) {
+        (Some(c), true) => Some((c.as_str(), layout.id.as_str())),
+        _ => None,
+    };
+    write_mask(texts, &loaded, &mask, assigned, &comment)?;
+    let mut summary = summary;
+    summary.set("path", loaded.path.display().to_string());
+    eprintln!("{}", texts.get("masks-corridor-written", Some(&summary)));
+    mask_written_lines(texts, &id, assigned);
+    Ok(0)
 }
 
 /// What `check` prints for one layout, and whether the layout needs a look. A layout that cannot
@@ -1635,6 +2157,95 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
             "note-overprint-cut",
             Some(&args!("course" => printable(course))),
         ),
+        SheetNote::MasksCapped {
+            course,
+            applied,
+            total,
+        } => texts.get(
+            "note-masks-capped",
+            Some(&args!(
+                "course" => printable(course),
+                "applied" => *applied,
+                "total" => *total,
+            )),
+        ),
+        SheetNote::OverprintInMaskedArea {
+            course,
+            kind,
+            count,
+        } => {
+            let id = match kind {
+                MaskedObject::MarkedRoute => "masked-marked-route",
+                MaskedObject::CrossingPoint => "masked-crossing-point",
+                MaskedObject::ForbiddenRoute => "masked-forbidden-route",
+                MaskedObject::Boundary => "masked-boundary",
+                MaskedObject::OutOfBoundsArea => "masked-out-of-bounds-area",
+                MaskedObject::DangerousArea => "masked-dangerous-area",
+                MaskedObject::Text => "masked-text",
+            };
+            texts.get(
+                "note-overprint-in-masked-area",
+                Some(&args!(
+                    "course" => printable(course),
+                    "objects" => texts.get(id, Some(&args!("count" => *count))),
+                    "count" => *count,
+                )),
+            )
+        }
+        SheetNote::ControlInMaskedArea { course, controls } => texts.get(
+            "note-control-in-masked-area",
+            Some(&args!(
+                "course" => printable(course),
+                "controls" => stops_phrase(texts, controls, false),
+                "count" => controls.len(),
+            )),
+        ),
+        SheetNote::MaskCoversNothing { course, mask } => texts.get(
+            "note-mask-covers-nothing",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ),
+        SheetNote::WhiteOutsCoverNothing { course, ids } => {
+            // A course file can hold thousands: the first few by id, the rest counted.
+            let mut shown: Vec<String> = ids
+                .iter()
+                .take(MAX_LISTED_WHITE_OUTS)
+                .map(|id| printable(id))
+                .collect();
+            if ids.len() > MAX_LISTED_WHITE_OUTS {
+                shown.push(texts.get(
+                    "list-more",
+                    Some(&args!("count" => ids.len() - MAX_LISTED_WHITE_OUTS)),
+                ));
+            }
+            texts.get(
+                "note-white-outs-cover-nothing",
+                Some(&args!(
+                    "course" => printable(course),
+                    "ids" => join_and(texts, shown),
+                    "count" => ids.len(),
+                )),
+            )
+        }
+        SheetNote::ElementCoversWindow {
+            course,
+            element,
+            mask,
+        } => texts.get(
+            "note-element-covers-window",
+            Some(&args!(
+                "course" => printable(course),
+                "id" => printable(element),
+                "mask" => printable(mask),
+            )),
+        ),
+        SheetNote::MaskLeavesNoWindow { course, mask } => texts.get(
+            "note-mask-leaves-no-window",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
+        ),
+        SheetNote::MaskCheckLimited { course } => texts.get(
+            "note-mask-check-limited",
+            Some(&args!("course" => printable(course))),
+        ),
         SheetNote::CourseValueUnknown { course, id, name } => texts.get(
             "note-course-value-unknown",
             Some(&args!(
@@ -1671,6 +2282,37 @@ fn sheet_note_line(texts: &Texts, note: &SheetNote) -> String {
         SheetNote::Course(note) => course_note_line(texts, note),
         SheetNote::Fit(note) => fit_note_line(texts, note),
         SheetNote::Stale(stale) => stale_line(texts, stale),
+        SheetNote::Mask(note) => mask_note_line(texts, note),
+    }
+}
+
+/// Most white-out ids one line names; the rest are counted.
+const MAX_LISTED_WHITE_OUTS: usize = 10;
+
+/// The message for a remark about the mask variants. No wildcard arm.
+fn mask_note_line(texts: &Texts, note: &MaskNote) -> String {
+    match note {
+        MaskNote::MaskUnused { id } => {
+            texts.get("note-mask-unused", Some(&args!("id" => printable(id))))
+        }
+        MaskNote::WhiteOutByNumber {
+            course,
+            id,
+            centre,
+            stand_in,
+        } => texts.get(
+            if *stand_in {
+                "note-white-out-stand-in"
+            } else {
+                "note-white-out-by-number"
+            },
+            Some(&args!(
+                "course" => printable(course),
+                "id" => printable(id),
+                "x" => short_decimal(texts, centre[0], 1),
+                "y" => short_decimal(texts, centre[1], 1),
+            )),
+        ),
     }
 }
 
@@ -1858,6 +2500,10 @@ fn stale_line(texts: &Texts, stale: &Stale) -> String {
         Stale::CorrectionOverridesChangedBase { control } => texts.get(
             "note-stale-changed-base",
             Some(&args!("control" => printable(control))),
+        ),
+        Stale::Mask { course, mask } => texts.get(
+            "note-stale-mask",
+            Some(&args!("course" => printable(course), "mask" => printable(mask))),
         ),
     }
 }
@@ -2142,6 +2788,50 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         .mut_arg("gap", |a| a.help(texts.plain("help-numbers-gap")))
                 })
         })
+        .mut_subcommand("masks", |c| {
+            c.about(texts.plain("masks-about"))
+                .mut_subcommand("window", |c| {
+                    c.about(texts.plain("masks-window-about"))
+                        .after_long_help(format!(
+                            "{}\n\n{}",
+                            texts.plain("masks-window-after-content"),
+                            texts.plain("masks-after-exit-codes")
+                        ))
+                        .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                        .mut_arg("course", |a| {
+                            a.help(texts.plain("help-masks-window-course"))
+                        })
+                        .mut_arg("controls", |a| a.help(texts.plain("help-masks-controls")))
+                        .mut_arg("radius", |a| a.help(texts.plain("help-masks-radius")))
+                        .mut_arg("radius_for", |a| {
+                            a.help(texts.plain("help-masks-radius-for"))
+                        })
+                        .mut_arg("no_start", |a| a.help(texts.plain("help-masks-no-start")))
+                        .mut_arg("no_finish", |a| a.help(texts.plain("help-masks-no-finish")))
+                        .mut_arg("id", |a| a.help(texts.plain("help-masks-window-id")))
+                        .mut_arg("assign", |a| {
+                            a.help(texts.plain("help-masks-window-assign"))
+                        })
+                })
+                .mut_subcommand("corridor", |c| {
+                    c.about(texts.plain("masks-corridor-about"))
+                        .after_long_help(format!(
+                            "{}\n\n{}",
+                            texts.plain("masks-corridor-after-content"),
+                            texts.plain("masks-after-exit-codes")
+                        ))
+                        .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                        .mut_arg("points", |a| a.help(texts.plain("help-masks-points")))
+                        .mut_arg("width", |a| a.help(texts.plain("help-masks-width")))
+                        .mut_arg("id", |a| a.help(texts.plain("help-masks-corridor-id")))
+                        .mut_arg("assign", |a| {
+                            a.help(texts.plain("help-masks-corridor-assign"))
+                        })
+                        .mut_arg("course", |a| {
+                            a.help(texts.plain("help-masks-corridor-course"))
+                        })
+                })
+        })
 }
 
 fn main() -> std::process::ExitCode {
@@ -2177,6 +2867,10 @@ fn main() -> std::process::ExitCode {
         Commands::Export(args) => export(&texts, &args),
         Commands::Numbers(args) => match args.command {
             NumbersCommand::Accept(args) => numbers_accept(&texts, &args),
+        },
+        Commands::Masks(args) => match args.command {
+            MasksCommand::Window(args) => masks_window(&texts, &args),
+            MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
     };
     match result {
@@ -2294,7 +2988,7 @@ mod tests {
     #[test]
     fn every_sheet_note_has_a_text_with_its_fields() {
         let s = |v: &str| v.to_string();
-        let notes: Vec<(SheetNote, Vec<&str>)> = vec![
+        let mut notes: Vec<(SheetNote, Vec<&str>)> = vec![
             (
                 SheetNote::ElementOutsidePage { id: s("logo1") },
                 vec!["logo1"],
@@ -2461,6 +3155,95 @@ mod tests {
             ),
             (SheetNote::OverprintCut { course: s("Kurz") }, vec!["Kurz"]),
             (
+                SheetNote::MasksCapped {
+                    course: s("Kurz"),
+                    applied: 1000,
+                    total: 2345,
+                },
+                vec!["Kurz", "1000", "2345"],
+            ),
+            (
+                SheetNote::ControlInMaskedArea {
+                    course: s("Kurz"),
+                    controls: vec![
+                        StopName::Start(s("S1")),
+                        StopName::Control(s("31")),
+                        StopName::Control(s("32")),
+                        StopName::Finish(s("F1")),
+                    ],
+                },
+                vec!["Kurz", "31", "32"],
+            ),
+            (
+                SheetNote::ControlInMaskedArea {
+                    course: s("Kurz"),
+                    controls: vec![StopName::Control(s("32"))],
+                },
+                vec!["Kurz", "32"],
+            ),
+            (
+                SheetNote::MaskCoversNothing {
+                    course: s("Kurz"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "fenster"],
+            ),
+            (
+                SheetNote::WhiteOutsCoverNothing {
+                    course: s("Kurz"),
+                    ids: vec![s("whiteout-1"), s("whiteout-3")],
+                },
+                vec!["Kurz", "whiteout-1", "whiteout-3"],
+            ),
+            (
+                SheetNote::WhiteOutsCoverNothing {
+                    course: s("Kurz"),
+                    ids: (1..=12).map(|i| format!("whiteout-{i}")).collect(),
+                },
+                vec!["Kurz", "whiteout-10", "12", "2"],
+            ),
+            (
+                SheetNote::ElementCoversWindow {
+                    course: s("Kurz"),
+                    element: s("descriptions"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "descriptions", "fenster"],
+            ),
+            (
+                SheetNote::MaskLeavesNoWindow {
+                    course: s("Kurz"),
+                    mask: s("fenster"),
+                },
+                vec!["Kurz", "fenster"],
+            ),
+            (
+                SheetNote::MaskCheckLimited { course: s("Kurz") },
+                vec!["Kurz"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::MaskUnused { id: s("spare") }),
+                vec!["spare", "[[masks]]"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::WhiteOutByNumber {
+                    course: s("Kurz"),
+                    id: s("whiteout-2"),
+                    centre: [-12.25, 40.0],
+                    stand_in: false,
+                }),
+                vec!["Kurz", "whiteout-2", "-12", "40", "Purple Pen"],
+            ),
+            (
+                SheetNote::Mask(MaskNote::WhiteOutByNumber {
+                    course: s("Kurz"),
+                    id: s("whiteout-2"),
+                    centre: [-12.25, 40.0],
+                    stand_in: true,
+                }),
+                vec!["Kurz", "whiteout-2", "[[masks]]", "-12", "40", "Purple Pen"],
+            ),
+            (
                 SheetNote::MapCroppedToCourse {
                     overflow_mm: (12.0, 0.0),
                 },
@@ -2576,6 +3359,13 @@ mod tests {
                 vec!["49"],
             ),
             (
+                SheetNote::Stale(Stale::Mask {
+                    course: s("Kurz"),
+                    mask: s("whiteout-9"),
+                }),
+                vec!["Kurz", "whiteout-9"],
+            ),
+            (
                 SheetNote::NumberConflict(NumberConflict {
                     course: s("Kurz"),
                     control: s("31"),
@@ -2655,6 +3445,32 @@ mod tests {
                 vec!["Kurz", "31", "25 mm", "5 mm"],
             ),
         ];
+        // Each kind of masked object, once and several times.
+        for kind in [
+            MaskedObject::MarkedRoute,
+            MaskedObject::CrossingPoint,
+            MaskedObject::ForbiddenRoute,
+            MaskedObject::Boundary,
+            MaskedObject::OutOfBoundsArea,
+            MaskedObject::DangerousArea,
+            MaskedObject::Text,
+        ] {
+            for count in [1, 7] {
+                let fields = if count == 1 {
+                    vec!["Kurz"]
+                } else {
+                    vec!["Kurz", "7 "]
+                };
+                notes.push((
+                    SheetNote::OverprintInMaskedArea {
+                        course: s("Kurz"),
+                        kind,
+                        count,
+                    },
+                    fields,
+                ));
+            }
+        }
         for lang in text::available() {
             let texts = Texts::new(&lang);
             let mut seen = std::collections::HashSet::new();

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::course::{NumberPlacement, fit::YAxis};
+pub use crate::mask::{Mask, MaskPolygon};
 use crate::print::{Orientation, Paper};
 use crate::rules::RuleSet;
 use crate::scale::MapKind;
@@ -34,6 +35,10 @@ pub const MAX_CENTRE_MM: f64 = 2_000_000.0;
 /// Smallest size (pt) of a `credit_line` element: the credit line must stay readable (ADR 0025).
 pub const MIN_CREDIT_PT: f64 = 5.0;
 
+/// Largest project file `load` reads, in bytes (16 MiB). The largest file within the mask limits takes about 2 to
+/// 4 MB; parsing a much larger one would take gigabytes before the limits refuse it.
+pub const MAX_PROJECT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Default file name of a project file.
 pub const FILE_NAME: &str = "freemapper-print.toml";
 
@@ -52,6 +57,9 @@ pub struct Project {
     pub shared: Vec<ElementSpec>,
     #[serde(default)]
     pub layouts: Vec<LayoutSpec>,
+    /// Mask variants for window and corridor orienteering (ADR 0045), assigned to courses in `assignments`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub masks: Vec<Mask>,
     /// Which layout prints which course (ADR 0025). A course without an entry takes the first layout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assignments: Vec<Assignment>,
@@ -60,13 +68,16 @@ pub struct Project {
     pub numbers: Vec<NumberCorrection>,
 }
 
-/// One course printed on one layout. The course name is the course file's; the entry stays in the
-/// file when the course file no longer has the course (stale data, ADR 0025).
+/// One course printed on one layout, optionally with a mask variant. The course name is the course file's; the
+/// entry stays in the file when the course file no longer has the course (stale data, ADR 0025).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Assignment {
     pub course: String,
     pub layout: String,
+    /// The id of a `[[masks]]` entry, or `whiteout-<n>` for a white-out of the course file (ADR 0045).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask: Option<String>,
 }
 
 /// A control number placement that overrides the course file's. Exactly one of `layout` and `course`
@@ -392,6 +403,10 @@ pub enum ProjectError {
         file: String,
         source: std::io::Error,
     },
+    #[error(
+        "project file {file} is too large: {bytes} bytes, at most {MAX_PROJECT_FILE_BYTES} (16 MiB) are read"
+    )]
+    TooLarge { file: String, bytes: u64 },
     #[error("cannot write project file {file}")]
     Write {
         file: String,
@@ -433,6 +448,44 @@ pub enum ProjectError {
     NoLayout { file: String },
     #[error("{file} exists already; it was not overwritten")]
     Exists { file: String },
+    /// [`append_mask`] for a course whose assignment names another mask.
+    #[error(
+        "{file}: the assignment of course \"{course}\" names the mask \"{mask}\" already; change it in the file"
+    )]
+    CourseHasMask {
+        file: String,
+        course: String,
+        mask: String,
+    },
+    /// [`append_mask`] found the course's assignment, but not as a `[[assignments]]` table of its own; or, for a
+    /// course without one (`new`), assignments written another way, so that a new table would not load.
+    #[error(
+        "{file}: {}",
+        if *new {
+            format!(
+                "the assignments are not written as tables [[assignments]], so none can be added for course \
+                 \"{course}\"; add an assignment with mask = \"{mask}\" by hand"
+            )
+        } else {
+            format!(
+                "the assignment of course \"{course}\" is not written as a table [[assignments]] of its own, so \
+                 the mask cannot be added to it; add mask = \"{mask}\" to it by hand"
+            )
+        }
+    )]
+    AssignmentNotEditable {
+        file: String,
+        course: String,
+        mask: String,
+        /// The course has no assignment yet, and the file's assignments are not written as tables a new one
+        /// could join.
+        new: bool,
+    },
+    /// The changed file loaded, but not as what was written; the old content was put back.
+    #[error(
+        "{file}: the changed file reads back differently than it was written, so the old content was put back"
+    )]
+    ReadBackDiffers { file: String },
     #[error("cannot write the project file: {0}")]
     Serialize(String),
 }
@@ -455,13 +508,39 @@ fn parse_error(file: &str, text: &str, e: &toml::de::Error) -> ProjectError {
     }
 }
 
+/// The text of the project file, read only when it is within [`MAX_PROJECT_FILE_BYTES`]. The read is capped
+/// again, because a file can grow after the size check.
+fn read_capped(path: &Path, file: &str) -> Result<String, ProjectError> {
+    use std::io::Read;
+    let io = |source| ProjectError::Io {
+        file: file.to_string(),
+        source,
+    };
+    let too_large = |bytes| ProjectError::TooLarge {
+        file: file.to_string(),
+        bytes,
+    };
+    let mut handle = std::fs::File::open(path).map_err(io)?;
+    let len = handle.metadata().map_err(io)?.len();
+    if len > MAX_PROJECT_FILE_BYTES {
+        return Err(too_large(len));
+    }
+    let mut bytes = Vec::new();
+    (&mut handle)
+        .take(MAX_PROJECT_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+    if bytes.len() as u64 > MAX_PROJECT_FILE_BYTES {
+        return Err(too_large(bytes.len() as u64));
+    }
+    String::from_utf8(bytes)
+        .map_err(|e| io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+}
+
 /// Reads and checks a project file. Paths inside stay as written; `LoadedProject::resolve` makes them absolute.
 pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
     let file = path.display().to_string();
-    let text = std::fs::read_to_string(path).map_err(|source| ProjectError::Io {
-        file: file.clone(),
-        source,
-    })?;
+    let text = read_capped(path, &file)?;
 
     #[derive(Deserialize)]
     struct Probe {
@@ -678,12 +757,104 @@ fn validate(file: &str, lp: &LoadedProject) -> Result<(), ProjectError> {
             ));
         }
     }
-    check_courses(file, p, &layout_ids)
+    let mask_ids = check_masks(file, p)?;
+    check_courses(file, p, &layout_ids, &mask_ids)
+}
+
+/// The id a white-out of the course file has as a mask variant: `whiteout-<n>`, the n-th white-out in file
+/// order, from 1 (ADR 0045).
+pub fn white_out_id(n: usize) -> String {
+    format!("{WHITE_OUT_PREFIX}{n}")
+}
+
+/// The prefix of [`white_out_id`].
+pub const WHITE_OUT_PREFIX: &str = "whiteout-";
+
+/// `n` when `id` is `whiteout-<n>` with `n` from 1, written without leading zeros.
+pub fn white_out_number(id: &str) -> Option<usize> {
+    let digits = id.strip_prefix(WHITE_OUT_PREFIX)?;
+    if digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// The mask variants (ADR 0045): within the limits of [`crate::mask`], ids plain names that are used once, the
+/// geometry checked by [`crate::mask::check`]. Returns the ids.
+fn check_masks<'a>(file: &str, p: &'a Project) -> Result<HashSet<&'a str>, ProjectError> {
+    use crate::mask::{Budget, MAX_CHECK_STEPS, MAX_ID_CHARS, MAX_MASKS, MAX_TOTAL_POINTS};
+    if p.masks.len() > MAX_MASKS {
+        return Err(invalid(
+            file,
+            format!("masks[{MAX_MASKS}]"),
+            &format!("a project file has at most {MAX_MASKS} masks"),
+        ));
+    }
+    let mut total = 0;
+    for (i, m) in p.masks.iter().enumerate() {
+        total += m.point_count();
+        if total > MAX_TOTAL_POINTS {
+            return Err(invalid(
+                file,
+                format!("masks[{i}].polygons"),
+                &format!(
+                    "the masks of a project file have at most {MAX_TOTAL_POINTS} points together"
+                ),
+            ));
+        }
+    }
+    let mut ids = HashSet::new();
+    let mut budget = Budget::new(MAX_CHECK_STEPS);
+    for (i, m) in p.masks.iter().enumerate() {
+        let field = format!("masks[{i}].id");
+        non_empty(file, field.clone(), &m.id)?;
+        if m.id.chars().count() > MAX_ID_CHARS {
+            return Err(invalid(
+                file,
+                field,
+                &format!("must be at most {MAX_ID_CHARS} characters long"),
+            ));
+        }
+        if m.id.chars().any(char::is_control) {
+            return Err(invalid(file, field, "must not contain control characters"));
+        }
+        if !ids.insert(m.id.as_str()) {
+            return Err(ProjectError::DuplicateId {
+                file: file.to_string(),
+                field,
+                id: m.id.clone(),
+            });
+        }
+        crate::mask::check(m, &mut budget)
+            .map_err(|e| invalid(file, mask_field(i, &e), &e.problem.to_string()))?;
+    }
+    Ok(ids)
+}
+
+/// The field of the project file a mask error names: `masks[0].polygons[1][0][2][1]` as far as known.
+fn mask_field(i: usize, e: &crate::mask::MaskError) -> String {
+    // The budget is shared by all masks; the one that ran it out is not to blame alone.
+    if e.problem == crate::mask::Problem::TooComplex {
+        return "masks".to_string();
+    }
+    let mut field = format!("masks[{i}].polygons");
+    for index in [e.polygon, e.ring, e.point, e.axis]
+        .into_iter()
+        .map_while(|x| x)
+    {
+        let _ = write!(field, "[{index}]");
+    }
+    field
 }
 
 /// Course assignments and number corrections: known layouts, no two entries for one course, values in
 /// range. Course names and controls are checked against the course file at load time, not here.
-fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<(), ProjectError> {
+fn check_courses(
+    file: &str,
+    p: &Project,
+    layout_ids: &HashSet<&str>,
+    mask_ids: &HashSet<&str>,
+) -> Result<(), ProjectError> {
     if let Some(c) = &p.sources.courses
         && c.as_os_str().is_empty()
     {
@@ -706,6 +877,26 @@ fn check_courses(file: &str, p: &Project, layout_ids: &HashSet<&str>) -> Result<
                 format!("assignments[{i}].layout"),
                 &known(&a.layout),
             ));
+        }
+        if let Some(m) = &a.mask
+            && !mask_ids.contains(m.as_str())
+            && white_out_number(m).is_none()
+        {
+            let message = if p.masks.is_empty() {
+                format!(
+                    "there is no mask with the id `{m}`; the project file has no [[masks]], and \
+                     `{WHITE_OUT_PREFIX}<n>` names the n-th white-out of the course file"
+                )
+            } else {
+                let mut known: Vec<&str> = p.masks.iter().map(|m| m.id.as_str()).collect();
+                known.sort_unstable();
+                format!(
+                    "there is no mask with the id `{m}`; available: {}, or `{WHITE_OUT_PREFIX}<n>` for the \
+                     n-th white-out of the course file",
+                    known.join(", ")
+                )
+            };
+            return Err(invalid(file, format!("assignments[{i}].mask"), &message));
         }
         if !courses.insert(a.course.as_str()) {
             return Err(ProjectError::DuplicateId {
@@ -1340,28 +1531,232 @@ pub fn append_correction(
         numbers: [&correction],
     })
     .map_err(|e| ProjectError::Serialize(e.to_string()))?;
-    // The new lines end as the file's do.
-    let crlf = old.windows(2).any(|w| w == b"\r\n");
-    let newline: &[u8] = if crlf { b"\r\n" } else { b"\n" };
-    let mut new = old.clone();
+    let new = appended(&old, &table);
+    rewrite(path, &old, &new, |_| true)
+}
+
+/// The line break of `text`: CRLF when it has one, else LF.
+fn newline_of(text: &[u8]) -> &'static str {
+    if text.windows(2).any(|w| w == b"\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+/// `text` (LF line breaks) with the line breaks of `old`.
+fn with_newlines(old: &[u8], text: &str) -> String {
+    text.replace('\n', newline_of(old))
+}
+
+/// `old` with an empty line and then `tables` (TOML text, LF line breaks), the new lines ending as the file's do.
+fn appended(old: &[u8], tables: &str) -> Vec<u8> {
+    let newline = newline_of(old).as_bytes();
+    let mut new = old.to_vec();
     if !new.ends_with(b"\n") {
         new.extend_from_slice(newline);
     }
     new.extend_from_slice(newline);
-    for line in table.split_inclusive('\n') {
-        match line.strip_suffix('\n') {
-            Some(text) => {
-                new.extend_from_slice(text.as_bytes());
-                new.extend_from_slice(newline);
+    new.extend_from_slice(with_newlines(old, tables).as_bytes());
+    new
+}
+
+/// Replaces the project file `path` with `new` ([`replace_file`]) and loads it. When it does not load, or `wanted`
+/// says the result is not what was meant, the old content `old` is put back and the error returned: the load
+/// error, or [`ProjectError::ReadBackDiffers`].
+fn rewrite(
+    path: &Path,
+    old: &[u8],
+    new: &[u8],
+    wanted: impl FnOnce(&LoadedProject) -> bool,
+) -> Result<LoadedProject, ProjectError> {
+    replace_file(path, new)?;
+    let file = path.display().to_string();
+    load(path)
+        .and_then(|lp| {
+            if wanted(&lp) {
+                Ok(lp)
+            } else {
+                Err(ProjectError::ReadBackDiffers { file })
             }
-            None => new.extend_from_slice(line.as_bytes()),
+        })
+        .inspect_err(|_| {
+            // Best effort: the load error is the one to report.
+            let _ = replace_file(path, old);
+        })
+}
+
+/// Appends `mask` as a `[[masks]]` table to the project file at `path` and loads the result, the way
+/// [`append_correction`] appends a correction: everything before stays byte for byte as it was, the new lines end
+/// as the file's do, the file is replaced through a partial file, and when the result does not load or does not
+/// read back as written, the old content is put back and the error returned. `comment` (when not empty) goes above
+/// the table as `#` lines. Points are written as they are; generated masks round them to 0.001 mm.
+///
+/// With `assign` = (course, layout) the course prints with the mask: its `[[assignments]]` table gets a line
+/// `mask = "<id>"` after its header, or, without an assignment, a new table with `layout` follows the mask. Refused
+/// before anything is written: an id the file has already ([`ProjectError::DuplicateId`]), a course whose
+/// assignment names another mask ([`ProjectError::CourseHasMask`]), and an assignment not written as a table of its
+/// own ([`ProjectError::AssignmentNotEditable`]).
+pub fn append_mask(
+    path: &Path,
+    mask: &Mask,
+    assign: Option<(&str, &str)>,
+    comment: &str,
+) -> Result<LoadedProject, ProjectError> {
+    let file = path.display().to_string();
+    let old = std::fs::read(path).map_err(|source| ProjectError::Io {
+        file: file.clone(),
+        source,
+    })?;
+    let before = load(path)?;
+    let mut expected = before.project.clone();
+    if expected.masks.iter().any(|m| m.id == mask.id) {
+        return Err(ProjectError::DuplicateId {
+            file,
+            field: "masks".into(),
+            id: mask.id.clone(),
+        });
+    }
+    expected.masks.push(mask.clone());
+    let mut new = old.clone();
+    let mut tables = String::new();
+    if !comment.is_empty() {
+        tables.push_str(&comment_lines(comment));
+    }
+    tables.push_str(&mask_table(mask)?);
+    if let Some((course, layout)) = assign {
+        match expected.assignments.iter().position(|a| a.course == course) {
+            Some(i) => match &expected.assignments[i].mask {
+                Some(m) if *m == mask.id => {}
+                Some(m) => {
+                    return Err(ProjectError::CourseHasMask {
+                        file,
+                        course: course.into(),
+                        mask: m.clone(),
+                    });
+                }
+                None => {
+                    let not_editable = || ProjectError::AssignmentNotEditable {
+                        file: file.clone(),
+                        course: course.into(),
+                        mask: mask.id.clone(),
+                        new: false,
+                    };
+                    let text = std::str::from_utf8(&old).map_err(|_| not_editable())?;
+                    let at = assignment_body(text, i, expected.assignments.len())
+                        .ok_or_else(not_editable)?;
+                    let line = with_newlines(&old, &key_line("mask", &mask.id)?);
+                    new.splice(at..at, line.bytes());
+                    expected.assignments[i].mask = Some(mask.id.clone());
+                }
+            },
+            None => {
+                // A new `[[assignments]]` table only adds to assignments written as such tables; next to an inline
+                // `assignments = [...]` it would be a second definition of the key.
+                let as_tables = std::str::from_utf8(&old).is_ok_and(|text| {
+                    !has_inline_assignments(text)
+                        && assignment_headers(text).len() == expected.assignments.len()
+                });
+                if !as_tables {
+                    return Err(ProjectError::AssignmentNotEditable {
+                        file,
+                        course: course.into(),
+                        mask: mask.id.clone(),
+                        new: true,
+                    });
+                }
+                let a = Assignment {
+                    course: course.into(),
+                    layout: layout.into(),
+                    mask: Some(mask.id.clone()),
+                };
+                #[derive(Serialize)]
+                struct Wrapper<'a> {
+                    assignments: [&'a Assignment; 1],
+                }
+                let table = toml::to_string(&Wrapper { assignments: [&a] })
+                    .map_err(|e| ProjectError::Serialize(e.to_string()))?;
+                tables.push('\n');
+                tables.push_str(&table);
+                expected.assignments.push(a);
+            }
         }
     }
-    replace_file(path, &new)?;
-    load(path).inspect_err(|_| {
-        // Best effort: the load error is the one to report.
-        let _ = replace_file(path, &old);
+    let new = appended(&new, &tables);
+    rewrite(path, &old, &new, |lp| lp.project == expected)
+}
+
+/// `key = "value"` as TOML writes it, with a line break.
+fn key_line(key: &str, value: &str) -> Result<String, ProjectError> {
+    let mut table = toml::Table::new();
+    table.insert(key.into(), toml::Value::String(value.into()));
+    toml::to_string(&table).map_err(|e| ProjectError::Serialize(e.to_string()))
+}
+
+/// The byte offset in `text` just after the header line of the `i`-th `[[assignments]]` table, when the text
+/// has `count` such headers (otherwise some assignments are written another way and the count cannot be trusted).
+/// A header may carry a comment. The caller checks the result by loading it again.
+fn assignment_body(text: &str, i: usize, count: usize) -> Option<usize> {
+    let found = assignment_headers(text);
+    // A header on the last line without a line break has no table body to add to.
+    let at = *found.get(i)?;
+    (found.len() == count && text[..at].ends_with('\n')).then_some(at)
+}
+
+/// The byte offsets in `text` just after each `[[assignments]]` header line (a header may carry a comment).
+fn assignment_headers(text: &str) -> Vec<usize> {
+    let mut found = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("[[")
+            && let Some((name, after)) = rest.split_once("]]")
+            && name.trim() == "assignments"
+            && (after.trim().is_empty() || after.trim_start().starts_with('#'))
+        {
+            found.push(offset + line.len());
+        }
+        offset += line.len();
+    }
+    found
+}
+
+/// Whether a line of `text` starts the key `assignments` itself (`assignments = [...]`), as an inline array.
+fn has_inline_assignments(text: &str) -> bool {
+    text.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix("assignments")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
     })
+}
+
+/// Most points on one line of a written ring.
+const POINTS_PER_LINE: usize = 4;
+
+/// `mask` as a `[[masks]]` table: the id, then the polygons with one ring per block and a few points per line.
+/// The numbers are written so that they read back exactly.
+fn mask_table(mask: &Mask) -> Result<String, ProjectError> {
+    let number = |v: f64| format!("{v:?}");
+    let mut out = String::from("[[masks]]\n");
+    out.push_str(&key_line("id", &mask.id)?);
+    out.push_str("polygons = [\n");
+    for polygon in &mask.polygons {
+        out.push_str("    [\n");
+        for ring in std::iter::once(&polygon.outline).chain(&polygon.holes) {
+            out.push_str("        [\n");
+            for chunk in ring.chunks(POINTS_PER_LINE) {
+                let points: Vec<String> = chunk
+                    .iter()
+                    .map(|[x, y]| format!("[{}, {}]", number(*x), number(*y)))
+                    .collect();
+                let _ = writeln!(out, "            {},", points.join(", "));
+            }
+            out.push_str("        ],\n");
+        }
+        out.push_str("    ],\n");
+    }
+    out.push_str("]\n");
+    Ok(out)
 }
 
 /// `to` relative to the directory `from`, both absolute: `../maps/m.omap`, with `/` between the
@@ -1464,6 +1859,7 @@ pub fn starter(
             elements: vec![],
             hide_shared: vec![],
         }],
+        masks: Vec::new(),
         assignments: Vec::new(),
         numbers: Vec::new(),
     }
@@ -2190,9 +2586,22 @@ mod tests {
                     hide_shared: vec![],
                 },
             ],
+            masks: vec![Mask {
+                id: "window 3-5".into(),
+                polygons: vec![MaskPolygon {
+                    outline: vec![[-60.0, -90.0], [80.0, -90.0], [80.0, 20.0], [-60.0, 20.0]],
+                    holes: vec![vec![
+                        [0.0, -50.0],
+                        [30.0, -50.0],
+                        [30.0, -20.0],
+                        [0.0, -20.0],
+                    ]],
+                }],
+            }],
             assignments: vec![Assignment {
                 course: "Men".into(),
                 layout: "a4".into(),
+                mask: Some("window 3-5".into()),
             }],
             numbers: vec![NumberCorrection {
                 control: "31".into(),
@@ -2220,6 +2629,394 @@ mod tests {
             "{text}"
         );
         assert_eq!(load(&path).unwrap().project, project);
+    }
+
+    /// HEAD, one layout `a` and `rest`: the masks start on line 11.
+    fn mask_project(rest: &str) -> String {
+        format!("{HEAD}\n[[layouts]]\nid = \"a\"\n{rest}")
+    }
+
+    /// The load error of [`mask_project`] with `rest`.
+    fn mask_err(rest: &str) -> String {
+        let (_d, path) = temp_project(&mask_project(rest));
+        match load(&path) {
+            Ok(_) => panic!("loaded: {rest}"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    /// The 1-based line of the `nth` (0-based) line of `text` that starts with `start`.
+    fn line_of(text: &str, start: &str, nth: usize) -> usize {
+        text.lines()
+            .enumerate()
+            .filter(|(_, l)| l.starts_with(start))
+            .nth(nth)
+            .map(|(i, _)| i + 1)
+            .unwrap_or_else(|| panic!("no line {start} #{nth}"))
+    }
+
+    /// A `[[masks]]` table with `polygons` written as given.
+    fn mask_table(id: &str, polygons: &str) -> String {
+        format!("[[masks]]\nid = \"{id}\"\npolygons = {polygons}\n")
+    }
+
+    /// A ring as TOML text.
+    fn ring_text(points: &[[f64; 2]]) -> String {
+        let pts: Vec<String> = points.iter().map(|[x, y]| format!("[{x}, {y}]")).collect();
+        format!("[{}]", pts.join(", "))
+    }
+
+    /// `n` points on a circle around (`cx`, `cy`).
+    fn circle(cx: f64, cy: f64, r: f64, n: usize) -> Vec<[f64; 2]> {
+        (0..n)
+            .map(|k| {
+                let a = std::f64::consts::TAU * k as f64 / n as f64;
+                [cx + r * a.cos(), cy + r * a.sin()]
+            })
+            .collect()
+    }
+
+    const WINDOW: &str = "[[[[0, 0], [100, 0], [100, 100], [0, 100]], \
+                          [[10.0, 10.0], [30.0, 10.0], [30.0, 30.0], [10.0, 30.0]], \
+                          [[20.0, 20.0], [40.0, 20.0], [40.0, 40.0], [20.0, 40.0]]]]";
+
+    #[test]
+    fn mask_round_trips_in_the_project_file() {
+        // The committed examples write as before: no mask keys, and a second save gives the same bytes.
+        let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        for name in [
+            "luebeck-competition-layouts",
+            "luebeck-competition-courses",
+            "berlin-viktoriapark-training",
+        ] {
+            let p = load(&examples.join(name).join(FILE_NAME)).unwrap().project;
+            assert!(p.masks.is_empty());
+            let text = toml::to_string_pretty(&p).unwrap();
+            assert!(!text.contains("mask"), "{name}: {text}");
+            let again: Project = toml::from_str(&text).unwrap();
+            assert_eq!(again, p, "{name}");
+            assert_eq!(toml::to_string_pretty(&again).unwrap(), text, "{name}");
+        }
+        // The fourth example, luebeck-scales, has no project file: `render` prints it.
+        assert!(!examples.join("luebeck-scales").join(FILE_NAME).exists());
+        // A project with a mask and an assignment that names it: the coordinates stay as written (y up), and
+        // what is written reads back to the same project and writes the same text again.
+        let body = mask_project(&format!(
+            "{}[[assignments]]\ncourse = \"A\"\nlayout = \"a\"\nmask = \"window 3-5\"\n\
+             [[assignments]]\ncourse = \"B\"\nlayout = \"a\"\n",
+            mask_table("window 3-5", WINDOW)
+        ));
+        let (_d, path) = temp_project(&body);
+        let p = load(&path).unwrap().project;
+        assert_eq!(p.masks.len(), 1);
+        assert_eq!(p.masks[0].polygons[0].outline[2], [100.0, 100.0]);
+        assert_eq!(p.masks[0].polygons[0].holes.len(), 2);
+        assert_eq!(p.assignments[0].mask.as_deref(), Some("window 3-5"));
+        assert_eq!(p.assignments[1].mask, None);
+        let text = toml::to_string_pretty(&p).unwrap();
+        assert!(text.contains("[[masks]]") && text.contains("mask = \"window 3-5\""));
+        assert_eq!(text.matches("mask =").count(), 1, "{text}");
+        let again: Project = toml::from_str(&text).unwrap();
+        assert_eq!(again, p);
+        assert_eq!(toml::to_string_pretty(&again).unwrap(), text);
+        // The masks stand between the layouts and the assignments, as in the spec.
+        let at = |k: &str| text.find(k).unwrap();
+        assert!(at("[[layouts]]") < at("[[masks]]") && at("[[masks]]") < at("[[assignments]]"));
+        // And through `save_new` (`full_project` has a mask).
+        let (_d, path) = temp_project("");
+        std::fs::remove_file(&path).unwrap();
+        save_new(&path, &full_project()).unwrap();
+        assert_eq!(load(&path).unwrap().project, full_project());
+        // A polygon without rings does not read.
+        let msg = mask_err(&mask_table("w", "[[]]"));
+        assert!(
+            msg.contains("outline ring") && msg.contains(":13:"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn unknown_mask_in_assignment_refused() {
+        let rest = format!(
+            "{}[[assignments]]\ncourse = \"A\"\nlayout = \"a\"\nmask = \"nope\"\n",
+            mask_table("w", WINDOW)
+        );
+        let msg = mask_err(&rest);
+        let line = line_of(&mask_project(&rest), "mask = ", 0);
+        assert!(
+            msg.contains(&format!(
+                "{FILE_NAME}:{line}:8: field `assignments[0].mask`"
+            )) && msg.contains("`nope`")
+                && msg.contains("available: w"),
+            "{msg}"
+        );
+        // Without masks the message says so.
+        let msg = mask_err("[[assignments]]\ncourse = \"A\"\nlayout = \"a\"\nmask = \"w\"\n");
+        assert!(
+            msg.contains("no mask") && msg.contains("whiteout-"),
+            "{msg}"
+        );
+        // `whiteout-<n>` names a white-out of the course file, which is checked when the course file is read.
+        let (_d, path) = temp_project(&mask_project(
+            "[[assignments]]\ncourse = \"A\"\nlayout = \"a\"\nmask = \"whiteout-2\"\n",
+        ));
+        load(&path).unwrap();
+        for bad in ["whiteout-0", "whiteout-02", "whiteout-", "whiteout-x"] {
+            let msg = mask_err(&format!(
+                "[[assignments]]\ncourse = \"A\"\nlayout = \"a\"\nmask = \"{bad}\"\n"
+            ));
+            assert!(msg.contains("assignments[0].mask"), "{bad}: {msg}");
+        }
+    }
+
+    #[test]
+    fn hole_outside_outline_refused() {
+        // A hole across the outline's edge, a hole wholly outside, a hole that touches the outline.
+        for (hole, case) in [
+            ("[[90, 10], [120, 10], [120, 30], [90, 30]]", "across"),
+            ("[[200, 10], [220, 10], [220, 30], [200, 30]]", "outside"),
+            ("[[0, 10], [20, 10], [20, 30], [0, 30]]", "touching"),
+        ] {
+            let rest = mask_table(
+                "w",
+                &format!(
+                    "[[[[0, 0], [100, 0], [100, 100], [0, 100]], \
+                     [[40, 40], [50, 40], [50, 50]], {hole}]]"
+                ),
+            );
+            let msg = mask_err(&rest);
+            let line = line_of(&mask_project(&rest), "polygons", 0);
+            assert!(
+                msg.contains(&format!("{FILE_NAME}:{line}:"))
+                    && msg.contains("field `masks[0].polygons[0][2]`")
+                    && msg.contains("inside the outline"),
+                "{case}: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn overlapping_polygons_refused() {
+        let poly = |x: f64, y: f64, s: f64| {
+            format!(
+                "[{}]",
+                ring_text(&[[x, y], [x + s, y], [x + s, y + s], [x, y + s]])
+            )
+        };
+        let window =
+            "[[[0, 0], [100, 0], [100, 100], [0, 100]], [[10, 10], [60, 10], [60, 60], [10, 60]]]";
+        for (second, case) in [
+            (poly(50.0, 50.0, 100.0), "overlapping"),
+            (poly(100.0, 0.0, 50.0), "sharing an edge"),
+            (poly(70.0, 70.0, 10.0), "inside the outline"),
+            (poly(-10.0, -10.0, 200.0), "around the first"),
+            (poly(20.0, 20.0, 10.0), "inside a window"),
+        ] {
+            let rest = mask_table("w", &format!("[{window}, {second}]"));
+            let msg = mask_err(&rest);
+            let line = line_of(&mask_project(&rest), "polygons", 0);
+            assert!(
+                msg.contains(&format!("{FILE_NAME}:{line}:"))
+                    && msg.contains("field `masks[0].polygons[1]`")
+                    && msg.contains("polygon 0"),
+                "{case}: {msg}"
+            );
+        }
+        // Apart, they are fine.
+        let (_d, path) = temp_project(&mask_project(&mask_table(
+            "w",
+            &format!("[{window}, {}]", poly(150.0, 0.0, 10.0)),
+        )));
+        assert_eq!(load(&path).unwrap().project.masks[0].polygons.len(), 2);
+    }
+
+    #[test]
+    fn self_intersecting_ring_refused() {
+        // A bow tie, a ring that turns back on itself, one that touches itself at a point; as outline and as hole.
+        for (ring, case) in [
+            ("[[10, 10], [40, 40], [40, 10], [10, 40]]", "bow tie"),
+            ("[[10, 10], [40, 10], [25, 10], [25, 40]]", "turning back"),
+            (
+                "[[10, 10], [30, 10], [20, 20], [30, 30], [10, 30], [20, 20]]",
+                "touching",
+            ),
+        ] {
+            for (polygons, field) in [
+                (format!("[[{ring}]]"), "masks[0].polygons[0][0]"),
+                (
+                    format!("[[[[0, 0], [100, 0], [100, 100], [0, 100]], {ring}]]"),
+                    "masks[0].polygons[0][1]",
+                ),
+            ] {
+                let rest = mask_table("w", &polygons);
+                let msg = mask_err(&rest);
+                let line = line_of(&mask_project(&rest), "polygons", 0);
+                assert!(
+                    msg.contains(&format!("{FILE_NAME}:{line}:"))
+                        && msg.contains(&format!("field `{field}["))
+                        && msg.contains("crosses or touches itself"),
+                    "{case}: {msg}"
+                );
+            }
+        }
+        // Three points on one line enclose nothing.
+        let msg = mask_err(&mask_table("w", "[[[[0, 0], [10, 0], [20, 0]]]]"));
+        assert!(
+            msg.contains("polygons[0][0]") && msg.contains("one line"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn limits_enforced() {
+        let triangle = |x: f64| format!("[{}]", ring_text(&[[x, 0.0], [x + 1.0, 0.0], [x, 1.0]]));
+        let tables = |n: usize| -> String {
+            (0..n)
+                .map(|i| mask_table(&format!("m{i}"), &format!("[{}]", triangle(0.0))))
+                .collect()
+        };
+        // (masks, field, words)
+        let polygons_257: Vec<String> = (0..257).map(|i| triangle(2.0 * i as f64)).collect();
+        let big = format!("[[{}]]", ring_text(&circle(0.0, 0.0, 100.0, 4097)));
+        let total: String = (0..25)
+            .map(|i| {
+                mask_table(
+                    &format!("m{i}"),
+                    &format!(
+                        "[[{}]]",
+                        ring_text(&circle(1000.0 * i as f64, 0.0, 100.0, 4001))
+                    ),
+                )
+            })
+            .collect();
+        let cases: Vec<(String, &str, &str)> = vec![
+            (tables(65), "masks[64]", "at most 64"),
+            (
+                mask_table("w", &format!("[{}]", polygons_257.join(", "))),
+                "masks[0].polygons[256]",
+                "at most 256",
+            ),
+            (
+                mask_table("w", &big),
+                "masks[0].polygons[0][0]",
+                "at most 4096",
+            ),
+            (total, "masks[24].polygons", "100000"),
+            (
+                mask_table("w", "[[[[0, 0], [10, 0], [0, 0], [10, 0]]]]"),
+                "masks[0].polygons[0][0]",
+                "3 different points",
+            ),
+            (
+                mask_table("w", "[]"),
+                "masks[0].polygons",
+                "at least one polygon",
+            ),
+            (
+                mask_table("w", "[[[[0, 0], [10, 0], [2000000.5, 10]]]]"),
+                "masks[0].polygons[0][0][2][0]",
+                "2 000 000",
+            ),
+            (
+                mask_table(&"x".repeat(65), &format!("[{}]", triangle(0.0))),
+                "masks[0].id",
+                "64",
+            ),
+            (
+                mask_table("", &format!("[{}]", triangle(0.0))),
+                "masks[0].id",
+                "empty",
+            ),
+            (
+                mask_table("a\\u0007b", &format!("[{}]", triangle(0.0))),
+                "masks[0].id",
+                "control",
+            ),
+        ];
+        for (rest, field, words) in cases {
+            let msg = mask_err(&rest);
+            assert!(
+                msg.contains(&format!("field `{field}`"))
+                    && msg.contains(words)
+                    && msg.contains(&format!("{FILE_NAME}:")),
+                "{field}: {msg}"
+            );
+            // The error names a line.
+            let located = msg.split(FILE_NAME).nth(1).unwrap_or("");
+            assert!(located.starts_with(':'), "{field}: {msg}");
+        }
+        // A duplicate id, on the second one's line.
+        let rest = format!("{}{}", mask_table("w", WINDOW), mask_table("w", WINDOW));
+        let (_d, path) = temp_project(&mask_project(&rest));
+        let err = load(&path).unwrap_err();
+        assert!(matches!(err, ProjectError::DuplicateId { .. }), "{err}");
+        let line = line_of(&mask_project(&rest), "id = \"w\"", 1);
+        assert!(
+            err.to_string()
+                .contains(&format!("{FILE_NAME}:{line}:6: field `masks[1].id`")),
+            "{err}"
+        );
+        // The limits themselves are fine: 64 masks, 256 polygons, 4096 points, 64 characters.
+        let (_d, path) = temp_project(&mask_project(&tables(64)));
+        load(&path).unwrap();
+        let polygons_256 = polygons_257[..256].join(", ");
+        let (_d, path) = temp_project(&mask_project(&format!(
+            "{}{}",
+            mask_table(&"x".repeat(64), &format!("[{polygons_256}]")),
+            mask_table(
+                "big",
+                &format!("[[{}]]", ring_text(&circle(1000.0, 0.0, 100.0, 4096)))
+            )
+        )));
+        load(&path).unwrap();
+        // Exactly 100 000 points in all, and coordinates of exactly ±2 000 000 mm.
+        let total: String = (0..25)
+            .map(|i| {
+                mask_table(
+                    &format!("m{i}"),
+                    &format!(
+                        "[[{}]]",
+                        ring_text(&circle(1000.0 * i as f64, 0.0, 100.0, 4000))
+                    ),
+                )
+            })
+            .collect();
+        let (_d, path) = temp_project(&mask_project(&total));
+        let p = load(&path).unwrap().project;
+        let points: usize = p.masks.iter().map(Mask::point_count).sum();
+        assert_eq!(points, crate::mask::MAX_TOTAL_POINTS);
+        let (_d, path) = temp_project(&mask_project(&mask_table(
+            "edge",
+            "[[[[-2000000, -2000000], [2000000, -2000000], [2000000, 2000000], [-2000000, 2000000]]]]",
+        )));
+        load(&path).unwrap();
+    }
+
+    #[test]
+    fn non_finite_point_refused() {
+        for (value, axis) in [("nan", 0), ("inf", 1), ("-inf", 0)] {
+            let point = if axis == 0 {
+                format!("[{value}, 10]")
+            } else {
+                format!("[10, {value}]")
+            };
+            let rest = mask_table(
+                "w",
+                &format!(
+                    "[[[[0, 0], [100, 0], [100, 100], [0, 100]], [[10, 10], [20, 10], {point}]]]"
+                ),
+            );
+            let msg = mask_err(&rest);
+            let text = mask_project(&rest);
+            let line = line_of(&text, "polygons", 0);
+            let column = text.lines().nth(line - 1).unwrap().find(value).unwrap() + 1;
+            assert!(
+                msg.contains(&format!(
+                    "{FILE_NAME}:{line}:{column}: field `masks[0].polygons[0][1][2][{axis}]`"
+                )) && msg.contains("finite"),
+                "{value}: {msg}"
+            );
+        }
     }
 
     #[test]
@@ -2633,6 +3430,181 @@ mod tests {
         assert!(restore_permissions(&path, wanted, &swap).is_err());
         let mode = std::fs::metadata(&other).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    /// A mask with one window; the points need more than one decimal to read back exactly.
+    fn small_mask(id: &str) -> Mask {
+        Mask {
+            id: id.into(),
+            polygons: vec![MaskPolygon {
+                outline: vec![
+                    [-100.0, -100.0],
+                    [100.0, -100.0],
+                    [100.0, 100.0],
+                    [-100.0, 100.0],
+                ],
+                holes: vec![vec![
+                    [0.0, 0.0],
+                    [10.125, 0.0],
+                    [10.125, 10.333],
+                    [0.1, 10.0],
+                    [-3.7, 5.0],
+                ]],
+            }],
+        }
+    }
+
+    const ASSIGNED: &str = "# layouts\n[[layouts]]\nid = \"a4\"\n\n[[assignments]] # by hand\ncourse = \"A\"\n\
+                            layout = \"a4\"\n\n[[numbers]]\ncontrol = \"31\"\ncourse = \"A\"\ndirection = 10.0\n# end";
+
+    #[test]
+    fn append_mask_keeps_the_text_and_assigns() {
+        let old = format!("{HEAD}{ASSIGNED}");
+        let (_dir, path) = temp_project(&old);
+        // The existing assignment of A gets the mask in its own table; the rest stays as it was.
+        let lp = append_mask(
+            &path,
+            &small_mask("w"),
+            Some(("A", "other")),
+            "made by\na test",
+        )
+        .unwrap();
+        let new = std::fs::read_to_string(&path).unwrap();
+        let prefix = old.replacen(
+            "[[assignments]] # by hand\n",
+            "[[assignments]] # by hand\nmask = \"w\"\n",
+            1,
+        );
+        assert!(new.starts_with(&prefix), "{new}");
+        assert!(
+            new.contains("# end\n\n# made by\n# a test\n[[masks]]\nid = \"w\"\n"),
+            "{new}"
+        );
+        assert_eq!(lp.project.masks, [small_mask("w")]);
+        let a = &lp.project.assignments;
+        assert_eq!(a.len(), 1);
+        assert_eq!(
+            (a[0].layout.as_str(), a[0].mask.as_deref()),
+            ("a4", Some("w"))
+        );
+        // A course without an assignment gets a new table after the mask.
+        let lp = append_mask(&path, &small_mask("v"), Some(("B", "a4")), "").unwrap();
+        let newer = std::fs::read_to_string(&path).unwrap();
+        assert!(newer.starts_with(&new), "{newer}");
+        assert_eq!(
+            lp.project.assignments[1],
+            Assignment {
+                course: "B".into(),
+                layout: "a4".into(),
+                mask: Some("v".into()),
+            }
+        );
+        // Without an assignment only the mask is added.
+        let lp = append_mask(&path, &small_mask("u"), None, "").unwrap();
+        assert_eq!(lp.project.masks.len(), 3);
+        assert_eq!(lp.project.assignments.len(), 2);
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with(&newer));
+    }
+
+    #[test]
+    fn append_mask_refuses_before_writing() {
+        let old = format!("{HEAD}{ASSIGNED}");
+        let (_dir, path) = temp_project(&old);
+        append_mask(&path, &small_mask("w"), Some(("A", "a4")), "").unwrap();
+        let done = std::fs::read_to_string(&path).unwrap();
+        // The id once only.
+        let err = append_mask(&path, &small_mask("w"), None, "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::DuplicateId { ref id, .. } if id == "w"),
+            "{err}"
+        );
+        // A second mask for A.
+        let err = append_mask(&path, &small_mask("v"), Some(("A", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::CourseHasMask { ref mask, .. } if mask == "w"),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
+        // An assignment written inline cannot take the line.
+        let inline = format!(
+            "assignments = [{{ course = \"A\", layout = \"a4\" }}]\n{HEAD}[[layouts]]\nid = \"a4\"\n"
+        );
+        std::fs::write(&path, &inline).unwrap();
+        let err = append_mask(&path, &small_mask("w"), Some(("A", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { .. }),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+        // A course without an assignment next to inline assignments: refused the same way, not as a load failure.
+        let err = append_mask(&path, &small_mask("w"), Some(("B", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { new: true, ref course, .. } if course == "B"),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), inline);
+        // An empty inline array as well.
+        let empty = format!("assignments = []\n{HEAD}[[layouts]]\nid = \"a4\"\n");
+        std::fs::write(&path, &empty).unwrap();
+        let err = append_mask(&path, &small_mask("w"), Some(("B", "a4")), "").unwrap_err();
+        assert!(
+            matches!(err, ProjectError::AssignmentNotEditable { new: true, .. }),
+            "{err}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), empty);
+    }
+
+    #[test]
+    fn append_mask_restores_the_file_when_it_no_longer_loads() {
+        // An inline `masks` array makes the appended table a duplicate key.
+        let old = format!("masks = []\n{HEAD}{WITH_LAYOUT}");
+        let (_dir, path) = temp_project(&old);
+        let err = append_mask(&path, &small_mask("w"), None, "").unwrap_err();
+        assert!(matches!(err, ProjectError::Parse { .. }), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+        // A mask that fails the check is refused with the field and the file put back.
+        let (_dir, path) = temp_project(&format!("{HEAD}{WITH_LAYOUT}"));
+        let mut outside = small_mask("w");
+        outside.polygons[0].holes[0][0] = [500.0, 0.0];
+        let err = append_mask(&path, &outside, None, "").unwrap_err();
+        assert!(err.to_string().contains("masks[0].polygons[0][1]"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            format!("{HEAD}{WITH_LAYOUT}")
+        );
+    }
+
+    #[test]
+    fn project_file_over_the_size_cap_is_refused_before_parsing() {
+        // A valid head and a long comment: over the cap by one byte, refused with the limit named.
+        let mut text = format!("{HEAD}{WITH_LAYOUT}");
+        let pad = MAX_PROJECT_FILE_BYTES as usize + 1 - text.len();
+        text.push('#');
+        text.push_str(&"x".repeat(pad - 2));
+        text.push('\n');
+        assert_eq!(text.len() as u64, MAX_PROJECT_FILE_BYTES + 1);
+        let (_dir, path) = temp_project(&text);
+        let err = load(&path).unwrap_err();
+        assert!(
+            matches!(err, ProjectError::TooLarge { bytes, .. } if bytes == MAX_PROJECT_FILE_BYTES + 1),
+            "{err}"
+        );
+        assert!(err.to_string().contains("16777216"), "{err}");
+        // One byte shorter loads.
+        text.truncate(text.len() - 2);
+        text.push('\n');
+        std::fs::write(&path, &text).unwrap();
+        assert!(load(&path).is_ok());
+    }
+
+    #[test]
+    fn append_mask_follows_crlf() {
+        let text = format!("{HEAD}{ASSIGNED}\n").replace('\n', "\r\n");
+        let (_dir, path) = temp_project(&text);
+        append_mask(&path, &small_mask("w"), Some(("A", "a4")), "c").unwrap();
+        let new = std::fs::read(&path).unwrap();
+        let lone = new.windows(2).any(|w| w[1] == b'\n' && w[0] != b'\r');
+        assert!(!lone, "{:?}", String::from_utf8_lossy(&new));
     }
 
     #[test]

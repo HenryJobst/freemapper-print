@@ -2,7 +2,7 @@
 
 [Deutsch](de.md) · [README](../../README.en.md)
 
-This manual grows with the program. Chapters 5 to 10 are written. In the end it should lead step by
+This manual grows with the program. Chapters 5 to 11 are written. In the end it should lead step by
 step from the finished OOM map and the Purple Pen file to the printed sheets, without needing experience with
 the command line.
 
@@ -18,7 +18,7 @@ Chapters:
 8. [Courses](#8-courses)
 9. [Printing at the right scale at home and in a copy shop](#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop)
 10. [Messages and what to do](#10-messages-and-what-to-do)
-11. Masks for window and corridor orienteering (planned, M4)
+11. [Masks for window and corridor orienteering](#11-masks-for-window-and-corridor-orienteering)
 
 The program speaks German or English. It takes the language from `--lang de` or `--lang en`, else from the
 environment variables `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The messages quoted in this manual
@@ -241,6 +241,10 @@ whole map frame at the ground spacing of the map kind: 120 m for sprint maps (30
 walls and fences like drawn ones. They still run without gaps; the mapper sets those in OOM. A layout that hides
 the map part holding the map's own north lines with `hide_parts` gets no added ones.
 
+On a sheet with a mask (chapter 11) the north lines of the map, drawn or added with the 601 symbol, are hidden
+with the rest of the map. If the symbol set has no 601 symbol, the program draws plain black lines on the sheet
+layer instead, and those stay visible across the masked white paper.
+
 ### Hiding map parts
 
 `hide_parts = ["peripheral information"]` leaves out the map part of that name. Upper and lower case count. A
@@ -428,9 +432,12 @@ Not everything in a file is printed yet:
 - A course with variations (forks and loops in Purple Pen) is left out, and so is a course with alternative
   controls at one stop. `check` says which. Purple Pen's IOF XML export writes each variation as a course of its
   own, which prints as a sheet of its own.
-- White-out areas are read, but not printed. They wait for the masks of a later version (M4). `check` reports
-  them with a note, so a missing white-out never goes unnoticed.
 - An element the program does not know is skipped, with a note.
+
+White-out areas print as masks of the courses they belong to, each on its own, also where they overlap (ADR 0045).
+The map is missing there; the course overprint, the description box and the footer stay. When a course's
+assignment names a mask of its own, only that one applies. `check` lists the white-out areas for information.
+Chapter 11 describes masks for window and corridor orienteering.
 
 ### Linking the file: the live link
 
@@ -544,6 +551,8 @@ sheet is the layout the course is assigned to, with these changes:
   controls). A placeholder stays empty, with an Info line, if the file has no value for the course or if the sheet
   has no course. For example `"{event} · Course {course}"` names the course in the title block.
   `init --courses` writes `{event} · {course}`.
+- If the course's assignment names a mask, or the course has white-out areas from Purple Pen, the map is missing
+  in the masked area. The overprint and the sheet elements stay (chapter 11).
 
 The program also checks that no sheet element hides part of the course. If a title block, logo, text, scale check
 bar, footer line or the description box covers a control, the start or the finish, the check warns and names the
@@ -732,7 +741,11 @@ them below the map. If the box covers part of the map, `render` says so; a proje
 puts the footer below the map. First the program writes a line with the paper, the print scale and the factors,
 then come notes and a reminder to print at actual size.
 
-A course sheet comes from `export` too (chapter 8). It has the same scale rules as a layout sheet. In a PDF from
+A course sheet comes from `export` too (chapter 8). It has the same scale rules as a layout sheet. A course sheet
+shows the map in the map frame, with the course overprint in purple over it, the description box and the sheet
+elements. If the course has a mask for window or corridor orienteering (chapter 11), the paper stays white in the
+masked area; the program still prints the overprint, the description box, the title, the scale check bar and the
+footer in full. Printing works the same. In a PDF from
 `--single-file`, each page has the paper of its own layout, and the print dialog must print every page at actual
 size.
 
@@ -852,7 +865,8 @@ a line that starts with "Info:" does not.
 Errors in the project file stop `check` and `export`. The message names file, line and column and the key, for
 example ``freemapper-print.toml:24:1: field `layouts[1].elements[0].width_mm`: a logo needs a `width_mm` ``. For a
 missing key the line is that of the table it belongs in. These messages are in English for now, except the one
-about `hide_parts = ["base"]` (see "The base area of sprint maps" in chapter 6), which comes in German too.
+about `hide_parts = ["base"]` (see "The base area of sprint maps" in chapter 6), which comes in German too. The rules for masks and their
+messages are in chapter 11.
 
 ### Notes about courses
 
@@ -873,7 +887,7 @@ the exit code.
 | "Info: control … only latitude and longitude. The map's georeferencing placed them." | The course file has no map position for these controls. Check one of them on the sheet. |
 | "Info: the course file has no control descriptions." | The file is IOF XML, or a `.ppen` without descriptions. |
 | "the course file contains the element …, which this version does not read. It is left out." | The element is missing on the sheets. Look at what it is in your course-setting program. |
-| "the course file has white-out areas. This version leaves them out; later versions turn them into masks." | Purple Pen's white-out is read but not printed yet. It waits for the masks (M4). Until then, sheets show the map under the white-out. |
+| "Info: the course file has white-out areas. Each one hides the map on the courses it belongs to, unless a course's assignment names a mask of its own." | For information only. Purple Pen's white-out hides the map on the courses it belongs to in Purple Pen. Check on the sheets that this is what you want; a mask of its own in the assignment replaces it for that course. |
 | "course … has forks or loops (Purple Pen variations) … the course is left out" | The course is missing on purpose. Export the courses from Purple Pen as IOF XML, which writes each variation as a course of its own. |
 | "course … offers alternative controls at one stop … the course is left out" | This version cannot print them. Split the course in the course-setting program. |
 | "Info: courses … are the variants of fork …. Each prints as a sheet of its own." | For information only. |
@@ -883,6 +897,9 @@ the exit code.
 | "the project file assigns course … to a layout, but the course file has no such course. The assignment stays …" | The course was renamed or deleted in the course file. Fix the name in the project file, or delete the entry. |
 | "the project file corrects the number of control … for …, but the course file has no such control there. The correction stays …" | The control was renumbered or removed, or it is not in that course. Fix the code, or delete the entry. |
 | "the course file has moved the number of control … since the project file corrected it. Check whether the correction still fits." | Someone moved the number in the course-setting program after you made the correction. Look at the sheet. If the correction still fits, the note stays until you delete the entry and write it again with `numbers accept --direction … --gap …`. If it does not fit, delete the entry. |
+| "Info: no course uses the mask … Name it in an assignment …" | A `[[masks]]` entry applies to no course. No assignment names it with `mask`, and no white-out area of the course file has its id. Add `mask = "…"` to the course's assignment, or delete the entry. The note comes once per run. |
+| "the project file gives course … the mask …, but the course file has no such white-out area. …" | The assignment names a white-out area from Purple Pen that the course file no longer has. The course prints without a mask. Fix the number, name a mask of your own, or delete the `mask` line. |
+| "Info: course … prints with the white-out area whiteout-… of the course file, which lies around …" and "Info: on the sheet of course …, the [[masks]] table with the id whiteout-… takes the place of the white-out area …" | The project file names a white-out area by its number, and the number counts the areas in course file order. Look in OOM whether the area around that point is the one you mean. After a white-out area was deleted in Purple Pen, the number can point at another one. |
 | "the course file has no course to export, so no PDF was written." | The file has no course, or every course was left out. See the notes above. |
 
 Notes about one course sheet:
@@ -898,6 +915,14 @@ Notes about one course sheet:
 | "the element … covers control …. Move the element with its anchor so that runners can see the course." | A title block, logo, text, footer line or the box sits on a control, the start or the finish. Move it. |
 | "the descriptions of course … use symbol …, which the course file's description standard does not have. Its cell … stays empty." | The symbol id does not exist in the standard of the file (2004, 2018 or 2024). Pick another symbol in Purple Pen. |
 | "the course overprint of course … asks for more hatch lines, dashes or crosses than one sheet draws, so some are left out." | A special object is very large or the file is damaged. Make the area smaller, or split it. |
+| "course … has … masks, and a sheet applies at most 1000. The others are left out …" | Usually the course file has very many white-out areas. Merge them into a few larger ones in Purple Pen, or give the course a mask of its own in its assignment. |
+| "on the sheet of course …, controls … lie where the mask hides the map …" | The centre of these controls (the start, the finish or a map exchange too) lies in a masked area inside the map frame. Runners would see no map around the circle. On a window course a window is usually missing; add it to the mask. Also check that the assignment names the right mask. |
+| "on the sheet of course …, a marked route lies wholly or in part where the mask hides the map …" | The note counts by kind what of the overprint lies in a masked area: marked routes (taped legs between controls too), crossing points, forbidden routes, out-of-bounds boundaries, out-of-bounds areas, dangerous areas and texts from the course file. Everything is printed, but with no map under it. Widen the window or add one. If it is meant, say an out-of-bounds area at the edge, you can leave the note. Plain legs and control numbers do not count, because on a window course they cross masked areas anyway. |
+| "the mask … hides the whole map frame of course …, so the sheet shows no map at all." | No window of the mask lies in the map frame. Most often the points are written with y the wrong way. Masks take map mm with y pointing up, as OOM's status bar shows them, not as the `.omap` file stores them. |
+| "on the sheet of course …, the element … covers part of the windows of the mask …" | A sheet element, most often the description box, or the footer lies over a window inside the map frame. On a window course the windows are the only map the runner has, so the element takes part of it away. Move the element by its anchor, or place the window elsewhere, with another radius or around another control. |
+| "Info: the mask … hides nothing in the map frame of course …" | For information only. The mask lies wholly beside the frame, or the frame lies wholly in one window. If that is not what you meant, check the points as for the note above. |
+| "Info: in the map frame of course …, the … white-out areas … of the course file hide nothing." | The same for white-out areas from Purple Pen, in one line per course with their count and ids (the first ten, the rest counted). A white-out area for all courses often lies beside the frame of most of them. |
+| "on the sheet of course … the check against the mask reached its limit …" | `check` tests at most 200 000 points and 50 million steps per sheet. A course with very long marked routes or thousands of white-out areas gets past that, and what comes after is not checked. Look at the sheet. |
 | "Info: the text … uses …, but the course file has no value for course …, so it prints empty." | The file has no length or climb for the course. Enter them in the course-setting program, or leave the placeholder out of the text. |
 | "Info: the text … uses …, which is only filled on course sheets. On this sheet it stays empty." | A shared text with `{course}` or the like prints on a sheet without course. Hide the text on that layout with `hide_shared`. |
 | "on the sheet of course … the number of control … covers …. It is printed there all the same. …" | The number lies on the overprint, a sheet element, the edge of the frame or a point or line symbol of the map. The note proposes a free direction and gap. Take it with `numbers accept` (see chapter 8). |
@@ -941,3 +966,247 @@ Errors of `export` and `numbers accept` about names:
 - "--direction needs a finite number, and --gap must be above 0 and at most … mm".
 - "the project … does not load with the new correction, so it was left as it was": the program restored the file.
   Report this, as it should not happen.
+
+## 11. Masks for window and corridor orienteering
+
+In window orienteering the sheet shows the map only in small windows around the controls, with white paper
+between them. Runners cross the gaps by compass and a feel for distance and read the map again only in the next
+window.
+
+In corridor orienteering the sheet shows the map only in a narrow band, and every control lies in it. Whoever
+leaves the corridor has no map left, so the direction has to be held exactly.
+
+The project file has masks (`[[masks]]`) for both. A mask hides the map in an area. It belongs to a course's
+assignment and applies only to that course's sheet. Never masked are the course overprint (start, controls, legs,
+numbers, finish and the special objects), the description box, the title block, the scale check bar, other sheet
+elements, the frame line and the footer. The program always prints the legs between the windows too, because runners
+need the direction, and leaving the line out gains the training nothing.
+
+Two examples go through everything with each command:
+[examples/luebeck-training-window](../../examples/luebeck-training-window/README.en.md) for window orienteering
+and [examples/luebeck-training-corridor](../../examples/luebeck-training-corridor/README.en.md) for corridor
+orienteering.
+
+### The mask in the project file
+
+```toml
+[[assignments]]
+course = "Fenster"
+layout = "a4-4000"
+mask = "halbe-karte"
+
+[[masks]]
+id = "halbe-karte"
+polygons = [
+    [
+        [[0.0, -110.0], [150.0, -110.0], [150.0, 110.0], [0.0, 110.0]],
+        [[40.0, -75.0], [60.0, -75.0], [60.0, -55.0], [40.0, -55.0]],
+        [[70.0, 0.0], [90.0, 0.0], [90.0, 25.0], [70.0, 25.0]],
+    ],
+]
+```
+
+On the sheet of course „Fenster“ from luebeck-training-window this mask hides the eastern half of the map and
+leaves two square windows open in it.
+
+- `id` names the mask: 1 to 64 characters, no control characters, used once in the file.
+- `polygons` is a list of polygons. Each polygon is a list of rings, each ring a list of points `[x, y]`. The first
+  ring is the outline, every further ring a hole, that is a window. You need not repeat the first point at the end.
+  Whether a ring runs clockwise or counter-clockwise does not matter.
+- What lies in the outline and in none of its holes is masked. Outside every outline and in every hole the sheet
+  shows the map. Holes may overlap; they then merge into one window.
+- The points are millimetres on the map at map scale with the y axis up, exactly as OOM shows them in its status
+  bar when the coordinate display is set to map coordinates. That is the same rule as for `centre_map_mm`
+  (chapter 6). The `.omap` file stores y pointing down. Points copied from there give a mirrored mask, and `check`
+  then usually reports that the mask hides the whole map frame, or nothing.
+- In `[[assignments]]`, `mask` names the mask the course prints with. A course has at most one mask, and several
+  courses may share one. A course without `mask` gets the white-out areas of its course file, see below.
+
+`check` reports a mask that no course uses, once, as information.
+
+### Windows around the controls: `masks window`
+
+The program writes the usual window mask itself: a round window around each control of a course.
+
+```sh
+freemapper-print masks window stadtsprint --course A --radius 15 --assign
+```
+
+| Option | Meaning |
+|---|---|
+| `--course <NAME>` | the course, as in the course file. Its controls get the windows, and its layout gives the print scale. Required. |
+| `--controls <LIST\|RANGE>` | which controls get a window: codes separated by commas (`31,32,35`) or the control numbers on the sheet as a range (`3-6`). The range does not count the start and the finish. Default: every control. The start and the finish get their window either way. |
+| `--radius <MM>` | radius of every window, 1 to 100 mm. Default: 15. |
+| `--radius-for <CODE=MM>` | a radius of its own for one control, such as `35=20`. The start usually has the code `STA1`, the finish `FIN1`. Can be given more than once, only for controls that get a window. |
+| `--no-start` | the start gets no window |
+| `--no-finish` | the finish gets no window |
+| `--id <ID>` | id of the new mask. Default: `window-<course>`, with a number added (`-2`, `-3` …) when that is taken. |
+| `--assign` | the course prints with the new mask: its assignment gets `mask`, or a new assignment is added. |
+
+The radius counts in millimetres on paper, at the print scale of the layout the course prints on. A window
+therefore looks the same size at every scale and shows less ground at a larger scale: 15 mm are 60 m at 1:4000 and
+45 m at 1:3000. The program turns the radius into map mm itself, and the mask keeps the map mm. If you later
+change the print scale of the layout, or give the mask to a course on a layout with another scale, the windows
+no longer have the radius you asked for. Then delete the mask and run the command again. The comment above the
+table names the scale the mask was made for.
+
+The start and the finish get a window too, so that runners can orient themselves at the start. `--no-start` and
+`--no-finish` leave them out; the command then says so, and `check` names them as lying under the mask. A window
+is a polygon with
+at least 48 corners that strays at most 0.05 mm from the circle. Overlapping windows merge. The outline is a
+rectangle 100 mm outside the map, so no part of the map shows past it.
+
+The output from luebeck-training-window:
+
+```
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
+Posten 34 hat ein Fenster mit 20 mm Radius.
+Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
+Mit check sehen Sie das Ergebnis.
+```
+
+In English the first line reads "Added the mask "window-Fenster" to ./freemapper-print.toml: 10 windows of 15 mm
+radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 and 37 and the finish of course
+"Fenster"."
+
+### A corridor along a line: `masks corridor`
+
+There is no automatic corridor. No rule book says where a corridor runs; the course setter decides that. You give
+the line, and the program turns it into the band.
+
+```sh
+freemapper-print masks corridor stadtsprint --points "-92,2.3;-60,4.4;-28,-2.5;-15.5,58.5" --width 12 --assign --course A
+```
+
+| Option | Meaning |
+|---|---|
+| `--points <X,Y;X,Y;…>` | the line as points in map mm with the y axis up, as OOM's status bar shows them, decimals with a point. At least 2 different points, at most 1000. Required. |
+| `--width <MM>` | width of the corridor, 1 to 100 mm. Default: 10. |
+| `--course <NAME>` | the course whose layout gives the print scale for the width |
+| `--assign` | the course of `--course` prints with the corridor. Needs `--course`. |
+| `--id <ID>` | id of the new mask. Default: `corridor-<n>`, the first number not taken. |
+
+Find the points in OOM: point at a spot on the street and read the two numbers in the status bar, as for
+`centre_map_mm`. Put a point at each crossing and at each bend, and make sure every control of the course lies in
+the corridor.
+
+The width counts in millimetres on paper too: with `--course` at the print scale of that course's layout,
+otherwise at the print scale all layouts share. If the layouts print at different scales, the command asks for
+`--course`. As with the radius, the mask keeps the width in map mm. After changing the print scale, delete the
+mask and run the command again. The corridor runs half the width to each side of the line, and its ends are cut square. A turn of up to
+120° keeps a pointed outer corner; a sharper one is cut off. The program refuses a corridor that turns back on
+itself, has a piece too short for the turn at its end, or crosses itself. Then simplify the line at the place the
+message names, or take a smaller width. The program does not repair the line itself.
+
+The comment above the new table repeats the points as `--points "…"`, so you can run the command again later. The
+command does not write a branch or a second corridor for the same course. For that, run it without `--assign` with
+an `--id` for each piece, then copy the second ring (the hole) of one piece into the polygon of the other. Holes
+may overlap. Delete the table you no longer need.
+
+### What both commands write
+
+Both append the new `[[masks]]` table to the end of the project file as text, with a comment on how it was made.
+With `--assign` the course's assignment gets a line `mask = "…"` right below its `[[assignments]]` header, or a new
+assignment follows the table. Everything else stays as it is, comments and line endings included. The program then
+loads the file again and puts the old content back if that fails.
+
+The commands never change a mask that exists. They refuse an id the file has already, and a course that prints
+with another mask, with exit code 2. For a new radius or a new line, delete the table and the line `mask = "…"`
+and run the command again. Then `check` shows the result.
+
+### White-out from Purple Pen
+
+Purple Pen has white-out areas. The program prints them as masks with the ids `whiteout-1`, `whiteout-2` … in file
+order, on the courses they belong to in Purple Pen. A course without `mask` in its assignment gets each of its
+white-out areas, each on its own, also where they overlap. `check` lists the white-out areas once, as information.
+
+- When a course's assignment names a mask of its own, only that one applies, and the white-out areas drop out for
+  that course.
+- `mask = "whiteout-2"` prints the course with the second white-out area only.
+- A `[[masks]]` table with the id `whiteout-2` takes the place of the second white-out area.
+- If the course file no longer has the white-out area named, `check` says so, and the course prints without a
+  mask. The assignment stays in the project file.
+
+The number in `whiteout-<n>` is the place of the area in the course file, not a name. If you delete a white-out
+area in Purple Pen, or their order changes, `whiteout-2` means another area, and the program cannot tell. Check the
+assignments and the `[[masks]]` tables after such a change. `check` helps with one information line for each
+course whose assignment names a white-out area by its number, or on whose sheet a `[[masks]]` table takes the place
+of one. The line gives the middle of the area in map mm with y up, so you can find it in OOM.
+
+A sheet applies at most 1000 masks. If a course has more white-out areas, the rest are left out, and `check` warns.
+
+### What `check` reports about masks
+
+`check` tests each sheet against the masks it applies. The messages and their fixes are in chapter 10; here is
+when they come:
+
+- A control, the start, the finish or a map exchange has its centre in a masked area (note). On a window course a
+  window is usually missing; on a corridor course the control lies beside the corridor. Add the window, move the
+  line, or check that the assignment names the right mask.
+- Marked routes, crossing points, forbidden routes, out-of-bounds areas and their boundaries, dangerous areas or
+  texts of the course file lie wholly or in part under the mask (note, per kind with its count). The runner would
+  see them with no map under them. Widen a window or add one; if it is meant, leave the note. Plain legs and control
+  numbers do not count.
+- The mask hides the whole map frame (note). Most often y is written the wrong way round.
+- A sheet element or the footer covers part of a window inside the map frame (note).
+- The mask hides nothing in the map frame (information). White-out areas from Purple Pen that hide nothing come in
+  one line per course.
+- The check reached its limit, at most 200 000 points and 50 million steps per sheet (note). Look at the sheet.
+- No course uses a mask (information, once per run).
+
+### Limits
+
+What the program cannot do yet:
+
+- It lays no corridor on its own and no windows around legs. Shapes other than circles and corridors you write by
+  hand.
+- The commands do not change or replace a mask. Masks cannot be drawn yet; the editor is planned for M6.
+- A layout sheet without a course (`export --layout`) has no mask.
+- North lines the program adds without a 601 symbol in the symbol set lie on the sheet layer and stay visible
+  across the masked paper (chapter 6, "North lines"). The map's own north lines are hidden with the map.
+- The program does not check a white-out area from Purple Pen whose ring crosses itself. A loop that runs against
+  the rest shows the map where Purple Pen hides it.
+
+For masks you write by hand, the program checks on loading:
+
+| Rule | Reason |
+|---|---|
+| A ring has at least 3 different points that do not lie on one line. | Otherwise it encloses no area. |
+| A ring does not cross or touch itself. | For a ring that crosses itself it is not clear what lies inside. |
+| A hole lies wholly inside the outline of its polygon and does not touch it. | A hole outside the outline uncovers nothing, and what was meant stays unclear. |
+| The outlines of one mask do not overlap, touch or lie inside one another. | The map would show again where they overlap. For two areas that touch, draw one outline around both. |
+| Every number is finite and lies between −2 000 000 and 2 000 000 mm. | That is the reach of an OOM map. |
+| At most 64 masks per file, 256 polygons per mask, 4096 points per ring, 100 000 points in the whole file, 100 million steps for all checks together. | The limits protect against broken or hostile files. A window from `masks window` has about 50 points, the ten windows of luebeck-training-window about 500 together. |
+| The project file has at most 16 MB. | The masks of a file within the other limits take about 4 MB at most. A larger file would need gigabytes of memory to read before those limits could refuse it. |
+
+A broken rule stops `check` and `export`. The message is in English and names file, line, column and the field,
+for example:
+
+```
+./freemapper-print.toml:74:9: field `masks[0].polygons[0][2]`: the hole must lie wholly inside the outline of its polygon (the first ring) and not touch it
+```
+
+`polygons[0][2]` is the third ring of the first polygon, that is the second hole.
+
+### Errors of the commands
+
+These messages end `masks window` and `masks corridor` with exit code 2, and the project file stays unchanged:
+
+- "the project file has a mask … already": choose another id with `--id`.
+- "course … prints with the mask … already": change the assignment by hand; the program does not replace a mask.
+- "the assignment of course … is not written as a table [[assignments]] of its own …": add `mask = "…"` by hand.
+  "the assignments are not written as tables [[assignments]] …" comes for a course without an assignment when the
+  file writes its assignments as `assignments = [...]`: add the assignment with `mask = "…"` by hand.
+- "… mm is outside 1 to 100 mm …": radius and width are print mm.
+- "--controls takes control codes separated by commas …" and "course … has the control numbers 1 to …": check the
+  selection.
+- "control … gets no window, so --radius-for cannot set its radius": add the control to `--controls`, or leave
+  `--radius-for` out for it.
+- "--points takes points as x,y;x,y;… in map mm …": separate the points with semicolons and x and y with a comma,
+  decimals with a point.
+- "the corridor turns too sharply at … for its width …" and "the corridor crosses itself near …": simplify the
+  line there or reduce the width.
+- "the layouts print at different scales …": give `--course`.
+
+A command ends with exit code 1 when the project, the map or the course file cannot be loaded, the file cannot be
+written, or the changed file does not load. In the last case the program puts the old content back.

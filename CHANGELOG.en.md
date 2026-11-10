@@ -7,6 +7,52 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- Masks for window and corridor orienteering in the project file (ADR 0045). A `[[masks]]` table has an id and
+  polygons made of an outline and holes, the windows. The points are map mm with the y axis up, as OOM shows them
+  and as `centre_map_mm` takes them. `mask = "…"` in `[[assignments]]` gives a course its mask, and several courses
+  may share one. On loading, the program checks every mask and reports an error with file, line and field, such
+  as a hole outside its outline or a ring that crosses itself.
+- Masks print. On the sheet of a course with a mask the map is missing in the masked area; outside the outline and
+  in the windows it shows, and overlapping windows make one window. The course overprint, the description box, the
+  sheet elements and the footer stay visible, the legs between the windows included. Without a mask of its own, a
+  course gets Purple Pen's white-out areas, each on its own, also where they overlap. A sheet applies at most 1000
+  masks; when a course has more, the rest are left out and `check` warns. Sheets without a mask stay the same byte
+  for byte.
+- `masks window` writes a mask with round windows around the controls of a course (ADR 0047). The radius counts
+  in millimetres on paper, 15 mm by default; `--radius-for` gives single controls a radius of their own,
+  `--controls` picks controls by code or number, and `--assign` prints the course with it. The start and the finish
+  get a window too, unless `--no-start` or `--no-finish` leaves it out. The output and the comment in the project
+  file name the start and the finish as such, not by the codes `STA1` and `FIN1`. The mask keeps the windows in map
+  mm; after a change of print scale, run the command again.
+- `masks corridor` turns a line you give with `--points` into a corridor as wide as `--width` (10 mm on paper by
+  default). There is no automatic corridor. The command refuses a bend too sharp for the width, or a line that
+  crosses itself, and names the place; for a crossing, the point where the edges meet.
+- Both commands append the table to the project file as text, with a comment on how it was made; everything
+  before it stays unchanged. They never change a mask that exists. If the file writes its assignments as
+  `assignments = [...]`, `--assign` stops with exit code 2 and leaves the file as it was.
+- `check` looks at course sheets with a mask (ADR 0046). It warns when a control, the start or the finish lies
+  where the mask hides the map, and counts by kind what of the course overprint lies there: marked routes,
+  crossing points, forbidden routes, out-of-bounds boundaries, out-of-bounds and dangerous areas, texts. The
+  overprint prints all the same. It also warns when a mask hides the whole map frame, and says for information
+  when a mask hides nothing in the frame or no course uses it; white-out areas from Purple Pen that hide nothing
+  share one line per course. It warns when a sheet element or the footer covers part of a window. When the project
+  file names a white-out area by its number (`whiteout-<n>`), `check` says where that area lies, because the number
+  follows the order in the course file and can mean another area after a change in Purple Pen. When the check
+  reaches its limit, `check` says that it checked only part of the sheet.
+- Two examples: `luebeck-training-window` (window orienteering with eight controls) and
+  `luebeck-training-corridor` (corridor orienteering along three streets of Lübeck's old town). The manual has a
+  chapter 11 on masks.
+
+### Changed
+
+- The note on white-out areas in the course file now starts with "Info:" and no longer counts toward the exit
+  code of `check`, because white-outs print.
+- The program reads a project file of at most 16 MB and refuses a larger one before reading it. A file within the
+  limits for masks needs about 4 MB at most.
+- The last line of `check` counts in the right number: "With notes: 1 of 1 course, 0 of 1 layout sheet."
+
 ## [0.4.0] - 2026-11-10
 
 ### Changed
