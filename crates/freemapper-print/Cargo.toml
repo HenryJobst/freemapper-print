@@ -36,6 +36,7 @@ usvg.workspace = true
 same-file.workspace = true
 
 [dev-dependencies]
+freemapper-contract.workspace = true
 tempfile.workspace = true
 
 [lints]

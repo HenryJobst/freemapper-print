@@ -337,12 +337,12 @@ fn render_symbols(set: &SymbolSet, factor: f64) -> Result<RenderSymbols, OmapErr
     RenderSymbols::from_set(&enlarged)
 }
 
-fn is_sheet_object(object: &MapObject) -> bool {
+pub(crate) fn is_sheet_object(object: &MapObject) -> bool {
     has_tag(object, SHEET_TAG) || has_tag(object, SCALE_BAR_TAG)
 }
 
 /// Part of freemapper's base area, by its tag (ADR 0044).
-fn is_base_object(object: &MapObject) -> bool {
+pub(crate) fn is_base_object(object: &MapObject) -> bool {
     has_tag(object, BASE_TAG)
 }
 

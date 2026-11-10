@@ -90,3 +90,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0047](0047-generated-masks.md) | Generated masks | Accepted | 2026-11-10 |
 | [0048](0048-white-outs-by-purple-pen-id.md) | White-outs keyed by Purple Pen id | Accepted | 2026-11-10 |
 | [0049](0049-description-symbols-from-core.md) | Description symbols from core | Accepted | 2026-11-10 |
+| [0050](0050-reader-tests-against-the-suite-contract.md) | Reader tests against the suite contract | Accepted | 2026-11-10 |
