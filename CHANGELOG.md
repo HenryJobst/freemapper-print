@@ -7,9 +7,13 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Ein Layout kann `page_mm = [Breite, Höhe]` (Hochformat, 10 bis 5080 mm je Seite) statt `paper` setzen, für eine Karte, die im Kartenmaßstab größer als A3 ist (Entscheidung 0058). `set_layout` nimmt `page_mm` ebenfalls; `null` geht zurück zum Papier. Eine Seite über A3 bekommt den Hinweis, dass ein Bürodrucker sie nicht annimmt. Der Befehl `render` bleibt bei A4 und A3.
+
 ### Geändert
 
-- Der Core-Pin steigt auf freemapper-core v0.20.0 (freie Seitengröße und Quellposition jedes Objekts im Seitenbauer). print bietet beides noch nicht an; die Layouts bleiben bei A4 und A3.
+- Der Core-Pin steigt auf freemapper-core v0.20.0 (freie Seitengröße und Quellposition jedes Objekts im Seitenbauer). print nutzt die freie Seitengröße (siehe Hinzugefügt); die Quellpositionen noch nicht.
 - Die Kartenart und der Leser von `freemapper.toml` kommen aus freemapper-contract (freemapper-core v0.19.0, Entscheidung 0057), ein Typ für die ganze Suite. Das Verhalten bleibt gleich.
 - `AGENTS.md` stellt die Kommandozeile an die erste und MCP an die zweite Stelle: Ein Agent, der Befehle ausführen kann, erledigt die Arbeit mit wenigen blockierenden Aufrufen statt mit einer Runde je Werkzeugaufruf. MCP bleibt der Weg für Assistenten ohne Shell. Der Abschnitt zur Kommandozeile nennt, was nur MCP bietet (`project_info`, `list_courses`, `set_layout`, `set_element`, `assign_mask`), und wie man es stattdessen in der Projektdatei erledigt.
 

@@ -14,7 +14,7 @@ OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on pap
 
 What it does already:
 
-- print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A4 or A3, also at a different scale
+- print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A4, A3 or a page size of your choice, also at a different scale
   with the symbol sizes the standard prescribes (for example 1:3000 for the youngest classes with symbols at
   133 %);
 - one project file per event with any number of layouts: created with `init`, checked with `check`, written as

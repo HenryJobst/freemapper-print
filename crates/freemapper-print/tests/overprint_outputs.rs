@@ -80,6 +80,7 @@ fn render_outputs_unchanged() {
             print_scale: scale,
             kind,
             paper,
+            page_mm: None,
             orientation: Orientation::Auto,
             centre: None,
             show_sheet_objects: false,

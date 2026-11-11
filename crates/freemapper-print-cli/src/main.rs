@@ -275,6 +275,7 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
         print_scale: args.scale,
         kind,
         paper: args.paper.into(),
+        page_mm: None,
         orientation: args.orientation.into(),
         centre: None,
         show_sheet_objects: args.show_sheet_objects,

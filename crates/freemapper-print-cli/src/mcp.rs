@@ -246,6 +246,10 @@ struct LayoutIn {
     id: String,
     /// Default for a new layout: A4.
     paper: Option<PaperIn>,
+    /// A page of this size in mm, [width, height] in portrait, 10 to 5080 each, instead of the paper (a map larger
+    /// than A3, or a pinboard sheet); null goes back to the paper. The orientation applies to it.
+    #[serde(default, deserialize_with = "nullable")]
+    page_mm: Option<Option<[f64; 2]>>,
     /// auto takes the orientation in which more of the map fits. Default for a new layout: auto.
     orientation: Option<OrientationIn>,
     /// The print scale denominator, such as 4000; null prints at the map scale.
@@ -1295,6 +1299,7 @@ impl PrintServer {
             project,
             id,
             paper,
+            page_mm,
             orientation,
             print_scale,
             centre_map_mm,
@@ -1311,6 +1316,7 @@ impl PrintServer {
                 project: path.to_path_buf(),
                 id,
                 paper: paper.map(Paper::from),
+                page_mm,
                 orientation: orientation.map(Orientation::from),
                 print_scale,
                 centre_map_mm,

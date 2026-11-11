@@ -59,6 +59,7 @@ fn options(kind: MapKind, print_scale: Option<u32>) -> PrintOptions {
         print_scale,
         kind,
         paper: Paper::A4,
+        page_mm: None,
         orientation: Orientation::Portrait,
         centre: None,
         show_sheet_objects: false,
@@ -123,6 +124,7 @@ fn a4_page_is_exact() {
 
     let a3 = PrintOptions {
         paper: Paper::A3,
+        page_mm: None,
         orientation: Orientation::Landscape,
         ..options(MapKind::Sprint, None)
     };

@@ -226,6 +226,9 @@ pub struct LayoutSpec {
     pub id: String,
     #[serde(default = "default_paper")]
     pub paper: Paper,
+    /// A page of this size in mm, width and height in portrait, instead of `paper` (ADR 0058).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_mm: Option<[f64; 2]>,
     #[serde(default = "default_orientation")]
     pub orientation: Orientation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,6 +244,14 @@ pub struct LayoutSpec {
     /// Ids of shared elements this layout does not show.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hide_shared: Vec<String>,
+}
+
+impl LayoutSpec {
+    /// The page size in portrait (mm): `page_mm` when the layout sets it, else the paper's.
+    pub fn portrait_mm(&self) -> (f64, f64) {
+        self.page_mm
+            .map_or_else(|| self.paper.size_mm(), |[w, h]| (w, h))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1251,12 +1262,24 @@ fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError
     let margin = format!("layouts[{i}].map_frame.margin_mm");
     positive(file, margin.clone(), f.margin_mm)?;
     // Half the shorter side or more leaves no map frame.
-    let (w, h) = l.paper.size_mm();
+    if let Some([w, h]) = l.page_mm {
+        use crate::render::build::{MAX_PAGE_MM, MIN_PAGE_MM};
+        let side_ok = |side: f64| (MIN_PAGE_MM..=MAX_PAGE_MM).contains(&side);
+        if !side_ok(w) || !side_ok(h) {
+            return Err(invalid(
+                file,
+                format!("layouts[{i}].page_mm"),
+                &format!("each side must be between {MIN_PAGE_MM} and {MAX_PAGE_MM} mm"),
+            ));
+        }
+    }
+    let (w, h) = l.portrait_mm();
     let half = w.min(h) / 2.0;
     if f.margin_mm >= half {
-        let paper = match l.paper {
-            Paper::A4 => "A4",
-            Paper::A3 => "A3",
+        let paper = match (l.page_mm, l.paper) {
+            (Some(_), _) => "the page",
+            (None, Paper::A4) => "A4",
+            (None, Paper::A3) => "A3",
         };
         return Err(invalid(
             file,
@@ -1910,6 +1933,7 @@ pub fn starter(
         layouts: vec![LayoutSpec {
             id: starter_layout_id(Paper::A4).into(),
             paper: Paper::A4,
+            page_mm: None,
             orientation: Orientation::Auto,
             print_scale: Some(map_scale),
             map_frame: MapFrameSpec::default(),
@@ -2620,6 +2644,7 @@ mod tests {
                 LayoutSpec {
                     id: "a3".into(),
                     paper: Paper::A3,
+                    page_mm: None,
                     orientation: Orientation::Landscape,
                     print_scale: Some(7500),
                     map_frame: MapFrameSpec {
@@ -2636,6 +2661,7 @@ mod tests {
                 LayoutSpec {
                     id: "a4".into(),
                     paper: Paper::A4,
+                    page_mm: None,
                     orientation: Orientation::Auto,
                     print_scale: None,
                     map_frame: MapFrameSpec::default(),

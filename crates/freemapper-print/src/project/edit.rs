@@ -444,6 +444,7 @@ fn layout_keys(l: &LayoutSpec) -> Result<Keys, ProjectError> {
     let LayoutSpec {
         id,
         paper,
+        page_mm,
         orientation,
         print_scale,
         map_frame,
@@ -455,6 +456,7 @@ fn layout_keys(l: &LayoutSpec) -> Result<Keys, ProjectError> {
     Ok(vec![
         ("id", Some(value(id)?)),
         ("paper", Some(value(paper)?)),
+        ("page_mm", page_mm.map(|p| value(&p)).transpose()?),
         ("orientation", Some(value(orientation)?)),
         ("print_scale", print_scale.map(|s| value(&s)).transpose()?),
         ("map_frame", Some(value(map_frame)?)),
@@ -1002,6 +1004,7 @@ layout = "a4"
         let layout = LayoutSpec {
             id: "a3".into(),
             paper: Paper::A3,
+            page_mm: None,
             orientation: Orientation::Auto,
             print_scale: Some(7500),
             map_frame: MapFrameSpec::default(),
