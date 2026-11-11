@@ -471,3 +471,12 @@ masks-corridor-written = Abdeckung „{ $id }“ in { $path } eingetragen: ein K
 masks-assigned = Die Bahn „{ $course }“ wird jetzt damit gedruckt, auf Layout { $layout }.
 masks-not-assigned = Noch nutzt keine Bahn sie. Nennen Sie sie in einer Zuordnung mit mask = "{ $id }", oder rufen Sie den Befehl noch einmal mit --assign auf.
 masks-run-check = Mit check sehen Sie das Ergebnis.
+
+# ---- mcp (M5 Task 2) ----
+mcp-about = Stellt die Projektwerkzeuge einem KI-Agenten über MCP auf Standardein- und -ausgabe bereit.
+mcp-after-content = Der Server liest JSON-RPC-Nachrichten von der Standardeingabe und antwortet auf der Standardausgabe, bis die Standardeingabe endet. Fehler gehen auf die Standardfehlerausgabe. Pfade in Werkzeugaufrufen müssen absolut sein. --lang legt die Sprache der Meldungen in den Ergebnissen fest; ein Werkzeugaufruf kann mit seinem Argument lang eine andere wählen.
+mcp-after-exit-codes = Exit-Codes: 0, wenn der Client die Standardeingabe schließt, 1, wenn der Server nicht starten kann oder die Verbindung abbricht, 2, wenn die Befehlszeile falsch ist.
+mcp-error-relative-path = { $path } ist ein relativer Pfad; einen absoluten Pfad angeben, denn der Server kennt den Arbeitsordner des Agenten nicht
+mcp-error-empty-path = Der Pfad ist leer; einen absoluten Pfad angeben
+mcp-error-nul-path = Der Pfad { $path } enthält ein NUL-Zeichen
+mcp-error-internal = Interner Fehler: { $error }

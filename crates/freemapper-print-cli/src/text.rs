@@ -105,6 +105,7 @@ mod tests {
         "list-",
         "logo-",
         "masks-",
+        "mcp-",
         "missing-",
         "note-",
         "number-",

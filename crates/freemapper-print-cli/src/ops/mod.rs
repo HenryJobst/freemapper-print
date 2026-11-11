@@ -12,8 +12,6 @@ pub mod init;
 pub mod masks;
 pub mod note;
 pub mod numbers;
-// The MCP server's `project_info` tool (M5 task 2) is its first caller; the CLI has no command for it.
-#[cfg_attr(not(test), allow(dead_code))]
 pub mod project;
 
 use std::path::{Path, PathBuf};

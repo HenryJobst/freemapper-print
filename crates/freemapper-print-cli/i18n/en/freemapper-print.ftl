@@ -471,3 +471,12 @@ masks-corridor-written = Added the mask "{ $id }" to { $path }: a corridor { $wi
 masks-assigned = Course "{ $course }" prints with it now, on layout { $layout }.
 masks-not-assigned = No course uses it yet. Name it in an assignment with mask = "{ $id }", or run the command again with --assign.
 masks-run-check = Run check to see the result.
+
+# ---- mcp (M5 Task 2) ----
+mcp-about = Serve the project tools to an AI agent over MCP on standard input and output.
+mcp-after-content = The server reads JSON-RPC messages from standard input and answers on standard output until standard input closes. Errors go to standard error. Paths in tool calls must be absolute. --lang sets the language of the messages in the results; a tool call can choose another one with its lang argument.
+mcp-after-exit-codes = Exit codes: 0 when the client closes standard input, 1 when the server cannot start or the connection breaks, 2 when the command line is wrong.
+mcp-error-relative-path = { $path } is a relative path; give an absolute path, because the server does not know the working folder of the agent
+mcp-error-empty-path = the path is empty; give an absolute path
+mcp-error-nul-path = the path { $path } contains a NUL character
+mcp-error-internal = internal error: { $error }

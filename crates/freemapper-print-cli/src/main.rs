@@ -45,6 +45,7 @@ enum Commands {
     Export(ExportArgs),
     Numbers(NumbersArgs),
     Masks(MasksArgs),
+    Mcp,
 }
 
 #[derive(Args)]
@@ -241,6 +242,9 @@ macro_rules! args {
         a
     }};
 }
+
+// After `args!`, which it uses.
+mod mcp;
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
@@ -2260,6 +2264,13 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         })
                 })
         })
+        .mut_subcommand("mcp", |c| {
+            c.about(texts.plain("mcp-about")).after_long_help(format!(
+                "{}\n\n{}",
+                texts.plain("mcp-after-content"),
+                texts.plain("mcp-after-exit-codes")
+            ))
+        })
 }
 
 fn main() -> std::process::ExitCode {
@@ -2300,6 +2311,7 @@ fn main() -> std::process::ExitCode {
             MasksCommand::Window(args) => masks_window(&texts, &args),
             MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
+        Commands::Mcp => mcp::run(&texts),
     };
     match result {
         Ok(code) => std::process::ExitCode::from(code),
