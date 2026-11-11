@@ -29,9 +29,13 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 miniz_oxide = "0.9.1"
 pdf-writer = "0.15.0"
 quick-xml = "0.42.0"
+# Pinned: newer releases are younger than two weeks (ADR 0006). rmcp-macros is held at 3.6.0 in
+# Cargo.lock only (rmcp asks for ^3.6.0), so build with --locked. The version freemapper uses.
+rmcp = { version = "=3.6.0", features = ["server", "transport-io", "macros"] }
 # Windows only: the file identity check before restoring permissions (ADR 0041); the version
 # freemapper-fs uses.
 same-file = "=1.0.6"
+schemars = "1.2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.154"
 # Same CSS tokenizer and IRI parser as usvg, so that logo SVGs are checked the way usvg reads them.
@@ -40,6 +44,8 @@ svgtypes = "0.16.1"
 subsetter = { version = "0.2.6", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
+# The MCP server's runtime: stdio and the in-process tests.
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
 toml = "1.2.1"
 # Paths only: no text, fonts, svgz or writer (logos on the sheet layer).
 usvg = { version = "0.49.0", default-features = false }
