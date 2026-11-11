@@ -2,7 +2,7 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 3 und 5 bis 11. Am Ende soll es
+Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 3 und 5 bis 12. Am Ende soll es
 Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern führen,
 auch ohne Erfahrung mit der Kommandozeile.
 
@@ -19,6 +19,7 @@ Kapitel:
 9. [Drucken: maßstabsgetreu am eigenen Drucker und im Copyshop](#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop)
 10. [Meldungen und was zu tun ist](#10-meldungen-und-was-zu-tun-ist)
 11. [Abdeckungen für Fenster- und Korridor-OL](#11-abdeckungen-für-fenster--und-korridor-ol)
+12. [Der Editor im Browser](#12-der-editor-im-browser)
 
 Das Programm spricht Deutsch oder Englisch. Es nimmt die Sprache aus `--lang de` oder `--lang en`, sonst aus
 den Umgebungsvariablen `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` und `LANG`. Die Meldungen in diesem Handbuch
@@ -1341,8 +1342,8 @@ Was das Programm noch nicht kann:
 
 - Es legt keinen Korridor von selbst und keine Fenster um Strecken. Andere Formen als Kreise und Korridore
   schreiben Sie von Hand.
-- Die Befehle ändern und ersetzen keine Abdeckung. Zeichnen lassen sich Abdeckungen noch nicht; der Editor ist für
-  M6 geplant.
+- Die Befehle ändern und ersetzen keine Abdeckung. Der Editor (Kapitel 12) zeichnet Abdeckungen, ersetzt aber auch keine;
+  zum Ändern bearbeiten Sie die Datei oder nehmen eine neue Kennung.
 - Ein Layoutblatt ohne Bahn (`export --layout`) hat keine Abdeckung.
 - Nordlinien, die das Programm ohne Symbol 601 im Symbolsatz ergänzt, liegen auf der Blattebene und bleiben über
   dem abgedeckten Papier sichtbar (Kapitel 6, „Nordlinien“). Die Nordlinien der Karte verschwinden mit der Karte.
@@ -1395,3 +1396,166 @@ Diese Meldungen beenden `masks window` und `masks corridor` mit Exit-Code 2, die
 Mit Exit-Code 1 endet ein Befehl, wenn sich Projekt, Karte oder Bahndatei nicht laden oder die Datei nicht
 schreiben lässt, oder wenn die geänderte Datei nicht lädt. Im letzten Fall stellt das Programm den alten Inhalt
 wieder her.
+
+## 12. Der Editor im Browser
+
+`freemapper-print edit` öffnet ein Projekt in einer Seite Ihres Browsers. Sie sehen das Blatt so, wie es gedruckt
+wird, klicken ein Element an und verschieben es, ändern ein Layout in einem Formular, zeichnen eine Fenster- oder
+Korridormaske und rücken eine Postennummer zurecht. Der Editor ist für Menschen. Er schreibt dieselbe Projektdatei
+wie die Befehle und der MCP-Server und ruft dieselben Funktionen auf; was der Editor anlegt, ist also dasselbe wie
+das Ergebnis von `masks window` oder `set_layout`. Ein KI-Agent bleibt bei Kommandozeile oder MCP (Kapitel 3 und
+5). Die Seite sagt „Maske“, wo dieses Handbuch „Abdeckung“ sagt (Kapitel 11); gemeint ist dasselbe.
+
+### Starten
+
+```sh
+freemapper-print edit <Projekt> [--port N] [--no-browser]
+```
+
+`<Projekt>` ist `freemapper-print.toml` oder der Ordner, in dem sie liegt. Das Programm druckt eine Zeile, „Der
+Editor läuft unter …“, mit einer Adresse, die mit `http://127.0.0.1:` und einer Portnummer beginnt und mit einem
+langen Zufallsteil weitergeht. Diese Adresse öffnet es in Ihrem Standardbrowser. Öffnet sich kein Browser oder
+möchten Sie einen anderen, starten Sie mit `--no-browser` und kopieren die Adresse aus dem Terminal in den
+Browser. Der Zufallsteil ist bei jedem Start neu; eine Adresse von früher gilt nicht mehr. `--port` legt den Port
+fest, sonst wählt das System einen freien.
+
+Für Bahnblätter braucht das Projekt eine Bahndatei; der Editor zeigt, was `check` und `export` zeichnen würden.
+Ohne Bahndatei zeigt er die Layouts, die Bahnauswahl ist ausgeblendet und ein Hinweis erklärt, warum.
+
+Die Seite spricht die Sprache aus `--lang` oder `FREEMAPPER_LANG`. Ist keine von beiden gesetzt, folgt sie der
+Sprache des Browsers und nimmt Englisch, wenn der weder Deutsch noch Englisch spricht. `LANG` und `LC_*` zählen
+hier nicht.
+
+Beenden Sie den Editor mit „Fertig“ im Menü „Datei“ oder mit Strg+C im Terminal. Das Programm schreibt dann „Der
+Editor ist beendet. Die Projektdatei ist …“, und die Seite meldet, dass das Fenster geschlossen werden kann.
+
+### Die Seite
+
+- **Projekt** (Baum, links): Quellen (Karte und Bahndatei), Layouts, Masken, Gemeinsame Elemente, Zuordnungen und
+  „Elemente des Layouts X“ für das Layout auf dem Bildschirm. Ein Klick wählt den Eintrag aus.
+- **Blattvorschau** (Mitte): das Blatt, wie `export` es zeichnet, maßstabsgetreu, mit Bahnaufdruck, Masken und
+  Postennummern. Darüber wählen Sie Bahn und Layout. Eine Bahn erscheint auf dem Layout, das ihr zugeordnet ist.
+- **Eigenschaften** (rechts): das Formular zum Gewählten und die Antwort auf einen Klick ins Blatt: „Element …“,
+  „Nummer von Posten …“, „Kartenobjekt Nr. … im Blatt“ oder „Maske …“. Unter dem Blatt stehen die Hinweise zum
+  Blatt, jeweils mit der Schwere als Wort (Info, Warnung, Fehler), darunter bei Bedarf die Liste „Postennummern im
+  Konflikt“.
+- **Menü** (oben): Datei (Alle Blätter prüfen, Fertig), Bearbeiten (Rückgängig, Wiederholen), Masken
+  (Fenstermaske, Korridormaske), Ansicht (Vergrößern, Verkleinern, Ganze Seite), Export (Dieses Blatt als PDF, Alle
+  Blätter als PDFs, Alle Bahnen als ein PDF).
+- **Statuszeile** (unten): die letzte Meldung, das Projekt, der Druckmaßstab und die Seitengröße.
+
+### Jede Änderung steht sofort in der Datei
+
+Es gibt keinen Speichern-Knopf. Jede Änderung, ob Verschieben, Formular mit „Anwenden“, Maske oder Nummer, wird in
+dem Moment in die Projektdatei geschrieben, in dem Sie sie machen, mit denselben Kommentaren wie bei den
+Befehlen. Die Datei ist immer der aktuelle Stand. Das Blatt wird nach jeder Änderung aus der Datei neu gezeichnet.
+
+Rückgängig und Wiederholen (Menü „Bearbeiten“, Strg+Z, Strg+Umschalt+Z oder Strg+Y; am Mac Cmd statt Strg) stellen
+die ganze Datei so her, wie sie vor der Änderung war. Der Editor merkt sich die letzten 100 Schritte. Eine neue
+Änderung nach einem Rückgängig verwirft die Schritte, die Sie hätten wiederholen können. In einem Textfeld gehört
+Strg+Z dem Feld, nicht dem Editor.
+
+Ändert ein anderes Programm die Projektdatei, während der Editor offen ist (Sie bearbeiten sie in einem Texteditor
+oder ein Agent schreibt eine Maske), merkt die Seite das innerhalb von zwei Sekunden und zeigt einen Balken: „Die
+Projektdatei wurde außerhalb des Editors geändert.“ mit dem Knopf „Neu laden“. „Neu laden“ liest die Datei erneut
+und zeichnet das Blatt neu. Bis dahin lehnt der Editor Änderungen von der Seite ab: „Die Projektdatei hat sich
+geändert, seit diese Seite sie zuletzt gelesen hat. Laden Sie sie neu, bevor Sie etwas ändern.“ Auch Rückgängig
+und Wiederholen hören dann auf („Die Projektdatei wurde außerhalb des Editors geändert, darum ist hier mit
+Rückgängig und Wiederholen Schluss. Laden Sie sie neu.“); der Editor schreibt nie einen alten Stand über Ihre
+Änderung von außen.
+
+### Was Sie tun können
+
+**Elemente wählen und verschieben.** Klicken Sie ein Element im Blatt oder einen Eintrag im Baum an. Ziehen Sie
+ein Element mit der Maus; es rastet auf 0,5 mm ein. Oder nehmen Sie die Pfeiltasten: 0,5 mm pro Druck, mit der
+Umschalttaste 1 mm. Der Editor ändert den `offset_mm` des Ankers (Kapitel 7), ein Ziehen bleibt also eine kleine
+Änderung in der Datei. Ein gemeinsames Element gehört zu jedem Layout. Verschieben Sie eines, fragt die Seite
+einmal je Element und Sitzung „Gemeinsames Element verschieben?“; „Verschieben“ verschiebt es in allen Layouts,
+denn dort ist es gespeichert.
+
+**Layout oder Element ändern.** Wählen Sie ein Layout im Baum, erscheint das Formular mit Papier oder freier
+Seitengröße, Ausrichtung, Druckmaßstab, Passepartoutbreite, Rahmenlinienbreite und Nordlinien. Ein Element hat
+sein eigenes Formular: Bezug (Seite oder Kartenrahmen), Ecke oder Rand, die beiden Abstände und die Felder seiner
+Art (Zeilen und Schriftgröße, Bilddatei und gedruckte Breite, Zellengröße, weißer Kasten). Die Platzhalter-Knöpfe
+setzen die Platzhalter aus Kapitel 7 ein. „Anwenden“ schreibt die Änderung. Eine Logodatei ist ein Pfad relativ zur
+Projektdatei und muss im Projektordner liegen.
+
+**Fenstermaske.** Menü „Masken“, „Fenstermaske“. Klicken Sie im Blatt die Nummer eines Postens an, um ihn
+aufzunehmen oder zu entfernen, oder tippen Sie Codes (`31,32`) oder Plätze (`2-5`) ins Feld. Leer heißt alle
+Posten. Dazu kommen Radius, eigene Radien (`35=20`), „Kein Fenster am Start“, „Kein Fenster am Ziel“, eine Kennung
+und „Bahn mit dieser Maske drucken“. „Fenstermaske anlegen“ schreibt sie, wie `masks window`. Die Radien sind in
+Millimetern auf dem Papier. Eine Fenstermaske braucht eine Bahndatei.
+
+**Korridormaske.** Menü „Masken“, „Korridormaske“. Klicken Sie die Punkte der Linie im Blatt an und den letzten
+doppelt; das Formular nennt die Zahl der gezeichneten Punkte. Statt zu zeichnen, tippen Sie die Strecke ins Feld
+„Punkte als x,y;x,y in Karten-mm, y nach oben“, in derselben Form wie bei `masks corridor --points`; getippte Punkte
+gelten dann statt der gezeichneten. Stellen Sie die Breite in Millimetern auf dem Papier ein, wählen Sie die Bahn und
+ob die Maske zugewiesen wird, dann „Korridormaske anlegen“. Escape wirft die bisher gezeichnete Linie weg, ein
+zweites Escape beendet den Modus. Das Zeichnen der Linie ist Mausarbeit, aber jede Maske lässt sich allein mit den
+Feldern anlegen.
+
+**Eine Maske zuweisen.** Wählen Sie eine Maske im Baum. „Der Bahn zuweisen“ gibt sie einer Bahn, „Bahn ohne Maske
+drucken“ nimmt sie weg.
+
+**Postennummern.** Meldungen zu einer Nummer, die schlecht liegt, stehen unter dem Blatt in „Postennummern im
+Konflikt“. „Vorschlag annehmen“ schreibt den Vorschlag von `check`. „Lage eingeben“ öffnet ein Formular mit der
+Richtung (Grad, 0 ist Osten, gegen den Uhrzeigersinn) und dem Abstand zum Kreis in Millimetern auf dem Papier;
+„Lage setzen“ schreibt sie. Eine Nummer lässt sich auch auf dem Bahnblatt ziehen. In beiden Fällen fragt die Seite
+„Wofür gilt die Lage?“: „Für das Layout“ oder „Nur dieses Blatt“, wie `--layout-wide` und `--sheet`. Mit M lässt
+sich jede Postennummer wählen, nicht nur die im Konflikt.
+
+**Prüfen.** Menü „Datei“, „Alle Blätter prüfen“. Der Editor zeichnet jedes Blatt und listet die Hinweise von
+`check`, dazu „Alle Blätter sind in Ordnung.“ oder „Einige Blätter brauchen einen Blick.“.
+
+**Exportieren.** Menü „Export“: „Dieses Blatt als PDF“, „Alle Blätter als PDFs“ oder „Alle Bahnen als ein PDF“. Ein
+Fenster fragt nach dem Ordner. Der Browser kann keinen Ordner auswählen, darum tippen Sie den vollen Pfad ein, zum
+Beispiel `/Users/anna/pdfs` oder `C:\Users\Anna\pdfs`. Den Ordner muss es geben. Die Seite merkt sich den zuletzt
+getippten in diesem Browser. „Exportieren“ startet; die Statuszeile zählt die fertigen Blätter. „Anhalten“ beendet
+den Export nach dem Blatt, das gerade entsteht; die davor geschriebenen PDFs bleiben ganz, eine halbe Datei bleibt
+nicht übrig. Das Ergebnis listet die Dateien mit Größe, die Hinweise und die Erinnerung, in Originalgröße zu
+drucken (Kapitel 9). Es läuft immer nur ein Export.
+
+### Tastatur und Maus
+
+| Tasten | Wirkung |
+|---|---|
+| Strg+Z (Cmd+Z), Strg+Umschalt+Z, Strg+Y | Rückgängig, Wiederholen. |
+| Tab, Umschalt+Tab | Durch Baum, Menü, Blatt und Formulare gehen. Menüs öffnen mit der Eingabetaste. |
+| N, Umschalt+N | Das nächste, vorige Element des Blatts wählen. |
+| M, Umschalt+M | Die nächste, vorige Postennummer des Blatts wählen und ihr Formular öffnen. |
+| Pfeiltasten | Bei gewähltem Element: 0,5 mm verschieben (Umschalt: 1 mm). Sonst: das Blatt verschieben. |
+| + (auch =), - | Vergrößern, verkleinern. |
+| 0 | Ganze Seite. |
+| Escape | Beendet das Zeichnen: erst die Linie, dann den Modus. |
+
+N, M, die Pfeiltasten, + - und 0 wirken, solange das Blatt den Fokus hat; klicken Sie es vorher an. Nur das Zeichnen
+auf der Karte geht allein mit der Maus: die Punkte eines Korridors und die Nummern für eine Fenstermaske anklicken.
+Die Felder führen zum selben Ergebnis durch Tippen.
+
+### Beenden
+
+„Fertig“ und das Schließen des Fensters fragen nur nach, solange ein Zeichenmodus offen ist, etwa eine unfertige
+Korridorlinie: „Linie verwerfen?“ mit „Verwerfen“ und „Weiterzeichnen“. Sonst geht nichts verloren, denn alles steht
+schon in der Datei. Strg+C im Terminal beendet den Editor jederzeit; ein laufender Export hält nach dem Blatt an,
+das gerade entsteht.
+
+### Sicherheit
+
+Der Editor hört nur auf 127.0.0.1, erreichbar sind also nur Programme auf Ihrem Rechner. Die Adresse enthält ein
+zufälliges Kennzeichen, das bei jedem Start neu ist, und die Seite nimmt nur Änderungen an, die es tragen und von
+ihrer eigenen Adresse kommen. Nichts verlässt den Rechner; das Programm stellt keine Netzwerkanfragen.
+
+### Probleme
+
+| Was Sie sehen | Was zu tun ist |
+|---|---|
+| Es öffnet sich kein Browser. | Kopieren Sie die gedruckte Adresse in einen Browser oder starten Sie mit `--no-browser` und tun das jedes Mal. |
+| Die Adresse von gestern zeigt einen Fehler. | Das Kennzeichen ist bei jedem Start neu. Nehmen Sie die Adresse der laufenden Sitzung. |
+| „Die Verbindung zum Editor ist abgebrochen.“ / „Der Editor ist beendet. Das Fenster kann geschlossen werden.“ | Der Editor läuft nicht mehr. Starten Sie `edit` neu. |
+| „Die Projektdatei wurde außerhalb des Editors geändert.“ | Klicken Sie „Neu laden“. Ihre eigenen Änderungen stehen schon in der Datei. |
+| „Es gibt nichts zum Rückgängigmachen.“ | Es ist kein Schritt mehr übrig, etwa gleich nach dem Öffnen des Projekts. |
+| „Die Änderung wurde nicht vorgenommen.“ | Die Änderung wurde abgelehnt; die Meldung nennt den Grund, etwa eine Kennung, die es schon gibt. Ändern Sie die Eingabe und versuchen Sie es noch einmal. |
+| „Das Blatt konnte nicht gezeichnet werden.“ | Karte oder Bahndatei lassen sich nicht lesen oder passen nicht. `check` auf der Kommandozeile nennt die Ursache. |
+| „Eine Fenstermaske braucht eine Bahndatei.“ | Das Projekt hat keine Bahndatei; nehmen Sie einen Korridor oder legen Sie eine mit `init --courses` an. |
+| „Der Ordner … für die PDFs existiert nicht; zuerst anlegen“ | Legen Sie den Ordner an und exportieren Sie noch einmal. |
+| „Eine Logodatei muss im Projektordner liegen.“ | Legen Sie das Bild neben die Projektdatei oder in einen Unterordner und geben Sie einen relativen Pfad an. |
