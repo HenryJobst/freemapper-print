@@ -5,7 +5,7 @@ Status: Accepted, implements [0005](0005-layout-editor-in-a-local-browser-page.m
 
 ## Context
 
-The suite agreed on one look and one frame for its local pages (freemapper-core ADR 0030, tag v0.21.0). The
+The suite agreed on one look and one frame for its local pages (freemapper-core ADR 0030, tag v0.21.1). The
 courseplan editor is the reference. print builds its editor on the shared parts from the start.
 
 ## Decision
