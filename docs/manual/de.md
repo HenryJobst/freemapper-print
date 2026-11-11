@@ -1412,7 +1412,7 @@ das Ergebnis von `masks window` oder `set_layout`. Ein KI-Agent bleibt bei Komma
 freemapper-print edit <Projekt> [--port N] [--no-browser]
 ```
 
-`<Projekt>` ist `freemapper-print.toml` oder der Ordner, in dem sie liegt. Das Programm druckt eine Zeile, „Der
+`<Projekt>` ist `freemapper-print.toml` oder der Ordner, in dem sie liegt. Das Programm gibt eine Zeile aus, „Der
 Editor läuft unter …“, mit einer Adresse, die mit `http://127.0.0.1:` und einer Portnummer beginnt und mit einem
 langen Zufallsteil weitergeht. Diese Adresse öffnet es in Ihrem Standardbrowser. Öffnet sich kein Browser oder
 möchten Sie einen anderen, starten Sie mit `--no-browser` und kopieren die Adresse aus dem Terminal in den
@@ -1427,13 +1427,15 @@ Sprache des Browsers und nimmt Englisch, wenn der weder Deutsch noch Englisch sp
 hier nicht.
 
 Beenden Sie den Editor mit „Fertig“ im Menü „Datei“ oder mit Strg+C im Terminal. Das Programm schreibt dann „Der
-Editor ist beendet. Die Projektdatei ist …“, und die Seite meldet, dass das Fenster geschlossen werden kann.
+Editor ist beendet. Die Projektdatei ist …“. Nach „Fertig“ meldet auch die Seite, dass Sie das Fenster schließen
+können. Nach Strg+C kann man ihr das nicht sagen; sie meldet nach wenigen Sekunden „Die Verbindung zum Editor ist
+abgebrochen.“
 
 ### Die Seite
 
 - **Projekt** (Baum, links): Quellen (Karte und Bahndatei), Layouts, Masken, Gemeinsame Elemente, Zuordnungen und
   „Elemente des Layouts X“ für das Layout auf dem Bildschirm. Ein Klick wählt den Eintrag aus.
-- **Blattvorschau** (Mitte): das Blatt, wie `export` es zeichnet, maßstabsgetreu, mit Bahnaufdruck, Masken und
+- **Blattvorschau** (Mitte): das Blatt, genau so gezeichnet, wie `export` es zeichnet, mit Bahnaufdruck, Masken und
   Postennummern. Darüber wählen Sie Bahn und Layout. Eine Bahn erscheint auf dem Layout, das ihr zugeordnet ist.
 - **Eigenschaften** (rechts): das Formular zum Gewählten und die Antwort auf einen Klick ins Blatt: „Element …“,
   „Nummer von Posten …“, „Kartenobjekt Nr. … im Blatt“ oder „Maske …“. Unter dem Blatt stehen die Hinweise zum
@@ -1520,22 +1522,23 @@ drucken (Kapitel 9). Es läuft immer nur ein Export.
 | Tasten | Wirkung |
 |---|---|
 | Strg+Z (Cmd+Z), Strg+Umschalt+Z, Strg+Y | Rückgängig, Wiederholen. |
-| Tab, Umschalt+Tab | Durch Baum, Menü, Blatt und Formulare gehen. Menüs öffnen mit der Eingabetaste. |
+| Tab, Umschalt+Tab | Durch Baum, Bahn- und Layoutwahl, Blatt, Hinweise, Eigenschaften und Menü gehen, in dieser Reihenfolge. Menüs öffnen mit der Eingabetaste. |
 | N, Umschalt+N | Das nächste, vorige Element des Blatts wählen. |
 | M, Umschalt+M | Die nächste, vorige Postennummer des Blatts wählen und ihr Formular öffnen. |
 | Pfeiltasten | Bei gewähltem Element: 0,5 mm verschieben (Umschalt: 1 mm). Sonst: das Blatt verschieben. |
 | + (auch =), - | Vergrößern, verkleinern. |
 | 0 | Ganze Seite. |
-| Escape | Beendet das Zeichnen: erst die Linie, dann den Modus. |
+| Escape | Beendet das Zeichnen: erst die Linie, dann den Modus. Ohne offenen Modus hebt es die Auswahl auf, sodass die Pfeiltasten wieder verschieben. |
 
-N, M, die Pfeiltasten, + - und 0 wirken, solange das Blatt den Fokus hat; klicken Sie es vorher an. Nur das Zeichnen
+N, M, die Pfeiltasten, + - und 0 wirken, solange das Blatt den Fokus hat; mit Tab kommen Sie hin. Nur das Zeichnen
 auf der Karte geht allein mit der Maus: die Punkte eines Korridors und die Nummern für eine Fenstermaske anklicken.
 Die Felder führen zum selben Ergebnis durch Tippen.
 
 ### Beenden
 
-„Fertig“ und das Schließen des Fensters fragen nur nach, solange ein Zeichenmodus offen ist, etwa eine unfertige
-Korridorlinie: „Linie verwerfen?“ mit „Verwerfen“ und „Weiterzeichnen“. Sonst geht nichts verloren, denn alles steht
+„Fertig“ und das Schließen des Fensters fragen nur nach, solange ein Zeichenmodus ungesendete Arbeit hält: eine unfertige
+Korridorlinie oder Posten, die Sie für eine Fenstermaske gewählt und nicht angewendet haben. Die Frage lautet „Arbeit
+verwerfen?“ mit „Verwerfen“ und „Weiterarbeiten“. Sonst geht nichts verloren, denn alles steht
 schon in der Datei. Strg+C im Terminal beendet den Editor jederzeit; ein laufender Export hält nach dem Blatt an,
 das gerade entsteht.
 
@@ -1549,7 +1552,7 @@ ihrer eigenen Adresse kommen. Nichts verlässt den Rechner; das Programm stellt 
 
 | Was Sie sehen | Was zu tun ist |
 |---|---|
-| Es öffnet sich kein Browser. | Kopieren Sie die gedruckte Adresse in einen Browser oder starten Sie mit `--no-browser` und tun das jedes Mal. |
+| Es öffnet sich kein Browser. | Kopieren Sie die ausgegebene Adresse in einen Browser oder starten Sie mit `--no-browser` und tun das jedes Mal. |
 | Die Adresse von gestern zeigt einen Fehler. | Das Kennzeichen ist bei jedem Start neu. Nehmen Sie die Adresse der laufenden Sitzung. |
 | „Die Verbindung zum Editor ist abgebrochen.“ / „Der Editor ist beendet. Das Fenster kann geschlossen werden.“ | Der Editor läuft nicht mehr. Starten Sie `edit` neu. |
 | „Die Projektdatei wurde außerhalb des Editors geändert.“ | Klicken Sie „Neu laden“. Ihre eigenen Änderungen stehen schon in der Datei. |

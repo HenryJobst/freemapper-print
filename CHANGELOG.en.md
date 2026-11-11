@@ -9,7 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- `freemapper-print edit`: the browser editor (decision 0059). It shows the sheet at true scale, lets you move elements and control numbers with the mouse or the arrow keys, changes layouts and elements in forms and adds window and corridor masks, also with a typed route and no mouse. The editor checks all sheets and writes the PDFs into a folder whose path you type; Stop ends the export after the sheet in hand.
+- `freemapper-print edit`: the browser editor (decision 0059). It shows the sheet drawn exactly as in the PDF, lets you move elements with the mouse or the arrow keys and drag control numbers or place them in a form, changes layouts and elements in forms and adds window and corridor masks, also with a typed route and no mouse. The editor checks all sheets and writes the PDFs into a folder whose path you type; Stop ends the export after the sheet in hand.
 - Every change is written to the project file at once, so there is no Save button. Undo and redo (Ctrl+Z) restore the whole file. If another program changes the file, the page shows a bar with Reload, and undo never writes over the outside change.
 - The editor listens on 127.0.0.1 only, and its address carries a random token. The page speaks German or English (`--lang`, `FREEMAPPER_LANG`, else the browser). The manual has a new chapter 12 for it.
 

@@ -1371,13 +1371,14 @@ The page speaks the language you gave with `--lang` or `FREEMAPPER_LANG`. Withou
 of the browser, and English if that is neither German nor English. `LANG` and `LC_*` do not decide here.
 
 To stop the editor, click Done in the File menu or press Ctrl+C in the terminal. The program then prints "The
-editor has ended. The project file is …" and the page shows that you can close the window.
+editor has ended. The project file is …". After Done the page also says that you can close the window. After
+Ctrl+C it cannot be told, so within a few seconds it says "The connection to the editor is gone."
 
 ### The page
 
 - **Project** (tree, left): Sources (map and course file), Layouts, Masks, Shared elements, Assignments, and
   "Elements of layout X" for the layout on screen. Click an entry to select it.
-- **Sheet preview** (middle): the sheet as `export` draws it, at exact scale, with the course overprint, masks and
+- **Sheet preview** (middle): the sheet drawn exactly as `export` draws it, with the course overprint, masks and
   control numbers. Above it you choose the course and the layout. A course shows on its assigned layout.
 - **Properties** (right): the form of what you selected, and the answer to a click on the sheet: "Element …",
   "Number of control …", "Map object no. … in the sheet" or "Mask …". Under the sheet the notes of the sheet
@@ -1457,22 +1458,23 @@ reminder to print at actual size (chapter 9). Only one export runs at a time.
 | Keys | Effect |
 |---|---|
 | Ctrl+Z (Cmd+Z), Ctrl+Shift+Z, Ctrl+Y | Undo, redo. |
-| Tab, Shift+Tab | Move through tree, menu, sheet and forms. Menus open with Enter. |
+| Tab, Shift+Tab | Move through tree, course and layout choice, sheet, notes, properties and menu, in this order. Menus open with Enter. |
 | N, Shift+N | Select the next, previous element of the sheet. |
 | M, Shift+M | Select the next, previous control number of the sheet and open its form. |
 | Arrow keys | With an element selected: move it 0.5 mm (Shift: 1 mm). Otherwise: pan the sheet. |
 | + (also =), - | Zoom in, out. |
 | 0 | Fit the page. |
-| Escape | Ends a drawing: first the line, then the mode. |
+| Escape | Ends a drawing: first the line, then the mode. With no mode open it clears the selection, so the arrow keys pan again. |
 
-N, M, the arrow keys, + - and 0 work while the sheet has the focus; click it first. Only drawing on the map is
+N, M, the arrow keys, + - and 0 work while the sheet has the focus; Tab reaches it. Only drawing on the map is
 mouse-only: clicking points of a corridor and clicking control numbers for a window mask. The fields give the same
 result by typing.
 
 ### Closing
 
-Done and closing the window ask only while a drawing mode is open, for example a corridor line that is not
-finished: "Throw away the line?" with "Throw it away" and "Keep drawing". Otherwise nothing is lost, because
+Done and closing the window ask only while a drawing mode holds unsent work: a corridor line that is not
+finished, or controls you chose for a window mask and did not apply. The question is "Throw away your work?" with
+"Throw it away" and "Keep working". Otherwise nothing is lost, because
 everything is already in the file. Ctrl+C in the terminal ends the editor at any time; an export in progress stops
 after the sheet in hand.
 

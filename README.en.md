@@ -52,7 +52,7 @@ What it does already:
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
 
-- an editor in the browser (`freemapper-print edit`, from the next version on): a sheet preview at true scale, dragging elements and control
+- an editor in the browser (`freemapper-print edit`, from the next version on): a sheet preview drawn exactly as in the PDF, dragging elements and control
   numbers, forms for layouts and elements, window and corridor masks, check and PDF export; every change is
   written to the project file at once, with undo and redo.
 
@@ -280,10 +280,10 @@ freemapper-print edit my-event
 ```
 
 Opens the project in your browser. The program prints an address on 127.0.0.1 with a random token; `--no-browser`
-leaves the browser closed, `--port` fixes the port. You see the sheet as it will be printed, move elements and
-control numbers with the mouse or the arrow keys, change layouts and elements in forms, add window and corridor
-masks, check and export. There is no Save button: every change is in the project file at once. Ctrl+C ends the
-editor. The manual explains all of it in the chapter
+leaves the browser closed, `--port` fixes the port. The sheet on screen is drawn exactly as in the PDF. You move
+elements with the mouse or the arrow keys, drag control numbers or place them in a form, change layouts and
+elements in forms, add window and corridor masks, check and export. There is no Save button: every change is in
+the project file at once. Ctrl+C ends the editor. The manual explains all of it in the chapter
 [The editor in the browser](docs/manual/en.md#12-the-editor-in-the-browser).
 
 ## With an AI agent

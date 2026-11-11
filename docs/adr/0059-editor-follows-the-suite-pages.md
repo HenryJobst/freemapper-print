@@ -30,9 +30,21 @@ courseplan editor is the reference. print builds its editor on the shared parts 
   and the file the link pointed to stays as it was (core ADR 0009).
 - Moving a shared element from the sheet of one layout moves it in every layout. The page asks once per
   session and element before it does.
-- `Fertig` and closing the window ask only while a drawing mode is open. Ctrl+C ends the server at any time.
-- `freemapper-web` comes through the re-export `web` (ADR 0043). `axum` and `rust-embed` are pinned to core's
-  versions; the lock file also holds their helper crates at versions at least two weeks old (ADR 0006).
+- `Fertig` and closing the window ask only while a drawing mode holds unsent work: a corridor line half drawn or
+  controls chosen for a window mask and not applied. Ctrl+C ends the server at any time; an export in progress
+  stops after the sheet in hand.
+- `GET api/project` keeps the field names of `ops::project::info`, so CLI, MCP and editor share one shape. It
+  carries no absolute path: the map and the course file come by name.
+- Preview requests carry a random page id and a counter per page. A request is superseded only by a newer one of
+  the same page, so a second tab never freezes the first. One sheet is drawn at a time; a request that was
+  outdated while it waited drops out before it draws.
+- Export writes into a folder the person types (a browser cannot pick one). The folder must be a full path; the
+  op refuses a missing folder and a link out of the project. The browser names no other file.
+- The report fields of the library that the editor reads are accepted as API of the core crates
+  (`PrintReport.source_objects`, `SheetReport.elements`, `.numbers`, `.mask_ids`, `.number_anchors`). `move_element`,
+  `GET api/spec` and `replace_text` are composed from existing parts and are not new ops of the library.
+- `freemapper-web` comes through the re-export `web` (ADR 0043). The weight of `axum`, `hyper` and `tokio` that
+  comes with it follows ADR 0043. `axum` and `rust-embed` are pinned to core's versions; the lock file also holds their helper crates at versions at least two weeks old (ADR 0006).
 
 ## Consequences
 

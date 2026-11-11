@@ -54,7 +54,7 @@ Das kann es schon:
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
 
-- einen Editor im Browser (`freemapper-print edit`, ab der nächsten Version): Blattvorschau in Originalmaßstab, Elemente und Postennummern
+- einen Editor im Browser (`freemapper-print edit`, ab der nächsten Version): Blattvorschau, genau so gezeichnet wie im PDF, Elemente und Postennummern
   ziehen, Layouts und Elemente in Formularen ändern, Fenster- und Korridormasken anlegen, prüfen und PDFs
   schreiben; jede Änderung steht sofort in der Projektdatei, mit Rückgängig und Wiederholen.
 
@@ -289,10 +289,10 @@ aus. Sonst stimmt der Maßstab nicht. Das Handbuch erklärt das Drucken im Kapit
 freemapper-print edit meine-veranstaltung
 ```
 
-Öffnet das Projekt in Ihrem Browser. Das Programm druckt eine Adresse auf 127.0.0.1 mit einem zufälligen
-Kennzeichen; mit `--no-browser` öffnet es den Browser nicht, mit `--port` legt man den Port fest. Sie sehen das
-Blatt, wie es gedruckt wird, verschieben Elemente und Postennummern mit der Maus oder den Pfeiltasten, ändern
-Layouts und Elemente in Formularen, legen Fenster- und Korridormasken an, prüfen und exportieren. Es gibt keinen
+Öffnet das Projekt in Ihrem Browser. Das Programm gibt eine Adresse auf 127.0.0.1 mit einem zufälligen
+Kennzeichen aus; mit `--no-browser` öffnet es den Browser nicht, mit `--port` legt man den Port fest. Das Blatt
+auf dem Bildschirm ist genau so gezeichnet wie im PDF. Sie verschieben Elemente mit der Maus oder den Pfeiltasten,
+ziehen Postennummern oder setzen sie in einem Formular, ändern Layouts und Elemente in Formularen, legen Fenster- und Korridormasken an, prüfen und exportieren. Es gibt keinen
 Speichern-Knopf: Jede Änderung steht sofort in der Projektdatei. Strg+C beendet den Editor. Das Handbuch erklärt
 alles im Kapitel [Der Editor im Browser](docs/manual/de.md#12-der-editor-im-browser).
 

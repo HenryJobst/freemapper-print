@@ -35,7 +35,7 @@ Source: spec §…, plan …, commit …
 ```
 
 Keep an ADR between 10 and 30 lines. Write it in English, like all technical docs, and use the terms from
-`docs/glossary.md`.
+`docs/glossary.md`. ADR 0059 is longer on purpose: it holds all rulings of the editor milestone in one place.
 
 ## Index
 
