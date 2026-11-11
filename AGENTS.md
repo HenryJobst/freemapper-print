@@ -85,9 +85,65 @@ archive and pointing the registration at the new path. Project files stay valid.
 Do not add the user's e-mail address, name or other personal data to any request, file name, project title or
 setting. The program makes no network requests.
 
-## Use it through MCP (preferred)
+## Use it from the command line (preferred)
 
-`freemapper-print mcp` is an MCP server on stdin/stdout. Register it once with the absolute path:
+If you can run commands (Claude Code, Codex), use the command line. One command does one blocking job and
+prints the result; with MCP every tool call is another turn that re-reads the whole conversation, which costs
+tokens. Pass `--lang en` when you parse the output.
+
+Do not repeat the switches from memory: `freemapper-print --help` lists the commands and
+`freemapper-print <command> --help` the switches, in the language of `--lang`.
+
+```sh
+freemapper-print init <folder> --map /path/to/map.omap --courses /path/to/courses.ppen --title "Training"
+freemapper-print check <folder>
+freemapper-print export <folder> --out-dir /path/to/pdfs
+```
+
+| Command | Purpose |
+|---|---|
+| `render <map> --out <file.pdf>` | The map alone as one PDF. `--scale`, `--paper a4\|a3`, `--orientation auto\|portrait\|landscape`, `--kind`, `--show-sheet-objects`. |
+| `init <folder> --map <file>` | Creates the project file. `--title`, `--kind sprint\|schoolyard\|forest`, `--courses <.ppen or .xml>`. |
+| `check <project>` | Draws every layout or course without writing a file and lists the notes. |
+| `export <project>` | One PDF per layout, or per course with a course file. `--layout <id>`, `--course <name>` (repeatable), `--single-file`, `--out-dir <dir>` (default: `out` next to the project file, created if missing). |
+| `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--no-start`, `--no-finish`, `--id`, `--assign`. |
+| `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
+| `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
+| `mcp` | The MCP server. |
+
+`<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to
+stderr. Exit codes: 0 on success; 1 when a file cannot be loaded, drawn or written, when `check` finds notes
+(notes marked Info do not count) or when `init` finds an existing project file; 2 when the command line is wrong,
+for example an unknown layout, course or control. `export` exits 0 when every PDF is written, even with notes.
+
+### What the command line does not cover
+
+The MCP tools `project_info`, `list_courses`, `set_layout`, `set_element` and `assign_mask` have no command. Over
+the command line you do their work in the project file `freemapper-print.toml`, which is plain text with
+comments: read it for the layouts, elements, masks and assignments; edit it for layout, element and assignment
+changes. [The manual](docs/manual/en.md) (chapters 5 to 8) lists every key. Edit with care, keep the comments,
+and run `check` afterwards: it loads the file again and names the line of a mistake. Courses and their
+controls are listed by `check` and `export`, or read them from the course file.
+
+### Workflow
+
+1. Ask for the map file (`.omap`) and, if there is one, the course file. Both must be on the computer; you need
+   their absolute paths.
+2. New event: `init` with `--map` and `--courses`. Existing project: read `freemapper-print.toml`.
+3. `check`. Read every note to the person in plain words; do not paste the list. Warnings about a number that
+   sits badly, a control under a mask or a map that does not fit the courses are worth a decision. Do not
+   export yet if `check` exits 1, unless the person says so.
+4. Adjust: `masks window`, `masks corridor` (with `--assign`), `numbers accept`, or edit the project file for
+   layouts and elements. Run `check` again.
+5. `export` into a folder the person names (it must exist). Tell them where the PDFs are.
+
+An export of many courses can take a while. A command that runs longer than your default command timeout needs
+a longer timeout, or run it in the background and wait for it to end.
+
+## Use it through MCP
+
+For assistants that cannot run commands (Claude Desktop, for example), `freemapper-print mcp` is an MCP server on
+stdin/stdout. Register it once with the absolute path:
 
 ```sh
 claude mcp add freemapper-print -- /absolute/path/to/freemapper-print mcp          # Claude Code
@@ -129,8 +185,9 @@ the `more_*` fields count the rest.
 
 ### Workflow
 
-1. Ask for the map file (`.omap`) and, if there is one, the course file. Both must be on the computer; you need
-   their absolute paths.
+The same steps as over the command line, with the tools:
+
+1. Ask for the map file (`.omap`) and, if there is one, the course file (absolute paths).
 2. New event: `init_project` with `map` and `courses`. Existing project: `project_info`.
 3. `check_project`. Read every note to the person in plain words; do not paste the list. Warnings about a number
    that sits badly, a control under a mask or a map that does not fit the courses are worth a decision. When
@@ -150,32 +207,6 @@ Rules:
   delete the mask and create it again.
 - Errors come back as tool errors with one sentence meant for the user. Relay it; do not retry the same call
   unchanged. The agent can cancel a long export; it stops after the sheet in hand.
-
-## Use it from the command line
-
-Use the CLI when no MCP client is available or the user wants a script. Pass `--lang en` when you parse the output.
-
-```sh
-freemapper-print init <folder> --map /path/to/map.omap --courses /path/to/courses.ppen --title "Training"
-freemapper-print check <folder>
-freemapper-print export <folder> --out-dir /path/to/pdfs
-```
-
-| Command | Purpose |
-|---|---|
-| `render <map> --out <file.pdf>` | The map alone as one PDF. `--scale`, `--paper a4\|a3`, `--orientation auto\|portrait\|landscape`, `--kind`, `--show-sheet-objects`. |
-| `init <folder> --map <file>` | Creates the project file. `--title`, `--kind sprint\|schoolyard\|forest`, `--courses <.ppen or .xml>`. |
-| `check <project>` | Draws every layout or course without writing a file and lists the notes. |
-| `export <project>` | One PDF per layout, or per course with a course file. `--layout <id>`, `--course <name>` (repeatable), `--single-file`, `--out-dir <dir>` (default: `out` next to the project file, created if missing). |
-| `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--no-start`, `--no-finish`, `--id`, `--assign`. |
-| `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
-| `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
-| `mcp` | The MCP server. |
-
-`<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to
-stderr. Exit codes: 0 on success; 1 when a file cannot be loaded, drawn or written, when `check` finds notes
-(notes marked Info do not count) or when `init` finds an existing project file; 2 when the command line is wrong,
-for example an unknown layout, course or control. `export` exits 0 when every PDF is written, even with notes.
 
 ## Result files
 

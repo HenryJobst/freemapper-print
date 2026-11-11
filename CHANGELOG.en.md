@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- `AGENTS.md` puts the command line first and MCP second: an agent that can run commands does the job with a few blocking calls instead of one turn per tool call. MCP stays the way for assistants without a shell. The command-line section names what only MCP offers (`project_info`, `list_courses`, `set_layout`, `set_element`, `assign_mask`) and how to do it in the project file instead.
+
 ## [0.6.1] - 2026-11-11
 
 ### Changed

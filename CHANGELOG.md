@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- `AGENTS.md` stellt die Kommandozeile an die erste und MCP an die zweite Stelle: Ein Agent, der Befehle ausführen kann, erledigt die Arbeit mit wenigen blockierenden Aufrufen statt mit einer Runde je Werkzeugaufruf. MCP bleibt der Weg für Assistenten ohne Shell. Der Abschnitt zur Kommandozeile nennt, was nur MCP bietet (`project_info`, `list_courses`, `set_layout`, `set_element`, `assign_mask`), und wie man es stattdessen in der Projektdatei erledigt.
+
 ## [0.6.1] - 2026-11-11
 
 ### Geändert
