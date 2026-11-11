@@ -480,3 +480,12 @@ mcp-error-relative-path = { $path } is a relative path; give an absolute path, b
 mcp-error-empty-path = the path is empty; give an absolute path
 mcp-error-nul-path = the path { $path } contains a NUL character
 mcp-error-internal = internal error: { $error }
+
+# ---- MCP write tools (M5 Task 3) ----
+error-assign-no-course-file = assign_mask needs a course file, and the project names none under [sources] courses
+error-unknown-mask = the project has no mask variant "{ $id }"; it has { $known }
+error-unknown-mask-none = the project has no mask variant "{ $id }": the project file has no [[masks]], and the course file has no white-out areas
+error-edit-project = the project { $path } was not changed
+mcp-error-corridor-assign = assign needs a course; give the course whose sheet prints the corridor
+mcp-error-numbers-position = direction and gap go together; give both, or leave both out to take the proposal of check_project
+mcp-error-project-link = { $path } is a link, and the server does not change a project file through a link; give the path of the file it points to

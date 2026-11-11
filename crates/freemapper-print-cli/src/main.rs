@@ -495,6 +495,23 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             "error-read-courses",
             Some(&args!("path" => path.display().to_string())),
         )),
+        E::AssignNeedsCourseFile => UsageError(texts.plain("error-assign-no-course-file")).into(),
+        E::UnknownMask { id, known } => UsageError(if known.is_empty() {
+            texts.get(
+                "error-unknown-mask-none",
+                Some(&args!("id" => printable(&id))),
+            )
+        } else {
+            texts.get(
+                "error-unknown-mask",
+                Some(&args!("id" => printable(&id), "known" => quoted_list(texts, &known))),
+            )
+        })
+        .into(),
+        E::EditProject { path, source } => anyhow::Error::new(source).context(texts.get(
+            "error-edit-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
         E::AppendCorrection { path, source } => {
             // A file that no longer loads has been put back as it was.
             let lead_in = match source {

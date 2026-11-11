@@ -289,7 +289,7 @@ pub fn corridor(
 }
 
 /// The course `name` of the course file, or a usage error that lists the courses.
-fn find_course<'a>(
+pub(super) fn find_course<'a>(
     courses: &'a LoadedCourses,
     name: &str,
 ) -> Result<&'a Course<MapCoord>, OpError> {

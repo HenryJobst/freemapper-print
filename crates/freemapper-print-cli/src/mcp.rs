@@ -1,8 +1,10 @@
-//! `freemapper-print mcp`: the MCP server on stdio, so an AI agent can read, check and (later) change and
-//! export a project. The tools are thin wrappers over [`crate::ops`]; results are compact JSON, notes and
-//! errors carry the same texts the CLI prints (ADR 0004). Nothing but JSON-RPC goes to stdout.
+//! `freemapper-print mcp`: the MCP server on stdio, so an AI agent can read, check, change and (later) export
+//! a project. The tools are thin wrappers over [`crate::ops`]; results are compact JSON, notes and errors carry
+//! the same texts the CLI prints (ADR 0004). Nothing but JSON-RPC goes to stdout. The tools that write hold one
+//! lock of the server, so that each sees what the one before it wrote.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use fluent_bundle::FluentArgs;
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
@@ -14,16 +16,25 @@ use crate::ops;
 use crate::ops::note::Note;
 use crate::text::{Lang, Texts, detect_lang};
 use crate::{op_error, printable};
+use freemapper_print::print::{Orientation, Paper};
+use freemapper_print::project::{self, AnchorTarget, Corner, ElementKind, NorthLines};
+use freemapper_print::scale::MapKind;
 
 /// The most notes `check_project` returns; `more` counts the rest.
 const MAX_NOTES: usize = 200;
+
+/// The public home of the program, named in the server info and the instructions.
+const WEBSITE: &str = "https://github.com/HenryJobst/freemapper-print";
 
 const INSTRUCTIONS: &str = "freemapper-print prints orienteering maps from OpenOrienteering Mapper \
 files as PDFs at an exact scale, one sheet per course or per layout. A project is a folder with a \
 freemapper-print.toml that names the map, the optional course file (Purple Pen or IOF XML) and the \
 layouts. Start with project_info to see what a project holds, then check_project to see the notes \
-of every sheet. Paths must be absolute because the server does not know your working folder. The \
-messages in the results are German or English; pass lang to choose.";
+of every sheet. init_project starts a project; masks_window, masks_corridor, numbers_accept, \
+set_layout, set_element and assign_mask change the project file and keep its comments. Run \
+check_project after a change to see its effect. Paths must be absolute because the server does not \
+know your working folder. The messages in the results are German or English; pass lang to choose. \
+Manual and source: https://github.com/HenryJobst/freemapper-print";
 
 /// The arguments of every read tool.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
@@ -32,6 +43,359 @@ struct ProjectArgs {
     project: String,
     /// Language of the messages: "de" or "en". Default: the language the server started with.
     lang: Option<String>,
+}
+
+/// The arguments of `init_project`, as the CLI's `init`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct InitIn {
+    /// Absolute path of the project folder. It is created when missing and must not hold a
+    /// freemapper-print.toml yet.
+    folder: String,
+    /// Absolute path of the map file (.omap or .xmap).
+    map: String,
+    /// The event title. Default: the title in the map's freemapper.toml, else the map's file name.
+    title: Option<String>,
+    /// The map kind. Default: map_kind in the map's freemapper.toml, else inferred from the symbol set and
+    /// scale.
+    kind: Option<KindIn>,
+    /// Absolute path of a course file (Purple Pen .ppen or IOF XML): one layout per print scale and an
+    /// assignment per course.
+    courses: Option<String>,
+    /// Language of the messages, and of the texts the new file puts on the sheet: "de" or "en".
+    lang: Option<String>,
+}
+
+/// The arguments of `masks_window`, as the CLI's `masks window`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct WindowIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The course whose controls get a window.
+    course: String,
+    /// The controls with a window, by code ("31,32") or by place in the course ("2-5"). Default: all.
+    controls: Option<String>,
+    /// Radius of each window in mm on paper. Default: 10.
+    radius: Option<f64>,
+    /// Windows with a radius of their own, each "CODE=MM" such as "35=20".
+    #[serde(default)]
+    radius_for: Vec<String>,
+    /// No window around the start.
+    #[serde(default)]
+    no_start: bool,
+    /// No window around the finish.
+    #[serde(default)]
+    no_finish: bool,
+    /// The mask id. Default: one made from the course name.
+    id: Option<String>,
+    /// Print the course with the new mask.
+    #[serde(default)]
+    assign: bool,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// The arguments of `masks_corridor`, as the CLI's `masks corridor`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct CorridorIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The line of the corridor in map mm, "x,y;x,y;...", at least two points.
+    points: String,
+    /// Width of the corridor in mm on paper. Default: 8.
+    width: Option<f64>,
+    /// The mask id. Default: corridor-<n>.
+    id: Option<String>,
+    /// Print the course named in course with the new mask; needs course.
+    #[serde(default)]
+    assign: bool,
+    /// The course whose layout gives the print scale for the width. Without it, all layouts must print at
+    /// one scale.
+    course: Option<String>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// Where a number correction applies.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ScopeIn {
+    /// The sheet of the course alone.
+    Sheet,
+    /// Every course on the course's layout.
+    LayoutWide,
+}
+
+/// The arguments of `numbers_accept`, as the CLI's `numbers accept`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct AcceptIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The course.
+    course: String,
+    /// The control code.
+    control: String,
+    /// sheet: this course's sheet; layout_wide: every course on its layout.
+    scope: ScopeIn,
+    /// Direction of the number in degrees (0 is east, counter-clockwise). Goes with gap.
+    direction: Option<f64>,
+    /// Gap between number and circle in mm on paper. Goes with direction.
+    gap: Option<f64>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// The map kind.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum KindIn {
+    Sprint,
+    Schoolyard,
+    Forest,
+}
+
+impl From<KindIn> for MapKind {
+    fn from(k: KindIn) -> Self {
+        match k {
+            KindIn::Sprint => MapKind::Sprint,
+            KindIn::Schoolyard => MapKind::Schoolyard,
+            KindIn::Forest => MapKind::Forest,
+        }
+    }
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+enum PaperIn {
+    A4,
+    A3,
+}
+
+impl From<PaperIn> for Paper {
+    fn from(p: PaperIn) -> Self {
+        match p {
+            PaperIn::A4 => Paper::A4,
+            PaperIn::A3 => Paper::A3,
+        }
+    }
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum OrientationIn {
+    Auto,
+    Portrait,
+    Landscape,
+}
+
+impl From<OrientationIn> for Orientation {
+    fn from(o: OrientationIn) -> Self {
+        match o {
+            OrientationIn::Auto => Orientation::Auto,
+            OrientationIn::Portrait => Orientation::Portrait,
+            OrientationIn::Landscape => Orientation::Landscape,
+        }
+    }
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum NorthLinesIn {
+    Auto,
+    Never,
+}
+
+impl From<NorthLinesIn> for NorthLines {
+    fn from(n: NorthLinesIn) -> Self {
+        match n {
+            NorthLinesIn::Auto => NorthLines::Auto,
+            NorthLinesIn::Never => NorthLines::Never,
+        }
+    }
+}
+
+/// A field that can be left out (keep the value) or null (clear it).
+fn nullable<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
+
+/// The arguments of `set_layout`: the keys of a `[[layouts]]` table. A key left out keeps its value, or takes the
+/// default for a new layout.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct LayoutIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The layout id; it names the PDF of the layout.
+    id: String,
+    /// Default for a new layout: A4.
+    paper: Option<PaperIn>,
+    /// auto takes the orientation in which more of the map fits. Default for a new layout: auto.
+    orientation: Option<OrientationIn>,
+    /// The print scale denominator, such as 4000; null prints at the map scale.
+    #[serde(default, deserialize_with = "nullable")]
+    print_scale: Option<Option<u32>>,
+    /// The map point (mm on the map sheet) in the centre of the map frame; null centres the printed area.
+    #[serde(default, deserialize_with = "nullable")]
+    centre_map_mm: Option<Option<[f64; 2]>>,
+    /// Width of the passe-partout around the map frame in mm. Default for a new layout: 8.
+    margin_mm: Option<f64>,
+    /// Width of the frame line in mm; 0 draws none. Default for a new layout: 0.25.
+    border_mm: Option<f64>,
+    /// The frame cuts the map on purpose, so check reports it as information only.
+    crop: Option<bool>,
+    /// auto adds north lines when the map has none; never leaves them out.
+    north_lines: Option<NorthLinesIn>,
+    /// Map parts the layout does not print, by name.
+    hide_parts: Option<Vec<String>>,
+    /// Ids of shared elements the layout does not show.
+    hide_shared: Option<Vec<String>>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ElementKindIn {
+    TitleBlock,
+    Text,
+    Logo,
+    ScaleCheckBar,
+    CreditLine,
+    CopyrightLine,
+    ControlDescriptions,
+}
+
+impl From<ElementKindIn> for ElementKind {
+    fn from(k: ElementKindIn) -> Self {
+        match k {
+            ElementKindIn::TitleBlock => ElementKind::TitleBlock,
+            ElementKindIn::Text => ElementKind::Text,
+            ElementKindIn::Logo => ElementKind::Logo,
+            ElementKindIn::ScaleCheckBar => ElementKind::ScaleCheckBar,
+            ElementKindIn::CreditLine => ElementKind::CreditLine,
+            ElementKindIn::CopyrightLine => ElementKind::CopyrightLine,
+            ElementKindIn::ControlDescriptions => ElementKind::ControlDescriptions,
+        }
+    }
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum AnchorTargetIn {
+    Page,
+    MapFrame,
+}
+
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum CornerIn {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Centre,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+impl From<CornerIn> for Corner {
+    fn from(c: CornerIn) -> Self {
+        match c {
+            CornerIn::TopLeft => Corner::TopLeft,
+            CornerIn::Top => Corner::Top,
+            CornerIn::TopRight => Corner::TopRight,
+            CornerIn::Left => Corner::Left,
+            CornerIn::Centre => Corner::Centre,
+            CornerIn::Right => Corner::Right,
+            CornerIn::BottomLeft => Corner::BottomLeft,
+            CornerIn::Bottom => Corner::Bottom,
+            CornerIn::BottomRight => Corner::BottomRight,
+        }
+    }
+}
+
+/// Where an element hangs.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct AnchorIn {
+    /// The page, or the map frame inside the passe-partout.
+    to: AnchorTargetIn,
+    /// The corner or edge of it the element hangs from.
+    corner: CornerIn,
+    /// Offset in mm inward from that corner, x to the right and y down. Default: [0, 0].
+    #[serde(default)]
+    offset_mm: [f64; 2],
+}
+
+/// The arguments of `set_element`: a sheet element as the project file writes it.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct ElementIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The layout id. Left out: the element is shared by every layout.
+    layout: Option<String>,
+    /// The element id; an element with this id there is replaced.
+    id: String,
+    kind: ElementKindIn,
+    anchor: AnchorIn,
+    /// title_block and text: the lines, with placeholders such as {event} or {course}.
+    #[serde(default)]
+    lines: Vec<String>,
+    /// title_block, text, credit_line and copyright_line: the text size in pt.
+    size_pt: Option<f64>,
+    /// title_block and text: a white box behind the text. Default: true.
+    box_white: Option<bool>,
+    /// logo: absolute path of the image (PNG, JPEG or SVG). The file stores it relative to the project file.
+    file: Option<String>,
+    /// logo: printed width in mm.
+    width_mm: Option<f64>,
+    /// control_descriptions: printed side of one cell in mm, 4 to 10. Default: the rule profile's size.
+    cell_mm: Option<f64>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// The arguments of `assign_mask`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct AssignIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// The course of the course file.
+    course: String,
+    /// The mask variant: a [[masks]] id or whiteout-<n>. Left out or null: the course prints without one.
+    mask: Option<String>,
+    /// The layout the course prints on. Left out: the layout it prints on now.
+    layout: Option<String>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// A result of a write tool, with what the CLI says after the same command.
+#[derive(Serialize)]
+struct Written<'a, T: Serialize> {
+    #[serde(flatten)]
+    result: &'a T,
+    messages: Vec<String>,
+}
+
+/// The result of `init_project`.
+#[derive(Serialize)]
+struct InitOut<'a> {
+    path: &'a Path,
+    kind: MapKind,
+    kind_source: ops::init::KindSource,
+    map_scale: u32,
+    layouts: &'a [ops::init::InitLayout],
+    assignments: usize,
+    course_file: &'a Option<ops::init::InitCourses>,
+    contour_interval_m: Option<f64>,
+    /// Without a course file, when the layout does not fit: what check_project says about its sheet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    check: Option<SheetOut>,
+    messages: Vec<String>,
 }
 
 /// One sheet of `check_project`.
@@ -215,6 +579,8 @@ pub struct PrintServer {
     tool_router: ToolRouter<Self>,
     /// The language of the messages when a call names none.
     lang: Lang,
+    /// Held by every tool that writes, from before it reads the project until it has written.
+    writes: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl PrintServer {
@@ -237,31 +603,101 @@ impl PrintServer {
             })
     }
 
-    /// Checks the arguments, then runs `op` off the async runtime: the ops read files and draw sheets. A
-    /// panic in `op` comes back as a tool error, and the server keeps serving.
+    /// The texts of a call and its project path, checked; a tool error when either is unusable.
+    fn prepare(
+        &self,
+        lang: Option<&str>,
+        project: &str,
+    ) -> Result<(Texts, PathBuf), CallToolResult> {
+        let texts = self
+            .texts(lang)
+            .map_err(|message| CallToolResult::error(vec![ContentBlock::text(message)]))?;
+        let path = absolute_path(&texts, project)
+            .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e.message)]))?;
+        Ok((texts, path))
+    }
+
+    /// Checks the arguments, then runs `op` off the async runtime: the ops read files and draw sheets.
     async fn run(
         &self,
         args: ProjectArgs,
         op: impl FnOnce(&Texts, &Path) -> Result<String, String> + Send + 'static,
     ) -> Result<CallToolResult, McpError> {
-        let texts = match self.texts(args.lang.as_deref()) {
-            Ok(texts) => texts,
-            Err(message) => return failure(message),
+        let (texts, path) = match self.prepare(args.lang.as_deref(), &args.project) {
+            Ok(prepared) => prepared,
+            Err(refused) => return Ok(refused),
         };
-        let path = match absolute_path(&texts, &args.project) {
-            Ok(path) => path,
-            Err(e) => return failure(e.message),
-        };
-        let lang = texts.lang().clone();
-        match tokio::task::spawn_blocking(move || op(&texts, &path)).await {
-            Ok(Ok(json)) => text(json),
-            Ok(Err(message)) => failure(message),
-            Err(e) => failure(Texts::new(&lang).get(
-                "mcp-error-internal",
-                Some(&args!("error" => printable(&panic_text(e)))),
-            )),
-        }
+        blocking(texts, move |texts| op(texts, &path)).await
     }
+
+    /// [`Self::run`] for a tool that changes the project file: under the write lock, and refused when the project
+    /// file is a link.
+    async fn write(
+        &self,
+        lang: Option<&str>,
+        project: &str,
+        op: impl FnOnce(&Texts, &Path) -> Result<String, String> + Send + 'static,
+    ) -> Result<CallToolResult, McpError> {
+        let (texts, path) = match self.prepare(lang, project) {
+            Ok(prepared) => prepared,
+            Err(refused) => return Ok(refused),
+        };
+        self.with_project_lock(texts, move |texts| {
+            refuse_link(texts, &path)?;
+            op(texts, &path)
+        })
+        .await
+    }
+
+    /// Runs `op` off the async runtime while it holds the write lock. The lock goes with the work, so a call the
+    /// client gives up on still keeps the next write waiting until its own write is done.
+    async fn with_project_lock(
+        &self,
+        texts: Texts,
+        op: impl FnOnce(&Texts) -> Result<String, String> + Send + 'static,
+    ) -> Result<CallToolResult, McpError> {
+        let guard = self.writes.clone().lock_owned().await;
+        blocking(texts, move |texts| {
+            let _guard = guard;
+            op(texts)
+        })
+        .await
+    }
+}
+
+/// Runs `op` on a thread for blocking work. A panic in `op` comes back as a tool error, and the server keeps
+/// serving.
+async fn blocking(
+    texts: Texts,
+    op: impl FnOnce(&Texts) -> Result<String, String> + Send + 'static,
+) -> Result<CallToolResult, McpError> {
+    let lang = texts.lang().clone();
+    match tokio::task::spawn_blocking(move || op(&texts)).await {
+        Ok(Ok(json)) => text(json),
+        Ok(Err(message)) => failure(message),
+        Err(e) => failure(Texts::new(&lang).get(
+            "mcp-error-internal",
+            Some(&args!("error" => printable(&panic_text(e)))),
+        )),
+    }
+}
+
+/// Refuses a project file that is a link: the CLI replaces such a link with a regular file (ADR 0041), which an
+/// agent would not notice, so the server changes nothing. A folder that is a link is followed.
+fn refuse_link(texts: &Texts, path: &Path) -> Result<(), String> {
+    let file = ops::project_file(path);
+    if std::fs::symlink_metadata(&file).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(texts.get(
+            "mcp-error-project-link",
+            Some(&args!("path" => file.display().to_string())),
+        ));
+    }
+    Ok(())
+}
+
+/// An agent's path as one checked by [`absolute_path`], with the error in words.
+fn agent_path(texts: &Texts, path: &str) -> Result<PathBuf, String> {
+    absolute_path(texts, path).map_err(|e| e.message.to_string())
 }
 
 /// What a failed blocking task says: the panic message if there is one.
@@ -283,6 +719,7 @@ impl PrintServer {
         Self {
             tool_router: Self::tool_router(),
             lang,
+            writes: Arc::default(),
         }
     }
 
@@ -351,16 +788,373 @@ impl PrintServer {
         })
         .await
     }
+
+    #[tool(
+        description = "Write a new project file freemapper-print.toml for a map into a folder, as the \
+                       init command does. With a course file there is one layout per print scale and \
+                       an assignment per course. The tool refuses a folder that holds a project \
+                       file already. Returns the layouts written, where the map kind came from, and the \
+                       messages of init."
+    )]
+    async fn init_project(
+        &self,
+        Parameters(args): Parameters<InitIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let (texts, folder) = match self.prepare(args.lang.as_deref(), &args.folder) {
+            Ok(prepared) => prepared,
+            Err(refused) => return Ok(refused),
+        };
+        let map = match agent_path(&texts, &args.map) {
+            Ok(map) => map,
+            Err(message) => return failure(message),
+        };
+        let courses = match args.courses.as_deref().map(|c| agent_path(&texts, c)) {
+            Some(Err(message)) => return failure(message),
+            Some(Ok(path)) => Some(path),
+            None => None,
+        };
+        let (title, kind) = (args.title, args.kind.map(MapKind::from));
+        self.with_project_lock(texts, move |texts| {
+            let mut messages = Vec::new();
+            let result = ops::init::init(
+                &ops::init::InitArgs {
+                    folder,
+                    map,
+                    title,
+                    kind,
+                    courses,
+                    sheet_lang: crate::sheet_lang(texts),
+                },
+                &|kind, contour| crate::init_comments(texts, kind, contour),
+                &mut |progress| {
+                    // Progress while the layouts are fitted is for a terminal.
+                    if !matches!(progress, ops::init::InitProgress::Fitting { .. }) {
+                        messages.push(crate::init_progress_line(texts, &progress));
+                    }
+                },
+            )
+            .map_err(|e| op_message(texts, e))?;
+            messages.extend(crate::init_written_lines(texts, &result));
+            let mut budget = NoteBudget::new(MAX_NOTES);
+            json(
+                texts,
+                &InitOut {
+                    path: &result.path,
+                    kind: result.kind,
+                    kind_source: result.kind_source,
+                    map_scale: result.map_scale,
+                    layouts: &result.layouts,
+                    assignments: result.assignments,
+                    course_file: &result.course_file,
+                    contour_interval_m: result.contour_interval_m,
+                    check: result
+                        .check
+                        .as_ref()
+                        .map(|c| sheet_out(texts, &mut budget, c)),
+                    messages,
+                },
+            )
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Add a mask variant with round windows around the controls of a course, as \
+                       masks window does: on the sheet the map shows only inside the windows. With \
+                       assign the course prints with the new mask. Returns the mask id, the stops \
+                       with a window and the messages of the command."
+    )]
+    async fn masks_window(
+        &self,
+        Parameters(args): Parameters<WindowIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let WindowIn {
+            project,
+            course,
+            controls,
+            radius,
+            radius_for,
+            no_start,
+            no_finish,
+            id,
+            assign,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            let result = ops::masks::window(
+                &ops::masks::WindowArgs {
+                    project: path.to_path_buf(),
+                    course,
+                    controls,
+                    radius_mm: radius,
+                    radius_for,
+                    no_start,
+                    no_finish,
+                    id,
+                    assign,
+                },
+                &|r| crate::window_comment(texts, r),
+            )
+            .map_err(|e| op_message(texts, e))?;
+            let messages = crate::window_written_lines(texts, &result);
+            json(
+                texts,
+                &Written {
+                    result: &result,
+                    messages,
+                },
+            )
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Add a mask variant with a corridor along a line, as masks corridor does: on the \
+                       sheet the map shows only inside the corridor. The width is mm on paper, so it \
+                       needs a print scale: course names the course whose layout gives it. With \
+                       assign that course prints with the new mask. Returns the mask id and the \
+                       messages of the command."
+    )]
+    async fn masks_corridor(
+        &self,
+        Parameters(args): Parameters<CorridorIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let CorridorIn {
+            project,
+            points,
+            width,
+            id,
+            assign,
+            course,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            if assign && course.is_none() {
+                return Err(texts.plain("mcp-error-corridor-assign"));
+            }
+            let result = ops::masks::corridor(
+                &ops::masks::CorridorArgs {
+                    project: path.to_path_buf(),
+                    points,
+                    width_mm: width,
+                    id,
+                    assign,
+                    course,
+                },
+                &|r| crate::corridor_comment(texts, r),
+            )
+            .map_err(|e| op_message(texts, e))?;
+            let messages = crate::corridor_written_lines(texts, &result);
+            json(
+                texts,
+                &Written {
+                    result: &result,
+                    messages,
+                },
+            )
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Fix where the number of a control is printed, as numbers accept does. Without \
+                       direction and gap it takes the free position that check_project proposes for \
+                       the number. scope sheet changes the sheet of the course, layout_wide every course \
+                       on its layout. Returns the correction written and the message of the command."
+    )]
+    async fn numbers_accept(
+        &self,
+        Parameters(args): Parameters<AcceptIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let AcceptIn {
+            project,
+            course,
+            control,
+            scope,
+            direction,
+            gap,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            let position = match (direction, gap) {
+                (Some(d), Some(g)) => Some((d, g)),
+                (None, None) => None,
+                _ => return Err(texts.plain("mcp-error-numbers-position")),
+            };
+            let result = ops::numbers::accept(&ops::numbers::AcceptArgs {
+                project: path.to_path_buf(),
+                course,
+                control,
+                scope: match scope {
+                    ScopeIn::Sheet => ops::numbers::AcceptScope::Sheet,
+                    ScopeIn::LayoutWide => ops::numbers::AcceptScope::Layout,
+                },
+                position,
+            })
+            .map_err(|e| op_message(texts, e))?;
+            let messages = vec![crate::numbers_accepted_line(texts, &result)];
+            json(
+                texts,
+                &Written {
+                    result: &result,
+                    messages,
+                },
+            )
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Add a layout to the project file, or change the layout with this id. A key left \
+                       out keeps its value, or takes the default for a new layout. The elements of the \
+                       layout stay as they are; set_element changes them. Returns the layout as the \
+                       file now reads, and change: added, changed or unchanged."
+    )]
+    async fn set_layout(
+        &self,
+        Parameters(args): Parameters<LayoutIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let LayoutIn {
+            project,
+            id,
+            paper,
+            orientation,
+            print_scale,
+            centre_map_mm,
+            margin_mm,
+            border_mm,
+            crop,
+            north_lines,
+            hide_parts,
+            hide_shared,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            let result = ops::edit::set_layout(&ops::edit::LayoutArgs {
+                project: path.to_path_buf(),
+                id,
+                paper: paper.map(Paper::from),
+                orientation: orientation.map(Orientation::from),
+                print_scale,
+                centre_map_mm,
+                margin_mm,
+                border_mm,
+                crop,
+                north_lines: north_lines.map(NorthLines::from),
+                hide_parts,
+                hide_shared,
+            })
+            .map_err(|e| op_message(texts, e))?;
+            json(texts, &result)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Add a sheet element to a layout, or to the shared elements when layout is left \
+                       out, or replace the element with the same id there. Which fields apply depends \
+                       on kind: lines for title_block and text, size_pt for those and for credit_line \
+                       and copyright_line, file and width_mm for logo, cell_mm for \
+                       control_descriptions. Returns the element and change: added, changed or \
+                       unchanged."
+    )]
+    async fn set_element(
+        &self,
+        Parameters(args): Parameters<ElementIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let ElementIn {
+            project,
+            layout,
+            id,
+            kind,
+            anchor,
+            lines,
+            size_pt,
+            box_white,
+            file,
+            width_mm,
+            cell_mm,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            // The file names the logo relative to itself, as it names the map.
+            let file = match file {
+                Some(logo) => {
+                    let logo = agent_path(texts, &logo)?;
+                    let project_file = ops::project_file(path);
+                    let dir = project_file.parent().unwrap_or(path);
+                    let canonical = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+                    Some(project::relative_path(&canonical(dir), &canonical(&logo)))
+                }
+                None => None,
+            };
+            let result = ops::edit::set_element(&ops::edit::ElementArgs {
+                project: path.to_path_buf(),
+                layout,
+                element: project::ElementSpec {
+                    id,
+                    kind: kind.into(),
+                    anchor: project::Anchor {
+                        to: match anchor.to {
+                            AnchorTargetIn::Page => AnchorTarget::Page,
+                            AnchorTargetIn::MapFrame => AnchorTarget::MapFrame,
+                        },
+                        corner: anchor.corner.into(),
+                        offset_mm: anchor.offset_mm,
+                    },
+                    lines,
+                    size_pt,
+                    box_white,
+                    file,
+                    width_mm,
+                    cell_mm,
+                },
+            })
+            .map_err(|e| op_message(texts, e))?;
+            json(texts, &result)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Set the mask variant a course prints with: a [[masks]] entry of the project file \
+                       or a white-out area of the course file (whiteout-<n>); project_info lists them. \
+                       Without mask the course prints without one. layout moves the course to another \
+                       layout as well. Returns the assignment and change: added, changed or unchanged."
+    )]
+    async fn assign_mask(
+        &self,
+        Parameters(args): Parameters<AssignIn>,
+    ) -> Result<CallToolResult, McpError> {
+        let AssignIn {
+            project,
+            course,
+            mask,
+            layout,
+            lang,
+        } = args;
+        self.write(lang.as_deref(), &project, move |texts, path| {
+            let result = ops::edit::assign_mask(&ops::edit::AssignArgs {
+                project: path.to_path_buf(),
+                course,
+                mask,
+                layout,
+            })
+            .map_err(|e| op_message(texts, e))?;
+            json(texts, &result)
+        })
+        .await
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for PrintServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new(
-                "freemapper-print",
-                env!("CARGO_PKG_VERSION"),
-            ))
+            .with_server_info(
+                Implementation::new("freemapper-print", env!("CARGO_PKG_VERSION"))
+                    .with_website_url(WEBSITE),
+            )
             .with_instructions(INSTRUCTIONS)
     }
 }
@@ -386,7 +1180,7 @@ pub fn run(texts: &Texts) -> anyhow::Result<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ops::testing::viktoriapark;
+    use crate::ops::testing::{viktoriapark, viktoriapark_copy};
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, ReadHalf, WriteHalf};
 
@@ -395,6 +1189,8 @@ mod tests {
         lines: tokio::io::Lines<BufReader<ReadHalf<DuplexStream>>>,
         writer: WriteHalf<DuplexStream>,
         next_id: u64,
+        /// The answer to `initialize`.
+        info: Value,
     }
 
     impl Client {
@@ -406,6 +1202,7 @@ mod tests {
                 lines: BufReader::new(reader).lines(),
                 writer,
                 next_id: 1,
+                info: Value::Null,
             };
             let info = client
                 .request(
@@ -421,6 +1218,7 @@ mod tests {
                 info["result"]["serverInfo"]["name"], "freemapper-print",
                 "{info}"
             );
+            client.info = info;
             client
                 .send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
                 .await;
@@ -461,14 +1259,91 @@ mod tests {
                     json!({ "name": tool, "arguments": arguments }),
                 )
                 .await;
-            let result = &answer["result"];
-            assert!(result.is_object(), "{answer}");
-            let text = result["content"][0]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-            (result["isError"] == true, text)
+            outcome(&answer)
         }
+
+        /// Calls a tool and returns its result as JSON; panics when the call fails.
+        async fn ok(&mut self, tool: &str, arguments: Value) -> Value {
+            let (error, text) = self.call(tool, arguments).await;
+            assert!(!error, "{tool}: {text}");
+            serde_json::from_str(&text).unwrap()
+        }
+
+        /// Calls a tool that must fail; returns its message.
+        async fn refused(&mut self, tool: &str, arguments: Value) -> String {
+            let (error, text) = self.call(tool, arguments).await;
+            assert!(error, "{tool} should fail: {text}");
+            text
+        }
+
+        /// Sends all `calls` before it reads an answer; returns the outcomes in the order of `calls`.
+        async fn call_together(&mut self, calls: &[(&str, Value)]) -> Vec<(bool, String)> {
+            let first = self.next_id;
+            for (tool, arguments) in calls {
+                let id = self.next_id;
+                self.next_id += 1;
+                self.send(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "tools/call",
+                    "params": { "name": tool, "arguments": arguments },
+                }))
+                .await;
+            }
+            let mut answers: Vec<Option<(bool, String)>> = vec![None; calls.len()];
+            while answers.iter().any(Option::is_none) {
+                let line = self
+                    .lines
+                    .next_line()
+                    .await
+                    .unwrap()
+                    .expect("server closed");
+                let message: Value = serde_json::from_str(&line).unwrap();
+                if let Some(id) = message["id"].as_u64()
+                    && id >= first
+                    && ((id - first) as usize) < calls.len()
+                {
+                    answers[(id - first) as usize] = Some(outcome(&message));
+                }
+            }
+            answers.into_iter().map(Option::unwrap).collect()
+        }
+    }
+
+    /// Whether a tool call failed, and the text of its first content block.
+    fn outcome(answer: &Value) -> (bool, String) {
+        let result = &answer["result"];
+        assert!(result.is_object(), "{answer}");
+        let text = result["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        (result["isError"] == true, text)
+    }
+
+    /// The project file of a copied project, as text.
+    fn file_text(dir: &tempfile::TempDir) -> String {
+        std::fs::read_to_string(dir.path().join(project::FILE_NAME)).unwrap()
+    }
+
+    fn folder(dir: &tempfile::TempDir) -> String {
+        dir.path().to_str().unwrap().to_string()
+    }
+
+    /// A copy of the Lübeck example with three courses on two layouts, without its number correction.
+    fn luebeck_copy() -> tempfile::TempDir {
+        let from = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/luebeck-competition-courses"
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["luebeck.omap", "freemapper.toml", "courses.ppen"] {
+            std::fs::copy(from.join(name), dir.path().join(name)).unwrap();
+        }
+        let text = std::fs::read_to_string(from.join(project::FILE_NAME)).unwrap();
+        let cut = text.find("[[numbers]]").unwrap();
+        std::fs::write(dir.path().join(project::FILE_NAME), &text[..cut]).unwrap();
+        dir
     }
 
     fn project() -> String {
@@ -476,20 +1351,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lists_the_three_read_tools() {
+    async fn lists_the_read_and_write_tools() {
         let mut client = Client::start().await;
         let answer = client.request("tools/list", json!({})).await;
         let tools = answer["result"]["tools"].as_array().unwrap();
         let mut names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         names.sort();
-        assert_eq!(names, ["check_project", "list_courses", "project_info"]);
+        assert_eq!(
+            names,
+            [
+                "assign_mask",
+                "check_project",
+                "init_project",
+                "list_courses",
+                "masks_corridor",
+                "masks_window",
+                "numbers_accept",
+                "project_info",
+                "set_element",
+                "set_layout",
+            ]
+        );
+        let required = |name: &str| match name {
+            "init_project" => json!(["folder", "map"]),
+            "masks_window" | "assign_mask" => json!(["project", "course"]),
+            "masks_corridor" => json!(["project", "points"]),
+            "numbers_accept" => json!(["project", "course", "control", "scope"]),
+            "set_layout" => json!(["project", "id"]),
+            "set_element" => json!(["project", "id", "kind", "anchor"]),
+            _ => json!(["project"]),
+        };
         for tool in tools {
             assert!(tool["description"].as_str().unwrap().len() > 40, "{tool}");
             let schema = &tool["inputSchema"];
-            assert!(schema["properties"]["project"].is_object(), "{tool}");
             assert!(schema["properties"]["lang"].is_object(), "{tool}");
-            assert_eq!(schema["required"], json!(["project"]), "{tool}");
+            let mut wanted: Vec<Value> = required(tool["name"].as_str().unwrap())
+                .as_array()
+                .unwrap()
+                .clone();
+            let mut found = schema["required"].as_array().unwrap().clone();
+            wanted.sort_by_key(|v| v.to_string());
+            found.sort_by_key(|v| v.to_string());
+            assert_eq!(found, wanted, "{tool}");
         }
+        // The public home of the program goes with the server info.
+        let info = &client.info["result"];
+        assert_eq!(info["serverInfo"]["websiteUrl"], WEBSITE, "{info}");
+        assert!(
+            info["instructions"].as_str().unwrap().contains(WEBSITE),
+            "{info}"
+        );
     }
 
     #[tokio::test]
@@ -649,6 +1560,473 @@ mod tests {
         // The server still answers.
         let (error, text) = client
             .call("list_courses", json!({ "project": project() }))
+            .await;
+        assert!(!error, "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_window_mask_is_written_and_the_next_write_sees_it() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let before = file_text(&dir);
+        let mut client = Client::start().await;
+        let window = client
+            .ok(
+                "masks_window",
+                json!({ "project": project, "course": "Training", "controls": "1-3", "assign": true }),
+            )
+            .await;
+        assert_eq!(window["id"], "window-Training", "{window}");
+        assert_eq!(window["assigned"]["layout"], "a4-4000");
+        assert_eq!(window["windows"][1]["code"], "34");
+        let messages = window["messages"].as_array().unwrap();
+        assert!(
+            messages[0].as_str().unwrap().contains("window-Training"),
+            "{window}"
+        );
+        let text = file_text(&dir);
+        // Everything before stays, comments included: the assignment gets its mask line, the mask follows.
+        let without = text.replacen("mask = \"window-Training\"\n", "", 1);
+        assert!(without.starts_with(before.trim_end()), "{text}");
+        assert!(
+            text.contains("[[masks]]\nid = \"window-Training\""),
+            "{text}"
+        );
+        assert!(
+            text.contains("[[assignments]]\nmask = \"window-Training\"\ncourse = \"Training\""),
+            "{text}"
+        );
+        // The second write sees the first: the id is taken and the course has its mask.
+        let taken = client
+            .refused(
+                "masks_window",
+                json!({ "project": project, "course": "Training", "id": "window-Training" }),
+            )
+            .await;
+        assert!(taken.contains("window-Training"), "{taken}");
+        let has_mask = client
+            .refused(
+                "masks_corridor",
+                json!({ "project": project, "points": "10,10;40,20", "course": "Training", "assign": true }),
+            )
+            .await;
+        assert!(has_mask.contains("window-Training"), "{has_mask}");
+        let accepted = client
+            .ok(
+                "numbers_accept",
+                json!({
+                    "project": project, "course": "Training", "control": "34", "scope": "sheet",
+                    "direction": 45.0, "gap": 0.74
+                }),
+            )
+            .await;
+        assert_eq!(
+            accepted["scope"],
+            json!({ "kind": "course", "name": "Training" })
+        );
+        let after = file_text(&dir);
+        assert!(after.starts_with(&text), "{after}");
+        assert!(after.contains("[[numbers]]"), "{after}");
+        let info = client
+            .ok("project_info", json!({ "project": project }))
+            .await;
+        assert_eq!(info["courses"][0]["masks"], json!(["window-Training"]));
+        let (error, check) = client
+            .call("check_project", json!({ "project": project }))
+            .await;
+        assert!(!error, "{check}");
+    }
+
+    #[tokio::test]
+    async fn bad_corridor_and_number_arguments_are_refused_and_nothing_is_written() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let before = file_text(&dir);
+        let mut client = Client::start().await;
+        let width = client
+            .refused(
+                "masks_corridor",
+                json!({ "project": project, "points": "10,10;40,20", "width": 0.01 }),
+            )
+            .await;
+        assert!(width.contains("0.01"), "{width}");
+        let no_course = client
+            .refused(
+                "masks_corridor",
+                json!({ "project": project, "points": "10,10;40,20", "assign": true }),
+            )
+            .await;
+        assert!(no_course.contains("assign needs a course"), "{no_course}");
+        let half = client
+            .refused(
+                "numbers_accept",
+                json!({
+                    "project": project, "course": "Training", "control": "34", "scope": "sheet",
+                    "direction": 45.0
+                }),
+            )
+            .await;
+        assert!(half.contains("direction and gap go together"), "{half}");
+        let scope = client
+            .refused(
+                "numbers_accept",
+                json!({ "project": project, "course": "Training", "control": "34", "scope": "both" }),
+            )
+            .await;
+        assert!(scope.contains("layout_wide"), "{scope}");
+        assert_eq!(file_text(&dir), before);
+    }
+
+    #[tokio::test]
+    async fn numbers_accept_takes_the_proposal_of_check_on_luebeck() {
+        let dir = luebeck_copy();
+        let project = folder(&dir);
+        let before = file_text(&dir);
+        let mut client = Client::start().await;
+        let accepted = client
+            .ok(
+                "numbers_accept",
+                json!({ "project": project, "course": "A", "control": "49", "scope": "sheet", "lang": "de" }),
+            )
+            .await;
+        assert_eq!(accepted["direction"], 161.0, "{accepted}");
+        assert_eq!(accepted["gap_mm"], 0.5, "{accepted}");
+        assert_eq!(accepted["proposed"], true);
+        assert!(
+            accepted["messages"][0].as_str().unwrap().contains("49"),
+            "{accepted}"
+        );
+        let text = file_text(&dir);
+        assert!(text.starts_with(before.trim_end()), "{text}");
+        assert!(
+            text.contains("[[numbers]]\ncontrol = \"49\"\ncourse = \"A\""),
+            "{text}"
+        );
+        let again = client
+            .refused(
+                "numbers_accept",
+                json!({ "project": project, "course": "A", "control": "49", "scope": "sheet" }),
+            )
+            .await;
+        assert!(again.contains("49"), "{again}");
+        assert_eq!(file_text(&dir), text);
+    }
+
+    #[tokio::test]
+    async fn layouts_and_elements_are_added_and_changed_and_the_project_still_checks() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        let added = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a3", "paper": "A3", "print_scale": 3000 }),
+            )
+            .await;
+        assert_eq!(added["change"], "added", "{added}");
+        assert_eq!(added["layout"]["paper"], "A3");
+        assert_eq!(added["layout"]["map_frame"]["margin_mm"], 8.0);
+        let changed = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a3", "margin_mm": 12.0, "orientation": "landscape" }),
+            )
+            .await;
+        assert_eq!(changed["change"], "changed", "{changed}");
+        // The keys left out keep their value.
+        assert_eq!(changed["layout"]["print_scale"], 3000);
+        assert_eq!(changed["layout"]["map_frame"]["margin_mm"], 12.0);
+        let same = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a3", "margin_mm": 12.0 }),
+            )
+            .await;
+        assert_eq!(same["change"], "unchanged");
+        // null prints the course layout at the map scale again.
+        let scale = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "print_scale": null }),
+            )
+            .await;
+        assert_eq!(scale["layout"]["print_scale"], Value::Null, "{scale}");
+        assert_eq!(scale["layout"]["elements"][0]["id"], "descriptions");
+        let note = json!({
+            "project": project, "layout": "a3", "id": "note", "kind": "text",
+            "anchor": { "to": "page", "corner": "bottom_left", "offset_mm": [5.0, 5.0] },
+            "lines": ["Start 10:00"]
+        });
+        let element = client.ok("set_element", note.clone()).await;
+        assert_eq!(element["change"], "added", "{element}");
+        let mut again = note.clone();
+        again["lines"] = json!(["Start 10:30", "{event}"]);
+        let element = client.ok("set_element", again).await;
+        assert_eq!(element["change"], "changed", "{element}");
+        let shared = client
+            .ok(
+                "set_element",
+                json!({
+                    "project": project, "id": "credit", "kind": "credit_line", "size_pt": 6.0,
+                    "anchor": { "to": "page", "corner": "bottom_right" }
+                }),
+            )
+            .await;
+        assert_eq!(shared["layout"], Value::Null, "{shared}");
+        // A value the project file refuses is not written.
+        let before = file_text(&dir);
+        let refused = client
+            .refused(
+                "set_element",
+                json!({
+                    "project": project, "layout": "a3", "id": "bad", "kind": "scale_check_bar",
+                    "lines": ["x"], "anchor": { "to": "page", "corner": "top" }
+                }),
+            )
+            .await;
+        assert!(
+            refused.contains("was not changed") && refused.contains("lines"),
+            "{refused}"
+        );
+        assert_eq!(file_text(&dir), before);
+        let text = file_text(&dir);
+        assert!(text.contains("# Vorschlag für Sprintkarten."), "{text}");
+        assert!(
+            text.contains("lines = [\n    \"Start 10:30\",\n    \"{event}\",\n]"),
+            "{text}"
+        );
+        let check = client
+            .ok("check_project", json!({ "project": project }))
+            .await;
+        let layouts: Vec<&str> = check["layouts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["layout"].as_str().unwrap())
+            .collect();
+        assert!(layouts.contains(&"a3"), "{check}");
+        let info = client
+            .ok("project_info", json!({ "project": project }))
+            .await;
+        assert_eq!(info["layouts"][1]["elements"][0]["id"], "note", "{info}");
+        assert_eq!(info["shared_elements"][2]["id"], "credit", "{info}");
+    }
+
+    #[tokio::test]
+    async fn assign_mask_takes_known_masks_only() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        let before = file_text(&dir);
+        let unknown = client
+            .refused(
+                "assign_mask",
+                json!({ "project": project, "course": "Training", "mask": "nope" }),
+            )
+            .await;
+        assert!(unknown.contains("no mask variant \"nope\""), "{unknown}");
+        assert_eq!(file_text(&dir), before);
+        let corridor = client
+            .ok(
+                "masks_corridor",
+                json!({ "project": project, "points": "10,10;40,20;70,15" }),
+            )
+            .await;
+        let id = corridor["id"].as_str().unwrap().to_string();
+        let unknown = client
+            .refused(
+                "assign_mask",
+                json!({ "project": project, "course": "Training", "mask": "nope" }),
+            )
+            .await;
+        assert!(unknown.contains(&format!("\"{id}\"")), "{unknown}");
+        let assigned = client
+            .ok(
+                "assign_mask",
+                json!({ "project": project, "course": "Training", "mask": id }),
+            )
+            .await;
+        assert_eq!(assigned["change"], "changed", "{assigned}");
+        assert_eq!(assigned["assignment"]["mask"], json!(id));
+        assert_eq!(assigned["assignment"]["layout"], "a4-4000");
+        let info = client
+            .ok("project_info", json!({ "project": project }))
+            .await;
+        assert_eq!(info["courses"][0]["masks"], json!([id]));
+        let removed = client
+            .ok(
+                "assign_mask",
+                json!({ "project": project, "course": "Training" }),
+            )
+            .await;
+        assert_eq!(removed["assignment"]["mask"], Value::Null, "{removed}");
+        let course = client
+            .refused(
+                "assign_mask",
+                json!({ "project": project, "course": "Lang" }),
+            )
+            .await;
+        assert!(course.contains("Lang"), "{course}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_project_file_that_is_a_link_is_not_written() {
+        let dir = viktoriapark_copy();
+        let real = dir.path().join("real.toml");
+        let link = dir.path().join(project::FILE_NAME);
+        std::fs::rename(&link, &real).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let before = std::fs::read_to_string(&real).unwrap();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        for (tool, arguments) in [
+            (
+                "masks_window",
+                json!({ "project": project, "course": "Training", "assign": true }),
+            ),
+            (
+                "numbers_accept",
+                json!({
+                    "project": project, "course": "Training", "control": "34", "scope": "sheet",
+                    "direction": 45.0, "gap": 0.7
+                }),
+            ),
+            ("set_layout", json!({ "project": link, "id": "a3" })),
+            (
+                "assign_mask",
+                json!({ "project": project, "course": "Training" }),
+            ),
+        ] {
+            let message = client.refused(tool, arguments).await;
+            assert!(message.contains("is a link"), "{tool}: {message}");
+        }
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), before);
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        // Reading through the link still works.
+        let (error, text) = client
+            .call("project_info", json!({ "project": project }))
+            .await;
+        assert!(!error, "{text}");
+    }
+
+    #[tokio::test]
+    async fn the_write_tools_refuse_relative_paths() {
+        let mut client = Client::start().await;
+        let anchor = json!({ "to": "page", "corner": "top" });
+        for (tool, arguments) in [
+            ("masks_window", json!({ "project": "p", "course": "A" })),
+            (
+                "masks_corridor",
+                json!({ "project": "p", "points": "0,0;1,1" }),
+            ),
+            (
+                "numbers_accept",
+                json!({ "project": "p", "course": "A", "control": "31", "scope": "sheet" }),
+            ),
+            ("set_layout", json!({ "project": "p", "id": "a4" })),
+            (
+                "set_element",
+                json!({ "project": "p", "id": "t", "kind": "text", "anchor": anchor }),
+            ),
+            ("assign_mask", json!({ "project": "p", "course": "A" })),
+            ("init_project", json!({ "folder": "p", "map": "/m.omap" })),
+            ("init_project", json!({ "folder": "/p", "map": "m.omap" })),
+            (
+                "init_project",
+                json!({ "folder": "/p", "map": "/m.omap", "courses": "c.ppen" }),
+            ),
+        ] {
+            let message = client.refused(tool, arguments.clone()).await;
+            assert!(message.contains("relative path"), "{arguments}: {message}");
+        }
+        // A logo path is the agent's too.
+        let dir = viktoriapark_copy();
+        let message = client
+            .refused(
+                "set_element",
+                json!({
+                    "project": folder(&dir), "id": "logo", "kind": "logo", "file": "logo.png",
+                    "width_mm": 20.0, "anchor": anchor
+                }),
+            )
+            .await;
+        assert!(message.contains("relative path"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn two_writes_sent_together_both_land() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        let answers = client
+            .call_together(&[
+                (
+                    "set_layout",
+                    json!({ "project": project, "id": "a3", "paper": "A3" }),
+                ),
+                (
+                    "set_layout",
+                    json!({ "project": project, "id": "a5-like", "margin_mm": 20.0 }),
+                ),
+                (
+                    "masks_corridor",
+                    json!({ "project": project, "points": "10,10;40,20" }),
+                ),
+            ])
+            .await;
+        for (error, text) in &answers {
+            assert!(!error, "{text}");
+        }
+        let loaded = project::load(&dir.path().join(project::FILE_NAME)).unwrap();
+        let ids: Vec<&str> = loaded
+            .project
+            .layouts
+            .iter()
+            .map(|l| l.id.as_str())
+            .collect();
+        assert_eq!(ids.len(), 3, "{ids:?}");
+        assert!(ids.contains(&"a3") && ids.contains(&"a5-like"), "{ids:?}");
+        assert_eq!(loaded.project.masks.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn init_project_writes_a_project_once() {
+        let maps = viktoriapark_copy();
+        let target = tempfile::tempdir().unwrap();
+        let folder = target.path().join("event");
+        let mut client = Client::start().await;
+        let arguments = json!({
+            "folder": folder,
+            "map": maps.path().join("berlin-viktoriapark.omap"),
+            "courses": maps.path().join("training.ppen"),
+            "lang": "en"
+        });
+        let init = client.ok("init_project", arguments.clone()).await;
+        assert_eq!(init["kind"], "sprint", "{init}");
+        assert_eq!(init["kind_source"], "sidecar", "{init}");
+        assert_eq!(init["layouts"][0]["courses"], json!(["Training"]), "{init}");
+        assert_eq!(init["assignments"], 1);
+        let messages: Vec<&str> = init["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m.as_str().unwrap())
+            .collect();
+        assert!(
+            messages.iter().any(|m| m.contains("Training")),
+            "{messages:?}"
+        );
+        assert!(folder.join(project::FILE_NAME).is_file());
+        let exists = client.refused("init_project", arguments).await;
+        assert!(exists.contains("exists"), "{exists}");
+        let (error, text) = client
+            .call("check_project", json!({ "project": folder }))
             .await;
         assert!(!error, "{text}");
     }

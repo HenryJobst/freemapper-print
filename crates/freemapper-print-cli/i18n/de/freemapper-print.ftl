@@ -480,3 +480,12 @@ mcp-error-relative-path = { $path } ist ein relativer Pfad; einen absoluten Pfad
 mcp-error-empty-path = Der Pfad ist leer; einen absoluten Pfad angeben
 mcp-error-nul-path = Der Pfad { $path } enthält ein NUL-Zeichen
 mcp-error-internal = Interner Fehler: { $error }
+
+# ---- MCP-Werkzeuge, die schreiben (M5 Task 3) ----
+error-assign-no-course-file = assign_mask braucht eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+error-unknown-mask = Das Projekt hat keine Abdeckungsvariante „{ $id }“; vorhanden sind { $known }
+error-unknown-mask-none = Das Projekt hat keine Abdeckungsvariante „{ $id }“: Die Projektdatei hat keine [[masks]], und die Bahndatei hat keine Abdeckflächen
+error-edit-project = Das Projekt { $path } wurde nicht geändert
+mcp-error-corridor-assign = assign braucht eine Bahn; course muss die Bahn nennen, auf deren Blatt der Korridor gedruckt wird
+mcp-error-numbers-position = direction und gap gehören zusammen; beide angeben oder beide weglassen, dann gilt der Vorschlag von check_project
+mcp-error-project-link = { $path } ist ein Link, und der Server ändert keine Projektdatei über einen Link; den Pfad der Datei angeben, auf die er zeigt

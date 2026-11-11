@@ -125,4 +125,15 @@ pub enum OpError {
         path: PathBuf,
         source: anyhow::Error,
     },
+    /// `assign_mask` needs a course file, and the project names none (usage).
+    AssignNeedsCourseFile,
+    /// A mask id that is neither a `[[masks]]` entry nor a white-out of the course file; `known` are the ids there
+    /// are (usage).
+    UnknownMask { id: String, known: Vec<String> },
+    /// A change of a layout, element or assignment was refused, or the changed file did not read back and was put
+    /// back as it was.
+    EditProject {
+        path: PathBuf,
+        source: freemapper_print::project::ProjectError,
+    },
 }

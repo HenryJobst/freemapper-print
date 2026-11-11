@@ -110,7 +110,7 @@ fn stdout_carries_only_json_rpc_and_eof_ends_the_server() {
         answer(1)["result"]["serverInfo"]["name"],
         "freemapper-print"
     );
-    assert_eq!(answer(2)["result"]["tools"].as_array().unwrap().len(), 3);
+    assert_eq!(answer(2)["result"]["tools"].as_array().unwrap().len(), 10);
     let check = &answer(3)["result"];
     assert_ne!(check["isError"], true, "{check}");
     let text = check["content"][0]["text"].as_str().unwrap();

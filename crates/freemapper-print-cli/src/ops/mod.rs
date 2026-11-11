@@ -6,6 +6,7 @@
 //! makes it.
 
 pub mod check;
+pub mod edit;
 pub mod error;
 pub mod export;
 pub mod init;
