@@ -315,6 +315,15 @@ mod tests {
         if let Ok((code, _)) = try_request(&run.host, &run.host, "POST", &path, &origin, "{}") {
             assert_eq!(code, 200);
         }
+        // `done` must end the server; a hang here is a failed test, not a stuck run.
+        let begin = Instant::now();
+        while !run.thread.is_finished() {
+            assert!(
+                begin.elapsed() < Duration::from_secs(15),
+                "the server did not end"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
         run.thread.join().unwrap().unwrap();
     }
 
@@ -479,12 +488,7 @@ mod tests {
 
     // ---- the read API ----
 
-    fn luebeck() -> std::path::PathBuf {
-        std::path::PathBuf::from(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-competition-layouts"
-        ))
-    }
+    use crate::ops::testing::{luebeck, luebeck_copy};
 
     /// The JSON body of an answer.
     fn body_json(answer: &str) -> serde_json::Value {
@@ -511,7 +515,10 @@ mod tests {
         let run = start(true);
         let (code, answer) = get(&run, "/api/project");
         assert_eq!(code, 200);
-        let got = body_json(&answer);
+        let mut got = body_json(&answer);
+        // The sources signature (length and time of the map and the course file) is checked on its own.
+        let sources = got.as_object_mut().unwrap().remove("sources").unwrap();
+        assert_eq!(sources.as_str().unwrap().split(',').count(), 2);
         let info = crate::ops::project::info(&crate::ops::project::InfoArgs {
             project: viktoriapark(),
         })
@@ -580,14 +587,18 @@ mod tests {
 
     #[test]
     fn a_newer_request_supersedes_an_older_one() {
-        let run = start_on(luebeck(), true, None);
+        let dir = luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, None);
         // Arrival: the newest number wins, an older one is dropped at once.
         assert_eq!(get(&run, "/api/preview?layout=a4-4000&rev=5").0, 200);
         let (code, answer) = get(&run, "/api/preview?layout=a4-4000&rev=4");
         assert_eq!(code, 409);
         assert_eq!(body_json(&answer)["error"], "superseded");
-        // While drawing: a request that is newer when the older one finishes drops it. The first of the
-        // two draws a layout the cache does not hold.
+        // While drawing: the older request waits inside the draw until the newer one has been sent.
+        let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let project = dir.path().join("freemapper-print.toml");
+        *super::super::api::GATE.lock().unwrap() = Some((project, reached_tx, release_rx));
         let (host, prefix) = (run.host.clone(), run.prefix.clone());
         let older = std::thread::spawn(move || {
             request(
@@ -598,14 +609,160 @@ mod tests {
                 "",
             )
         });
-        std::thread::sleep(Duration::from_millis(50));
-        let (code, _) = get(&run, "/api/preview?layout=a4-4000&rev=11");
+        reached_rx.recv_timeout(Duration::from_secs(30)).unwrap();
+        let (code, newer) = get(&run, "/api/preview?layout=a4-4000&rev=11");
         assert_eq!(code, 200);
+        assert_eq!(
+            body_json(&newer)["page_mm"],
+            serde_json::json!([297.0, 210.0])
+        );
+        release_tx.send(()).unwrap();
         let (code, answer) = older.join().unwrap();
         assert_eq!(code, 409, "{}", &answer[..answer.len().min(300)]);
+        // The superseded sheet did not replace the newer one in the cache: a click resolves on a4-4000 as before.
+        let (code, _) = post_json(
+            &run,
+            "/api/hit",
+            r#"{"layout":"a4-4000","x_mm":-9,"y_mm":-9}"#,
+        );
+        assert_eq!(code, 200);
         // Without a number nothing is superseded.
         assert_eq!(get(&run, "/api/preview?layout=a4-4000").0, 200);
         assert_eq!(get(&run, "/api/preview?rev=x").0, 400);
+        finish(run);
+    }
+
+    #[test]
+    fn a_page_opened_later_outranks_an_earlier_one() {
+        // `rev` starts at the page's opening time (ms), so a reload or a second tab is never dropped by the
+        // counter of the page before it; the page before it is the one that finds itself superseded.
+        let run = start_on(luebeck(), true, None);
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&rev=1700000000007").0,
+            200
+        );
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&rev=1700000050000").0,
+            200
+        );
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&rev=1700000000008").0,
+            409
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn errors_never_carry_an_absolute_path() {
+        let dir = luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, None);
+        std::fs::remove_file(dir.path().join("luebeck.omap")).unwrap();
+        for path in ["/api/project", "/api/preview?layout=a4-4000&rev=1"] {
+            let (code, answer) = get(&run, path);
+            assert_eq!(code, 422, "{path}");
+            let body = answer.split("\r\n\r\n").nth(1).unwrap();
+            assert!(!body.is_empty());
+            assert!(!body.contains('/') && !body.contains(":\\"), "{body}");
+        }
+        let (code, answer) = post_json(
+            &run,
+            "/api/hit",
+            r#"{"layout":"a4-4000","x_mm":1,"y_mm":1}"#,
+        );
+        assert_eq!(code, 422);
+        assert!(!answer.split("\r\n\r\n").nth(1).unwrap().contains('/'));
+        std::fs::remove_file(dir.path().join("freemapper-print.toml")).unwrap();
+        for path in ["/api/revision", "/api/project"] {
+            let (code, answer) = get(&run, path);
+            assert_eq!(code, 422, "{path}");
+            let body = answer.split("\r\n\r\n").nth(1).unwrap();
+            assert!(!body.contains('/') && !body.contains(":\\"), "{body}");
+        }
+        finish(run);
+    }
+
+    #[test]
+    fn a_map_saved_again_changes_the_sources_signature() {
+        let dir = luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, None);
+        let (_, first) = get(&run, "/api/revision");
+        let first = body_json(&first);
+        let map = std::fs::File::options()
+            .write(true)
+            .open(dir.path().join("luebeck.omap"))
+            .unwrap();
+        map.set_modified(std::time::SystemTime::now() + Duration::from_secs(60))
+            .unwrap();
+        drop(map);
+        let (_, second) = get(&run, "/api/revision");
+        let second = body_json(&second);
+        // The project file is the same, the map is not.
+        assert_eq!(first["revision"], second["revision"]);
+        assert_ne!(first["sources"], second["sources"]);
+        // The sheet is drawn again for the new signature (the cache does not answer for the old one).
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&rev=1700000000001").0,
+            200
+        );
+        let (_, project) = get(&run, "/api/project");
+        assert_eq!(body_json(&project)["sources"], second["sources"]);
+        finish(run);
+    }
+
+    #[test]
+    fn hit_finds_a_number_a_map_object_and_a_mask_through_the_route() {
+        use super::super::preview::draw;
+        // A number: Training of the Viktoriapark example.
+        let run = start(true);
+        let drawn = draw(&viktoriapark(), Some("Training"), None).unwrap();
+        let (code, centre) = drawn
+            .report
+            .numbers
+            .iter()
+            .find(|(_, c)| drawn.pick(c.0, c.1).is_some_and(|p| p.kind == "number"))
+            .map(|(code, c)| (code.clone(), *c))
+            .unwrap();
+        let body = format!(
+            r#"{{"course":"Training","x_mm":{},"y_mm":{}}}"#,
+            centre.0, centre.1
+        );
+        let (status, answer) = post_json(&run, "/api/hit", &body);
+        assert_eq!(status, 200);
+        let pick = body_json(&answer);
+        assert_eq!(
+            (pick["kind"].as_str(), pick["id"].as_str()),
+            (Some("number"), Some(code.as_str()))
+        );
+        finish(run);
+        // A map object and a mask: Fenster of the window example.
+        let project = std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/luebeck-training-window"
+        ));
+        let run = start_on(project.clone(), true, None);
+        let drawn = draw(&project, Some("Fenster"), None).unwrap();
+        let frame = drawn.page.clip;
+        let mut wanted = std::collections::BTreeMap::new();
+        for i in 0..80 {
+            for j in 0..50 {
+                let x = frame.min.0 + (frame.max.0 - frame.min.0) * f64::from(i) / 80.0;
+                let y = frame.min.1 + (frame.max.1 - frame.min.1) * f64::from(j) / 50.0;
+                if let Some(p) = drawn.pick(x, y) {
+                    wanted.entry(p.kind).or_insert((x, y, p.id));
+                }
+            }
+        }
+        for kind in ["map_object", "mask"] {
+            let (x, y, id) = wanted.get(kind).unwrap_or_else(|| panic!("no {kind}"));
+            let body = format!(r#"{{"course":"Fenster","x_mm":{x},"y_mm":{y}}}"#);
+            let (status, answer) = post_json(&run, "/api/hit", &body);
+            assert_eq!(status, 200);
+            let pick = body_json(&answer);
+            assert_eq!(
+                (pick["kind"].as_str(), pick["id"].as_str()),
+                (Some(kind), Some(id.as_str()))
+            );
+        }
         finish(run);
     }
 

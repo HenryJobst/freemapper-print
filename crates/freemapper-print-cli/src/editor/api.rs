@@ -18,8 +18,32 @@ use super::preview::{self, Drawn, PreviewError};
 use crate::ops::{self, OpError};
 use crate::text::{Lang, TEXTS, Texts};
 
-/// A sheet drawn for the project file's revision, a course and a layout.
-type Cached = (String, Option<String>, Option<String>, Arc<Drawn>);
+/// A sheet drawn for the project file's revision and its sources' signature, a course and a layout.
+struct Cached {
+    stamp: Stamp,
+    course: Option<String>,
+    layout: Option<String>,
+    drawn: Arc<Drawn>,
+}
+
+/// What a sheet depends on: the project file's revision (core `revision` of its bytes) and the signature of the
+/// map and course file it names (length and modification time), so a map saved again is noticed too.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Stamp {
+    pub(super) revision: String,
+    pub(super) sources: String,
+}
+
+/// Test hook: the next sheet drawn for `project` (a cache miss) tells `reached` and waits for `release`, so a
+/// test can send a newer request while an older one is being drawn.
+#[cfg(test)]
+pub(super) type Gate = (
+    PathBuf,
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+#[cfg(test)]
+pub(super) static GATE: Mutex<Option<Gate>> = Mutex::new(None);
 
 /// What the handlers share.
 pub(super) struct Api {
@@ -28,6 +52,10 @@ pub(super) struct Api {
     /// The language the person set, if any (see `editor::fixed_language`).
     pub(super) fixed: Option<String>,
     /// The highest `rev` a preview request has named; a request with a lower one is superseded.
+    ///
+    /// `rev` counts the requests of one page, and the page starts counting at the time it was opened (ms), so
+    /// a page opened later, a reload or a second tab always outranks the requests of an earlier one. A page
+    /// opened earlier then finds its own previews superseded, which is right: the person looks at the newer one.
     latest: AtomicU64,
     /// The last sheet drawn, for the click that follows its preview: the project file's revision, the course
     /// and the layout it was drawn for.
@@ -65,26 +93,132 @@ impl Api {
             })
     }
 
-    /// The sheet for `course` and `layout`, drawn again only when the project file or the choice changed.
-    fn drawn(&self, course: Option<&str>, layout: Option<&str>) -> Result<Arc<Drawn>, OpError> {
-        let rev = self.file_revision()?;
-        let key = (rev, course.map(str::to_owned), layout.map(str::to_owned));
-        if let Some((r, c, l, drawn)) = self.last.lock().unwrap().as_ref()
-            && (r, c, l) == (&key.0, &key.1, &key.2)
+    /// The signature of the map and the course file the project names: length and modification time of each.
+    /// Best effort: a project that does not load has the signature `unreadable`, and the next read says why.
+    fn sources(&self) -> String {
+        let Ok(loaded) = ops::load_project(&self.project) else {
+            return "unreadable".to_owned();
+        };
+        let mut files = vec![loaded.map_path()];
+        files.extend(
+            loaded
+                .project
+                .sources
+                .courses
+                .as_ref()
+                .map(|p| loaded.resolve(p)),
+        );
+        files
+            .iter()
+            .map(|file| match std::fs::metadata(file) {
+                Ok(meta) => {
+                    let nanos = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0, |d| d.as_nanos());
+                    format!("{}:{nanos}", meta.len())
+                }
+                Err(_) => "missing".to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    /// The revision of the project file and the signature of its sources, as they are on disk now.
+    fn stamp(&self) -> Result<Stamp, OpError> {
+        Ok(Stamp {
+            revision: self.file_revision()?,
+            sources: self.sources(),
+        })
+    }
+
+    /// The sheet for `course` and `layout`, drawn again only when the project file, its sources or the choice
+    /// changed. A sheet whose request was superseded while it was drawn (`rev` below the newest) is answered but
+    /// not kept, so the cache never falls back to an older choice.
+    fn drawn(
+        &self,
+        course: Option<&str>,
+        layout: Option<&str>,
+        rev: Option<u64>,
+    ) -> Result<Arc<Drawn>, OpError> {
+        let stamp = self.stamp()?;
+        let (course, layout) = (course.map(str::to_owned), layout.map(str::to_owned));
+        if let Some(hit) = self.last.lock().unwrap().as_ref()
+            && hit.stamp == stamp
+            && hit.course == course
+            && hit.layout == layout
         {
-            return Ok(Arc::clone(drawn));
+            return Ok(Arc::clone(&hit.drawn));
         }
-        let drawn = Arc::new(preview::draw(&self.project, course, layout)?);
-        *self.last.lock().unwrap() = Some((key.0, key.1, key.2, Arc::clone(&drawn)));
+        #[cfg(test)]
+        {
+            let gate = {
+                let mut slot = GATE.lock().unwrap();
+                match slot.as_ref() {
+                    Some((project, ..)) if *project == self.project => slot.take(),
+                    _ => None,
+                }
+            };
+            if let Some((_, reached, release)) = gate {
+                let _ = reached.send(());
+                let _ = release.recv_timeout(std::time::Duration::from_secs(30));
+            }
+        }
+        let drawn = Arc::new(preview::draw(
+            &self.project,
+            course.as_deref(),
+            layout.as_deref(),
+        )?);
+        let stale = rev.is_some_and(|rev| self.latest.load(Ordering::SeqCst) > rev);
+        if !stale {
+            *self.last.lock().unwrap() = Some(Cached {
+                stamp,
+                course,
+                layout,
+                drawn: Arc::clone(&drawn),
+            });
+        }
         Ok(drawn)
     }
 }
 
-/// The sentence for the person for a failed read, in the request's language.
-fn refusal(lang: &Lang, error: OpError) -> Response {
+/// The sentence for the person for a failed read, in the request's language. The page never gets an absolute
+/// path: the folder of the project goes, and any other path shrinks to its file name.
+fn refusal(lang: &Lang, error: OpError, project: &std::path::Path) -> Response {
     let texts = Texts::new(lang);
     let message = format!("{:#}", crate::op_error(&texts, error));
-    refused(&message)
+    refused(&scrub(&message, project))
+}
+
+/// `message` without absolute paths (see [`refusal`]).
+fn scrub(message: &str, project: &std::path::Path) -> String {
+    let mut text = message.to_owned();
+    if let Some(dir) = project.parent().and_then(|d| d.to_str())
+        && !dir.is_empty()
+    {
+        for separator in ["/", "\\"] {
+            text = text.replace(&format!("{dir}{separator}"), "");
+        }
+    }
+    text.split_inclusive(char::is_whitespace)
+        .map(|word| {
+            let body = word.trim_start_matches(['"', '\'', '`', '(', '\u{201e}', '\u{201c}']);
+            let lead = &word[..word.len() - body.len()];
+            let absolute = body.starts_with('/')
+                || body.starts_with("\\\\")
+                || (body.len() > 2
+                    && body.as_bytes()[0].is_ascii_alphabetic()
+                    && body.as_bytes()[1] == b':'
+                    && matches!(body.as_bytes()[2], b'/' | b'\\'));
+            if !absolute {
+                return word.to_owned();
+            }
+            // Keep what follows the last separator, and the closing punctuation with it.
+            let name = body.rsplit(['/', '\\']).next().unwrap_or(body);
+            format!("{lead}{name}")
+        })
+        .collect()
 }
 
 fn json(value: &serde_json::Value) -> Response {
@@ -95,12 +229,16 @@ fn json(value: &serde_json::Value) -> Response {
         .into_response()
 }
 
-/// `GET api/revision`: `{ revision }` of the project file as it is now.
+/// `GET api/revision`: `{ revision, sources }`: the revision of the project file and the signature of the map and
+/// course file it names, as they are now. The page reads the project again when either changes.
 pub(super) async fn get_revision(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
     let lang = api.lang(&headers);
-    match tokio::task::spawn_blocking(move || api.file_revision()).await {
-        Ok(Ok(rev)) => json(&serde_json::json!({ "revision": rev })),
-        Ok(Err(error)) => refusal(&lang, error),
+    let project = api.project.clone();
+    match tokio::task::spawn_blocking(move || api.stamp()).await {
+        Ok(Ok(stamp)) => {
+            json(&serde_json::json!({ "revision": stamp.revision, "sources": stamp.sources }))
+        }
+        Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -108,8 +246,9 @@ pub(super) async fn get_revision(State(api): State<Arc<Api>>, headers: HeaderMap
 /// `GET api/project`: `{ lang, revision, ...ProjectInfo }`, without the file's path.
 pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
     let lang = api.lang(&headers);
+    let project = api.project.clone();
     let answer = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, OpError> {
-        let rev = api.file_revision()?;
+        let stamp = api.stamp()?;
         let info = ops::project::info(&ops::project::InfoArgs {
             project: api.project.clone(),
         })?;
@@ -119,7 +258,8 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
             .expect("a project description is an object");
         // The page shows what the person gave; the absolute path stays on the server.
         object.remove("path");
-        object.insert("revision".into(), rev.into());
+        object.insert("revision".into(), stamp.revision.into());
+        object.insert("sources".into(), stamp.sources.into());
         Ok(value)
     })
     .await;
@@ -128,7 +268,7 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
             value["lang"] = lang.code().into();
             json(&value)
         }
-        Ok(Err(error)) => refusal(&lang, error),
+        Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -213,7 +353,7 @@ fn preview_body(drawn: &Drawn, lang: &Lang) -> Result<serde_json::Value, Preview
 
 /// `GET api/preview?course=&layout=&rev=`: `{ svg, page_mm, notes, elements, ... }`.
 ///
-/// `rev` is a number the page counts up with each request. A request whose `rev` is lower than one already seen,
+/// `rev` is a number the page counts up with each request, starting at the time it was opened (see `Api`). A request whose `rev` is lower than one already seen,
 /// when it arrives or when its sheet is drawn, answers 409 `superseded`: the page shows the newest answer only.
 pub(super) async fn get_preview(
     State(api): State<Arc<Api>>,
@@ -235,10 +375,11 @@ pub(super) async fn get_preview(
         return superseded();
     }
     let (course, layout) = (choice(&params, "course"), choice(&params, "layout"));
+    let project = api.project.clone();
     let worker = Arc::clone(&api);
     let body_lang = lang.clone();
     let answer = tokio::task::spawn_blocking(move || {
-        let drawn = worker.drawn(course.as_deref(), layout.as_deref())?;
+        let drawn = worker.drawn(course.as_deref(), layout.as_deref(), rev)?;
         preview_body(&drawn, &body_lang).map_err(|e| match e {
             PreviewError::Op(error) => error,
             PreviewError::Svg(error) => OpError::Serve {
@@ -254,7 +395,7 @@ pub(super) async fn get_preview(
     }
     match answer {
         Ok(Ok(body)) => json(&body),
-        Ok(Err(error)) => refusal(&lang, error),
+        Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -283,15 +424,16 @@ pub(super) async fn post_hit(
     };
     let course = request.course.filter(|v| !v.is_empty());
     let layout = request.layout.filter(|v| !v.is_empty());
+    let project = api.project.clone();
     let answer = tokio::task::spawn_blocking(move || {
-        let drawn = api.drawn(course.as_deref(), layout.as_deref())?;
+        let drawn = api.drawn(course.as_deref(), layout.as_deref(), None)?;
         Ok::<_, OpError>(drawn.pick(request.x_mm, request.y_mm))
     })
     .await;
     match answer {
         Ok(Ok(Some(pick))) => json(&serde_json::json!({ "kind": pick.kind, "id": pick.id })),
         Ok(Ok(None)) => json(&serde_json::json!({ "kind": null, "id": null })),
-        Ok(Err(error)) => refusal(&lang, error),
+        Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -299,6 +441,19 @@ pub(super) async fn post_hit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_shrink_to_file_names() {
+        let project = std::path::Path::new("/home/ann/event/freemapper-print.toml");
+        let text = scrub(
+            "cannot read /home/ann/event/luebeck.omap: no such file; also \"/etc/x/y.ppen\" and C:\\Users\\a\\b.omap, D/H 12 stays",
+            project,
+        );
+        assert_eq!(
+            text,
+            "cannot read luebeck.omap: no such file; also \"y.ppen\" and b.omap, D/H 12 stays"
+        );
+    }
 
     #[test]
     fn the_query_is_percent_decoded() {

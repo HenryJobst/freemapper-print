@@ -2478,4 +2478,35 @@ mod tests {
         assert!(course_event_notes(&courses).contains(&unused));
         assert!(unused.is_info());
     }
+
+    #[test]
+    fn a_masked_course_names_one_mask_id_per_map_clip() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/luebeck-training-window");
+        let loaded = crate::project::load(&dir.join("freemapper-print.toml")).unwrap();
+        let map = crate::omap::read::read_map_file(&loaded.map_path()).unwrap();
+        let courses = crate::courses::load_courses(&loaded, &map)
+            .unwrap()
+            .unwrap();
+        let course = courses
+            .event
+            .courses
+            .iter()
+            .find(|c| c.name == "Fenster")
+            .unwrap();
+        let (layout, _) = crate::courses::layout_for(&loaded.project, &course.name);
+        let (page, report) = render_course_sheet(
+            &loaded,
+            &map,
+            &courses,
+            course,
+            layout,
+            &crate::sheet::LogoCache::new(),
+        )
+        .unwrap();
+        assert!(!page.map_clips.is_empty());
+        assert_eq!(report.mask_ids.len(), page.map_clips.len());
+        assert_eq!(report.mask_ids, ["window-Fenster"]);
+        assert!(!report.numbers.is_empty());
+    }
 }

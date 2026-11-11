@@ -367,12 +367,19 @@ mod tests {
     fn a_course_sheet_has_numbers_and_the_assigned_layout() {
         let drawn = draw(&viktoriapark(), Some("Training"), None).unwrap();
         assert_eq!(drawn.sheet.course.as_deref(), Some("Training"));
-        let (code, centre) = drawn.report.numbers.first().cloned().unwrap();
-        let pick = drawn.pick(centre.0, centre.1).unwrap();
-        // The number may lie under an element, which then wins; otherwise the number is picked.
-        if pick.kind == "number" {
-            assert_eq!(pick.id, code);
-        }
+        // A number that no sheet element covers is picked as a number, by its control code.
+        let free = drawn
+            .report
+            .numbers
+            .iter()
+            .find(|(_, c)| {
+                !drawn.report.elements.iter().any(|(_, r)| {
+                    r.min.0 <= c.0 && c.0 <= r.max.0 && r.min.1 <= c.1 && c.1 <= r.max.1
+                })
+            })
+            .expect("a control number lies clear of the elements");
+        let pick = drawn.pick((free.1).0, (free.1).1).unwrap();
+        assert_eq!((pick.kind, pick.id.as_str()), ("number", free.0.as_str()));
         // Without a course or layout the first course is drawn.
         let first = draw(&viktoriapark(), None, None).unwrap();
         assert!(first.sheet.course.is_some());

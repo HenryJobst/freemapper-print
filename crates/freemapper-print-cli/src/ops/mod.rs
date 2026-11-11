@@ -167,6 +167,35 @@ pub(crate) mod testing {
         ))
     }
 
+    /// The folder of the Lübeck layouts example (no course file).
+    pub fn luebeck() -> PathBuf {
+        PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/luebeck-competition-layouts"
+        ))
+    }
+
+    /// A copy of the Lübeck layouts example in a temporary folder: the project file, the map, its
+    /// `freemapper.toml` and the logos.
+    pub fn luebeck_copy() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["freemapper-print.toml", "luebeck.omap", "freemapper.toml"] {
+            std::fs::copy(luebeck().join(name), dir.path().join(name)).unwrap();
+        }
+        std::fs::create_dir(dir.path().join("logos")).unwrap();
+        for entry in std::fs::read_dir(luebeck().join("logos")).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                std::fs::copy(
+                    entry.path(),
+                    dir.path().join("logos").join(entry.file_name()),
+                )
+                .unwrap();
+            }
+        }
+        dir
+    }
+
     /// A copy of the Viktoriapark example in a temporary folder, for ops that write: the project file, the map,
     /// its `freemapper.toml` and the course file.
     pub fn viktoriapark_copy() -> tempfile::TempDir {

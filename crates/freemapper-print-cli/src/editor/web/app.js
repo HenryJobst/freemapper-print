@@ -15,8 +15,13 @@ const state = {
   revision: null,
   svg: null,
   elements: [],
-  // The number of the newest preview request; an older answer is dropped.
-  request: 0,
+  // The number of the newest preview request; an older answer is dropped. It starts at the time the page was
+  // opened, so the server ranks a reload or a second tab above the requests of the page before it.
+  request: Date.now(),
+  // The course and layout of the sheet on screen, which a click is resolved against.
+  shown: { course: "", layout: "" },
+  sources: null,
+  texts: false,
   closed: false,
 };
 
@@ -222,6 +227,7 @@ async function showSheet() {
   clearBanner();
   const data = answer.data;
   state.svg = sheet.show($("sheet"), data.svg);
+  state.shown = { course: data.course ?? "", layout: data.layout ?? "" };
   state.elements = data.elements;
   renderNotes(data.notes);
   $("status-page").textContent = `${data.page_mm[0]} × ${data.page_mm[1]} mm`;
@@ -232,7 +238,7 @@ async function showSheet() {
 async function pick(event) {
   if (!state.svg) return;
   const at = sheet.pageMm(state.svg, event);
-  const answer = await post("api/hit", { course: state.course, layout: state.layout, x_mm: at.x, y_mm: at.y });
+  const answer = await post("api/hit", { course: state.shown.course, layout: state.shown.layout, x_mm: at.x, y_mm: at.y });
   if (!answer.ok) return;
   const { kind, id } = answer.data;
   if (!kind) {
@@ -271,6 +277,7 @@ async function loadProject() {
   }
   state.info = answer.data;
   state.revision = answer.data.revision;
+  state.sources = answer.data.sources;
   document.documentElement.lang = answer.data.lang;
   $("status-project").textContent = answer.data.title;
   const tree = $("pane-tree");
@@ -281,6 +288,7 @@ async function loadProject() {
 
 async function start() {
   await loadTexts();
+  state.texts = true;
   $("menu-done").addEventListener("click", close);
   $("course-select").addEventListener("change", (e) => {
     const course = e.target.value;
@@ -305,7 +313,9 @@ async function poll() {
   if (state.closed || document.hidden) return;
   try {
     const answer = await get("api/revision");
-    if (answer.ok && answer.data.revision !== state.revision) await reload();
+    if (answer.ok && (answer.data.revision !== state.revision || answer.data.sources !== state.sources)) {
+      await reload();
+    }
   } catch {
     // The server is gone or busy; the next poll tries again.
   }
@@ -333,5 +343,6 @@ async function close() {
 }
 
 start().catch(() => {
-  $("status-message").textContent = "api/texts";
+  if (state.texts) say("editor-status-lost");
+  else $("status-message").textContent = "The editor page could not start.";
 });
