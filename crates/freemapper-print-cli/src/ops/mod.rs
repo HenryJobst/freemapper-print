@@ -8,6 +8,7 @@
 pub mod check;
 pub mod error;
 pub mod export;
+pub mod init;
 pub mod masks;
 pub mod note;
 pub mod numbers;
@@ -53,6 +54,19 @@ use serde::Serialize;
 
 pub use error::OpError;
 pub use note::{NoteValue, Notice};
+
+/// Unicode format characters (category Cf): bidi controls, zero-width characters, joiners, tags.
+///
+/// A hand-written table of Unicode 16.0's category Cf, kept on purpose: `std` has no lookup of
+/// general categories ([`char::is_control`] covers Cc only), and a dependency for this one table
+/// is not worth it (ADR 0006). Re-check it when a Unicode version adds format characters.
+pub fn is_format(c: char) -> bool {
+    matches!(c as u32,
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
+        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
+        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
+        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
+}
 
 /// The project file named by `arg`: the file itself, or `freemapper-print.toml` in a folder.
 pub fn project_file(arg: &Path) -> PathBuf {

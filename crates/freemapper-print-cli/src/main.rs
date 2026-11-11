@@ -9,21 +9,20 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
-use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, StopName};
+use freemapper_print::courses::{CorrectionScope, MaskNote, Stale, StopName};
 use freemapper_print::export::ExportError;
 use freemapper_print::mask_build::{self, BuildError};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::output::{self, OutputError};
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
-use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
-use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
+use freemapper_print::project::{self, SheetLang};
+use freemapper_print::scale::{MapKind, is_standard};
 use freemapper_print::sheet::{
-    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem,
-    NoBoxReason, SheetNote,
+    FooterContent, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem, NoBoxReason,
+    SheetNote,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -245,7 +244,13 @@ macro_rules! args {
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
-    let (kind, _) = detect_kind(texts, &map, &args.map, args.kind)?;
+    let (kind, _) = ops::init::detect_kind(
+        &map,
+        &args.map,
+        args.kind.map(MapKind::from),
+        &mut |error| sidecar_note(texts, error),
+    )
+    .map_err(|e| op_error(texts, e))?;
     let parent = match args.out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
@@ -476,6 +481,16 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             )),
         ))
         .into(),
+        E::TitleControl => UsageError(texts.plain("error-title-control")).into(),
+        E::KindUnknown => anyhow!(texts.plain("error-kind-unknown")),
+        E::ProjectExists { path } => anyhow!(texts.get(
+            "error-project-exists",
+            Some(&args!("path" => path.display().to_string()))
+        )),
+        E::ReadCourses { path, source } => source.context(texts.get(
+            "error-read-courses",
+            Some(&args!("path" => path.display().to_string())),
+        )),
         E::AppendCorrection { path, source } => {
             // A file that no longer loads has been put back as it was.
             let lead_in = match source {
@@ -497,212 +512,75 @@ fn metres(texts: &Texts, value: f64) -> String {
     }
 }
 
-/// Where the map kind came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum KindSource {
-    Flag,
-    Sidecar,
-    Inferred,
-}
-
-/// The map kind: `arg`, else `map_kind` in `freemapper.toml` next to the map, else inferred from
-/// the symbol set and scale (ADR 0021), and where it came from. A `freemapper.toml` that cannot
-/// be read or parsed gets a note that says so; without any kind the error asks for `--kind`.
-fn detect_kind(
-    texts: &Texts,
-    map: &MapDocument,
-    path: &Path,
-    arg: Option<KindArg>,
-) -> anyhow::Result<(MapKind, KindSource)> {
-    if let Some(kind) = arg {
-        return Ok((kind.into(), KindSource::Flag));
-    }
-    match read_sidecar(path) {
-        Ok(Some(kind)) => return Ok((kind, KindSource::Sidecar)),
-        Ok(None) => {}
-        Err(err) => eprintln!(
-            "{}",
-            texts.get(
-                "note-sidecar",
-                // The whole chain: the operating system's error is the source.
-                Some(&args!("error" => printable(&format!("{:#}", anyhow::Error::new(err)))))
-            )
-        ),
-    }
-    let kind = infer_kind(map, path).context(texts.plain("error-kind-unknown"))?;
-    Ok((kind, KindSource::Inferred))
-}
-
-fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
-    if let Some(title) = &args.title
-        && title.chars().any(|c| c.is_control() || is_format(c))
-    {
-        return Err(UsageError(texts.plain("error-title-control")).into());
-    }
-    // `export` writes into `out` later; a link there that leads out of the project stops `init`
-    // already (ADR 0041). A folder that does not exist yet holds no link.
-    if args.folder.is_dir() {
-        output::check_out_folder(&args.folder, &args.folder.join("out"))
-            .map_err(|e| output_error(texts, &e))?;
-    }
-    let map = read_map(texts, &args.map)?;
-    let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
-    let shown = args.folder.join(project::FILE_NAME);
-    if shown.exists() {
-        bail!(texts.get(
-            "error-project-exists",
-            Some(&args!("path" => shown.display().to_string()))
-        ));
-    }
-    // The course file is read and fitted before anything is created, so that an error writes nothing.
-    let plan = match &args.courses {
-        Some(file) => Some(plan_courses(texts, args, &map, kind, file)?),
-        None => None,
-    };
-    let folder_error = || {
-        texts.get(
-            "error-create-folder",
-            Some(&args!("path" => args.folder.display().to_string())),
-        )
-    };
-    std::fs::create_dir_all(&args.folder).with_context(folder_error)?;
-    // Both canonical, so that links and `..` do not spoil the relative path.
-    let dir = args.folder.canonicalize().with_context(folder_error)?;
-    let map_path = args.map.canonicalize().with_context(|| {
-        texts.get(
-            "error-read-map",
-            Some(&args!("path" => args.map.display().to_string())),
-        )
-    })?;
-    // The title of the map's `freemapper.toml` comes before the file name (an unusable sidecar counts as missing).
-    let title = args
-        .title
-        .clone()
-        .or_else(|| {
-            freemapper_print::scale::read_sidecar_title(&map_path)
-                .ok()
-                .flatten()
-        })
-        .unwrap_or_else(|| {
-            args.map
-                .file_stem()
-                .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
-        });
-    let sheet_lang = sheet_lang(texts);
-    let map_scale = map.georef.scale_denominator;
-    let map_rel = project::relative_path(&dir, &map_path);
-    let kind_word = texts.plain(kind_word_id(kind));
-    let source_id = match source {
-        KindSource::Flag => "init-kind-flag",
-        KindSource::Sidecar => "init-kind-sidecar",
-        KindSource::Inferred => "init-kind-inferred",
-    };
+/// The note about a map's `freemapper.toml` that could not be read: the kind is inferred instead.
+fn sidecar_note(texts: &Texts, error: &str) {
     eprintln!(
         "{}",
-        texts.get(source_id, Some(&args!("kind" => kind_word.clone())))
+        texts.get("note-sidecar", Some(&args!("error" => printable(error))))
     );
-    if let Some(plan) = &plan {
-        eprintln!(
-            "{}",
-            texts.get(
-                "init-courses-read",
-                // As the project file names it: relative to the project folder.
-                Some(&args!(
-                    "path" => project::relative_path(&dir, &plan.file).display().to_string(),
-                    "count" => plan.courses.len(),
-                ))
-            )
-        );
-    }
-    // One layout per print scale; without a course file, one at the map scale.
-    let scales = match &plan {
-        Some(plan) if !plan.courses.is_empty() => plan.scales(),
-        _ => vec![map_scale],
-    };
-    // Fitting up to twenty sheets per layout takes a moment on a large map.
-    let mut fitted: Vec<(LayoutSpec, bool, u32)> = Vec::new();
-    let mut first: Option<project::Project> = None;
-    for &scale in &scales {
-        let mut starter = project::starter(&title, map_rel.clone(), kind, scale, sheet_lang);
-        // Course sheets cut the map to the course by design.
-        starter.layouts[0].map_frame.crop = plan.is_some();
-        eprintln!(
-            "{}",
-            texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
-        );
-        let (new, fits) = project::fit_starter(starter, &dir, &map);
-        let mut layout = new.layouts[0].clone();
-        // With a course file the id names the print scale too, whether the courses need one layout or several.
-        if plan.is_some() {
-            layout.id = format!("{}-{scale}", layout.id);
-        }
-        fitted.push((layout, fits, scale));
-        first.get_or_insert(new);
-    }
-    let mut new = first.expect("at least one scale");
-    new.layouts = fitted.iter().map(|(l, _, _)| l.clone()).collect();
-    if let Some(plan) = &plan {
-        new.sources.courses = Some(project::relative_path(&dir, &plan.file));
-        // A sheet without a description box (IOF XML) names its course only in the title block.
-        new.shared[0].lines[0] = "{event} \u{b7} {course}".into();
-        for (name, scale) in &plan.courses {
-            let layout = &fitted
-                .iter()
-                .find(|(_, _, s)| s == scale)
-                .expect("a layout for every scale")
-                .0;
-            new.assignments.push(project::Assignment {
-                course: name.clone(),
-                layout: layout.id.clone(),
-                mask: None,
-            });
-        }
-        if !plan.iof {
-            for layout in &mut new.layouts {
-                layout.elements.push(description_box());
+}
+
+/// `init`: writes a starter project file and says what it holds: the layouts (per print scale with a course
+/// file), whether the map fits, where the kind and the contour interval came from, and what to do next.
+fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
+    use ops::init::{FileComments, InitProgress, KindSource};
+    let kind_word = |kind: MapKind| texts.plain(kind_word_id(kind));
+    let result = ops::init::init(
+        &ops::init::InitArgs {
+            folder: args.folder.clone(),
+            map: args.map.clone(),
+            title: args.title.clone(),
+            kind: args.kind.map(MapKind::from),
+            courses: args.courses.clone(),
+            sheet_lang: sheet_lang(texts),
+        },
+        &|kind, contour| FileComments {
+            contour: match contour {
+                Some(_) => texts.get(
+                    "init-comment-contour",
+                    Some(&args!("kind" => kind_word(kind))),
+                ),
+                None => texts.plain("init-comment-no-contour"),
+            },
+            footer: texts.plain("init-comment-footer"),
+        },
+        &mut |progress| match progress {
+            InitProgress::SidecarUnusable { error } => sidecar_note(texts, error),
+            InitProgress::Kind { kind, source } => {
+                let source_id = match source {
+                    KindSource::Given => "init-kind-flag",
+                    KindSource::Sidecar => "init-kind-sidecar",
+                    KindSource::Inferred => "init-kind-inferred",
+                };
+                eprintln!(
+                    "{}",
+                    texts.get(source_id, Some(&args!("kind" => kind_word(kind))))
+                );
             }
-        }
-    }
-    let fits = fitted.iter().all(|(_, f, _)| *f);
-    let contour = new.map.contour_interval_m;
-    let contour_comment = match contour {
-        Some(_) => texts.get(
-            "init-comment-contour",
-            Some(&args!("kind" => kind_word.clone())),
-        ),
-        None => texts.plain("init-comment-no-contour"),
-    };
-    let footer_comment = texts.plain("init-comment-footer");
-    let comments = [
-        KeyComment {
-            table: "map",
-            key: Some("contour_interval_m"),
-            text: &contour_comment,
+            InitProgress::CoursesRead { path, count } => eprintln!(
+                "{}",
+                texts.get(
+                    "init-courses-read",
+                    // As the project file names it: relative to the project folder.
+                    Some(&args!(
+                        "path" => path.display().to_string(),
+                        "count" => count,
+                    ))
+                )
+            ),
+            InitProgress::Fitting { scale } => eprintln!(
+                "{}",
+                texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
+            ),
         },
-        KeyComment {
-            table: "shared",
-            key: None,
-            text: &footer_comment,
-        },
-    ];
-    let file = dir.join(project::FILE_NAME);
-    match project::save_new_with_comments(&file, &new, &comments) {
-        Ok(()) => {}
-        Err(project::ProjectError::Exists { .. }) => bail!(texts.get(
-            "error-project-exists",
-            Some(&args!("path" => shown.display().to_string()))
-        )),
-        Err(err) => {
-            return Err(anyhow::Error::new(err).context(texts.get(
-                "error-write-file",
-                Some(&args!("path" => shown.display().to_string())),
-            )));
-        }
-    }
-    let path = shown.display().to_string();
-    match &plan {
+    )
+    .map_err(|e| op_error(texts, e))?;
+    let path = result.path.display().to_string();
+    let kind_word = kind_word(result.kind);
+    let map_scale = result.map_scale;
+    match &result.course_file {
         None => {
-            let layout = &new.layouts[0];
+            let layout = &result.layouts[0];
             eprintln!(
                 "{}",
                 texts.get(
@@ -711,13 +589,13 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
                         "path" => path.clone(),
                         "layout" => layout.id.clone(),
                         "paper" => paper_name(layout.paper),
-                        "margin" => metres(texts, layout.map_frame.margin_mm),
+                        "margin" => metres(texts, layout.margin_mm),
                         "scale" => map_scale.to_string(),
                         "kind" => kind_word.clone(),
                     ))
                 )
             );
-            if !fits {
+            if !result.fits() {
                 eprintln!(
                     "{}",
                     texts.get(
@@ -725,24 +603,16 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
                         Some(&args!("scale" => map_scale.to_string()))
                     )
                 );
-                let loaded = LoadedProject {
-                    path: file.clone(),
-                    dir: dir.clone(),
-                    project: new.clone(),
-                    // `init` writes the default profile.
-                    rules: freemapper_print::rules::base().clone(),
-                };
-                let sheet = ops::check::check_layout(&loaded, &map, layout, &LogoCache::new());
-                for line in check_lines(texts, &sheet) {
+                for line in result.check.iter().flat_map(|c| check_lines(texts, c)) {
                     eprintln!("{line}");
                 }
             }
         }
-        Some(plan) => print_course_init(texts, plan, &new, &fitted, &path, &kind_word, map_scale),
+        Some(courses) => print_course_init(texts, &result, courses, &path, &kind_word),
     }
     eprintln!(
         "{}",
-        match contour {
+        match result.contour_interval_m {
             Some(value) => texts.get(
                 "init-contour-hint",
                 Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
@@ -750,7 +620,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             None => texts.plain("init-no-contour-hint"),
         }
     );
-    let next = if fits {
+    let next = if result.fits() {
         "init-next"
     } else {
         "init-next-with-notes"
@@ -759,104 +629,14 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
-/// What `init --courses` learned from the course file before it wrote anything.
-struct CoursePlan {
-    /// The course file, absolute.
-    file: PathBuf,
-    /// Each course and the print scale of its layout, in file order.
-    courses: Vec<(String, u32)>,
-    /// The file is IOF XML: no print scales, no descriptions.
-    iof: bool,
-}
-
-impl CoursePlan {
-    /// The distinct print scales, in the order the courses first use them.
-    fn scales(&self) -> Vec<u32> {
-        let mut out: Vec<u32> = Vec::new();
-        for (_, scale) in &self.courses {
-            if !out.contains(scale) {
-                out.push(*scale);
-            }
-        }
-        out
-    }
-}
-
-/// Reads and fits the course file of `init --courses` with the real loader, so that a course file that does
-/// not fit the map stops `init` before it writes anything. A `.ppen` gives each course its print scale (the
-/// map scale where the file has none); IOF XML has none, so every course takes the map scale.
-fn plan_courses(
-    texts: &Texts,
-    args: &InitArgs,
-    map: &MapDocument,
-    kind: MapKind,
-    file: &Path,
-) -> anyhow::Result<CoursePlan> {
-    let file = file.canonicalize().with_context(|| {
-        texts.get(
-            "error-read-courses",
-            Some(&args!("path" => file.display().to_string())),
-        )
-    })?;
-    let map_scale = map.georef.scale_denominator;
-    let map_path = args.map.canonicalize().unwrap_or_else(|_| args.map.clone());
-    let mut probe = project::starter("probe", map_path, kind, map_scale, SheetLang::En);
-    probe.sources.courses = Some(file.clone());
-    let loaded = LoadedProject {
-        path: args.folder.join(project::FILE_NAME),
-        dir: args.folder.clone(),
-        project: probe,
-        rules: freemapper_print::rules::base().clone(),
-    };
-    let courses =
-        read_courses(texts, &loaded, map)?.expect("the probe project names a course file");
-    let iof = courses.event.source.format == SourceFormat::IofXml;
-    let scale_of = |hint: Option<u32>| match hint {
-        Some(scale) if !iof && scale > 0 => scale,
-        _ => map_scale,
-    };
-    Ok(CoursePlan {
-        file,
-        courses: courses
-            .event
-            .courses
-            .iter()
-            .map(|c| (c.name.clone(), scale_of(c.print_scale_hint)))
-            .collect(),
-        iof,
-    })
-}
-
-/// The control description box of a course layout: top-right corner of the map frame, which the starter's
-/// title block (top left) and scale check bar (bottom right) leave free. The cell size is the rule profile's.
-fn description_box() -> project::ElementSpec {
-    project::ElementSpec {
-        id: "descriptions".into(),
-        kind: project::ElementKind::ControlDescriptions,
-        anchor: project::Anchor {
-            to: project::AnchorTarget::MapFrame,
-            corner: project::Corner::TopRight,
-            offset_mm: [2.0, 2.0],
-        },
-        lines: vec![],
-        size_pt: None,
-        box_white: None,
-        file: None,
-        width_mm: None,
-        cell_mm: None,
-    }
-}
-
 /// The lines `init --courses` prints after it wrote the file: what was written, each layout with its
 /// courses, where the scales and the description box came from.
 fn print_course_init(
     texts: &Texts,
-    plan: &CoursePlan,
-    new: &project::Project,
-    fitted: &[(LayoutSpec, bool, u32)],
+    result: &ops::init::InitResult,
+    courses: &ops::init::InitCourses,
     path: &str,
     kind_word: &str,
-    map_scale: u32,
 ) {
     eprintln!(
         "{}",
@@ -864,52 +644,52 @@ fn print_course_init(
             "init-written-courses",
             Some(&args!(
                 "path" => path.to_string(),
-                "layouts" => new.layouts.len(),
-                "assignments" => new.assignments.len(),
+                "layouts" => result.layouts.len(),
+                "assignments" => result.assignments,
                 "kind" => kind_word.to_string(),
             ))
         )
     );
-    for (layout, fits, scale) in fitted {
-        let names: Vec<String> = plan
-            .courses
-            .iter()
-            .filter(|(_, s)| s == scale)
-            .map(|(n, _)| n.clone())
-            .collect();
+    for layout in &result.layouts {
         eprintln!(
             "{}",
             texts.get(
                 "init-courses-layout",
                 Some(&args!(
                     "layout" => printable(&layout.id),
-                    "scale" => scale.to_string(),
+                    "scale" => layout.print_scale.to_string(),
                     "paper" => paper_name(layout.paper),
-                    "margin" => metres(texts, layout.map_frame.margin_mm),
-                    "courses" => quoted_list(texts, &names),
+                    "margin" => metres(texts, layout.margin_mm),
+                    "courses" => quoted_list(texts, &layout.courses),
                 ))
             )
         );
-        if !fits {
+        if !layout.fits {
             eprintln!(
                 "{}",
                 texts.get(
                     "init-courses-no-fit",
-                    Some(&args!("scale" => scale.to_string(), "layout" => printable(&layout.id)))
+                    Some(&args!(
+                        "scale" => layout.print_scale.to_string(),
+                        "layout" => printable(&layout.id),
+                    ))
                 )
             );
         }
     }
-    let scales_id = if plan.iof {
+    let scales_id = if courses.iof {
         "init-courses-scales-iof"
     } else {
         "init-courses-scales-ppen"
     };
     eprintln!(
         "{}",
-        texts.get(scales_id, Some(&args!("scale" => map_scale.to_string())))
+        texts.get(
+            scales_id,
+            Some(&args!("scale" => result.map_scale.to_string()))
+        )
     );
-    if !plan.iof {
+    if !courses.iof {
         eprintln!("{}", texts.plain("init-courses-description-box"));
     }
     eprintln!("{}", texts.plain("init-courses-crop"));
@@ -1345,15 +1125,6 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     }
 }
 
-/// The course file of the project, read and fitted to `map`; `None` when the project names none.
-fn read_courses(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-) -> anyhow::Result<Option<LoadedCourses>> {
-    ops::read_courses(loaded, map).map_err(|e| op_error(texts, e))
-}
-
 /// The lines about a page `export` drew.
 fn export_page_lines(
     texts: &Texts,
@@ -1521,19 +1292,6 @@ fn same_file(map: &Path, out: &Path) -> bool {
     }
 }
 
-/// Unicode format characters (category Cf): bidi controls, zero-width characters, joiners, tags.
-///
-/// A hand-written table of Unicode 16.0's category Cf, kept on purpose: `std` has no lookup of
-/// general categories ([`char::is_control`] covers Cc only), and a dependency for this one table
-/// is not worth it (ADR 0006). Re-check it when a Unicode version adds format characters.
-fn is_format(c: char) -> bool {
-    matches!(c as u32,
-        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
-        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
-        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
-        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
-}
-
 /// Map text for the terminal. Control characters get Rust's readable escapes (`\n`, `\t`,
 /// `\u{1b}`) and format characters such as bidi overrides get `\u{..}`, so a map cannot drive
 /// the terminal.
@@ -1542,7 +1300,7 @@ fn printable(text: &str) -> String {
     for c in text.chars() {
         if c.is_control() {
             out.extend(c.escape_debug());
-        } else if is_format(c) {
+        } else if ops::is_format(c) {
             out.extend(c.escape_unicode());
         } else {
             out.push(c);

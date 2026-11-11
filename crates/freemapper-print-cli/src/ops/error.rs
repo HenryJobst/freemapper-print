@@ -114,4 +114,15 @@ pub enum OpError {
         path: PathBuf,
         source: freemapper_print::project::ProjectError,
     },
+    /// The title has control or format characters (usage).
+    TitleControl,
+    /// The map kind is not given, not in the map's `freemapper.toml` and cannot be inferred.
+    KindUnknown,
+    /// The project file exists already; nothing was overwritten.
+    ProjectExists { path: PathBuf },
+    /// The course file could not be found or read.
+    ReadCourses {
+        path: PathBuf,
+        source: anyhow::Error,
+    },
 }
