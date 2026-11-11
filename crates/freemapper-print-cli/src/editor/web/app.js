@@ -9,6 +9,7 @@ import * as sheet from "./sheet.js";
 import { elementForm, layoutForm } from "./forms.js";
 import * as masks from "./masks.js";
 import * as numbers from "./numbers.js";
+import * as exporter from "./exporter.js";
 
 const POLL_MS = 2000;
 
@@ -83,11 +84,6 @@ const KIND_TEXTS = {
   copyright_line: "editor-kind-copyright-line",
   control_descriptions: "editor-kind-control-descriptions",
   footer: "editor-kind-footer",
-};
-const SEVERITY_TEXTS = {
-  info: "editor-severity-info",
-  warning: "editor-severity-warning",
-  error: "editor-severity-error",
 };
 const PICK_TEXTS = {
   element: "editor-pick-element",
@@ -234,6 +230,7 @@ function fillSelects() {
   }
   const noCourses = info.courses.length === 0;
   courseSelect.hidden = noCourses;
+  $("menu-export-single").parentElement.hidden = noCourses;
   $("course-label").hidden = noCourses;
   $("no-courses").hidden = !noCourses;
   const layoutSelect = $("layout-select");
@@ -261,10 +258,8 @@ function renderNotes(notes) {
   for (const note of notes) {
     const item = document.createElement("li");
     item.className = note.severity;
-    item.textContent = t("editor-note-line", {
-      severity: t(SEVERITY_TEXTS[note.severity] ?? "editor-severity-info"),
-      message: note.message,
-    });
+    // The message names its severity itself ("Warning: ..."), so colour is never the only sign.
+    item.textContent = note.message;
     list.append(item);
   }
   box.replaceChildren(list);
@@ -584,6 +579,11 @@ async function start() {
   await loadTexts();
   state.texts = true;
   $("menu-done").addEventListener("click", close);
+  exporter.setup();
+  $("menu-check").addEventListener("click", runCheck);
+  $("menu-export-sheet").addEventListener("click", () => exportDialog("sheet"));
+  $("menu-export-all").addEventListener("click", () => exportDialog("all"));
+  $("menu-export-single").addEventListener("click", () => exportDialog("single"));
   $("course-select").addEventListener("change", (e) => {
     const course = e.target.value;
     const known = state.info.courses.find((c) => c.name === course);
@@ -839,6 +839,27 @@ async function reload() {
   state.notified = null;
   await refresh();
   say("editor-status-reloaded");
+}
+
+// The notes of every sheet, as `check_project` gives them, in the notes pane until the next sheet is drawn.
+async function runCheck() {
+  const failed = await exporter.check($("notices"));
+  if (failed) showBanner(failed);
+  else clearBanner();
+}
+
+// Opens the export dialog for this sheet, for all sheets, or for all courses as one PDF.
+function exportDialog(kind) {
+  const course = state.shown.course || state.course;
+  const layout = state.shown.layout || state.layout;
+  if (kind === "sheet") {
+    const body = course ? { courses: [course] } : { layouts: [layout] };
+    exporter.open(t("editor-export-what-sheet", { name: course || layout }), body);
+  } else if (kind === "single") {
+    exporter.open(t("editor-export-what-single"), { single_file: true });
+  } else {
+    exporter.open(t("editor-export-what-all"), {});
+  }
 }
 
 // Ends the server; the page then has nothing left to ask.

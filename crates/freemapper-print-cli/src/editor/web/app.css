@@ -52,3 +52,13 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; }
 
 /* The course overprint multiplies with the map under it (the renderer's own blend, as a class for the CSP). */
 #sheet .blend-multiply { mix-blend-mode: multiply; }
+
+/* The export dialog. */
+#export .row { display: flex; flex-direction: column; gap: 0.2rem; margin: 0 0 0.5rem; }
+#export input { width: 100%; box-sizing: border-box; }
+#export-result ul { margin: 0.3rem 0; padding: 0; list-style: none; }
+#export-result li { margin: 0.2rem 0; padding: 0.1rem 0.5rem; border-left: 4px solid var(--sev-hint); }
+#export-result li.warning { border-left-color: var(--sev-warning); }
+#export-result li.error { border-left-color: var(--sev-error); }
+#export-result li.file { border-left-color: var(--line); }
+#notices .check-summary { margin: 0 0 0.3rem; font-weight: 600; }

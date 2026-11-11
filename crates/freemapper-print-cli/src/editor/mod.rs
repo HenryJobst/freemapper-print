@@ -70,7 +70,7 @@ pub(crate) fn run_with(
             source: anyhow::Error::new(source),
         });
     }
-    server::serve_until_done(args.port, path, args.lang.clone(), |url| {
+    server::serve_until_done(args.port, path.clone(), args.lang.clone(), |url| {
         let line = texts.get("edit-listening", Some(&args!("url" => url.to_string())));
         // A closed stdout must not stop the editor.
         let _ = writeln!(out, "{line}");
@@ -79,5 +79,13 @@ pub(crate) fn run_with(
             // Without a browser the person still has the printed address.
             let _ = open(url);
         }
-    })
+    })?;
+    // The project file is the one the person gave, not anything the page sent.
+    let line = texts.get(
+        "edit-ended",
+        Some(&args!("path" => path.display().to_string())),
+    );
+    let _ = writeln!(out, "{line}");
+    let _ = out.flush();
+    Ok(())
 }

@@ -15,7 +15,7 @@ use freemapper_print::web::{self, LocalServer, ServeOptions, WebError};
 use std::path::PathBuf;
 use tokio::sync::Notify;
 
-use super::api::{self, Api};
+use super::api::{self, Api, ExportJob};
 use crate::ops::OpError;
 use crate::text::TEXTS;
 
@@ -49,7 +49,9 @@ async fn asset(Path(path): Path<String>) -> Response {
 }
 
 /// 200 and the end of the server; the page calls it from `Fertig`.
-async fn done(done: Arc<Notify>, _body: axum::body::Bytes) -> Response {
+async fn done(done: Arc<Notify>, job: Arc<ExportJob>, _body: axum::body::Bytes) -> Response {
+    // An export in progress stops after the sheet in hand; the server waits for it, so no PDF is left half written.
+    job.closing.store(true, std::sync::atomic::Ordering::SeqCst);
     done.notify_one();
     ([(header::CONTENT_TYPE, "application/json")], "{}").into_response()
 }
@@ -77,8 +79,14 @@ async fn texts(fixed: Option<String>, headers: HeaderMap) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
 
-fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: PathBuf) -> Router {
-    let api = Arc::new(Api::new(project, fixed.clone()));
+fn routes(
+    prefix: &str,
+    shutdown: Arc<Notify>,
+    fixed: Option<String>,
+    project: PathBuf,
+    job: Arc<ExportJob>,
+) -> Router {
+    let api = Arc::new(Api::new(project, fixed.clone(), Arc::clone(&job)));
     Router::new()
         .route(&format!("{prefix}/api/project"), get(api::get_project))
         .route(&format!("{prefix}/api/revision"), get(api::get_revision))
@@ -86,6 +94,16 @@ fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: P
         .route(&format!("{prefix}/api/preview"), get(api::get_preview))
         .route(&format!("{prefix}/api/hit"), post(api::post_hit))
         .route(&format!("{prefix}/api/op/{{name}}"), post(api::post_op))
+        .route(&format!("{prefix}/api/check"), get(api::get_check))
+        .route(&format!("{prefix}/api/export"), post(api::post_export))
+        .route(
+            &format!("{prefix}/api/export/status"),
+            get(api::get_export_status),
+        )
+        .route(
+            &format!("{prefix}/api/export/cancel"),
+            post(api::post_export_cancel),
+        )
         .route(&format!("{prefix}/api/undo"), post(api::post_undo))
         .route(&format!("{prefix}/api/redo"), post(api::post_redo))
         .with_state(api)
@@ -97,7 +115,9 @@ fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: P
         .route(&format!("{prefix}/assets/{{*path}}"), get(asset))
         .route(
             &format!("{prefix}/api/done"),
-            post(move |body: axum::body::Bytes| done(Arc::clone(&shutdown), body)),
+            post(move |body: axum::body::Bytes| {
+                done(Arc::clone(&shutdown), Arc::clone(&job), body)
+            }),
         )
 }
 
@@ -106,9 +126,10 @@ pub(super) async fn start(
     port: u16,
     project: PathBuf,
     fixed: Option<String>,
+    job: Arc<ExportJob>,
 ) -> Result<LocalServer, WebError> {
     web::serve(
-        move |prefix, shutdown| routes(prefix, shutdown, fixed, project),
+        move |prefix, shutdown| routes(prefix, shutdown, fixed, project, job),
         options(port),
     )
     .await
@@ -129,7 +150,8 @@ pub(super) fn serve_until_done(
         .build()
         .map_err(serve_error)?;
     runtime.block_on(async {
-        let server = start(port, project, fixed)
+        let job = Arc::new(ExportJob::default());
+        let server = start(port, project, fixed, Arc::clone(&job))
             .await
             .map_err(|e| OpError::Serve {
                 source: anyhow::Error::new(e),
@@ -141,6 +163,7 @@ pub(super) fn serve_until_done(
         let result = tokio::select! {
             result = &mut finished => result,
             _ = tokio::signal::ctrl_c() => {
+                job.closing.store(true, std::sync::atomic::Ordering::SeqCst);
                 stop.notify_one();
                 finished.await
             }
@@ -1605,5 +1628,210 @@ mod tests {
         );
         assert_eq!(bad.0, 400);
         finish(run);
+    }
+
+    // ---- export, check and closing ----
+
+    fn pdfs(dir: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn export_body(dir: &std::path::Path, rest: &str) -> String {
+        format!(
+            r#"{{"out_dir":{}{rest}}}"#,
+            serde_json::to_string(&dir.display().to_string()).unwrap()
+        )
+    }
+
+    #[test]
+    fn an_export_through_the_page_equals_ops_export() {
+        let project = crate::ops::testing::viktoriapark_copy();
+        let (by_ops, by_page) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let expected = crate::ops::export::export(
+            &crate::ops::export::ExportArgs {
+                project: project.path().to_path_buf(),
+                out_dir: Some(by_ops.path().to_path_buf()),
+                ..Default::default()
+            },
+            &mut |_| std::ops::ControlFlow::Continue(()),
+        )
+        .unwrap();
+        let run = start_on(project.path().to_path_buf(), true, Some("en"));
+        let (code, answer) = post_json(&run, "/api/export", &export_body(by_page.path(), ""));
+        assert_eq!(code, 200, "{answer}");
+        let body = body_json(&answer);
+        assert_eq!(body["stopped"], false);
+        assert_eq!(body["files"][0]["path"], "Training.pdf");
+        assert_eq!(body["files"][0]["bytes"], expected.files[0].bytes.unwrap());
+        assert!(
+            body["reminder"].as_str().unwrap().contains("100 %"),
+            "{body}"
+        );
+        assert!(body["notes"][0]["severity"].is_string(), "{body}");
+        assert_eq!(pdfs(by_ops.path()), pdfs(by_page.path()));
+        let wrote = std::fs::read(by_page.path().join("Training.pdf")).unwrap();
+        let reference = std::fs::read(by_ops.path().join("Training.pdf")).unwrap();
+        assert!(wrote == reference, "the PDF differs from ops::export's");
+        // The single file and a layout go through the same op.
+        let single = tempfile::tempdir().unwrap();
+        let (code, answer) = post_json(
+            &run,
+            "/api/export",
+            &export_body(single.path(), r#","single_file":true"#),
+        );
+        assert_eq!(code, 200, "{answer}");
+        assert_eq!(body_json(&answer)["files"][0]["pages"], 1);
+        assert_eq!(pdfs(single.path()).len(), 1);
+        finish(run);
+    }
+
+    #[test]
+    fn an_export_refuses_a_missing_or_relative_folder_and_writes_nothing() {
+        let run = start_on(viktoriapark(), true, Some("en"));
+        let gone = std::env::temp_dir().join("freemapper-print-no-such-folder-9");
+        let (code, answer) = post_json(&run, "/api/export", &export_body(&gone, ""));
+        assert_eq!(code, 422, "{answer}");
+        let body = answer.split("\r\n\r\n").nth(1).unwrap();
+        assert!(
+            body.contains("for the PDFs does not exist; create it first"),
+            "{body}"
+        );
+        assert!(!gone.exists());
+        for dir in ["relative/out", ""] {
+            let (code, answer) =
+                post_json(&run, "/api/export", &format!(r#"{{"out_dir":"{dir}"}}"#));
+            assert_eq!(code, 422, "{answer}");
+        }
+        // Layouts do not go with courses; a form that does not fit is 400; a GET is no export.
+        let here = tempfile::tempdir().unwrap();
+        let (code, _) = post_json(
+            &run,
+            "/api/export",
+            &export_body(here.path(), r#","layouts":["a4-4000"],"single_file":true"#),
+        );
+        assert_eq!(code, 422);
+        assert_eq!(post_json(&run, "/api/export", "[]").0, 400);
+        assert!(pdfs(here.path()).is_empty());
+        // A write needs Origin like every other POST.
+        let (code, _) = request_with(
+            &run.host,
+            &run.host,
+            "POST",
+            &format!("{}/api/export", run.prefix),
+            "Content-Type: application/json\r\n",
+            &export_body(here.path(), ""),
+        );
+        assert_eq!(code, 403);
+        assert!(pdfs(here.path()).is_empty());
+        finish(run);
+    }
+
+    #[test]
+    fn a_cancelled_export_stops_after_the_sheet_in_hand() {
+        let project = luebeck_copy();
+        let out = tempfile::tempdir().unwrap();
+        let run = start_on(project.path().to_path_buf(), true, Some("en"));
+        let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let file = project.path().join("freemapper-print.toml");
+        *super::super::api::EXPORT_GATE.lock().unwrap() = Some((file, reached_tx, release_rx));
+        let (host, prefix) = (run.host.clone(), run.prefix.clone());
+        let body = export_body(out.path(), "");
+        let export = std::thread::spawn(move || {
+            let extra = format!("Origin: http://{host}\r\nContent-Type: application/json\r\n");
+            request_with(
+                &host,
+                &host,
+                "POST",
+                &format!("{prefix}/api/export"),
+                &extra,
+                &body,
+            )
+        });
+        // The first sheet is drawn and written; the export waits before it looks at the cancel flag.
+        reached_rx.recv_timeout(Duration::from_secs(60)).unwrap();
+        let status = body_json(&get(&run, "/api/export/status").1);
+        assert_eq!(status["running"], true);
+        assert_eq!(status["pages"], 1);
+        // One export at a time.
+        let (code, answer) = post_json(&run, "/api/export", &export_body(out.path(), ""));
+        assert_eq!(code, 422, "{answer}");
+        let (code, answer) = post_json(&run, "/api/export/cancel", "{}");
+        assert_eq!(code, 200);
+        assert_eq!(body_json(&answer)["running"], true);
+        release_tx.send(()).unwrap();
+        let (code, answer) = export.join().unwrap();
+        assert_eq!(code, 200, "{answer}");
+        let body = body_json(&answer);
+        assert_eq!(body["stopped"], true, "{body}");
+        assert_eq!(body["count"], 1);
+        assert_eq!(pdfs(out.path()).len(), 1, "{:?}", pdfs(out.path()));
+        let status = body_json(&get(&run, "/api/export/status").1);
+        assert_eq!(status["running"], false);
+        // Nothing runs now: cancelling does nothing, and the next export is not stopped by the old flag.
+        let (_, answer) = post_json(&run, "/api/export/cancel", "{}");
+        assert_eq!(body_json(&answer)["running"], false);
+        let again = tempfile::tempdir().unwrap();
+        let (code, answer) = post_json(&run, "/api/export", &export_body(again.path(), ""));
+        assert_eq!(code, 200, "{answer}");
+        assert!(pdfs(again.path()).len() > 1);
+        finish(run);
+    }
+
+    #[test]
+    fn check_returns_the_notes_with_severity_and_needs_attention() {
+        let run = start_on(viktoriapark(), true, Some("en"));
+        let (code, answer) = get(&run, "/api/check");
+        assert_eq!(code, 200, "{answer}");
+        let check = body_json(&answer);
+        assert_eq!(check["needs_attention"], false);
+        assert_eq!(check["courses"][0]["course"], "Training");
+        let note = &check["courses"][0]["notes"][0];
+        assert_eq!(note["severity"], "info");
+        assert!(note["message"].is_string());
+        assert!(!answer.contains(&viktoriapark().display().to_string()));
+        finish(run);
+        // A sheet that needs a look sets the flag.
+        let project = luebeck_copy();
+        let text = std::fs::read_to_string(project.path().join("freemapper-print.toml")).unwrap();
+        std::fs::write(
+            project.path().join("freemapper-print.toml"),
+            text.replace("print_scale = 4000", "print_scale = 20000"),
+        )
+        .unwrap();
+        let run = start_on(project.path().to_path_buf(), true, Some("en"));
+        let (code, answer) = get(&run, "/api/check");
+        assert_eq!(code, 200, "{answer}");
+        let check = body_json(&answer);
+        let severities: Vec<&str> = check["layouts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|s| s["notes"].as_array().unwrap())
+            .map(|n| n["severity"].as_str().unwrap())
+            .collect();
+        assert!(!severities.is_empty());
+        assert_eq!(
+            check["needs_attention"],
+            severities.iter().any(|s| *s != "info")
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn ending_prints_the_project_file_the_person_gave() {
+        let project = viktoriapark();
+        let run = start_on(project.clone(), true, Some("en"));
+        let out = run.out.clone();
+        finish(run);
+        let text = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        let last = text.lines().last().unwrap();
+        assert!(last.contains("The editor has ended"), "{text}");
+        assert!(last.contains("freemapper-print.toml"), "{text}");
     }
 }

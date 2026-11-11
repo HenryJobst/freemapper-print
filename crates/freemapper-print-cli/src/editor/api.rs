@@ -1,5 +1,6 @@
-//! The API of the editor: `GET api/project`, `GET api/revision`, `GET api/preview`, `POST api/hit` read;
-//! `POST api/op/{name}`, `POST api/undo` and `POST api/redo` write.
+//! The API of the editor: `GET api/project`, `GET api/revision`, `GET api/preview`, `POST api/hit`,
+//! `GET api/check` and `GET api/export/status` read; `POST api/op/{name}`, `POST api/undo` and `POST api/redo`
+//! write the project file; `POST api/export` writes PDFs and `POST api/export/cancel` stops it.
 //!
 //! Neither names a file: the project file is the one `edit` was started with. A write names the revision the page
 //! last saw in `X-Freemapper-Revision`; a changed file answers 409, a refused change 422 (core ADR 0030). Drawing a sheet takes seconds
@@ -7,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path as UrlPath, Request, State};
@@ -50,8 +51,39 @@ pub(super) type Gate = (
 #[cfg(test)]
 pub(super) static GATE: Mutex<Option<Gate>> = Mutex::new(None);
 
+/// The export in progress, shared by the handlers and the server's end: one export at a time, a flag that stops
+/// it after the sheet in hand, and the progress the page shows.
+#[derive(Default)]
+pub(super) struct ExportJob {
+    running: AtomicBool,
+    /// The person pressed Stop; reset when the next export starts.
+    cancel: AtomicBool,
+    /// The server is ending (`Fertig`, Ctrl+C): the export stops after the sheet in hand, whatever the page says.
+    pub(super) closing: AtomicBool,
+    /// Pages drawn so far.
+    pages: AtomicUsize,
+    /// The course (else the layout) of the page drawn last.
+    last: Mutex<Option<String>>,
+}
+
+/// Clears `running` when the export ends, whatever way.
+struct Running<'a>(&'a ExportJob);
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        self.0.running.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Test hook: the first page an export of `project` reports tells `reached` and waits for `release`, before the
+/// cancel flag is looked at.
+#[cfg(test)]
+pub(super) static EXPORT_GATE: Mutex<Option<Gate>> = Mutex::new(None);
+
 /// What the handlers share.
 pub(super) struct Api {
+    /// The export in progress.
+    pub(super) export: Arc<ExportJob>,
     /// The project file.
     pub(super) project: PathBuf,
     /// The language the person set, if any (see `editor::fixed_language`).
@@ -70,8 +102,9 @@ pub(super) struct Api {
 }
 
 impl Api {
-    pub(super) fn new(project: PathBuf, fixed: Option<String>) -> Self {
+    pub(super) fn new(project: PathBuf, fixed: Option<String>, export: Arc<ExportJob>) -> Self {
         Api {
+            export,
             project,
             fixed,
             latest: AtomicU64::new(0),
@@ -720,6 +753,205 @@ pub(super) async fn post_redo(
     _body: axum::body::Bytes,
 ) -> Response {
     step(api, headers, false).await
+}
+
+/// The body of `POST api/export`.
+#[derive(Deserialize)]
+struct ExportRequest {
+    out_dir: String,
+    #[serde(default)]
+    courses: Vec<String>,
+    #[serde(default)]
+    layouts: Vec<String>,
+    #[serde(default)]
+    single_file: bool,
+}
+
+/// `value` with every string scrubbed of absolute paths (see [`scrub`]), except under the key `keep`.
+fn scrub_value(value: &mut serde_json::Value, project: &std::path::Path, keep: &str) {
+    match value {
+        serde_json::Value::String(text) => *text = scrub(text, project),
+        serde_json::Value::Array(items) => {
+            items.iter_mut().for_each(|v| scrub_value(v, project, keep));
+        }
+        serde_json::Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if key != keep {
+                    scrub_value(v, project, keep);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The export's answer: what `export_project` returns, with each file by its name (the folder is the one the person
+/// typed).
+fn export_answer(
+    texts: &Texts,
+    result: &ops::export::ExportResult,
+    project: &std::path::Path,
+) -> serde_json::Value {
+    let out = crate::mcp::export_out(texts, result, crate::mcp::MAX_ENTRIES);
+    let mut value = serde_json::to_value(out).expect("an export result serialises");
+    if let Some(files) = value["files"].as_array_mut() {
+        for file in files {
+            let name = file["path"]
+                .as_str()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map(|n| n.to_string_lossy().into_owned());
+            if let Some(name) = name {
+                file["path"] = name.into();
+            }
+        }
+    }
+    scrub_value(&mut value, project, "out_dir");
+    value["stopped"] = false.into();
+    value
+}
+
+/// `POST api/export { out_dir, courses?, layouts?, single_file? }`: writes the PDFs as `export_project` does and
+/// answers `{ out_dir, files, notes, reminder, stopped, ... }`. `out_dir` is the one path the person types; it must
+/// be absolute, exist and not lead out of the project through a link. 422 for a refusal (nothing written for it).
+/// Stopped by `POST api/export/cancel`, it answers 200 with `stopped: true` and a sentence that counts the PDFs
+/// written. One export runs at a time.
+pub(super) async fn post_export(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let lang = api.lang(&headers);
+    let texts = Texts::new(&lang);
+    let Ok(request) = serde_json::from_slice::<ExportRequest>(&body) else {
+        return bad_request("form");
+    };
+    if !request.layouts.is_empty() && (!request.courses.is_empty() || request.single_file) {
+        return refused(&texts.plain("mcp-error-export-layouts"));
+    }
+    let out_dir = match crate::mcp::agent_path(&texts, &request.out_dir) {
+        Ok(dir) => dir,
+        Err(message) => return refused(&message),
+    };
+    let project = api.project.clone();
+    if !out_dir.is_dir() {
+        let error = OpError::OutDirMissing { path: out_dir };
+        return refusal(&lang, error, &project);
+    }
+    let job = Arc::clone(&api.export);
+    if job.running.swap(true, Ordering::SeqCst) {
+        return refused(&texts.plain("editor-export-running"));
+    }
+    job.cancel.store(false, Ordering::SeqCst);
+    job.pages.store(0, Ordering::SeqCst);
+    *job.last.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    let for_answer = lang.clone();
+    let worker_project = project.clone();
+    let answer = tokio::task::spawn_blocking(move || {
+        let _running = Running(&job);
+        let mut gated = false;
+        let result = ops::export::export(
+            &ops::export::ExportArgs {
+                project: worker_project.clone(),
+                layouts: request.layouts,
+                courses: request.courses,
+                single_file: request.single_file,
+                out_dir: Some(out_dir),
+            },
+            &mut |progress| {
+                if let ops::export::ExportProgress::Page { page, .. } = &progress {
+                    job.pages.fetch_add(1, Ordering::SeqCst);
+                    let label = page
+                        .sheet
+                        .course
+                        .clone()
+                        .unwrap_or_else(|| page.sheet.layout.clone());
+                    *job.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(label);
+                    #[cfg(test)]
+                    if !gated {
+                        gated = true;
+                        let gate = {
+                            let mut slot = EXPORT_GATE.lock().unwrap();
+                            match slot.as_ref() {
+                                Some((p, ..)) if *p == worker_project => slot.take(),
+                                _ => None,
+                            }
+                        };
+                        if let Some((_, reached, release)) = gate {
+                            let _ = reached.send(());
+                            let _ = release.recv_timeout(std::time::Duration::from_secs(30));
+                        }
+                    }
+                }
+                let _ = &mut gated;
+                if job.cancel.load(Ordering::SeqCst) || job.closing.load(Ordering::SeqCst) {
+                    std::ops::ControlFlow::Break(())
+                } else {
+                    std::ops::ControlFlow::Continue(())
+                }
+            },
+        );
+        (result, worker_project)
+    })
+    .await;
+    match answer {
+        Ok((Ok(result), project)) => {
+            json(&export_answer(&Texts::new(&for_answer), &result, &project))
+        }
+        Ok((Err(OpError::ExportStopped { written }), project)) => json(&serde_json::json!({
+            "stopped": true,
+            "count": written.len(),
+            "message": sentence(&for_answer, OpError::ExportStopped { written }, &project),
+        })),
+        Ok((Err(error), project)) => refusal(&for_answer, error, &project),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `GET api/export/status`: `{ running, pages, last }`, the progress the page shows in its status bar.
+pub(super) async fn get_export_status(State(api): State<Arc<Api>>) -> Response {
+    let job = &api.export;
+    let last = job.last.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    json(&serde_json::json!({
+        "running": job.running.load(Ordering::SeqCst),
+        "pages": job.pages.load(Ordering::SeqCst),
+        "last": last,
+    }))
+}
+
+/// `POST api/export/cancel`: the running export stops after the sheet in hand; `{ running }` says whether there was one.
+pub(super) async fn post_export_cancel(
+    State(api): State<Arc<Api>>,
+    _body: axum::body::Bytes,
+) -> Response {
+    let running = api.export.running.load(Ordering::SeqCst);
+    if running {
+        api.export.cancel.store(true, Ordering::SeqCst);
+    }
+    json(&serde_json::json!({ "running": running }))
+}
+
+/// `GET api/check`: what `check_project` returns (`map_scale`, `needs_attention`, `course_file`, `courses`,
+/// `layouts`, each note with `kind`, `severity`, `course` and `message`), for the page's notices.
+pub(super) async fn get_check(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+    let lang = api.lang(&headers);
+    let project = api.project.clone();
+    let for_check = lang.clone();
+    let answer = tokio::task::spawn_blocking(move || {
+        let result = ops::check::check(&ops::check::CheckArgs {
+            project: api.project.clone(),
+        })?;
+        let out = crate::mcp::check_out(&Texts::new(&for_check), &result, crate::mcp::MAX_ENTRIES);
+        Ok::<_, OpError>(serde_json::to_value(out).expect("a check result serialises"))
+    })
+    .await;
+    match answer {
+        Ok(Ok(mut value)) => {
+            scrub_value(&mut value, &project, "");
+            json(&value)
+        }
+        Ok(Err(error)) => refusal(&lang, error, &project),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 #[cfg(test)]

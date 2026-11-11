@@ -40,6 +40,7 @@
     <details class="menu">
       <summary data-text="editor-menu-file"></summary>
       <ul>
+        <li><button type="button" id="menu-check" data-text="editor-menu-check"></button></li>
         <li><button type="button" id="menu-done" data-text="editor-menu-done"></button></li>
       </ul>
     </details>
@@ -68,8 +69,9 @@
     <details class="menu">
       <summary data-text="editor-menu-export"></summary>
       <ul>
-        <li><button type="button" id="menu-export-sheet" data-text="editor-menu-export-sheet" disabled></button></li>
-        <li><button type="button" id="menu-export-all" data-text="editor-menu-export-all" disabled></button></li>
+        <li><button type="button" id="menu-export-sheet" data-text="editor-menu-export-sheet"></button></li>
+        <li><button type="button" id="menu-export-all" data-text="editor-menu-export-all"></button></li>
+        <li><button type="button" id="menu-export-single" data-text="editor-menu-export-single"></button></li>
       </ul>
     </details>
   </header>
@@ -96,6 +98,21 @@
     <div class="dialog-buttons">
       <button type="button" id="leave-yes" data-text="editor-leave-discard"></button>
       <button type="button" class="primary" id="leave-no" data-text="editor-leave-keep"></button>
+    </div>
+  </dialog>
+  <dialog id="export" aria-labelledby="export-title">
+    <h2 id="export-title" data-text="editor-export-title"></h2>
+    <p id="export-what"></p>
+    <div class="row">
+      <label for="export-dir" data-text="editor-export-dir"></label>
+      <input type="text" id="export-dir" size="48" autocomplete="off" spellcheck="false" aria-describedby="export-dir-hint">
+      <span class="hint" id="export-dir-hint" data-text="editor-export-dir-hint"></span>
+    </div>
+    <div id="export-result" aria-live="polite"></div>
+    <div class="dialog-buttons">
+      <button type="button" class="primary" id="export-go" data-text="editor-export-go"></button>
+      <button type="button" id="export-stop" data-text="editor-export-stop" hidden></button>
+      <button type="button" id="export-close" data-text="editor-export-close"></button>
     </div>
   </dialog>
   <footer class="status">

@@ -30,7 +30,7 @@ const MAX_NOTES: usize = 200;
 /// The most entries a list in a result holds: the files of `export_project`, the sheets of `check_project`, the
 /// courses, mask variants and assignments of `project_info` and the courses of `list_courses` and `init_project`. A
 /// `more_*` field counts the rest.
-const MAX_ENTRIES: usize = 200;
+pub(crate) const MAX_ENTRIES: usize = 200;
 
 /// The public home of the program, named in the server info and the instructions.
 const WEBSITE: &str = "https://github.com/HenryJobst/freemapper-print";
@@ -439,7 +439,7 @@ struct FileOut {
 
 /// The result of `export_project`.
 #[derive(Serialize)]
-struct ExportOut {
+pub(crate) struct ExportOut {
     out_dir: PathBuf,
     /// The first [`MAX_ENTRIES`] files written, in the order written.
     files: Vec<FileOut>,
@@ -459,7 +459,11 @@ struct ExportOut {
     message: Option<String>,
 }
 
-fn export_out(texts: &Texts, result: &ops::export::ExportResult, max_files: usize) -> ExportOut {
+pub(crate) fn export_out(
+    texts: &Texts,
+    result: &ops::export::ExportResult,
+    max_files: usize,
+) -> ExportOut {
     use ops::export::ExportMode;
     let bytes = |path: &Path| {
         result
@@ -566,7 +570,7 @@ struct SheetOut {
 
 /// The result of `check_project`.
 #[derive(Serialize)]
-struct CheckOut {
+pub(crate) struct CheckOut {
     map_scale: u32,
     /// A note other than info, or a sheet that could not be drawn: the CLI's `check` exits with 1.
     needs_attention: bool,
@@ -712,7 +716,11 @@ fn sheet_out(texts: &Texts, budget: &mut NoteBudget, sheet: &ops::check::SheetCh
 }
 
 /// The result of `check_project` with at most `max_sheets` sheets; `needs_attention` covers every sheet.
-fn check_out(texts: &Texts, result: &ops::check::CheckResult, max_sheets: usize) -> CheckOut {
+pub(crate) fn check_out(
+    texts: &Texts,
+    result: &ops::check::CheckResult,
+    max_sheets: usize,
+) -> CheckOut {
     let mut budget = NoteBudget::new(MAX_NOTES);
     let mut sheets = NoteBudget::new(max_sheets);
     let course_file = result
@@ -962,7 +970,7 @@ fn written_before(texts: &Texts, message: String, written: &[PathBuf]) -> String
 }
 
 /// An agent's path as one checked by [`absolute_path`], with the error in words.
-fn agent_path(texts: &Texts, path: &str) -> Result<PathBuf, String> {
+pub(crate) fn agent_path(texts: &Texts, path: &str) -> Result<PathBuf, String> {
     absolute_path(texts, path).map_err(|e| e.message.to_string())
 }
 
