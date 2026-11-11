@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Der Core-Pin steigt auf freemapper-core v0.20.0 (freie Seitengröße und Quellposition jedes Objekts im Seitenbauer). print bietet beides noch nicht an; die Layouts bleiben bei A4 und A3.
 - Die Kartenart und der Leser von `freemapper.toml` kommen aus freemapper-contract (freemapper-core v0.19.0, Entscheidung 0057), ein Typ für die ganze Suite. Das Verhalten bleibt gleich.
 - `AGENTS.md` stellt die Kommandozeile an die erste und MCP an die zweite Stelle: Ein Agent, der Befehle ausführen kann, erledigt die Arbeit mit wenigen blockierenden Aufrufen statt mit einer Runde je Werkzeugaufruf. MCP bleibt der Weg für Assistenten ohne Shell. Der Abschnitt zur Kommandozeile nennt, was nur MCP bietet (`project_info`, `list_courses`, `set_layout`, `set_element`, `assign_mask`), und wie man es stattdessen in der Projektdatei erledigt.
 

@@ -12,15 +12,15 @@ rust-version = "1.88"
 [workspace.dependencies]
 freemapper-print = { path = "crates/freemapper-print" }
 # The suite's own crates are exempt from the two-week rule (ADR 0006).
-freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-omap = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-printrules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-render = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
-freemapper-course = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0" }
+freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-omap = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-printrules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-render = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
+freemapper-course = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0" }
 # The suite contract with its fixtures; tests only (ADR 0050).
-freemapper-contract = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.19.0", default-features = false }
+freemapper-contract = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.20.0", default-features = false }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 # The version freemapper-text uses; move it together with the core tag (ADR 0042).

@@ -103,6 +103,9 @@ pub enum PrintError {
     Scale(#[from] ScaleError),
     #[error("could not resize the map symbols for the print scale")]
     Symbols(OmapError),
+    /// The page builder refused the size. The layouts only name A4 and A3, so no print command reaches it.
+    #[error("a page of {width_mm} x {height_mm} mm is not possible")]
+    PageSize { width_mm: f64, height_mm: f64 },
     #[error(transparent)]
     Pdf(#[from] PdfError),
 }
@@ -111,6 +114,13 @@ impl From<BuildError> for PrintError {
     fn from(e: BuildError) -> Self {
         match e {
             BuildError::Symbols(e) => PrintError::Symbols(e),
+            BuildError::PageSize {
+                width_mm,
+                height_mm,
+            } => PrintError::PageSize {
+                width_mm,
+                height_mm,
+            },
         }
     }
 }
@@ -143,6 +153,7 @@ fn render_page_within(
         symbol_factor,
         geometry_factor,
         paper: options.paper,
+        page_mm: None,
         orientation: options.orientation,
         centre: options.centre,
         frame_margin_mm: options.frame_margin_mm,
