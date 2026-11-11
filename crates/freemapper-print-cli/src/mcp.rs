@@ -81,7 +81,7 @@ struct WindowIn {
     course: String,
     /// The controls with a window, by code ("31,32") or by place in the course ("2-5"). Default: all.
     controls: Option<String>,
-    /// Radius of each window in mm on paper. Default: 10.
+    /// Radius of each window in mm on paper. Default: 15.
     radius: Option<f64>,
     /// Windows with a radius of their own, each "CODE=MM" such as "35=20".
     #[serde(default)]
@@ -108,7 +108,7 @@ struct CorridorIn {
     project: String,
     /// The line of the corridor in map mm, "x,y;x,y;...", at least two points.
     points: String,
-    /// Width of the corridor in mm on paper. Default: 8.
+    /// Width of the corridor in mm on paper. Default: 10.
     width: Option<f64>,
     /// The mask id. Default: corridor-<n>.
     id: Option<String>,
@@ -1591,6 +1591,25 @@ mod tests {
             "export_project" => json!(["project", "out_dir"]),
             _ => json!(["project"]),
         };
+        // The defaults the schema names are the ones the library applies.
+        let field = |tool: &str, name: &str| {
+            let tool = tools.iter().find(|t| t["name"] == tool).unwrap();
+            tool["inputSchema"]["properties"][name]["description"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        use freemapper_print::mask_build::{DEFAULT_RADIUS_MM, DEFAULT_WIDTH_MM};
+        let radius = field("masks_window", "radius");
+        assert!(
+            radius.ends_with(&format!("Default: {DEFAULT_RADIUS_MM}.")),
+            "{radius}"
+        );
+        let width = field("masks_corridor", "width");
+        assert!(
+            width.ends_with(&format!("Default: {DEFAULT_WIDTH_MM}.")),
+            "{width}"
+        );
         for tool in tools {
             assert!(tool["description"].as_str().unwrap().len() > 40, "{tool}");
             let schema = &tool["inputSchema"];
