@@ -55,6 +55,15 @@ lautet er etwa `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, mit do
 Datei JSON ist. `--lang de` wählt deutsche Meldungen; ohne die Option gilt die Sprache des Systems wie bei der
 Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen elf Werkzeugen.
 
+### Einrichten lassen
+
+Ein Agent, der Befehle ausführen kann, etwa Claude Code oder Codex, übernimmt auch das Herunterladen, das Prüfen,
+das Entpacken und die Anmeldung des Servers. Er richtet sich nach der Datei [AGENTS.md](../../AGENTS.md), die im
+Archiv neben dem Programm liegt. Sie sagen ihm zum Beispiel: „Lies AGENTS.md von
+github.com/HenryJobst/freemapper-print und richte freemapper-print ein.“ Unter macOS hebt er dabei die
+Sperre für nicht signierte Programme auf und sagt Ihnen das. Je nach Einstellung fragt er vor jedem Befehl nach.
+Claude Desktop führt keine Befehle aus; dort melden Sie den Server selbst an, wie oben beschrieben.
+
 ### Die Werkzeuge
 
 Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufruf eine andere Sprache zu wählen.

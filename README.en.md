@@ -153,6 +153,8 @@ freemapper-print is a single program without an installer:
 4. Check in a terminal in the unpacked folder: `./freemapper-print --version` (Windows:
    `.\freemapper-print.exe --version`).
 
+An AI agent that can run commands (Claude Code, Codex) can also do the download, the check and the registration for you: tell it "Read AGENTS.md from github.com/HenryJobst/freemapper-print and set up freemapper-print." Besides the program, the archive holds the READMEs, the licence, the manual and `AGENTS.md`.
+
 ## Building from source (for developers)
 
 ```sh

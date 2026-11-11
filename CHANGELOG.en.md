@@ -9,7 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- `AGENTS.md` tells an AI agent how to install freemapper-print from the release archives and how to use it through MCP or the command line, with the real message texts for the common failures. It is written in English and ships in every release archive next to the READMEs.
+- `AGENTS.md` tells an AI agent how to install freemapper-print from the release archives and how to use it through MCP or the command line, with the real message texts for the common failures. It is written in English and ships in every release archive next to the READMEs. The manual (chapter 3) and the README say how to have an agent set the program up from it.
 
 ## [0.6.0] - 2026-11-11
 

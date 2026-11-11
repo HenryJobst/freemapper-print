@@ -9,7 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- `AGENTS.md` erklärt einem KI-Agenten, wie er freemapper-print aus den Release-Archiven installiert und über MCP oder die Kommandozeile bedient, mit den echten Meldungstexten für die häufigen Fehler. Die Datei ist englisch und liegt in jedem Release-Archiv neben den READMEs.
+- `AGENTS.md` erklärt einem KI-Agenten, wie er freemapper-print aus den Release-Archiven installiert und über MCP oder die Kommandozeile bedient, mit den echten Meldungstexten für die häufigen Fehler. Die Datei ist englisch und liegt in jedem Release-Archiv neben den READMEs. Handbuch (Kapitel 3) und README erklären, wie ein Agent das Programm damit einrichtet.
 
 ## [0.6.0] - 2026-11-11
 

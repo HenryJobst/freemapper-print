@@ -54,6 +54,15 @@ Windows it reads like `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`,
 the file is JSON. `--lang en` picks English messages; without it the system language applies, as on the command
 line. After the next start of Claude Code, `/mcp` shows the server with its eleven tools.
 
+### Let the agent set it up
+
+An agent that can run commands, such as Claude Code or Codex, also does the download, the check, the unpacking and
+the registration of the server. It follows [AGENTS.md](../../AGENTS.md), which sits next to the program in the
+archive. Say, for example: "Read AGENTS.md from github.com/HenryJobst/freemapper-print and set up
+freemapper-print." On macOS it removes the block on unsigned programs and tells you so. Depending on its
+settings it asks before each command. Claude Desktop runs no commands; there you register the server yourself, as
+described above.
+
 ### The tools
 
 Every tool also takes `lang` (`"de"` or `"en"`) to pick another language for that one call. `project` is the
