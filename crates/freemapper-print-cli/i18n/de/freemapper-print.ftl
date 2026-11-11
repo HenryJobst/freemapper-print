@@ -493,6 +493,7 @@ error-not-editable-assignment = Das Projekt { $path } wurde nicht geändert: Die
 mcp-error-corridor-assign = assign braucht eine Bahn; course muss die Bahn nennen, auf deren Blatt der Korridor gedruckt wird
 mcp-error-numbers-position = direction und gap gehören zusammen; beide angeben oder beide weglassen, dann gilt der Vorschlag von check_project
 mcp-error-project-link = { $path } ist ein Link, und der Server ändert keine Projektdatei über einen Link; den Pfad der Datei angeben, auf die er zeigt
+mcp-error-cancelled = Der Client hat den Aufruf abgebrochen, bevor er begann; es wurde nichts geschrieben
 
 # ---- MCP-Export (M5 Task 4) ----
 error-export-stopped = { $count ->
@@ -501,6 +502,10 @@ error-export-stopped = { $count ->
    *[other] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; die { $count } zuvor geschriebenen PDFs bleiben, und keine Teildatei bleibt zurück
 }
 mcp-error-export-layouts = layouts exportiert die Layouts ohne Bahnen und passt deshalb nicht zu courses oder single_file; eines davon weglassen
+mcp-error-export-written = { $error }. { $count ->
+    [one] Das zuvor geschriebene PDF bleibt: { $files }
+   *[other] Die { $count } zuvor geschriebenen PDFs bleiben: { $files }
+}
 
 # ---- Wortlaut für einen KI-Agenten (M5 Task 5): agent-<id> ersetzt <id> in den Ergebnissen des MCP-Servers, wo
 # ---- der CLI-Text Optionen oder Befehle nennt. Nur Variablen von <id>.

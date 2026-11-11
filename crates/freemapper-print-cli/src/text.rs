@@ -447,6 +447,7 @@ mod tests {
             "scales",
             "ids",
             "codes",
+            "files",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

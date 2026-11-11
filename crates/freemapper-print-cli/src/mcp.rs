@@ -27,8 +27,10 @@ use freemapper_print::scale::MapKind;
 /// The most notes `check_project` and `export_project` return; `more` counts the rest.
 const MAX_NOTES: usize = 200;
 
-/// The most files `export_project` lists; `more_files` counts the rest.
-const MAX_FILES: usize = 200;
+/// The most entries a list in a result holds: the files of `export_project`, the sheets of `check_project`, the
+/// courses, mask variants and assignments of `project_info` and the courses of `list_courses` and `init_project`. A
+/// `more_*` field counts the rest.
+const MAX_ENTRIES: usize = 200;
 
 /// The public home of the program, named in the server info and the instructions.
 const WEBSITE: &str = "https://github.com/HenryJobst/freemapper-print";
@@ -45,6 +47,7 @@ Manual and source: https://github.com/HenryJobst/freemapper-print";
 
 /// The arguments of every read tool.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectArgs {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -54,6 +57,7 @@ struct ProjectArgs {
 
 /// The arguments of `init_project`, as the CLI's `init`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct InitIn {
     /// Absolute path of the project folder. It is created when missing and must not hold a
     /// freemapper-print.toml yet.
@@ -74,6 +78,7 @@ struct InitIn {
 
 /// The arguments of `masks_window`, as the CLI's `masks window`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct WindowIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -103,6 +108,7 @@ struct WindowIn {
 
 /// The arguments of `masks_corridor`, as the CLI's `masks corridor`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct CorridorIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -134,6 +140,7 @@ enum ScopeIn {
 
 /// The arguments of `numbers_accept`, as the CLI's `numbers accept`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AcceptIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -231,6 +238,7 @@ where
 /// The arguments of `set_layout`: the keys of a `[[layouts]]` table. A key left out keeps its value, or takes the
 /// default for a new layout.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct LayoutIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -327,6 +335,7 @@ impl From<CornerIn> for Corner {
 
 /// Where an element hangs.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AnchorIn {
     /// The page, or the map frame inside the passe-partout.
     to: AnchorTargetIn,
@@ -339,6 +348,7 @@ struct AnchorIn {
 
 /// The arguments of `set_element`: a sheet element as the project file writes it.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ElementIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -367,6 +377,7 @@ struct ElementIn {
 
 /// The arguments of `assign_mask`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AssignIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -382,6 +393,7 @@ struct AssignIn {
 
 /// The arguments of `export_project`, as the CLI's `export`.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ExportIn {
     /// Absolute path of freemapper-print.toml or of the folder that holds it.
     project: String,
@@ -425,9 +437,9 @@ struct FileOut {
 #[derive(Serialize)]
 struct ExportOut {
     out_dir: PathBuf,
-    /// The first [`MAX_FILES`] files written, in the order written.
+    /// The first [`MAX_ENTRIES`] files written, in the order written.
     files: Vec<FileOut>,
-    /// How many files were written past [`MAX_FILES`].
+    /// How many files were written past [`MAX_ENTRIES`].
     #[serde(skip_serializing_if = "is_zero")]
     more_files: usize,
     /// The notes of the course file, then those of each sheet in the order drawn.
@@ -519,7 +531,11 @@ struct InitOut<'a> {
     kind: MapKind,
     kind_source: ops::init::KindSource,
     map_scale: u32,
-    layouts: &'a [ops::init::InitLayout],
+    /// The layouts, with the first [`MAX_ENTRIES`] course names over all of them.
+    layouts: Vec<ops::init::InitLayout>,
+    /// How many course names were left out of `layouts` past [`MAX_ENTRIES`].
+    #[serde(skip_serializing_if = "is_zero")]
+    more_courses: usize,
     assignments: usize,
     course_file: &'a Option<ops::init::InitCourses>,
     contour_interval_m: Option<f64>,
@@ -552,8 +568,12 @@ struct CheckOut {
     needs_attention: bool,
     /// The notes of the course file as a whole; `None` without a course file.
     course_file: Option<Vec<Note>>,
+    /// The first sheets of the courses, then of the layouts without a course, [`MAX_ENTRIES`] in all.
     courses: Vec<SheetOut>,
     layouts: Vec<SheetOut>,
+    /// How many sheets were left out past [`MAX_ENTRIES`].
+    #[serde(skip_serializing_if = "is_zero")]
+    more_sheets: usize,
     /// How many notes were left out past [`MAX_NOTES`].
     #[serde(skip_serializing_if = "is_zero")]
     more: usize,
@@ -567,7 +587,65 @@ fn is_zero(n: &usize) -> bool {
 #[derive(Serialize)]
 struct CoursesOut {
     courses_file: Option<PathBuf>,
+    /// The first [`MAX_ENTRIES`] courses.
     courses: Vec<ops::project::CourseInfo>,
+    /// How many courses were left out past [`MAX_ENTRIES`].
+    #[serde(skip_serializing_if = "is_zero")]
+    more_courses: usize,
+}
+
+/// The result of `project_info`: the project with at most [`MAX_ENTRIES`] courses, mask variants and assignments.
+#[derive(Serialize)]
+struct InfoOut {
+    #[serde(flatten)]
+    info: ops::project::ProjectInfo,
+    #[serde(skip_serializing_if = "is_zero")]
+    more_courses: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    more_masks: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    more_assignments: usize,
+}
+
+/// Cuts `items` to `max` entries; returns how many it cut.
+fn cap<T>(items: &mut Vec<T>, max: usize) -> usize {
+    let cut = items.len().saturating_sub(max);
+    items.truncate(max);
+    cut
+}
+
+fn info_out(mut info: ops::project::ProjectInfo, max: usize) -> InfoOut {
+    InfoOut {
+        more_courses: cap(&mut info.courses, max),
+        more_masks: cap(&mut info.masks, max),
+        more_assignments: cap(&mut info.assignments, max),
+        info,
+    }
+}
+
+fn courses_out(info: ops::project::ProjectInfo, max: usize) -> CoursesOut {
+    let mut courses = info.courses;
+    CoursesOut {
+        courses_file: info.courses_file,
+        more_courses: cap(&mut courses, max),
+        courses,
+    }
+}
+
+/// The layouts of `init`, with the first `max` course names over all of them, and how many were left out.
+fn init_layouts(
+    layouts: &[ops::init::InitLayout],
+    max: usize,
+) -> (Vec<ops::init::InitLayout>, usize) {
+    let mut budget = NoteBudget::new(max);
+    let layouts = layouts
+        .iter()
+        .map(|l| ops::init::InitLayout {
+            courses: budget.take(l.courses.clone()),
+            ..l.clone()
+        })
+        .collect();
+    (layouts, budget.cut)
 }
 
 /// Keeps at most a fixed number of notes (or files) over several lists and counts the rest.
@@ -626,29 +704,35 @@ fn sheet_out(texts: &Texts, budget: &mut NoteBudget, sheet: &ops::check::SheetCh
     }
 }
 
-fn check_out(texts: &Texts, result: &ops::check::CheckResult) -> CheckOut {
+/// The result of `check_project` with at most `max_sheets` sheets; `needs_attention` covers every sheet.
+fn check_out(texts: &Texts, result: &ops::check::CheckResult, max_sheets: usize) -> CheckOut {
     let mut budget = NoteBudget::new(MAX_NOTES);
+    let mut sheets = NoteBudget::new(max_sheets);
     let course_file = result
         .course_file
         .as_ref()
         .map(|notes| budget.describe(texts, notes));
-    let courses: Vec<SheetOut> = result
-        .courses
-        .iter()
-        .map(|s| sheet_out(texts, &mut budget, s))
-        .collect();
-    let layouts: Vec<SheetOut> = result
-        .layouts
-        .iter()
-        .map(|s| sheet_out(texts, &mut budget, s))
-        .collect();
+    let mut described = |list: &[ops::check::SheetCheck]| -> Vec<SheetOut> {
+        sheets
+            .take(list.iter().collect())
+            .into_iter()
+            .map(|s| sheet_out(texts, &mut budget, s))
+            .collect()
+    };
+    let courses = described(&result.courses);
+    let layouts = described(&result.layouts);
     CheckOut {
         map_scale: result.map_scale,
         needs_attention: result.course_file_needs_attention()
-            || courses.iter().chain(&layouts).any(|s| s.needs_attention),
+            || result
+                .courses
+                .iter()
+                .chain(&result.layouts)
+                .any(|s| s.needs_attention()),
         course_file,
         courses,
         layouts,
+        more_sheets: sheets.cut,
         more: budget.cut,
     }
 }
@@ -758,13 +842,19 @@ impl PrintServer {
             Ok(prepared) => prepared,
             Err(refused) => return Ok(refused),
         };
-        blocking(texts, move |texts| op(texts, &path)).await
+        blocking(texts, move |texts| {
+            #[cfg(test)]
+            panic_for_test(&path);
+            op(texts, &path)
+        })
+        .await
     }
 
     /// [`Self::run`] for a tool that changes the project file: under the write lock, and refused when the project
     /// file is a link.
     async fn write(
         &self,
+        context: &RequestContext<RoleServer>,
         lang: Option<&str>,
         project: &str,
         op: impl FnOnce(&Texts, &Path) -> Result<String, String> + Send + 'static,
@@ -773,7 +863,9 @@ impl PrintServer {
             Ok(prepared) => prepared,
             Err(refused) => return Ok(refused),
         };
-        self.with_project_lock(texts, move |texts| {
+        self.with_project_lock(texts, context, move |texts| {
+            #[cfg(test)]
+            panic_for_test(&path);
             refuse_link(texts, &path)?;
             op(texts, &path)
         })
@@ -781,15 +873,21 @@ impl PrintServer {
     }
 
     /// Runs `op` off the async runtime while it holds the write lock. The lock goes with the work, so a call the
-    /// client gives up on still keeps the next write waiting until its own write is done.
+    /// client gives up on still keeps the next write waiting until its own write is done. A call the client
+    /// cancelled while it waited for the lock does nothing: `op` does not run.
     async fn with_project_lock(
         &self,
         texts: Texts,
+        context: &RequestContext<RoleServer>,
         op: impl FnOnce(&Texts) -> Result<String, String> + Send + 'static,
     ) -> Result<CallToolResult, McpError> {
+        let cancelled = context.ct.clone();
         let guard = self.writes.clone().lock_owned().await;
         blocking(texts, move |texts| {
             let _guard = guard;
+            if cancelled.is_cancelled() {
+                return Err(texts.plain("mcp-error-cancelled"));
+            }
             op(texts)
         })
         .await
@@ -826,9 +924,42 @@ fn refuse_link(texts: &Texts, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `message`, the error of an export, with the PDFs it wrote before: they stay, so the agent learns of them. The
+/// first [`MAX_ENTRIES`] are named.
+fn written_before(texts: &Texts, message: String, written: &[PathBuf]) -> String {
+    if written.is_empty() {
+        return message;
+    }
+    let mut files: Vec<String> = written
+        .iter()
+        .take(MAX_ENTRIES)
+        .map(|p| printable(&p.display().to_string()))
+        .collect();
+    if written.len() > MAX_ENTRIES {
+        files.push("…".into());
+    }
+    texts.get(
+        "mcp-error-export-written",
+        Some(&args!(
+            "error" => message,
+            "count" => written.len(),
+            "files" => files.join(", "),
+        )),
+    )
+}
+
 /// An agent's path as one checked by [`absolute_path`], with the error in words.
 fn agent_path(texts: &Texts, path: &str) -> Result<PathBuf, String> {
     absolute_path(texts, path).map_err(|e| e.message.to_string())
+}
+
+/// Test seam: a read or write tool on a project path named `panic-for-test` panics in its op, so the tests can
+/// see what a panic does.
+#[cfg(test)]
+fn panic_for_test(path: &Path) {
+    if path.ends_with("panic-for-test") {
+        panic!("a panic for the test");
+    }
 }
 
 /// What a failed blocking task says: the panic message if there is one.
@@ -857,7 +988,9 @@ impl PrintServer {
     #[tool(
         description = "What a project holds: title, map kind and scale, the map and course file it \
                        reads, the layouts with their elements, the courses with the layout and masks \
-                       each prints with, the mask variants and the assignments."
+                       each prints with, the mask variants and the assignments. At most 200 courses, \
+                       200 mask variants and 200 assignments come back; more_courses, more_masks and \
+                       more_assignments count the rest."
     )]
     async fn project_info(
         &self,
@@ -868,7 +1001,7 @@ impl PrintServer {
                 project: path.to_path_buf(),
             })
             .map_err(|e| op_message(texts, e))?;
-            json(texts, &info)
+            json(texts, &info_out(info, MAX_ENTRIES))
         })
         .await
     }
@@ -878,8 +1011,8 @@ impl PrintServer {
                        return the notes of each sheet. With a course file there is one sheet per \
                        course, then one per layout without a course. Each note has kind, severity \
                        (info, warning or error), course and message. needs_attention is true when a \
-                       note is more than info or a sheet could not be drawn. At most 200 notes come \
-                       back; more counts the rest."
+                       note is more than info or a sheet could not be drawn, on any sheet. At most 200 \
+                       sheets and 200 notes come back; more_sheets and more count the rest."
     )]
     async fn check_project(
         &self,
@@ -890,7 +1023,7 @@ impl PrintServer {
                 project: path.to_path_buf(),
             })
             .map_err(|e| op_message(texts, e))?;
-            json(texts, &check_out(texts, &result))
+            json(texts, &check_out(texts, &result, MAX_ENTRIES))
         })
         .await
     }
@@ -898,7 +1031,8 @@ impl PrintServer {
     #[tool(
         description = "The courses of the project's course file in file order, each with its number \
                        of controls, the layout it prints on and the masks its sheet applies. The list \
-                       is empty when the project has no course file."
+                       is empty when the project has no course file. At most 200 courses come back; \
+                       more_courses counts the rest."
     )]
     async fn list_courses(
         &self,
@@ -909,13 +1043,7 @@ impl PrintServer {
                 project: path.to_path_buf(),
             })
             .map_err(|e| op_message(texts, e))?;
-            json(
-                texts,
-                &CoursesOut {
-                    courses_file: info.courses_file,
-                    courses: info.courses,
-                },
-            )
+            json(texts, &courses_out(info, MAX_ENTRIES))
         })
         .await
     }
@@ -925,11 +1053,13 @@ impl PrintServer {
                        init command does. With a course file there is one layout per print scale and \
                        an assignment per course. The tool refuses a folder that holds a project \
                        file already. Returns the layouts written, where the map kind came from, and the \
-                       messages of init."
+                       messages of init. The layouts name at most 200 courses in all; more_courses \
+                       counts the rest."
     )]
     async fn init_project(
         &self,
         Parameters(args): Parameters<InitIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let (texts, folder) = match self.prepare(args.lang.as_deref(), &args.folder) {
             Ok(prepared) => prepared,
@@ -945,7 +1075,7 @@ impl PrintServer {
             None => None,
         };
         let (title, kind) = (args.title, args.kind.map(MapKind::from));
-        self.with_project_lock(texts, move |texts| {
+        self.with_project_lock(texts, &context, move |texts| {
             let mut messages = Vec::new();
             let result = ops::init::init(
                 &ops::init::InitArgs {
@@ -967,6 +1097,7 @@ impl PrintServer {
             .map_err(|e| op_message(texts, e))?;
             messages.extend(crate::init_written_lines(texts, &result));
             let mut budget = NoteBudget::new(MAX_NOTES);
+            let (layouts, more_courses) = init_layouts(&result.layouts, MAX_ENTRIES);
             json(
                 texts,
                 &InitOut {
@@ -974,7 +1105,8 @@ impl PrintServer {
                     kind: result.kind,
                     kind_source: result.kind_source,
                     map_scale: result.map_scale,
-                    layouts: &result.layouts,
+                    layouts,
+                    more_courses,
                     assignments: result.assignments,
                     course_file: &result.course_file,
                     contour_interval_m: result.contour_interval_m,
@@ -998,6 +1130,7 @@ impl PrintServer {
     async fn masks_window(
         &self,
         Parameters(args): Parameters<WindowIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let WindowIn {
             project,
@@ -1011,7 +1144,7 @@ impl PrintServer {
             assign,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             let result = ops::masks::window(
                 &ops::masks::WindowArgs {
                     project: path.to_path_buf(),
@@ -1049,6 +1182,7 @@ impl PrintServer {
     async fn masks_corridor(
         &self,
         Parameters(args): Parameters<CorridorIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let CorridorIn {
             project,
@@ -1059,7 +1193,7 @@ impl PrintServer {
             course,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             if assign && course.is_none() {
                 return Err(texts.plain("mcp-error-corridor-assign"));
             }
@@ -1096,6 +1230,7 @@ impl PrintServer {
     async fn numbers_accept(
         &self,
         Parameters(args): Parameters<AcceptIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let AcceptIn {
             project,
@@ -1106,7 +1241,7 @@ impl PrintServer {
             gap,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             let position = match (direction, gap) {
                 (Some(d), Some(g)) => Some((d, g)),
                 (None, None) => None,
@@ -1144,6 +1279,7 @@ impl PrintServer {
     async fn set_layout(
         &self,
         Parameters(args): Parameters<LayoutIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let LayoutIn {
             project,
@@ -1160,7 +1296,7 @@ impl PrintServer {
             hide_shared,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             let result = ops::edit::set_layout(&ops::edit::LayoutArgs {
                 project: path.to_path_buf(),
                 id,
@@ -1192,6 +1328,7 @@ impl PrintServer {
     async fn set_element(
         &self,
         Parameters(args): Parameters<ElementIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let ElementIn {
             project,
@@ -1207,7 +1344,7 @@ impl PrintServer {
             cell_mm,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             // The file names the logo relative to itself, as it names the map.
             let file = match file {
                 Some(logo) => {
@@ -1256,6 +1393,7 @@ impl PrintServer {
     async fn assign_mask(
         &self,
         Parameters(args): Parameters<AssignIn>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let AssignIn {
             project,
@@ -1264,7 +1402,7 @@ impl PrintServer {
             layout,
             lang,
         } = args;
-        self.write(lang.as_deref(), &project, move |texts, path| {
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
             let result = ops::edit::assign_mask(&ops::edit::AssignArgs {
                 project: path.to_path_buf(),
                 course,
@@ -1322,7 +1460,7 @@ impl PrintServer {
         // Set when the client cancels this call or the connection ends; the export stops after the sheet in hand.
         let cancelled = context.ct.clone();
         // The export reads the project, so it waits for a write in progress and keeps the next one waiting.
-        self.with_project_lock(texts, move |texts| {
+        self.with_project_lock(texts, &context, move |texts| {
             let stop = || {
                 if cancelled.is_cancelled() {
                     ControlFlow::Break(())
@@ -1330,14 +1468,8 @@ impl PrintServer {
                     ControlFlow::Continue(())
                 }
             };
-            if stop().is_break() {
-                return Err(op_message(
-                    texts,
-                    ops::OpError::ExportStopped {
-                        written: Vec::new(),
-                    },
-                ));
-            }
+            // The PDFs per sheet written so far, for the error of a later sheet.
+            let mut written: Vec<PathBuf> = Vec::new();
             let result = ops::export::export(
                 &ops::export::ExportArgs {
                     project: path,
@@ -1346,10 +1478,22 @@ impl PrintServer {
                     single_file,
                     out_dir: Some(out_dir),
                 },
-                &mut |_| stop(),
-            )
-            .map_err(|e| op_message(texts, e))?;
-            json(texts, &export_out(texts, &result, MAX_FILES))
+                &mut |progress| {
+                    if let ops::export::ExportProgress::Page { mode, page } = &progress
+                        && *mode != ops::export::ExportMode::SingleFile
+                        && !written.contains(&page.path)
+                    {
+                        written.push(page.path.clone());
+                    }
+                    stop()
+                },
+            );
+            match result {
+                Ok(result) => json(texts, &export_out(texts, &result, MAX_ENTRIES)),
+                // Its message counts the PDFs written before.
+                Err(err @ ops::OpError::ExportStopped { .. }) => Err(op_message(texts, err)),
+                Err(err) => Err(written_before(texts, op_message(texts, err), &written)),
+            }
         })
         .await
     }
@@ -1373,7 +1517,16 @@ where
     T: rmcp::transport::IntoTransport<rmcp::RoleServer, E, A>,
     E: std::error::Error + Send + Sync + 'static,
 {
-    let service = PrintServer::new(lang).serve(transport).await?;
+    serve_with(PrintServer::new(lang), transport).await
+}
+
+/// [`serve`] with a server made by the caller.
+async fn serve_with<T, E, A>(server: PrintServer, transport: T) -> anyhow::Result<()>
+where
+    T: rmcp::transport::IntoTransport<rmcp::RoleServer, E, A>,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let service = server.serve(transport).await?;
     service.waiting().await?;
     Ok(())
 }
@@ -1403,8 +1556,13 @@ mod tests {
 
     impl Client {
         async fn start() -> Client {
+            Client::start_with(PrintServer::new(Lang::english())).await
+        }
+
+        /// A client of `server`.
+        async fn start_with(server: PrintServer) -> Client {
             let (ours, theirs) = tokio::io::duplex(1 << 16);
-            tokio::spawn(serve(Lang::english(), theirs));
+            tokio::spawn(serve_with(server, theirs));
             let (reader, writer) = tokio::io::split(ours);
             let mut client = Client {
                 lines: BufReader::new(reader).lines(),
@@ -2691,6 +2849,322 @@ mod tests {
         assert!(!refused.contains("--"), "{refused}");
     }
 
+    #[tokio::test]
+    async fn unknown_arguments_are_refused_by_name() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let before = file_text(&dir);
+        let mut client = Client::start().await;
+        let anchor = json!({ "to": "page", "corner": "top" });
+        for (tool, arguments, field) in [
+            (
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "print_scal": 5000 }),
+                "print_scal",
+            ),
+            (
+                "set_element",
+                json!({
+                    "project": project, "id": "t", "kind": "text", "lines": ["x"],
+                    "anchor": { "to": "page", "corner": "top", "offset": [1.0, 1.0] }
+                }),
+                "offset",
+            ),
+            (
+                "set_element",
+                json!({ "project": project, "id": "t", "kind": "text", "size": 10, "anchor": anchor }),
+                "size",
+            ),
+            (
+                "masks_window",
+                json!({ "project": project, "course": "Training", "radius_mm": 12 }),
+                "radius_mm",
+            ),
+            (
+                "project_info",
+                json!({ "project": project, "language": "de" }),
+                "language",
+            ),
+            (
+                "export_project",
+                json!({ "project": project, "out_dir": dir.path(), "course": ["Training"] }),
+                "course",
+            ),
+        ] {
+            let message = client.refused(tool, arguments).await;
+            assert!(
+                message.contains("unknown field") && message.contains(&format!("`{field}`")),
+                "{tool}: {message}"
+            );
+        }
+        assert_eq!(file_text(&dir), before);
+        assert!(!dir.path().join("Training.pdf").exists());
+    }
+
+    #[tokio::test]
+    async fn a_write_cancelled_while_it_waits_for_the_lock_writes_nothing() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let before = file_text(&dir);
+        let server = PrintServer::new(Lang::english());
+        // Another write holds the lock.
+        let held = server.writes.clone().lock_owned().await;
+        let mut client = Client::start_with(server).await;
+        let id = client.next_id;
+        client.next_id += 1;
+        client
+            .send(json!({
+                "jsonrpc": "2.0", "id": id, "method": "tools/call",
+                "params": {
+                    "name": "masks_window",
+                    "arguments": { "project": project, "course": "Training", "assign": true },
+                },
+            }))
+            .await;
+        client
+            .send(json!({
+                "jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": { "requestId": id, "reason": "test" },
+            }))
+            .await;
+        // The server handles messages in order, so once this read answers it has seen the cancel.
+        client
+            .ok("project_info", json!({ "project": project }))
+            .await;
+        assert_eq!(file_text(&dir), before);
+        drop(held);
+        // The next write waits until the cancelled one has given up.
+        let corridor = client
+            .ok(
+                "masks_corridor",
+                json!({ "project": project, "points": "10,10;40,20" }),
+            )
+            .await;
+        let text = file_text(&dir);
+        assert!(!text.contains("window-Training"), "{text}");
+        assert!(
+            text.contains(&format!("id = \"{}\"", corridor["id"].as_str().unwrap())),
+            "{text}"
+        );
+        assert!(text.starts_with(before.trim_end()), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_panic_in_an_op_is_an_internal_error_and_the_server_goes_on() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let panics = dir.path().join("panic-for-test");
+        let mut client = Client::start().await;
+        for (tool, arguments) in [
+            ("project_info", json!({ "project": panics })),
+            (
+                "masks_window",
+                json!({ "project": panics, "course": "Training" }),
+            ),
+        ] {
+            let message = client.refused(tool, arguments).await;
+            assert!(
+                message.contains("internal error") && message.contains("a panic for the test"),
+                "{tool}: {message}"
+            );
+        }
+        // Reads and writes still work: the write lock is free again.
+        client
+            .ok("project_info", json!({ "project": project }))
+            .await;
+        let window = client
+            .ok(
+                "masks_window",
+                json!({ "project": project, "course": "Training" }),
+            )
+            .await;
+        assert_eq!(window["id"], "window-Training", "{window}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_project_folder_that_is_a_link_is_followed() {
+        let dir = viktoriapark_copy();
+        let links = tempfile::tempdir().unwrap();
+        let link = links.path().join("linked-project");
+        std::os::unix::fs::symlink(dir.path(), &link).unwrap();
+        let mut client = Client::start().await;
+        let window = client
+            .ok(
+                "masks_window",
+                json!({ "project": link, "course": "Training", "assign": true }),
+            )
+            .await;
+        assert_eq!(window["id"], "window-Training", "{window}");
+        assert!(file_text(&dir).contains("[[masks]]\nid = \"window-Training\""));
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let layout = client
+            .ok(
+                "set_layout",
+                json!({ "project": link.join(project::FILE_NAME), "id": "a3", "paper": "A3" }),
+            )
+            .await;
+        assert_eq!(layout["change"], "added", "{layout}");
+        let info = client.ok("project_info", json!({ "project": link })).await;
+        assert_eq!(info["courses"][0]["masks"], json!(["window-Training"]));
+        assert_eq!(info["layouts"][1]["id"], "a3", "{info}");
+    }
+
+    #[tokio::test]
+    async fn a_table_not_written_on_its_own_is_named_once_in_the_language_of_the_call() {
+        let dir = viktoriapark_copy();
+        let file = dir.path().join(project::FILE_NAME);
+        let body = "format = 1\nlayouts = [{ id = \"a4\" }]\n[event]\ntitle = \"T\"\n[sources]\n\
+                    map = \"berlin-viktoriapark.omap\"\n[map]\nkind = \"sprint\"\n";
+        std::fs::write(&file, body).unwrap();
+        let path = file.display().to_string();
+        let mut client = Client::start().await;
+        for (lang, not_changed, what) in [
+            (
+                "en",
+                "was not changed",
+                "layout \"a4\" is not written as a table [[layouts]] of its own",
+            ),
+            (
+                "de",
+                "wurde nicht geändert",
+                "Das Layout „a4“ steht nicht als eigene Tabelle [[layouts]]",
+            ),
+        ] {
+            let message = client
+                .refused(
+                    "set_layout",
+                    json!({ "project": folder(&dir), "id": "a4", "print_scale": 4000, "lang": lang }),
+                )
+                .await;
+            assert_eq!(message.matches(not_changed).count(), 1, "{message}");
+            assert_eq!(message.matches(&path).count(), 1, "{message}");
+            assert!(message.contains(what), "{message}");
+            assert!(!message.contains("unchanged"), "{message}");
+        }
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), body);
+    }
+
+    #[tokio::test]
+    async fn an_export_that_fails_after_a_sheet_names_the_pdfs_it_wrote() {
+        let dir = luebeck_copy();
+        let out = tempfile::tempdir().unwrap();
+        // The second course cannot be written: a folder with content has its file name.
+        std::fs::create_dir_all(out.path().join("B.pdf").join("inside")).unwrap();
+        let mut client = Client::start().await;
+        for lang in ["en", "de"] {
+            let message = client
+                .refused(
+                    "export_project",
+                    json!({ "project": folder(&dir), "out_dir": out.path(), "lang": lang }),
+                )
+                .await;
+            let first = out.path().join("A.pdf");
+            assert!(first.is_file(), "{message}");
+            assert!(
+                message.contains(&format!(": {}", first.display())),
+                "{message}"
+            );
+            assert!(
+                message.contains("PDF written before it stays")
+                    || message.contains("zuvor geschriebene PDF bleibt"),
+                "{message}"
+            );
+            assert!(!out.path().join("C.pdf").exists(), "{message}");
+        }
+    }
+
+    #[test]
+    fn written_before_names_the_first_files_and_counts_them_all() {
+        let texts = Texts::for_agent(&Lang::english());
+        assert_eq!(written_before(&texts, "boom".into(), &[]), "boom");
+        let many: Vec<PathBuf> = (0..MAX_ENTRIES + 5)
+            .map(|i| PathBuf::from(format!("/out/{i}.pdf")))
+            .collect();
+        let message = written_before(&texts, "boom".into(), &many);
+        assert!(
+            message.starts_with(&format!(
+                "boom. The {} PDFs written before it stay: /out/0.pdf, /out/1.pdf",
+                MAX_ENTRIES + 5
+            )),
+            "{message}"
+        );
+        assert!(message.ends_with("/out/199.pdf, …"), "{message}");
+    }
+
+    #[test]
+    fn long_lists_of_info_check_and_init_are_capped() {
+        let dir = luebeck_copy();
+        let info = ops::project::info(&ops::project::InfoArgs {
+            project: dir.path().to_path_buf(),
+        })
+        .unwrap();
+        assert_eq!(info.courses.len(), 3);
+        let capped = serde_json::to_value(info_out(info.clone(), 2)).unwrap();
+        assert_eq!(capped["courses"].as_array().unwrap().len(), 2, "{capped}");
+        assert_eq!(capped["more_courses"], 1, "{capped}");
+        assert_eq!(
+            capped["more_assignments"],
+            info.assignments.len().saturating_sub(2),
+            "{capped}"
+        );
+        assert_eq!(capped["title"], json!(info.title));
+        let all = serde_json::to_value(info_out(info.clone(), MAX_ENTRIES)).unwrap();
+        for field in ["more_courses", "more_masks", "more_assignments"] {
+            assert!(all.get(field).is_none(), "{all}");
+        }
+        let list = serde_json::to_value(courses_out(info.clone(), 1)).unwrap();
+        assert_eq!(list["courses"][0]["name"], "A", "{list}");
+        assert_eq!(list["more_courses"], 2, "{list}");
+        // check: the first sheets in order, and needs_attention over all of them.
+        let result = ops::check::check(&ops::check::CheckArgs {
+            project: dir.path().to_path_buf(),
+        })
+        .unwrap();
+        let texts = Texts::for_agent(&Lang::english());
+        let full = serde_json::to_value(check_out(&texts, &result, MAX_ENTRIES)).unwrap();
+        let capped = serde_json::to_value(check_out(&texts, &result, 2)).unwrap();
+        let courses: Vec<&str> = capped["courses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["course"].as_str().unwrap())
+            .collect();
+        assert_eq!(courses, ["A", "B"], "{capped}");
+        let sheets = result.courses.len() + result.layouts.len();
+        assert_eq!(capped["more_sheets"], sheets - 2, "{capped}");
+        assert!(full.get("more_sheets").is_none(), "{full}");
+        assert_eq!(capped["needs_attention"], full["needs_attention"]);
+        let layouts = vec![
+            ops::init::InitLayout {
+                id: "a".into(),
+                paper: Paper::A4,
+                margin_mm: 8.0,
+                print_scale: 4000,
+                fits: true,
+                courses: vec!["A".into(), "B".into()],
+            },
+            ops::init::InitLayout {
+                id: "b".into(),
+                paper: Paper::A3,
+                margin_mm: 8.0,
+                print_scale: 3000,
+                fits: true,
+                courses: vec!["C".into()],
+            },
+        ];
+        let (cut, more) = init_layouts(&layouts, 2);
+        assert_eq!(cut[0].courses, ["A", "B"]);
+        assert!(cut[1].courses.is_empty());
+        assert_eq!(more, 1);
+        assert_eq!(init_layouts(&layouts, MAX_ENTRIES), (layouts, 0));
+    }
+
     #[test]
     fn export_files_past_the_cap_are_counted() {
         let dir = luebeck_copy();
@@ -2718,7 +3192,7 @@ mod tests {
         assert_eq!(courses, ["A", "B"], "{capped}");
         assert_eq!(capped["more_files"], 1, "{capped}");
         // Under the cap the field is left out.
-        let all = serde_json::to_value(export_out(&texts, &result, MAX_FILES)).unwrap();
+        let all = serde_json::to_value(export_out(&texts, &result, MAX_ENTRIES)).unwrap();
         assert_eq!(all["files"].as_array().unwrap().len(), 3);
         assert!(all.get("more_files").is_none(), "{all}");
     }

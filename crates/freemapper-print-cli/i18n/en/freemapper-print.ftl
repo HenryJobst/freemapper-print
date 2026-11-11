@@ -493,6 +493,7 @@ error-not-editable-assignment = the project { $path } was not changed: the assig
 mcp-error-corridor-assign = assign needs a course; give the course whose sheet prints the corridor
 mcp-error-numbers-position = direction and gap go together; give both, or leave both out to take the proposal of check_project
 mcp-error-project-link = { $path } is a link, and the server does not change a project file through a link; give the path of the file it points to
+mcp-error-cancelled = the client cancelled the call before it began, so nothing was written
 
 # ---- MCP export (M5 Task 4) ----
 error-export-stopped = { $count ->
@@ -501,6 +502,10 @@ error-export-stopped = { $count ->
    *[other] the export stopped before the next sheet because the client cancelled the call or closed the connection; the { $count } PDFs written before stay, and no partial file is left
 }
 mcp-error-export-layouts = layouts exports the layouts without courses, so it does not go with courses or single_file; leave out one or the other
+mcp-error-export-written = { $error }. { $count ->
+    [one] The PDF written before it stays: { $files }
+   *[other] The { $count } PDFs written before it stay: { $files }
+}
 
 # ---- Wording for an AI agent (M5 Task 5): agent-<id> replaces <id> in the MCP server's results where the
 # ---- CLI text names flags or commands. It uses only variables of <id>.
