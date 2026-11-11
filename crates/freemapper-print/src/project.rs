@@ -13,6 +13,9 @@ use crate::print::{Orientation, Paper};
 use crate::rules::RuleSet;
 use crate::scale::MapKind;
 
+mod edit;
+pub use edit::{Change, set_assignment, set_element, set_layout};
+
 /// The only format version this program reads and writes.
 pub const FORMAT: u32 = 1;
 
@@ -486,6 +489,20 @@ pub enum ProjectError {
         "{file}: the changed file reads back differently than it was written, so the old content was put back"
     )]
     ReadBackDiffers { file: String },
+    /// [`set_layout`], [`set_element`] or [`set_assignment`] found the table to change, or the place for a new
+    /// one, not written as tables of their own (`[[layouts]]` and so on), so the change is left to the user.
+    /// Nothing was written.
+    #[error(
+        "{file}: {what} is not written as tables [[{table}]] of its own, so the program cannot change it; \
+         change it by hand. The project file was left unchanged."
+    )]
+    NotEditable {
+        file: String,
+        /// What was to change, such as `layout "a4"`.
+        what: String,
+        /// The table name, such as `layouts.elements`.
+        table: String,
+    },
     #[error("cannot write the project file: {0}")]
     Serialize(String),
 }
@@ -541,19 +558,25 @@ fn read_capped(path: &Path, file: &str) -> Result<String, ProjectError> {
 pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
     let file = path.display().to_string();
     let text = read_capped(path, &file)?;
+    load_text(path, &file, &text)
+}
+
+/// [`load`] of `text`, the content the project file at `path` has or is about to have.
+fn load_text(path: &Path, file: &str, text: &str) -> Result<LoadedProject, ProjectError> {
+    let file = file.to_string();
 
     #[derive(Deserialize)]
     struct Probe {
         format: u32,
     }
-    let probe: Probe = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    let probe: Probe = toml::from_str(text).map_err(|e| parse_error(&file, text, &e))?;
     if probe.format != FORMAT {
         return Err(ProjectError::UnsupportedFormat {
             file,
             found: probe.format,
         });
     }
-    let mut project: Project = toml::from_str(&text).map_err(|e| parse_error(&file, &text, &e))?;
+    let mut project: Project = toml::from_str(text).map_err(|e| parse_error(&file, text, &e))?;
     for n in &mut project.numbers {
         n.direction = normalised_degrees(n.direction);
         if let Some(b) = &mut n.base_seen {
@@ -566,14 +589,14 @@ pub fn load(path: &Path) -> Result<LoadedProject, ProjectError> {
         source,
     })?;
     let dir = abs.parent().map(Path::to_path_buf).unwrap_or_default();
-    let rules = rule_set_of(&file, &project.print).map_err(|e| with_line(e, &text))?;
+    let rules = rule_set_of(&file, &project.print).map_err(|e| with_line(e, text))?;
     let loaded = LoadedProject {
         path: path.to_path_buf(),
         dir,
         project,
         rules,
     };
-    validate(&file, &loaded).map_err(|e| with_line(e, &text))?;
+    validate(&file, &loaded).map_err(|e| with_line(e, text))?;
     Ok(loaded)
 }
 
