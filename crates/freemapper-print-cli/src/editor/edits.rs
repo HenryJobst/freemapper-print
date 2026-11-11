@@ -265,6 +265,27 @@ mod tests {
     use freemapper_print::project::AnchorTarget;
 
     #[test]
+    fn a_logo_file_must_stay_inside_the_project_folder() {
+        for good in ["logo.png", "logos/a.svg", "./logo.png"] {
+            assert!(inside_project(Path::new(good)), "{good}");
+        }
+        for bad in [
+            "../x.png",
+            "a/../../x",
+            "a/../x",
+            "/etc/x.png",
+            "C:\\x.png",
+            "\\\\host\\s\\x.png",
+        ] {
+            // On Windows these carry a prefix or root; elsewhere the absolute and `..` forms are caught.
+            let refused = !inside_project(Path::new(bad));
+            if cfg!(windows) || !bad.contains('\\') {
+                assert!(refused, "{bad}");
+            }
+        }
+    }
+
+    #[test]
     fn a_shift_counts_inward_from_the_corner() {
         let at = |corner| Anchor {
             to: AnchorTarget::Page,

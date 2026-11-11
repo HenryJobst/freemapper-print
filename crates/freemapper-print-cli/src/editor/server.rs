@@ -1119,4 +1119,102 @@ mod tests {
         assert_eq!(code, 422);
         finish(run);
     }
+
+    #[test]
+    fn an_edit_after_an_outside_change_keeps_that_change_through_both_undos() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        let mut outside = std::fs::read_to_string(&file).unwrap();
+        outside.push_str("\n# outside change\n");
+        std::fs::write(&file, &outside).unwrap();
+        // The page reloads (reads the new revision) and edits again.
+        op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":12.0}"#);
+        let codes: Vec<u16> = (0..2)
+            .map(|_| undo_or_redo(&run, "undo", &revision_of(&run)).0)
+            .collect();
+        // The second undo has nothing left: the older snapshot is gone, not written over the change.
+        assert_eq!(codes, vec![200, 422]);
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("# outside change")
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn logo_paths_outside_the_project_folder_are_refused() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = revision_of(&run);
+        for file in ["../x.png", "a/../../x.png", "/abs/x.png"] {
+            let body = format!(
+                r#"{{"layout":"a4-4000","id":"l","kind":"logo","anchor":{{"to":"page","corner":"top_left"}},"file":{},"width_mm":20}}"#,
+                serde_json::json!(file)
+            );
+            let (code, answer) = write(&run, "/api/op/set_element", Some(&revision), &body);
+            assert_eq!(code, 422, "{file}: {answer}");
+        }
+        assert_eq!(revision_of(&run), revision);
+        finish(run);
+    }
+
+    #[test]
+    fn undo_after_the_project_file_vanished_is_refused_and_nothing_is_recreated() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        std::fs::remove_file(&file).unwrap();
+        let (code, answer) = undo_or_redo(&run, "undo", &revision);
+        assert_eq!(code, 422, "{answer}");
+        assert!(!answer.contains(dir.path().to_str().unwrap()), "{answer}");
+        assert!(!file.exists());
+        finish(run);
+    }
+
+    #[test]
+    fn two_writes_with_one_revision_give_one_200_and_one_409() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let run = Arc::new(start_on(dir.path().to_path_buf(), true, Some("en")));
+        let revision = revision_of(&run);
+        let threads: Vec<_> = [11.0, 12.0]
+            .into_iter()
+            .map(|margin| {
+                let (run, revision) = (Arc::clone(&run), revision.clone());
+                std::thread::spawn(move || {
+                    write(
+                        &run,
+                        "/api/op/set_layout",
+                        Some(&revision),
+                        &format!(r#"{{"id":"a4-4000","margin_mm":{margin}}}"#),
+                    )
+                    .0
+                })
+            })
+            .collect();
+        let mut codes: Vec<u16> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        codes.sort_unstable();
+        assert_eq!(codes, vec![200, 409]);
+        finish(Arc::try_unwrap(run).ok().unwrap());
+    }
+
+    #[test]
+    fn a_project_without_courses_takes_edits_and_undo() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            !text.contains("courses ="),
+            "the Luebeck layouts example has no course file"
+        );
+        let original = std::fs::read(&file).unwrap();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        assert_eq!(undo_or_redo(&run, "undo", &revision).0, 200);
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        finish(run);
+    }
 }

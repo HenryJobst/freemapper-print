@@ -373,6 +373,8 @@ mod tests {
             "message",
             "severity",
             "n",
+            "w",
+            "h",
             "url",
             "lang",
             "available",

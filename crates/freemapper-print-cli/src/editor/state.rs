@@ -39,7 +39,17 @@ impl History {
 
     /// A new edit changed the file from `before` to `after`: `before` becomes the newest snapshot and redo is
     /// gone.
+    ///
+    /// When the file was not as the editor left it (`before` differs from `own`), somebody else changed it in
+    /// between and the older snapshots would write over that change: they are dropped first.
     pub(super) fn record(&mut self, before: String, after: &str) {
+        if self
+            .own
+            .as_deref()
+            .is_some_and(|own| own != revision(before.as_bytes()))
+        {
+            self.undo.clear();
+        }
         self.undo.push(before);
         if self.undo.len() > CAP {
             self.undo.remove(0);
@@ -105,6 +115,18 @@ mod tests {
         assert_eq!(history.undo.len(), CAP);
         assert_eq!(history.undo.first().unwrap(), "v1");
         assert_eq!(history.undo.last().unwrap(), &format!("v{CAP}"));
+    }
+
+    #[test]
+    fn an_edit_over_an_outside_change_drops_the_older_snapshots() {
+        let mut history = History::default();
+        history.record("a".into(), "b");
+        // The file became "x" outside the editor; the next edit takes it to "y".
+        history.record("x".into(), "y");
+        assert_eq!(history.undo, vec!["x".to_owned()]);
+        // An edit on top of the editor's own result keeps the stack.
+        history.record("y".into(), "z");
+        assert_eq!(history.undo, vec!["x".to_owned(), "y".to_owned()]);
     }
 
     #[test]

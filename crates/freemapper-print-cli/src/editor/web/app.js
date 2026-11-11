@@ -86,15 +86,30 @@ function treeGroups() {
   groups.push({
     id: "layouts",
     label: t("editor-tree-layouts"),
-    items: info.layouts.map((layout) => ({
-      key: `layout:${layout.id}`,
-      label: t("editor-layout-item", {
-        id: layout.id,
-        paper: layout.paper,
-        scale: String(layout.print_scale ?? info.map_scale),
-      }),
-    })),
+    items: info.layouts.map((layout) => {
+      const scale = String(layout.print_scale ?? info.map_scale);
+      const free = state.spec?.layouts.find((l) => l.id === layout.id)?.page_mm;
+      return {
+        key: `layout:${layout.id}`,
+        label: free
+          ? t("editor-layout-item-free", { id: layout.id, w: String(free[0]), h: String(free[1]), scale })
+          : t("editor-layout-item", { id: layout.id, paper: layout.paper, scale }),
+      };
+    }),
   });
+  // The elements of the layout on screen, so that each element can be reached by keyboard.
+  const shown = state.shown.layout || state.layout;
+  const own = state.spec?.layouts.find((l) => l.id === shown)?.elements ?? [];
+  if (own.length) {
+    groups.push({
+      id: "layout-elements",
+      label: t("editor-tree-layout-elements", { id: shown }),
+      items: own.map((element) => ({
+        key: `element:${encodeURIComponent(element.id)}@${encodeURIComponent(shown)}`,
+        label: t("editor-element-item", { id: element.id, kind: kindName(element.kind) }),
+      })),
+    });
+  }
   if (info.masks.length) {
     groups.push({
       id: "masks",
@@ -110,7 +125,7 @@ function treeGroups() {
       id: "shared",
       label: t("editor-tree-shared"),
       items: info.shared_elements.map((element) => ({
-        key: `element:${element.id}`,
+        key: `element:${encodeURIComponent(element.id)}`,
         label: t("editor-element-item", { id: element.id, kind: kindName(element.kind) }),
       })),
     });
@@ -157,7 +172,9 @@ function propsFor(key) {
       [t("editor-field-polygons"), mask.polygons],
     ]);
   } else if (type === "element") {
-    selectElement(id, null);
+    const at = id.indexOf("@");
+    if (at < 0) selectElement(decodeURIComponent(id), null);
+    else selectElement(decodeURIComponent(id.slice(0, at)), decodeURIComponent(id.slice(at + 1)));
   } else if (type === "assignment") {
     const a = info.assignments.find((x) => x.course === id);
     const course = info.courses.find((c) => c.name === id);
@@ -241,6 +258,7 @@ async function showSheet() {
   state.svg = sheet.show($("sheet"), data.svg);
   state.shown = { course: data.course ?? "", layout: data.layout ?? "" };
   state.elements = data.elements;
+  if (state.info && state.treeLayout !== (state.shown.layout || state.layout)) renderTree();
   applyZoom();
   refreshOutline();
   renderNotes(data.notes);
@@ -268,7 +286,10 @@ function selectElement(id, layout) {
   if (!spec) return false;
   state.selected = { id, layout };
   const heading = t("editor-pick-element", { id });
+  const hadFocus = $("props").contains(document.activeElement);
   $("props").replaceChildren(elementForm(spec, layout, heading, (body) => write("set_element", body)));
+  // After Apply the form is built again; the keyboard stays in it.
+  if (hadFocus) $("props").querySelector("button[type=submit]")?.focus();
   const found = state.elements.find((e) => e.id === id);
   if (state.svg) sheet.outline(state.svg, found ? found.rect_mm : null);
   return true;
@@ -429,10 +450,16 @@ async function loadProject() {
   setHistory(answer.data.can_undo, answer.data.can_redo);
   document.documentElement.lang = answer.data.lang;
   $("status-project").textContent = answer.data.title;
+  renderTree();
+  return true;
+}
+
+// The tree, built again; it keeps the item the keyboard is on and the one selected.
+function renderTree() {
   const tree = $("pane-tree");
   tree.dataset.treeLabel = t("editor-tree-label");
+  state.treeLayout = state.shown.layout || state.layout;
   state.treeApi = buildTree(tree, treeGroups(), onSelect);
-  return true;
 }
 
 async function start() {
@@ -609,7 +636,16 @@ function onKey(event) {
   }
 }
 
-// Keys on the focused sheet: arrows nudge the selected element by 0.5 mm (1 mm with Shift), else they pan; + and -
+// Selects the next (or previous) element of the sheet that can be moved, in the order the sheet lists them.
+function nextElement(direction) {
+  const movable = state.elements.filter((e) => ownerOf(e.id) !== undefined);
+  if (!movable.length) return;
+  const at = movable.findIndex((e) => e.id === state.selected?.id);
+  const next = movable[(at + direction + movable.length) % movable.length];
+  if (selectElement(next.id, ownerOf(next.id))) say(t("editor-pick-element", { id: next.id }), true);
+}
+
+// Keys on the focused sheet: arrows nudge the selected element by 0.5 mm (1 mm with Shift), else they pan; N and Shift+N select the next and previous element; + and -
 // zoom, 0 fits the page. Drawing on the map is mouse only.
 function onSheetKey(event) {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -623,6 +659,9 @@ function onSheetKey(event) {
     } else if (!state.selected) {
       $("sheet").scrollBy(arrow[0] * 60, arrow[1] * 60);
     }
+  } else if (event.key === "n" || event.key === "N") {
+    event.preventDefault();
+    nextElement(event.shiftKey ? -1 : 1);
   } else if (event.key === "+" || event.key === "=") {
     event.preventDefault();
     zoomBy(1.25);

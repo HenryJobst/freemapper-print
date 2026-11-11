@@ -134,7 +134,7 @@ impl Api {
     }
 
     fn history_flags(&self) -> (bool, bool) {
-        let history = self.history.lock().unwrap();
+        let history = self.history.lock().unwrap_or_else(|e| e.into_inner());
         (history.can_undo(), history.can_redo())
     }
 
@@ -148,7 +148,7 @@ impl Api {
 
     /// Runs one edit under the revision guard. The history stays locked throughout.
     fn edit(&self, run: edits::Run, args: serde_json::Value, claimed: &str, lang: &Lang) -> Done {
-        let mut history = self.history.lock().unwrap();
+        let mut history = self.history.lock().unwrap_or_else(|e| e.into_inner());
         let before = match self.read_text() {
             Ok(text) => text,
             Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
@@ -188,7 +188,7 @@ impl Api {
     /// Undo or redo: the file as an earlier edit left it, if nobody else changed it since.
     fn step(&self, undo: bool, claimed: &str, lang: &Lang) -> Done {
         let texts = Texts::new(lang);
-        let mut history = self.history.lock().unwrap();
+        let mut history = self.history.lock().unwrap_or_else(|e| e.into_inner());
         let current = match self.read_text() {
             Ok(text) => text,
             Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
@@ -217,6 +217,15 @@ impl Api {
         let now = revision(current.as_bytes());
         if now != claimed {
             return Done::Stale(now);
+        }
+        // The last look before the write: whoever wrote in the meantime is not overwritten.
+        match self.read_text() {
+            Ok(again) if again == current => {}
+            Ok(_) => {
+                history.forget();
+                return Done::Refused(texts.get("edit-changed-outside", None));
+            }
+            Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
         }
         if let Err(source) = freemapper_print::project::replace_text(&self.project, &target) {
             let error = OpError::WriteFile {
