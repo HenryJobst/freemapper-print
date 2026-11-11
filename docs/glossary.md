@@ -198,3 +198,11 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 | Druckerei-PDF | press PDF | Für Druckereien: PDF/X, Beschnittzugabe, Schnittmarken, Bahnaufdruck als Sonderfarbe (später). | `OutputProfile::Press` |
 | Sonderfarbe | spot colour | Druckfarbe, die als eigene Farbe gedruckt wird, z. B. das Violett des Bahnaufdrucks. | `SpotColor` |
 | Überdrucken | overprinting | Drucktechnik, bei der eine Farbe die darunterliegende nicht ausspart. Nicht verwechseln mit Bahnaufdruck. | `overprint_mode` |
+
+## Editor / editor
+
+| Deutsch | English | Definition | Code |
+|---|---|---|---|
+| Editor | editor | Der Befehl `edit`: ein lokaler Server und eine Browserseite, auf der man Blattelemente, Layouts, Abdeckungen und Nummern an der echten Blattvorschau bearbeitet. Dritter Zugang neben CLI und MCP-Server; schreibt dieselbe Projektdatei über dieselben `ops`-Funktionen (ADR 0005, 0059). | `editor`, `EDITOR_OPS` |
+| Revision | revision | FNV-1a-64 der Dateibytes als 16 Hexziffern, im Kopf `X-Freemapper-Revision`. Eine Änderung mit veralteter Revision bekommt 409 (ADR 0059, freemapper-core ADR 0030). | `freemapper_web::revision` |
+| Rückgängig-Stand | undo snapshot | Die ganze Projektdatei vor einer Änderung des Editors. Rückgängig stellt sie wieder her, aber nur, wenn die Datei seitdem niemand sonst geändert hat. | – |
