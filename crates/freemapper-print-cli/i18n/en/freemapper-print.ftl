@@ -543,3 +543,10 @@ agent-masks-no-start-finish = { $which ->
 agent-masks-not-assigned = No course uses it yet. assign_mask assigns it to a course.
 agent-masks-run-check = Call check_project to see the result.
 agent-note-mask-unused = Info: no course uses the mask "{ $id }". assign_mask assigns it to a course; to drop it, delete its [[masks]] entry from the project file.
+
+# ---- edit (M6 Task 2) ----
+edit-about = Open a project in the editor, a page in your browser on this computer.
+edit-no-browser = Print the address and do not open the browser.
+edit-listening = The editor is running at { $url }. Press Ctrl+C or click Done in the browser to stop it.
+help-edit-port = Port on 127.0.0.1; 0 picks a free one.
+error-serve = the editor could not run

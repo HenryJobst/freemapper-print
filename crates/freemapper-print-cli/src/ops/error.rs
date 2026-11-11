@@ -73,6 +73,8 @@ pub enum OpError {
         mask: String,
         new: bool,
     },
+    /// The editor's local server could not start or stopped with an error.
+    Serve { source: anyhow::Error },
     /// A file could not be written.
     WriteFile {
         path: PathBuf,

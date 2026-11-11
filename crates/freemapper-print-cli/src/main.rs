@@ -45,6 +45,7 @@ enum Commands {
     Export(ExportArgs),
     Numbers(NumbersArgs),
     Masks(MasksArgs),
+    Edit(editor::EditArgs),
     Mcp,
 }
 
@@ -244,6 +245,7 @@ macro_rules! args {
 }
 
 // After `args!`, which it uses.
+mod editor;
 mod mcp;
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
@@ -420,6 +422,7 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             Some(&args!("course" => printable(&course), "id" => printable(&mask))),
         ))
         .into(),
+        E::Serve { source } => source.context(texts.plain("error-serve")),
         E::WriteFile { path, source } => source.context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
@@ -2322,6 +2325,12 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         })
                 })
         })
+        .mut_subcommand("edit", |c| {
+            c.about(texts.plain("edit-about"))
+                .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                .mut_arg("port", |a| a.help(texts.plain("help-edit-port")))
+                .mut_arg("no_browser", |a| a.help(texts.plain("edit-no-browser")))
+        })
         .mut_subcommand("mcp", |c| {
             c.about(texts.plain("mcp-about")).after_long_help(format!(
                 "{}\n\n{}",
@@ -2369,6 +2378,9 @@ fn main() -> std::process::ExitCode {
             MasksCommand::Window(args) => masks_window(&texts, &args),
             MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
+        Commands::Edit(args) => editor::run(&args, &texts)
+            .map(|()| 0)
+            .map_err(|err| op_error(&texts, err)),
         Commands::Mcp => mcp::run(&texts),
     };
     match result {
