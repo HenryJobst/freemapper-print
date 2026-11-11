@@ -80,7 +80,7 @@
 
 **Interfaces:**
 - Consumes: `ops::project::info`, `ops::check::check`, `ops::load_project`, core `write_svg` / `SvgView`, `BuildReport.source_objects`, hit test.
-- Produces: `GET /api/project` → `{lang, title, revision, layouts, elements, masks, courses, assignments}`; `GET /api/preview?course=&layout=&rev=` → `{svg, page_mm, notes, elements: [{id, kind, rect_mm}]}`; `POST /api/hit {course, layout, x_mm, y_mm}` → `{kind: element|number|map_object|mask, id}`.
+- Produces: `GET /api/project` → the shape of `ops::project::info` (`shared_elements`, `courses_file`, `map`, no absolute path) plus `lang` and `revision`; `GET /api/preview?course=&layout=&rev=` → `{svg, page_mm, notes, elements: [{id, kind, rect_mm}]}`; `POST /api/hit {course, layout, x_mm, y_mm}` → `{kind: element|number|map_object|mask, id}`.
 
 - [ ] **Step 1:** Tests against a fixture project (example `luebeck-competition-layouts`): `/api/project` equals `ops::project::info` shape; preview SVG is the exact output of the renderer for the same inputs (compare with `write_svg` directly); a free page layout previews at `page_mm`; a project without courses previews the layout; a newer `rev` request supersedes an older one (older returns 409 `superseded`).
 - [ ] **Step 2:** Implement; rendering runs on a blocking task so the server stays responsive; revision is core `revision(bytes)`.
