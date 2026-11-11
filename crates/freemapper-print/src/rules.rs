@@ -156,48 +156,7 @@ pub static SCHEMA: Schema = Schema {
     value_check: Some(check_value),
 };
 
-/// Sizes of the course planning symbols (7xx) in mm at the base scale of a map kind. Circle
-/// diameters run from line centre to line centre.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CourseSymbolSizes {
-    /// Control circle (703).
-    pub circle_diameter_mm: f64,
-    /// Lines of circles, legs, start and finish (705).
-    pub line_width_mm: f64,
-    /// Side of the start triangle (701).
-    pub start_side_mm: f64,
-    /// Inner finish circle (706).
-    pub finish_inner_mm: f64,
-    /// Outer finish circle (706).
-    pub finish_outer_mm: f64,
-    /// Height of a control number (704).
-    pub number_height_mm: f64,
-    /// Dash of a marked route (707).
-    pub marked_route_dash_mm: f64,
-    /// Gap of a marked route (707).
-    pub marked_route_gap_mm: f64,
-    /// Width of an out-of-bounds boundary (708).
-    pub out_of_bounds_line_mm: f64,
-    /// Length of a crossing point (710).
-    pub crossing_point_mm: f64,
-    /// Direction of the hatch lines of an out-of-bounds area (709), in degrees counter-clockwise from
-    /// east on paper.
-    pub out_of_bounds_hatch_angle_degrees: f64,
-    /// Direction of a second set of hatch lines, for a cross hatch; `None` for one set.
-    pub out_of_bounds_hatch_second_angle_degrees: Option<f64>,
-    /// Distance between the centres of two hatch lines.
-    pub out_of_bounds_hatch_spacing_mm: f64,
-    /// Width of a hatch line.
-    pub out_of_bounds_hatch_line_mm: f64,
-    /// Length of each bar of a first aid post (712).
-    pub first_aid_mm: f64,
-    /// Width of a bar of a first aid post.
-    pub first_aid_bar_mm: f64,
-    /// Outer width and height of a refreshment point (713).
-    pub refreshment_mm: f64,
-    /// Line width of a refreshment point.
-    pub refreshment_line_mm: f64,
-}
+pub use crate::render::overprint::CourseSymbolSizes;
 
 /// How much a mm² of map detail under a control number counts, by colour class.
 #[derive(Debug, Clone, Copy, PartialEq)]
