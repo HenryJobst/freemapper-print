@@ -47,12 +47,14 @@ What it does already:
   of the courses it applies to;
 - `check` warns about controls, mandatory legs, out-of-bounds areas and other course overprint that lie under a
   mask;
+- an MCP server (`freemapper-print mcp`) with eleven tools, through which an AI agent such as Claude Code reads
+  and checks a project, enters masks, number positions, layouts and sheet elements, and writes the PDFs;
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
 
 Planned:
 
-- use through an AI assistant (MCP, M5) and an editor in the browser (M6);
+- an editor in the browser (M6);
 - OCAD maps, later.
 
 The program needs no OCAD and runs on macOS, Linux and Windows.
@@ -64,7 +66,8 @@ freemapper-print is one of several programs around the same maps. The code that 
 takes in a fixed version instead of copying it. freemapper-print uses `freemapper-text` (program texts),
 `freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing), `freemapper-omap` (map model and reader)
 and `freemapper-course` (courses, course files and where control numbers go) from it. The renderer (`freemapper-render`) lives
-there too since core v0.9.0.
+there too since core v0.9.0, and the page builder since v0.13.0. The rules for how much symbols grow at another
+print scale stay in freemapper-print.
 
 ## Examples
 
@@ -76,6 +79,13 @@ alt="Window orienteering in Lübeck, A4 at 1:4000: the map only in round windows
 **Window orienteering** ([`luebeck-training-window`](examples/luebeck-training-window/README.en.md)): a training
 course with eight controls in Lübeck's old town, on A4 at 1:4000. The map shows only in windows of 15 mm radius
 around start, controls and finish, one of them larger. `masks window` writes the mask.
+
+<a href="examples/mcp-session/README.en.md"><img src="examples/mcp-session/preview.jpg" width="640"
+alt="Window orienteering in Berlin's Viktoriapark, A4 at 1:4000: the map only in round windows around start, controls and finish"></a>
+
+**With an AI agent** ([`mcp-session`](examples/mcp-session/README.en.md)): a recorded session over the MCP server.
+An agent turns the Viktoriapark training into window orienteering with 12 mm windows, checks the sheet and writes
+the PDF, in five calls.
 
 <a href="examples/luebeck-training-corridor/README.en.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
 alt="Corridor orienteering in Lübeck, A4 at 1:4000: the map only in a band along three streets"></a>
@@ -120,6 +130,7 @@ The current version is [v0.5.1](https://github.com/HenryJobst/freemapper-print/r
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
+On `main`, M5 is done as well: the MCP server for AI agents, which comes with the next version.
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
@@ -259,8 +270,29 @@ explains printing in the chapter
 
 ## With an AI agent
 
-An MCP server that lets an AI agent print the maps comes in a later milestone. Until then everything runs on the
-command line.
+`freemapper-print mcp` starts an MCP server on standard input and output. Through it an AI agent such as Claude
+Code runs the same steps as the command line: `project_info`, `check_project` and `list_courses` read,
+`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` and `assign_mask`
+write into the project file, and `export_project` writes the PDFs. For Claude Code a file `.mcp.json` in the
+folder you start Claude Code in is enough:
+
+```json
+{
+  "mcpServers": {
+    "freemapper-print": {
+      "command": "/home/user/bin/freemapper-print",
+      "args": ["--lang", "en", "mcp"]
+    }
+  }
+}
+```
+
+`command` is the absolute path of the unpacked program. The calls take absolute paths only, too, because the
+server does not know the agent's working folder. The tools that write do not get in each other's way, and the
+comments in the project file stay. The agent can cancel a long export; it stops after the sheet in hand. The
+[manual](docs/manual/en.md#3-with-an-ai-agent) describes every tool, and the example
+[`mcp-session`](examples/mcp-session/README.en.md) shows a real session: window orienteering from the
+Viktoriapark training, checked and written as a PDF.
 
 ## Licence and credit
 

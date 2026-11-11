@@ -49,12 +49,14 @@ Das kann es schon:
   Abdeckung der Bahnen, für die es gilt;
 - `check` warnt vor Posten, Pflichtstrecken, Sperrgebieten und anderem Bahnaufdruck, die unter einer Abdeckung
   liegen;
+- einen MCP-Server (`freemapper-print mcp`) mit elf Werkzeugen, über den ein KI-Agent wie Claude Code ein Projekt
+  liest, prüft, Abdeckungen, Postennummern, Layouts und Blattelemente einträgt und die PDFs schreibt;
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
 
 Geplant ist:
 
-- Bedienung über einen KI-Assistenten (MCP, M5) und einen Editor im Browser (M6);
+- ein Editor im Browser (M6);
 - später OCAD-Karten.
 
 Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
@@ -67,7 +69,8 @@ Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Cod
 freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile),
 `freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap` (Kartenmodell und Kartenleser) und
 `freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der Renderer (`freemapper-render`) liegt seit core v0.9.0
-auch dort.
+auch dort, der Seitenaufbau seit v0.13.0. Die Regeln, wie stark Symbole bei einem anderen Druckmaßstab wachsen,
+bleiben in freemapper-print.
 
 ## Beispiele
 
@@ -80,6 +83,13 @@ alt="Ein Fenster-OL in Lübeck, A4 in 1:4000: die Karte nur in runden Fenstern u
 **Fenster-OL** ([`luebeck-training-window`](examples/luebeck-training-window/README.md)): eine Trainingsbahn mit
 acht Posten in der Lübecker Altstadt, auf A4 in 1:4000. Die Karte zeigt sich nur in Fenstern von 15 mm Radius um
 Start, Posten und Ziel, eines davon größer. Die Abdeckung schreibt `masks window`.
+
+<a href="examples/mcp-session/README.md"><img src="examples/mcp-session/preview.jpg" width="640"
+alt="Ein Fenster-OL im Viktoriapark in Berlin, A4 in 1:4000: die Karte nur in runden Fenstern um Start, Posten und Ziel"></a>
+
+**Mit einem KI-Agenten** ([`mcp-session`](examples/mcp-session/README.md)): eine aufgezeichnete Sitzung über den
+MCP-Server. Ein Agent macht aus dem Viktoriapark-Training einen Fenster-OL mit Fenstern von 12 mm, prüft das Blatt
+und schreibt das PDF, in fünf Aufrufen.
 
 <a href="examples/luebeck-training-corridor/README.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
 alt="Ein Korridor-OL in Lübeck, A4 in 1:4000: die Karte nur in einem Streifen entlang dreier Straßen"></a>
@@ -124,7 +134,7 @@ Aktuelle Version ist [v0.5.1](https://github.com/HenryJobst/freemapper-print/rel
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
-dazu. Die erste Version richtet sich an Vereinstrainings in Stadt und
+dazu. Auf `main` ist auch M5 fertig, der MCP-Server für KI-Agenten; er kommt mit der nächsten Version. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).
@@ -270,8 +280,29 @@ aus. Sonst stimmt der Maßstab nicht. Das Handbuch erklärt das Drucken im Kapit
 
 ## Mit einem KI-Agenten
 
-Ein MCP-Server, über den ein KI-Agent die Karten drucken kann, kommt in einem späteren Meilenstein. Bis dahin
-läuft alles über die Kommandozeile.
+`freemapper-print mcp` startet einen MCP-Server auf Standardein- und -ausgabe. Ein KI-Agent wie Claude Code ruft
+darüber dieselben Schritte auf wie die Kommandozeile: `project_info`, `check_project` und `list_courses` lesen,
+`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` und `assign_mask`
+schreiben in die Projektdatei, `export_project` schreibt die PDFs. Für Claude Code genügt eine Datei `.mcp.json`
+im Ordner, in dem Sie Claude Code starten:
+
+```json
+{
+  "mcpServers": {
+    "freemapper-print": {
+      "command": "/home/user/bin/freemapper-print",
+      "args": ["--lang", "de", "mcp"]
+    }
+  }
+}
+```
+
+`command` ist der absolute Pfad zum entpackten Programm. Auch in den Aufrufen gelten nur absolute Pfade, denn der
+Server kennt den Arbeitsordner des Agenten nicht. Die Werkzeuge, die schreiben, kommen sich nicht in die Quere,
+und die Kommentare der Projektdatei bleiben stehen. Bricht der Agent einen langen Export ab, endet
+er nach dem Blatt, an dem er gerade zeichnet. Das [Handbuch](docs/manual/de.md#3-mit-einem-ki-agenten) beschreibt jedes Werkzeug, das Beispiel
+[`mcp-session`](examples/mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus dem Viktoriapark-Training,
+geprüft und als PDF geschrieben.
 
 ## Lizenz und Namensnennung
 

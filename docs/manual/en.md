@@ -2,7 +2,7 @@
 
 [Deutsch](de.md) · [README](../../README.en.md)
 
-This manual grows with the program. Chapters 5 to 11 are written. In the end it should lead step by
+This manual grows with the program. Chapters 3 and 5 to 11 are written. In the end it should lead step by
 step from the finished OOM map and the Purple Pen file to the printed sheets, without needing experience with
 the command line.
 
@@ -10,8 +10,8 @@ Chapters:
 
 1. What freemapper-print does
 2. Installation
-3. With an AI assistant
-4. Without an assistant: editor and command line
+3. [With an AI agent](#3-with-an-ai-agent)
+4. Without an agent: editor and command line
 5. [Setting up an event](#5-setting-up-an-event)
 6. [Layouts: paper size, scale, map frame](#6-layouts-paper-size-scale-map-frame)
 7. [Title, logos and other sheet elements](#7-title-logos-and-other-sheet-elements)
@@ -23,6 +23,112 @@ Chapters:
 The program speaks German or English. It takes the language from `--lang de` or `--lang en`, else from the
 environment variables `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The messages quoted in this manual
 are the English ones.
+
+## 3. With an AI agent
+
+freemapper-print comes with an MCP server. Through it an AI agent such as Claude Code can read and check a
+project, write masks, number positions, layouts and sheet elements into the project file, and write the PDFs. You
+tell the agent in your own words what you need, for example "turn the training into window orienteering with
+12 mm windows", and it calls the tools that do it. The server calls no language model itself. It does what the
+command-line commands do and returns their messages.
+
+### Setting it up
+
+`freemapper-print mcp` starts the server. It reads requests from standard input and answers on standard output
+until the agent closes the connection. You do not start it by hand; the agent's program does. For Claude Code,
+put a file `.mcp.json` into the folder you start Claude Code in, for example the folder with your events:
+
+```json
+{
+  "mcpServers": {
+    "freemapper-print": {
+      "command": "/home/user/bin/freemapper-print",
+      "args": ["--lang", "en", "mcp"]
+    }
+  }
+}
+```
+
+`command` is the absolute path of the program, wherever you unpacked it (README, section "Installation"). On
+Windows it reads like `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, with double backslashes because
+the file is JSON. `--lang en` picks English messages; without it the system language applies, as on the command
+line. After the next start of Claude Code, `/mcp` shows the server with its eleven tools.
+
+### The tools
+
+Every tool also takes `lang` (`"de"` or `"en"`) to pick another language for that one call. `project` is the
+project folder or the file `freemapper-print.toml` in it.
+
+| Tool | Like | Required | Optional | Result |
+|---|---|---|---|---|
+| `project_info` | | `project` | | title, map kind and scale, map and course file, layouts with their elements, courses with layout and masks, the masks and the assignments |
+| `check_project` | `check` | `project` | | the notes of each sheet with `kind`, `severity` (`info`, `warning`, `error`), `course` and `message`; `needs_attention` is true when `check` would end with exit code 1 |
+| `list_courses` | | `project` | | the courses of the course file with number of controls, layout and masks |
+| `init_project` | `init` | `folder`, `map` | `title`, `kind`, `courses` | the layouts written, where the map kind came from, and the messages of `init` |
+| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
+| `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | the mask id and the messages |
+| `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` or `layout_wide`) | `direction` and `gap`, only together | the correction written and the message |
+| `set_layout` | | `project`, `id` | `paper`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | the layout as the file now holds it, and `change` |
+| `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | the element and `change` |
+| `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
+| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
+
+The inputs are named like the options of the commands (chapters 5, 8 and 11) and the keys of the project file
+(chapters 6 and 7), with underscores: `radius_for` for `--radius-for`, `points` as the text `"x,y;x,y"` as with
+`--points`. `change` says whether the tool added something (`added`), changed it (`changed`) or had nothing to do
+(`unchanged`).
+
+`set_layout` changes only the keys the call names; the others keep their value, and a new layout gets the
+defaults for them. `null` for `print_scale` prints at the map scale again, and for `centre_map_mm` it centres the
+map frame again. Only `set_element` changes the elements of a layout. It replaces the element with the same id as
+a whole; without `layout` the element is shared by all layouts (`[[shared]]`). A logo names its `file` by absolute
+path, and the project file stores it relative to itself. `assign_mask` sets the mask of a course even when it has
+one already; without `mask` the course prints without one. `masks_window` and `masks_corridor` with `assign`
+replace no mask.
+
+The results are JSON. The tools that write return in `messages` the sentences the command prints on the command
+line. Where the command names an option, the server names the tool and the input: "Call check_project to see the
+result" instead of "Run check to see the result".
+
+### Rules
+
+- All paths are absolute. The server does not know the agent's working folder, so it refuses a relative path
+  with a message that says so. `~` counts as relative.
+- When something goes wrong, the message is the one the command line would print, and the tool has written
+  nothing. The tools that change layouts, elements and assignments check the changed file before they write it.
+- Writes happen one after the other. All tools that write, and `export_project`, wait for each other, also when
+  the agent calls several at once, so each call sees what the one before wrote. `project_info`, `check_project`
+  and `list_courses` do not wait.
+- Comments in the project file stay. The only ones lost are a comment at the end of a line whose value changes,
+  and one inside a sub-table `[layouts.map_frame]` that `set_layout` turns into the short form
+  `map_frame = { … }`.
+- When the project file is a link, the server does not change it and says so. The command line replaces the link
+  with a file in that case, which an agent would not notice. A project folder that is a link works.
+- `export_project` writes into `out_dir`, a folder that exists already. It replaces a PDF of the same name there.
+  `layouts` does not go with `courses` or `single_file`. The result lists at most 200 files and 200 notes;
+  `more_files` and `more` count the rest.
+- Only `export_project` can be cancelled. When the agent cancels the call, the export stops after the sheet it is
+  drawing. The PDFs before it stay whole, and no partial file is left. With `single_file` no PDF is written then.
+  When the agent closes the connection, the server draws for up to five more seconds and then stops the same way.
+  The other tools run to the end. For `check_project` on a very large course file (1000 courses of 200 controls
+  each) that takes almost two minutes.
+- Standard output belongs to the protocol. Errors of the server itself go to standard error.
+
+What no tool changes, such as `[event]`, `[print]` or an existing correction under `[[numbers]]`, the agent
+changes in the file with its own means, or you do. `check_project` then shows whether the file still holds.
+
+### An example
+
+The example [examples/mcp-session](../../examples/mcp-session/README.en.md) records a real session. The request to
+the agent is roughly: "Turn the training in Viktoriapark into window orienteering with 12 mm windows and put the
+PDF into the folder pdf."
+
+1. `project_info` shows one course "Training" with 11 controls on the layout `a4-4000`, with no mask yet.
+2. `check_project` reports info notes only; `needs_attention` is false.
+3. `masks_window` with `course` "Training", `radius` 12 and `assign` writes the mask `window-Training` with 13
+   windows around start, controls and finish, and gives it to the course.
+4. `check_project` again reports info notes only: no control lies under the mask.
+5. `export_project` writes `Training.pdf` (170,397 bytes) and reminds you to print at actual size.
 
 ## 5. Setting up an event
 

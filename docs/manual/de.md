@@ -2,7 +2,7 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 5 bis 11. Am Ende soll es
+Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 3 und 5 bis 11. Am Ende soll es
 Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern führen,
 auch ohne Erfahrung mit der Kommandozeile.
 
@@ -10,8 +10,8 @@ Kapitel:
 
 1. Was freemapper-print macht
 2. Installation
-3. Mit einem KI-Assistenten
-4. Ohne Assistent: Editor und Kommandozeile
+3. [Mit einem KI-Agenten](#3-mit-einem-ki-agenten)
+4. Ohne Agenten: Editor und Kommandozeile
 5. [Eine Veranstaltung anlegen](#5-eine-veranstaltung-anlegen)
 6. [Layouts: Blattformat, Maßstab, Kartenausschnitt](#6-layouts-blattformat-maßstab-kartenausschnitt)
 7. [Titel, Logos und andere Blattelemente](#7-titel-logos-und-andere-blattelemente)
@@ -24,6 +24,115 @@ Das Programm spricht Deutsch oder Englisch. Es nimmt die Sprache aus `--lang de`
 den Umgebungsvariablen `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` und `LANG`. Die Meldungen in diesem Handbuch
 sind die deutschen.
 
+## 3. Mit einem KI-Agenten
+
+freemapper-print bringt einen MCP-Server mit. Ein KI-Agent wie Claude Code kann darüber ein Projekt lesen und
+prüfen, Abdeckungen, Postennummern, Layouts und Blattelemente in die Projektdatei schreiben und die PDFs
+erzeugen. Sie sagen dem Agenten in eigenen Worten, was Sie brauchen, etwa „Mach aus dem Training einen
+Fenster-OL mit 12-mm-Fenstern“, und er ruft die passenden Werkzeuge auf. Der Server ruft selbst kein Sprachmodell
+auf. Er tut dasselbe wie die Befehle der Kommandozeile und liefert dieselben Meldungen.
+
+### Einrichten
+
+`freemapper-print mcp` startet den Server. Er liest Anfragen von der Standardeingabe und antwortet auf der
+Standardausgabe, bis der Agent die Verbindung schließt. Von Hand starten Sie ihn nicht, das übernimmt das
+Programm des Agenten. Für Claude Code legen Sie eine Datei `.mcp.json` in den Ordner, in dem Sie Claude Code
+starten, zum Beispiel den Ordner mit Ihren Veranstaltungen:
+
+```json
+{
+  "mcpServers": {
+    "freemapper-print": {
+      "command": "/home/user/bin/freemapper-print",
+      "args": ["--lang", "de", "mcp"]
+    }
+  }
+}
+```
+
+Bei `command` steht der absolute Pfad zum Programm, dort, wohin Sie es entpackt haben (README, Abschnitt „Installation“). Unter Windows
+lautet er etwa `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, mit doppelten Backslashes, weil die
+Datei JSON ist. `--lang de` wählt deutsche Meldungen; ohne die Option gilt die Sprache des Systems wie bei der
+Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen elf Werkzeugen.
+
+### Die Werkzeuge
+
+Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufruf eine andere Sprache zu wählen.
+`project` ist der Projektordner oder die Datei `freemapper-print.toml` darin.
+
+| Werkzeug | Entspricht | Pflichtangaben | Weitere Angaben | Ergebnis |
+|---|---|---|---|---|
+| `project_info` | | `project` | | Titel, Kartenart und -maßstab, Karte und Bahndatei, Layouts mit ihren Elementen, Bahnen mit Layout und Abdeckungen, die Abdeckungen und die Zuordnungen |
+| `check_project` | `check` | `project` | | die Hinweise jedes Blatts mit `kind`, `severity` (`info`, `warning`, `error`), `course` und `message`; `needs_attention` ist wahr, wenn `check` mit Exit-Code 1 enden würde |
+| `list_courses` | | `project` | | die Bahnen der Bahndatei mit Postenzahl, Layout und Abdeckungen |
+| `init_project` | `init` | `folder`, `map` | `title`, `kind`, `courses` | die geschriebenen Layouts, woher die Kartenart stammt, und die Meldungen von `init` |
+| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
+| `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | die ID der Abdeckung und die Meldungen |
+| `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` oder `layout_wide`) | `direction` und `gap`, nur zusammen | die eingetragene Korrektur und die Meldung |
+| `set_layout` | | `project`, `id` | `paper`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
+| `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | das Element und `change` |
+| `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
+| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
+
+Die Eingaben heißen wie die Optionen der Befehle (Kapitel 5, 8 und 11) und die Schlüssel der Projektdatei
+(Kapitel 6 und 7), nur mit Unterstrich: `radius_for` statt `--radius-for`, `points` als Text `"x,y;x,y"` wie bei
+`--points`. `change` sagt, ob das Werkzeug etwas hinzugefügt (`added`), geändert (`changed`) oder nichts zu tun
+hatte (`unchanged`).
+
+`set_layout` ändert nur die Schlüssel, die der Aufruf nennt; die übrigen behalten ihren Wert, ein neues Layout
+bekommt für sie die Vorgaben. `null` bei `print_scale` druckt wieder im Kartenmaßstab, bei `centre_map_mm`
+zentriert es den Ausschnitt wieder. Die Elemente eines Layouts ändert nur `set_element`. Es ersetzt das Element
+mit derselben ID ganz; ohne `layout` gilt es für alle Layouts (`[[shared]]`). Ein Logo nennt `file` mit
+absolutem Pfad, die Projektdatei speichert ihn relativ zu sich. `assign_mask` setzt die Abdeckung einer Bahn,
+auch wenn sie schon eine hat; ohne `mask` druckt die Bahn ohne Abdeckung. `masks_window` und `masks_corridor`
+mit `assign` ersetzen dagegen keine Abdeckung.
+
+Die Ergebnisse sind JSON. Die Werkzeuge, die schreiben, geben in `messages` dieselben Sätze zurück, die der
+Befehl in der Kommandozeile ausgibt. Wo der Befehl eine Option nennt, nennt der Server das Werkzeug und die
+Eingabe: „Mit check_project sehen Sie das Ergebnis“ statt „Mit check sehen Sie das Ergebnis“.
+
+### Regeln
+
+- Alle Pfade sind absolut. Der Server kennt den Arbeitsordner des Agenten nicht, deshalb lehnt er einen
+  relativen Pfad mit einer Meldung ab, die genau das sagt. `~` zählt als relativ.
+- Geht etwas schief, kommt die Meldung zurück, die auch die Kommandozeile ausgeben würde, und das Werkzeug hat
+  nichts geschrieben. Die Werkzeuge, die Layouts, Elemente und Zuordnungen ändern, prüfen die geänderte Datei,
+  bevor sie sie schreiben.
+- Schreiben geht der Reihe nach. Alle Werkzeuge, die schreiben, und `export_project` warten aufeinander, auch
+  wenn der Agent mehrere zugleich aufruft. So sieht jeder Aufruf, was der vorige geschrieben hat. `project_info`,
+  `check_project` und `list_courses` warten nicht.
+- Kommentare in der Projektdatei bleiben stehen. Verloren geht nur ein Kommentar am Ende einer Zeile, deren Wert
+  sich ändert, und einer in einer Untertabelle `[layouts.map_frame]`, die `set_layout` durch die kurze Form
+  `map_frame = { … }` ersetzt.
+- Ist die Projektdatei ein Link, ändert der Server sie nicht und sagt das. Die Kommandozeile ersetzt den Link in
+  diesem Fall durch eine Datei, was ein Agent nicht bemerken würde. Ein Projektordner, der ein Link ist, ist
+  dagegen kein Problem.
+- `export_project` schreibt in `out_dir`, einen Ordner, den es schon gibt. Ein PDF gleichen Namens dort ersetzt
+  es. `layouts` geht nicht zusammen mit `courses` oder `single_file`. Das Ergebnis nennt höchstens 200 Dateien
+  und 200 Hinweise; `more_files` und `more` zählen den Rest.
+- Abbrechen lässt sich nur `export_project`. Bricht der Agent den Aufruf ab, endet der Export nach dem Blatt, an
+  dem er gerade zeichnet. Die PDFs davor bleiben ganz, eine halbe Datei bleibt nicht zurück. Mit `single_file`
+  entsteht dann gar kein PDF. Schließt der Agent die Verbindung, zeichnet der Server noch bis zu fünf Sekunden
+  weiter und endet dann ebenso. Die anderen Werkzeuge laufen bis zum Ende. Das dauert bei `check_project` mit
+  einer sehr großen Bahndatei (1000 Bahnen mit je 200 Posten) knapp zwei Minuten.
+- Die Standardausgabe gehört dem Protokoll. Fehler des Servers selbst stehen auf der Standardfehlerausgabe.
+
+Was kein Werkzeug ändert, etwa `[event]`, `[print]` oder eine vorhandene Korrektur unter `[[numbers]]`, ändert
+der Agent mit seinen eigenen Mitteln in der Datei, oder Sie tun es selbst. `check_project` zeigt danach, ob die
+Datei noch stimmt.
+
+### Ein Beispiel
+
+Das Beispiel [examples/mcp-session](../../examples/mcp-session/README.md) zeichnet eine echte Sitzung auf. Die
+Bitte an den Agenten lautet sinngemäß: „Mach aus dem Training im Viktoriapark einen Fenster-OL mit Fenstern von
+12 mm und leg das PDF in den Ordner pdf.“
+
+1. `project_info` zeigt eine Bahn „Training“ mit 11 Posten auf dem Layout `a4-4000`, noch ohne Abdeckung.
+2. `check_project` meldet nur Hinweise zur Information, `needs_attention` ist falsch.
+3. `masks_window` mit `course` „Training“, `radius` 12 und `assign` schreibt die Abdeckung `window-Training` mit
+   13 Fenstern um Start, Posten und Ziel und gibt sie der Bahn.
+4. `check_project` meldet wieder nur Hinweise zur Information: Kein Posten liegt unter der Abdeckung.
+5. `export_project` schreibt `Training.pdf` (170 397 Byte) und erinnert daran, in Originalgröße zu drucken.
 ## 5. Eine Veranstaltung anlegen
 
 Zu jeder Veranstaltung gehört ein Ordner mit einer Projektdatei, `freemapper-print.toml`. Darin stehen die
