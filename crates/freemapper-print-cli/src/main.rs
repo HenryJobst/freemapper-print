@@ -2098,8 +2098,7 @@ fn print_note_line(texts: &Texts, note: &ops::note::PrintNote) -> String {
                 hints.push(texts.plain("hint-other-orientation"));
             }
             // The next larger allowed number shrinks the map on the page.
-            match kind
-                .allowed_scales()
+            match freemapper_print::scale::allowed_scales(*kind)
                 .into_iter()
                 .find(|&s| s > *print_scale)
             {

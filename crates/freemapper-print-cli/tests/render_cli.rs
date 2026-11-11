@@ -356,7 +356,7 @@ fn broken_sidecar_gets_a_note() {
     let dir = tempfile::tempdir().unwrap();
     let copy = dir.path().join("m.omap");
     std::fs::copy(LUEBECK, &copy).unwrap();
-    std::fs::write(dir.path().join("freemapper.toml"), "map_kind = 3\n").unwrap();
+    std::fs::write(dir.path().join("freemapper.toml"), "map_kind = \n").unwrap();
     let o = render(copy.to_str().unwrap(), &dir.path().join("o.pdf"), &[]);
     let err = stderr(&o);
     assert!(o.status.success(), "{err}");

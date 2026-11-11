@@ -324,11 +324,7 @@ fn init_refuses_control_characters_in_the_title() {
 fn init_names_a_broken_freemapper_toml() {
     let ws = Workspace::new(LUEBECK);
     let map = uninferable_map(&ws);
-    std::fs::write(
-        ws.dir.path().join("maps/freemapper.toml"),
-        "map_kind = 12\n",
-    )
-    .unwrap();
+    std::fs::write(ws.dir.path().join("maps/freemapper.toml"), "map_kind = \n").unwrap();
     let o = run(
         "en",
         &[

@@ -457,7 +457,7 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR")
             );
             let doc = crate::omap::read::read_map_file(std::path::Path::new(&path)).unwrap();
-            for scale in kind.allowed_scales() {
+            for scale in crate::scale::allowed_scales(kind) {
                 let options = PrintOptions {
                     print_scale: Some(scale),
                     kind,

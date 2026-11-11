@@ -1896,7 +1896,7 @@ pub fn starter(
         sources: Sources::new(map),
         map: MapSettings {
             kind,
-            contour_interval_m: kind.proposed_contour_interval_m(),
+            contour_interval_m: crate::scale::proposed_contour_interval_m(kind),
         },
         print: PrintSettings::default(),
         shared: vec![
