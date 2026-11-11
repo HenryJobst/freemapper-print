@@ -35,7 +35,7 @@ Source: spec §…, plan …, commit …
 ```
 
 Keep an ADR between 10 and 30 lines. Write it in English, like all technical docs, and use the terms from
-`docs/glossary.md`.
+`docs/glossary.md`. ADR 0059 is longer on purpose: it holds all rulings of the editor milestone in one place.
 
 ## Index
 
@@ -99,3 +99,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0056](0056-print-rules-come-from-freemapper-core.md) | The print rules come from freemapper-core | Accepted, amends [0031](0031-print-rules-as-data-profiles.md) and [0018](0018-symbols-scale-as-the-iof-standards-set.md) |
 | [0057](0057-map-kind-and-sidecar-from-the-contract.md) | The map kind and the sidecar reader come from the contract | Accepted, amends [0056](0056-print-rules-come-from-freemapper-core.md) and [0052](0052-an-unknown-map-kind-counts-as-absent.md) |
 | [0058](0058-free-page-size-in-layouts.md) | A layout can set a free page size | Accepted |
+| [0059](0059-editor-follows-the-suite-pages.md) | The editor follows the suite page rules | Accepted, implements [0005](0005-layout-editor-in-a-local-browser-page.md) |

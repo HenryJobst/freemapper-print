@@ -1,0 +1,64 @@
+/* App-specific layout of the editor. Tokens and base elements come from suite/suite.css. */
+
+.panes {
+  display: grid;
+  grid-template-columns: 16rem 1fr 20rem;
+  min-height: 0;
+  height: 100%;
+}
+
+.pane { min-width: 0; min-height: 0; overflow: auto; padding: 0.5rem; border-right: 1px solid var(--line); }
+#pane-props { border-right: 0; border-left: 1px solid var(--line); }
+#pane-sheet { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+
+#sheet { flex: 1; min-height: 0; overflow: auto; background: var(--map-bg); }
+#notes-pane { max-height: 30%; overflow: auto; border-top: 1px solid var(--line); padding: 0.25rem 0.5rem; }
+#notices ul { margin: 0; padding: 0; list-style: none; }
+#notices li { margin: 0.2rem 0; padding: 0.1rem 0.5rem; border-left: 4px solid var(--sev-hint); }
+#notices li.warning { border-left-color: var(--sev-warning); }
+#notices li.error { border-left-color: var(--sev-error); }
+
+/* The sheet: the renderer's SVG, scaled to fit; its user unit is 1 mm on paper. */
+#sheet { display: flex; justify-content: center; align-items: flex-start; padding: 0.5rem; }
+#sheet svg { flex: none; background: #fff; touch-action: none; box-shadow: 0 0 0 1px var(--line); cursor: crosshair; }
+#sheet .pick-rect { fill: none; stroke: var(--sel); stroke-width: 0.5; pointer-events: none; }
+#props dl { margin: 0; }
+#props dt { font-weight: 600; margin-top: 0.4rem; }
+#props dd { margin: 0; overflow-wrap: anywhere; }
+
+h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+
+@media (max-width: 60rem) {
+  .panes { grid-template-columns: 12rem 1fr; }
+  #pane-props { display: none; }
+}
+
+/* Forms of the properties pane. */
+.props-form h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.props-form .row { margin: 0 0 0.5rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.props-form .row:has(input[type="checkbox"]) { flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 0.4rem; }
+.props-form textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.props-form .token { padding: 0 0.3rem; font-family: monospace; }
+#sheet:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Drawing modes and number moves over the sheet. */
+#sheet .draw { pointer-events: none; }
+#sheet .draw-line { fill: none; stroke: var(--sel); stroke-width: 0.6; }
+#sheet .draw-mark { fill: var(--sel); }
+#sheet .draw-ring { fill: none; stroke: var(--sel); stroke-width: 0.6; }
+#conflicts { margin: 0; padding: 0; list-style: none; }
+#conflicts li { margin: 0.2rem 0; padding: 0.1rem 0.5rem; border-left: 4px solid var(--sev-warning); }
+#conflicts .dialog-buttons { justify-content: flex-start; }
+
+/* The course overprint multiplies with the map under it (the renderer's own blend, as a class for the CSP). */
+#sheet .blend-multiply { mix-blend-mode: multiply; }
+
+/* The export dialog. */
+#export .row { display: flex; flex-direction: column; gap: 0.2rem; margin: 0 0 0.5rem; }
+#export input { width: 100%; box-sizing: border-box; }
+#export-result ul { margin: 0.3rem 0; padding: 0; list-style: none; }
+#export-result li { margin: 0.2rem 0; padding: 0.1rem 0.5rem; border-left: 4px solid var(--sev-hint); }
+#export-result li.warning { border-left-color: var(--sev-warning); }
+#export-result li.error { border-left-color: var(--sev-error); }
+#export-result li.file { border-left-color: var(--line); }
+#notices .check-summary { margin: 0 0 0.3rem; font-weight: 600; }

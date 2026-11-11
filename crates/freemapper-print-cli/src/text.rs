@@ -371,6 +371,11 @@ mod tests {
         let mut args = FluentArgs::new();
         for name in [
             "message",
+            "severity",
+            "n",
+            "w",
+            "h",
+            "url",
             "lang",
             "available",
             "path",
@@ -395,6 +400,9 @@ mod tests {
             "chars",
             "id",
             "layout",
+            "kb",
+            "dir",
+            "pages",
             "missing",
             "name",
             "shown",

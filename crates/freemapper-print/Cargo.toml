@@ -12,6 +12,8 @@ rust-version.workspace = true
 # the live-page counter of the export loop. Enabled only through freemapper-print-cli's
 # dev-dependencies, so release binaries never read the variable.
 test-hooks = []
+# The page-rules checker of freemapper-web (core ADR 0030) for the editor's page tests; dev-dependencies only.
+page-rules = ["freemapper-web/page-rules"]
 
 [dependencies]
 freemapper-contract.workspace = true
@@ -21,6 +23,7 @@ freemapper-omap.workspace = true
 freemapper-printrules.workspace = true
 freemapper-render.workspace = true
 freemapper-rules.workspace = true
+freemapper-web.workspace = true
 fs4.workspace = true
 image.workspace = true
 miniz_oxide.workspace = true

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-text="editor-page-title"></title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="suite/suite.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script type="module" src="assets/app.js"></script>
+</head>
+<body class="frame">
+  <main class="panes">
+    <nav class="pane" id="pane-tree" data-label="editor-pane-tree" data-tree-label=""></nav>
+    <section class="pane" id="pane-sheet" data-label="editor-pane-sheet">
+      <div class="toolbar" role="toolbar" data-label="editor-toolbar-label" id="sheet-toolbar">
+        <label for="course-select" id="course-label" data-text="editor-course-label"></label>
+        <select id="course-select"></select>
+        <label for="layout-select" data-text="editor-layout-label"></label>
+        <select id="layout-select"></select>
+        <span class="hint" id="no-courses" data-text="editor-no-courses-hint" hidden></span>
+      </div>
+      <div id="banner" role="alert"></div>
+      <div id="sheet" tabindex="0" role="application" data-label="editor-pane-sheet"></div>
+      <div id="notes-pane">
+        <h2 data-text="editor-notices-heading"></h2>
+        <div id="notices" aria-live="polite"><p class="hint" data-text="editor-notices-empty"></p></div>
+        <div id="conflicts-pane" hidden>
+          <h2 data-text="editor-conflicts-heading"></h2>
+          <ul id="conflicts"></ul>
+        </div>
+      </div>
+    </section>
+    <aside class="pane" id="pane-props" tabindex="0" data-label="editor-pane-props">
+      <h2 data-text="editor-props-heading"></h2>
+      <div id="props"><p class="hint" data-text="editor-props-empty"></p></div>
+    </aside>
+  </main>
+  <header class="menubar">
+    <details class="menu">
+      <summary data-text="editor-menu-file"></summary>
+      <ul>
+        <li><button type="button" id="menu-check" data-text="editor-menu-check"></button></li>
+        <li><button type="button" id="menu-done" data-text="editor-menu-done"></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-edit"></summary>
+      <ul>
+        <li><button type="button" id="menu-undo" data-text="editor-menu-undo" disabled></button></li>
+        <li><button type="button" id="menu-redo" data-text="editor-menu-redo" disabled></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-masks"></summary>
+      <ul>
+        <li><button type="button" id="menu-mask-window" data-text="editor-menu-mask-window"></button></li>
+        <li><button type="button" id="menu-mask-corridor" data-text="editor-menu-mask-corridor"></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-view"></summary>
+      <ul>
+        <li><button type="button" id="menu-zoom-in" data-text="editor-menu-zoom-in"></button></li>
+        <li><button type="button" id="menu-zoom-out" data-text="editor-menu-zoom-out"></button></li>
+        <li><button type="button" id="menu-zoom-fit" data-text="editor-menu-zoom-fit"></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-export"></summary>
+      <ul>
+        <li><button type="button" id="menu-export-sheet" data-text="editor-menu-export-sheet"></button></li>
+        <li><button type="button" id="menu-export-all" data-text="editor-menu-export-all"></button></li>
+        <li><button type="button" id="menu-export-single" data-text="editor-menu-export-single"></button></li>
+      </ul>
+    </details>
+  </header>
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <h2 id="confirm-title" data-text="editor-move-shared-title"></h2>
+    <p id="confirm-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" class="primary" id="confirm-yes" data-text="editor-confirm-move"></button>
+      <button type="button" id="confirm-no" data-text="editor-cancel"></button>
+    </div>
+  </dialog>
+  <dialog id="scope" aria-labelledby="scope-title">
+    <h2 id="scope-title" data-text="editor-scope-title"></h2>
+    <p id="scope-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" class="primary" id="scope-layout" data-text="editor-scope-layout"></button>
+      <button type="button" id="scope-sheet" data-text="editor-scope-sheet"></button>
+      <button type="button" id="scope-cancel" data-text="editor-cancel"></button>
+    </div>
+  </dialog>
+  <dialog id="leave" aria-labelledby="leave-title">
+    <h2 id="leave-title" data-text="editor-leave-title"></h2>
+    <p data-text="editor-leave-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="leave-yes" data-text="editor-leave-discard"></button>
+      <button type="button" class="primary" id="leave-no" data-text="editor-leave-keep"></button>
+    </div>
+  </dialog>
+  <dialog id="export" aria-labelledby="export-title">
+    <h2 id="export-title" data-text="editor-export-title"></h2>
+    <p id="export-what"></p>
+    <div class="row">
+      <label for="export-dir" data-text="editor-export-dir"></label>
+      <input type="text" id="export-dir" size="48" autocomplete="off" spellcheck="false" aria-describedby="export-dir-hint">
+      <span class="hint" id="export-dir-hint" data-text="editor-export-dir-hint"></span>
+    </div>
+    <div id="export-result" aria-live="polite"></div>
+    <div class="dialog-buttons">
+      <button type="button" class="primary" id="export-go" data-text="editor-export-go"></button>
+      <button type="button" id="export-stop" data-text="editor-export-stop" hidden></button>
+      <button type="button" id="export-close" data-text="editor-export-close"></button>
+    </div>
+  </dialog>
+  <footer class="status">
+    <span id="status-message" role="status" aria-live="polite"></span>
+    <span class="field"><span class="name" data-text="editor-status-project"></span> <span id="status-project"></span></span>
+    <span class="field"><span class="name" data-text="editor-status-scale"></span> <span id="status-scale"></span></span>
+    <span class="field"><span class="name" data-text="editor-status-page"></span> <span id="status-page"></span></span>
+  </footer>
+</body>
+</html>

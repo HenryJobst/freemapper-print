@@ -1486,6 +1486,13 @@ fn replace_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     Ok(())
 }
 
+/// Puts `text` in place of the project file `path`, atomically and with the file's permissions (the writer of
+/// every edit). The editor's undo and redo use it to bring back an earlier version of the whole file; comments
+/// are part of the text, so they come back with it.
+pub fn replace_text(path: &Path, text: &str) -> Result<(), ProjectError> {
+    replace_file(path, text.as_bytes())
+}
+
 /// Gives the regular file at `path` the permissions `permissions`, through an open handle and never
 /// by name, so a link put at `path` in the meantime is not followed. Nothing happens when the file
 /// has them already. The handle must be the file at `path`: the entry at `path` is no link, and it
@@ -3199,8 +3206,13 @@ mod tests {
                 dropped_pattern_objects: 0,
                 substituted_fonts: vec![],
                 missing_glyphs: vec![],
+                source_objects: vec![],
             },
             notes,
+            elements: vec![],
+            numbers: vec![],
+            number_anchors: vec![],
+            mask_ids: vec![],
         }
     }
 

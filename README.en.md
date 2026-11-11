@@ -52,9 +52,12 @@ What it does already:
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
 
+- an editor in the browser (`freemapper-print edit`, from the next version on): a sheet preview drawn exactly as in the PDF, dragging elements and control
+  numbers, forms for layouts and elements, window and corridor masks, check and PDF export; every change is
+  written to the project file at once, with undo and redo.
+
 Planned:
 
-- an editor in the browser (M6);
 - OCAD maps, later.
 
 The program needs no OCAD and runs on macOS, Linux and Windows.
@@ -130,7 +133,7 @@ The current version is [v0.6.2](https://github.com/HenryJobst/freemapper-print/r
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
-Milestone M5, the MCP server for AI agents, is part of this version.
+Milestone M5, the MCP server for AI agents, is part of this version. The browser editor (M6, `freemapper-print edit`) is finished and comes with the next version.
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
@@ -269,6 +272,19 @@ brown is hard to tell from paper.
 Print the PDF at actual size (100 %) and switch "fit to page" off. Otherwise the scale is wrong. The manual
 explains printing in the chapter
 [Printing](docs/manual/en.md#9-printing-at-the-right-scale-at-home-and-in-a-copy-shop).
+
+### The editor in the browser
+
+```sh
+freemapper-print edit my-event
+```
+
+Opens the project in your browser. The program prints an address on 127.0.0.1 with a random token; `--no-browser`
+leaves the browser closed, `--port` fixes the port. The sheet on screen is drawn exactly as in the PDF. You move
+elements with the mouse or the arrow keys, drag control numbers or place them in a form, change layouts and
+elements in forms, add window and corridor masks, check and export. There is no Save button: every change is in
+the project file at once. Ctrl+C ends the editor. The manual explains all of it in the chapter
+[The editor in the browser](docs/manual/en.md#12-the-editor-in-the-browser).
 
 ## With an AI agent
 

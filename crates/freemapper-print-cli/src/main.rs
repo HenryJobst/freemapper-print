@@ -45,6 +45,7 @@ enum Commands {
     Export(ExportArgs),
     Numbers(NumbersArgs),
     Masks(MasksArgs),
+    Edit(editor::EditArgs),
     Mcp,
 }
 
@@ -244,6 +245,7 @@ macro_rules! args {
 }
 
 // After `args!`, which it uses.
+mod editor;
 mod mcp;
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
@@ -420,6 +422,7 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             Some(&args!("course" => printable(&course), "id" => printable(&mask))),
         ))
         .into(),
+        E::Serve { source } => source.context(texts.plain("error-serve")),
         E::WriteFile { path, source } => source.context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
@@ -2322,6 +2325,12 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         })
                 })
         })
+        .mut_subcommand("edit", |c| {
+            c.about(texts.plain("edit-about"))
+                .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                .mut_arg("port", |a| a.help(texts.plain("help-edit-port")))
+                .mut_arg("no_browser", |a| a.help(texts.plain("edit-no-browser")))
+        })
         .mut_subcommand("mcp", |c| {
             c.about(texts.plain("mcp-about")).after_long_help(format!(
                 "{}\n\n{}",
@@ -2334,6 +2343,7 @@ fn localised_command(texts: &Texts) -> clap::Command {
 fn main() -> std::process::ExitCode {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let env = |name: &str| std::env::var(name).ok();
+    let fixed_lang = editor::fixed_language(lang_from_args(&args).as_deref(), &env);
     let lang = match detect_lang(lang_from_args(&args).as_deref(), &env) {
         Ok(lang) => lang,
         Err(unknown) => {
@@ -2369,6 +2379,12 @@ fn main() -> std::process::ExitCode {
             MasksCommand::Window(args) => masks_window(&texts, &args),
             MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
+        Commands::Edit(mut args) => {
+            args.lang = fixed_lang;
+            editor::run(&args, &texts)
+                .map(|()| 0)
+                .map_err(|err| op_error(&texts, err))
+        }
         Commands::Mcp => mcp::run(&texts),
     };
     match result {
@@ -2409,6 +2425,7 @@ mod tests {
             dropped_pattern_objects: 0,
             substituted_fonts: vec![],
             missing_glyphs: vec![],
+            source_objects: vec![],
         }
     }
 
@@ -2443,6 +2460,7 @@ mod tests {
             truncated_objects: 2,
             substituted_fonts: vec!["Comic Sans".into(), "Papyrus".into()],
             missing_glyphs: vec!['Ж', '猫'],
+            source_objects: vec![],
             ..report()
         };
         let l = lines(&r, PaperArg::A4);
@@ -3274,6 +3292,7 @@ mod tests {
         let r = PrintReport {
             substituted_fonts: vec!["Evil\u{1b}[2J".into()],
             missing_glyphs: vec!['\u{1b}', '\u{7}', '\u{202e}'],
+            source_objects: vec![],
             ..report()
         };
         let all = lines(&r, PaperArg::A4).join("\n");
@@ -3306,6 +3325,7 @@ mod layout_tests {
             dropped_pattern_objects: 0,
             substituted_fonts: vec![],
             missing_glyphs: vec![],
+            source_objects: vec![],
         };
         let sheet = print_notes(&texts, &report, Paper::A4, false, MapKind::Sprint, true);
         assert!(

@@ -54,9 +54,12 @@ Das kann es schon:
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
 
+- einen Editor im Browser (`freemapper-print edit`, ab der nächsten Version): Blattvorschau, genau so gezeichnet wie im PDF, Elemente und Postennummern
+  ziehen, Layouts und Elemente in Formularen ändern, Fenster- und Korridormasken anlegen, prüfen und PDFs
+  schreiben; jede Änderung steht sofort in der Projektdatei, mit Rückgängig und Wiederholen.
+
 Geplant ist:
 
-- ein Editor im Browser (M6);
 - später OCAD-Karten.
 
 Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
@@ -134,7 +137,7 @@ Aktuelle Version ist [v0.6.2](https://github.com/HenryJobst/freemapper-print/rel
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
-dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Version dazu. Die erste Version richtet sich an Vereinstrainings in Stadt und
+dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Version dazu. Der Editor im Browser (M6, `freemapper-print edit`) ist fertig und kommt mit der nächsten Version. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).
@@ -279,6 +282,19 @@ In Graustufen ist ihr helles Braun kaum vom Papier zu unterscheiden.
 Drucken Sie das PDF in Originalgröße (100 %, „Tatsächliche Größe“) und schalten Sie „An Seite anpassen“
 aus. Sonst stimmt der Maßstab nicht. Das Handbuch erklärt das Drucken im Kapitel
 [Drucken](docs/manual/de.md#9-drucken-maßstabsgetreu-am-eigenen-drucker-und-im-copyshop).
+
+### Der Editor im Browser
+
+```sh
+freemapper-print edit meine-veranstaltung
+```
+
+Öffnet das Projekt in Ihrem Browser. Das Programm gibt eine Adresse auf 127.0.0.1 mit einem zufälligen
+Kennzeichen aus; mit `--no-browser` öffnet es den Browser nicht, mit `--port` legt man den Port fest. Das Blatt
+auf dem Bildschirm ist genau so gezeichnet wie im PDF. Sie verschieben Elemente mit der Maus oder den Pfeiltasten,
+ziehen Postennummern oder setzen sie in einem Formular, ändern Layouts und Elemente in Formularen, legen Fenster- und Korridormasken an, prüfen und exportieren. Es gibt keinen
+Speichern-Knopf: Jede Änderung steht sofort in der Projektdatei. Strg+C beendet den Editor. Das Handbuch erklärt
+alles im Kapitel [Der Editor im Browser](docs/manual/de.md#12-der-editor-im-browser).
 
 ## Mit einem KI-Agenten
 

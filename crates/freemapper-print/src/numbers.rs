@@ -242,10 +242,64 @@ pub struct NumberConflict {
     pub searched: bool,
 }
 
+/// Where a number hangs: the symbol it belongs to and the size of its box, on the page. The editor turns a point
+/// the person drops a number at into a direction and a gap with it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NumberAnchor {
+    /// The centre of the control's symbol (page mm).
+    pub centre: Pt,
+    /// The radius of the symbol's outer line (page mm).
+    pub outer_r: f64,
+    /// Width and height of the number's box (page mm).
+    pub size: (f64, f64),
+    /// Page mm per mm of gap: the course symbols' size factor.
+    pub unit: f64,
+}
+
+impl NumberAnchor {
+    /// The placement (direction in degrees, gap in print mm) that puts the box's centre at `box_centre`.
+    pub fn placement_at(&self, box_centre: Pt) -> Placement {
+        let p = placement::placement_of(self.centre, self.outer_r, box_centre, self.size);
+        Placement {
+            direction: p.direction,
+            gap_mm: p.gap_mm / self.unit,
+        }
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::*;
+
+    #[test]
+    fn an_anchor_turns_a_box_centre_into_direction_and_gap_in_print_mm() {
+        let anchor = NumberAnchor {
+            centre: (0.0, 0.0),
+            outer_r: 3.0,
+            size: (2.0, 2.0),
+            unit: 2.0,
+        };
+        // Due east: the box's near edge lies at 8 - 1 = 7, that is 4 page mm beyond the circle line, 2 print mm.
+        let east = anchor.placement_at((8.0, 0.0));
+        assert!(
+            east.direction.abs() < 1e-9 && (east.gap_mm - 2.0).abs() < 1e-9,
+            "{east:?}"
+        );
+        // Due north (up on the page, y down) is 90 degrees, counter-clockwise from east.
+        let north = anchor.placement_at((0.0, -8.0));
+        assert!(
+            (north.direction - 90.0).abs() < 1e-9 && (north.gap_mm - 2.0).abs() < 1e-9,
+            "{north:?}"
+        );
+    }
+}
+
 /// One number on the sheet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedNumber {
     pub resolved: ResolvedNumber,
+    /// The symbol the number hangs on.
+    pub anchor: NumberAnchor,
     /// The centre of its box on the page.
     pub centre: Pt,
     pub score: Score,
@@ -696,6 +750,12 @@ pub fn place_on_sheet(
             resolved: ResolvedNumber {
                 placement: current,
                 ..r.clone()
+            },
+            anchor: NumberAnchor {
+                centre: t.centre,
+                outer_r: t.circle_outer_r,
+                size: t.size,
+                unit: t.unit,
             },
             centre: placed.centre(),
             score,

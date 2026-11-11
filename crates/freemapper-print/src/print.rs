@@ -82,6 +82,9 @@ pub struct PrintReport {
     /// Characters of drawn texts that the embedded font has no glyph for (filled in by
     /// [`print_map`]; [`render_page`] leaves it empty).
     pub missing_glyphs: Vec<char>,
+    /// For each object a page's primitives name (the number a hit carries), its position in the map the page was
+    /// drawn from (`source_objects` of the page builder's report).
+    pub source_objects: Vec<usize>,
 }
 
 impl PrintReport {
@@ -177,6 +180,7 @@ fn render_page_within(
         dropped_pattern_objects: built.dropped_pattern_objects,
         substituted_fonts: built.substituted_fonts,
         missing_glyphs: built.missing_glyphs,
+        source_objects: built.source_objects,
     };
     Ok((page, report))
 }
