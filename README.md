@@ -299,7 +299,7 @@ im Ordner, in dem Sie Claude Code starten:
 
 `command` ist der absolute Pfad zum entpackten Programm. Auch in den Aufrufen gelten nur absolute Pfade, denn der
 Server kennt den Arbeitsordner des Agenten nicht. Die Werkzeuge, die schreiben, kommen sich nicht in die Quere,
-und die Kommentare der Projektdatei bleiben stehen. Bricht der Agent einen langen Export ab, endet
+und die Kommentare der Projektdatei bleiben bis auf wenige Fälle stehen, die das Handbuch nennt. Bricht der Agent einen langen Export ab, endet
 er nach dem Blatt, an dem er gerade zeichnet. Das [Handbuch](docs/manual/de.md#3-mit-einem-ki-agenten) beschreibt jedes Werkzeug, das Beispiel
 [`mcp-session`](examples/mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus dem Viktoriapark-Training,
 geprüft und als PDF geschrieben.

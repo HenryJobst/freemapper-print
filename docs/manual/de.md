@@ -95,26 +95,38 @@ Eingabe: „Mit check_project sehen Sie das Ergebnis“ statt „Mit check sehen
 
 - Alle Pfade sind absolut. Der Server kennt den Arbeitsordner des Agenten nicht, deshalb lehnt er einen
   relativen Pfad mit einer Meldung ab, die genau das sagt. `~` zählt als relativ.
-- Geht etwas schief, kommt die Meldung zurück, die auch die Kommandozeile ausgeben würde, und das Werkzeug hat
-  nichts geschrieben. Die Werkzeuge, die Layouts, Elemente und Zuordnungen ändern, prüfen die geänderte Datei,
-  bevor sie sie schreiben.
+- Geht etwas schief, kommt die Meldung zurück, die auch die Kommandozeile ausgeben würde, und die Projektdatei
+  bleibt, wie sie war. Die Werkzeuge, die Layouts, Elemente und Zuordnungen ändern, prüfen die geänderte Datei,
+  bevor sie sie schreiben. Scheitert ein Export an einem Blatt, bleiben die PDFs davor stehen, und die Meldung
+  nennt sie.
+- Eine Eingabe, die das Werkzeug nicht kennt, ist ein Fehler, der sie nennt. Ein Tippfehler wie `print_scal`
+  geht so nicht als Aufruf durch, der nichts geändert hat.
 - Schreiben geht der Reihe nach. Alle Werkzeuge, die schreiben, und `export_project` warten aufeinander, auch
   wenn der Agent mehrere zugleich aufruft. So sieht jeder Aufruf, was der vorige geschrieben hat. `project_info`,
   `check_project` und `list_courses` warten nicht.
-- Kommentare in der Projektdatei bleiben stehen. Verloren geht nur ein Kommentar am Ende einer Zeile, deren Wert
-  sich ändert, und einer in einer Untertabelle `[layouts.map_frame]`, die `set_layout` durch die kurze Form
-  `map_frame = { … }` ersetzt.
+- Kommentare in der Projektdatei bleiben stehen, mit drei Ausnahmen. Ändert sich der Wert eines Schlüssels,
+  bekommt er eine neue Zeile. Ein Kommentar am Ende dieser Zeile geht dabei verloren, ebenso einer in einem
+  Wert über mehrere Zeilen, etwa zwischen den Einträgen von `lines = [ … ]`. Eine Untertabelle wie
+  `[layouts.map_frame]` oder `[layouts.elements.anchor]` wird zu einer Zeile in der kurzen Form
+  `map_frame = { … }`. Die Kommentarzeilen über und in ihr wandern über diese Zeile, Kommentare am Ende ihrer
+  Zeilen gehen verloren. Eine neue Zeile verliert außerdem die Einrückung der alten.
 - Ist die Projektdatei ein Link, ändert der Server sie nicht und sagt das. Die Kommandozeile ersetzt den Link in
   diesem Fall durch eine Datei, was ein Agent nicht bemerken würde. Ein Projektordner, der ein Link ist, ist
   dagegen kein Problem.
 - `export_project` schreibt in `out_dir`, einen Ordner, den es schon gibt. Ein PDF gleichen Namens dort ersetzt
-  es. `layouts` geht nicht zusammen mit `courses` oder `single_file`. Das Ergebnis nennt höchstens 200 Dateien
-  und 200 Hinweise; `more_files` und `more` zählen den Rest.
+  es. `layouts` geht nicht zusammen mit `courses` oder `single_file`.
+- Die Ergebnisse bleiben auch bei großen Bahndateien klein. `export_project` nennt höchstens 200 Dateien,
+  `check_project` 200 Blätter, `project_info` 200 Bahnen, Abdeckungen und Zuordnungen, `list_courses` 200
+  Bahnen und `init_project` 200 Bahnnamen über alle Layouts. `check_project` und `export_project` geben
+  höchstens 200 Hinweise zurück. `more_files`, `more_sheets`, `more_courses`, `more_masks`,
+  `more_assignments` und `more` zählen den Rest. `needs_attention` gilt für alle Blätter, auch die
+  weggelassenen.
 - Abbrechen lässt sich nur `export_project`. Bricht der Agent den Aufruf ab, endet der Export nach dem Blatt, an
   dem er gerade zeichnet. Die PDFs davor bleiben ganz, eine halbe Datei bleibt nicht zurück. Mit `single_file`
   entsteht dann gar kein PDF. Schließt der Agent die Verbindung, zeichnet der Server noch bis zu fünf Sekunden
   weiter und endet dann ebenso. Die anderen Werkzeuge laufen bis zum Ende. Das dauert bei `check_project` mit
-  einer sehr großen Bahndatei (1000 Bahnen mit je 200 Posten) knapp zwei Minuten.
+  einer sehr großen Bahndatei (1000 Bahnen mit je 200 Posten) knapp zwei Minuten. Ein Werkzeug, das schreibt
+  und abgebrochen wird, während es auf einen anderen Schreibvorgang wartet, ändert nichts.
 - Die Standardausgabe gehört dem Protokoll. Fehler des Servers selbst stehen auf der Standardfehlerausgabe.
 
 Was kein Werkzeug ändert, etwa `[event]`, `[print]` oder eine vorhandene Korrektur unter `[[numbers]]`, ändert

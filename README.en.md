@@ -289,7 +289,7 @@ folder you start Claude Code in is enough:
 
 `command` is the absolute path of the unpacked program. The calls take absolute paths only, too, because the
 server does not know the agent's working folder. The tools that write do not get in each other's way, and the
-comments in the project file stay. The agent can cancel a long export; it stops after the sheet in hand. The
+comments in the project file stay, apart from a few cases the manual lists. The agent can cancel a long export; it stops after the sheet in hand. The
 [manual](docs/manual/en.md#3-with-an-ai-agent) describes every tool, and the example
 [`mcp-session`](examples/mcp-session/README.en.md) shows a real session: window orienteering from the
 Viktoriapark training, checked and written as a PDF.

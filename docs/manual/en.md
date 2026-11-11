@@ -94,24 +94,34 @@ result" instead of "Run check to see the result".
 
 - All paths are absolute. The server does not know the agent's working folder, so it refuses a relative path
   with a message that says so. `~` counts as relative.
-- When something goes wrong, the message is the one the command line would print, and the tool has written
-  nothing. The tools that change layouts, elements and assignments check the changed file before they write it.
+- When something goes wrong, the message is the one the command line would print, and the project file stays as
+  it was. The tools that change layouts, elements and assignments check the changed file before they write it.
+  An export that fails at one sheet keeps the PDFs it wrote before, and its message names them.
+- An input the tool does not know is an error that names it, so a typo such as `print_scal` does not pass as a
+  call that changed nothing.
 - Writes happen one after the other. All tools that write, and `export_project`, wait for each other, also when
   the agent calls several at once, so each call sees what the one before wrote. `project_info`, `check_project`
   and `list_courses` do not wait.
-- Comments in the project file stay. The only ones lost are a comment at the end of a line whose value changes,
-  and one inside a sub-table `[layouts.map_frame]` that `set_layout` turns into the short form
-  `map_frame = { … }`.
+- Comments in the project file stay, with three exceptions. A key whose value changes gets a new line, so a
+  comment at the end of that line is lost, and so is one inside a value that spans several lines, such as between
+  the entries of `lines = [ … ]`. A sub-table such as `[layouts.map_frame]` or `[layouts.elements.anchor]` becomes
+  one line in the short form `map_frame = { … }`: the comment lines above and inside it move above that line, and
+  comments at the end of its lines are lost. A new line also loses the indentation of the old one.
 - When the project file is a link, the server does not change it and says so. The command line replaces the link
   with a file in that case, which an agent would not notice. A project folder that is a link works.
 - `export_project` writes into `out_dir`, a folder that exists already. It replaces a PDF of the same name there.
-  `layouts` does not go with `courses` or `single_file`. The result lists at most 200 files and 200 notes;
-  `more_files` and `more` count the rest.
+  `layouts` does not go with `courses` or `single_file`.
+- Results stay small for large course files. `export_project` lists at most 200 files, `check_project` 200
+  sheets, `project_info` 200 courses, mask variants and assignments, `list_courses` 200 courses, and
+  `init_project` 200 course names over its layouts. `check_project` and `export_project` return at most 200
+  notes. `more_files`, `more_sheets`, `more_courses`, `more_masks`, `more_assignments` and `more` count the rest.
+  `needs_attention` covers every sheet, also those left out.
 - Only `export_project` can be cancelled. When the agent cancels the call, the export stops after the sheet it is
   drawing. The PDFs before it stay whole, and no partial file is left. With `single_file` no PDF is written then.
   When the agent closes the connection, the server draws for up to five more seconds and then stops the same way.
   The other tools run to the end. For `check_project` on a very large course file (1000 courses of 200 controls
-  each) that takes almost two minutes.
+  each) that takes almost two minutes. A tool that writes and is cancelled while it waits for another write
+  changes nothing.
 - Standard output belongs to the protocol. Errors of the server itself go to standard error.
 
 What no tool changes, such as `[event]`, `[print]` or an existing correction under `[[numbers]]`, the agent

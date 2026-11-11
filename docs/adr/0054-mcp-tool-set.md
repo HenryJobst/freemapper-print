@@ -42,7 +42,9 @@ run a CLI flag that a message tells it to use.
 - The server's language is the CLI's (`--lang`, else the environment). Each call may choose another with `lang`;
   an unknown value is a tool error worded in the server's language.
 - Ops run in `tokio::task::spawn_blocking`, because they read files and draw sheets. A panic in an op becomes the
-  tool error "internal error: …", and the server keeps serving.
+  tool error "internal error: …", and the server keeps serving. A test makes a read and a write op panic through a
+  seam that exists in test builds only (`panic_for_test`, a project path named `panic-for-test`) and checks that
+  the next read and write succeed.
 - The server info carries the website https://github.com/HenryJobst/freemapper-print, and the instructions name
   the tools and end with that link.
 - Tests talk to the server in-process over a `tokio::io::duplex` pipe with hand-written JSON-RPC lines, so rmcp's
@@ -79,15 +81,23 @@ itself, both sides canonicalised where possible, as `init` stores the map.
 
 - Every failure is a tool result with `isError: true` and one text block, never a JSON-RPC error: the agent sees
   it and can correct the call (MCP spec), and all failures look alike, as in freemapper. The text is `{:#}` of
-  `op_error` through `printable`, without the "Error:" lead of the CLI. Only rmcp's own errors for a missing field
-  or a wrong type or enum value are rmcp's English text and ignore `lang`.
+  `op_error` through `printable`, without the "Error:" lead of the CLI. Only rmcp's own errors for a missing field,
+  an unknown field or a wrong type or enum value are rmcp's English text and ignore `lang`. Every input struct has
+  `#[serde(deny_unknown_fields)]`, so a typo such as `print_scal` is an error that names the field; before, it
+  was ignored and `set_layout` answered `unchanged`.
 - Results are `serde_json::to_string`, compact. `check_project` has its own output structs that put
   `describe(texts)` into every note. It returns at most 200 notes over the whole result, in the order course file,
-  courses, layouts; `more` counts the rest and is left out at 0. Every sheet is listed, so the size is bounded by
-  the number of sheets plus 200 notes. A failed sheet has `outcome: "failed"` and its `sheet_failed` note (severity
+  courses, layouts; `more` counts the rest and is left out at 0. It lists at most 200 sheets, course sheets first,
+  and `more_sheets` counts the rest; a sheet left out takes no notes from the budget. One drawn sheet without notes
+  is about 190 bytes, so the hostile project of ADR 0040 would return about 190 KB of sheets without the cap.
+  `needs_attention` covers every sheet, also those left out. A failed sheet has `outcome: "failed"` and its `sheet_failed` note (severity
   error). `needs_attention` at the top matches the CLI's `check` exit code 1.
-- `list_courses` reuses `ops::project::info` and returns `{courses_file, courses}`, so an agent can tell "no course
-  file" from an empty one.
+- `list_courses` reuses `ops::project::info` and returns `{courses_file, courses, more_courses?}`, so an agent can
+  tell "no course file" from an empty one. `project_info` and `list_courses` returned 56 KB each on the hostile
+  project (1000 courses). Both now list at most 200 courses, and `project_info` also at most 200 mask variants and
+  200 assignments (`init` writes one assignment per course); `more_courses`, `more_masks` and `more_assignments`
+  count the rest. `init_project` names at most 200 courses over all its layouts (`more_courses`). One constant,
+  `MAX_ENTRIES` = 200, caps every list, the export's files included.
 - The four tools that wrap a command (`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`) return
   the op result plus `messages`, the lines the CLI prints after the command; init's progress lines are among them
   except the fitting line, which is for a terminal. The CLI's printing moved into functions that return lines, so
@@ -99,6 +109,10 @@ itself, both sides canonicalised where possible, as `init` stores the map.
   `pages`. At most 200 files and 200 notes come back; `more_files` and `more` count the rest. A hostile export
   without the file cap returned 1000 entries, 403 KB of JSON. `reminder` is left out when nothing was written, and
   `message` then carries `note-no-courses-to-export`.
+- `export_courses` and `export_layouts` stop at the first sheet that fails and keep the files before it (a full
+  disk at the third of ten courses leaves two PDFs). The tool's progress callback collects the PDFs written, and an
+  error after some of them gets `mcp-error-export-written` appended: their number and the first 200 paths. So the
+  rule "a failed tool has written nothing" holds for the project file only, and the manual says so.
 
 ### Messages worded for an agent
 
@@ -113,23 +127,37 @@ English twin differs from its original. Text written into the project file (the 
 
 - One write lock per server: an `Arc<tokio::sync::Mutex<()>>`, taken with `lock_owned` before the project is read.
   The guard moves into the blocking task, so a call the client gives up on keeps the lock until its write is done.
+  rmcp's `notifications/cancelled` only cancels the request's token and does not abort the handler. Every tool that
+  takes the lock therefore takes the `RequestContext` and checks its token in the blocking task right after the
+  lock is acquired: a call cancelled while it waited in the queue does not run and writes nothing
+  (`mcp-error-cancelled`). Before, it wrote once the lock was free, and since rmcp drops the answer to a cancelled
+  request, the agent never learned of it.
   Every write tool and `export_project` (it reads the project) take it; the read tools do not. The lock is per
   server, so writes to different projects queue too, which is simple and safe.
 - The project already had no `toml_edit`: `masks` and `numbers` append text. The new edits follow that and use an
   own line editor in `project/edit.rs` instead of adding `toml_edit`. A new dependency would have to pass ADR 0006
   and brings its own formatting choices, while a small editor that changes only the lines it must keeps every
   comment and blank line it does not touch, which is what the project file needs. A line lexer tracks strings (basic,
-  literal and both multi-line kinds) and bracket depth, so it finds headers and keys at top level only. Values are
-  written with `toml::ser::ValueSerializer` (inline tables, struct field order).
+  literal and both multi-line kinds) and bracket depth, so it finds headers and keys at top level only. A byte order
+  mark before the first line is skipped. Values are written with `toml::ser::ValueSerializer` (inline tables,
+  struct field order). It writes a string with a line break as a multi-line string; `one_line_strings` rewrites
+  those as basic strings with `\n` escapes. Without that, a CRLF file turned the `\n` inside the string into
+  `\r\n`, the text read back as another value, and the change was refused with a misleading `NotEditable`.
 - Editing rules: a key whose value does not change keeps its line byte for byte, comment included. A changed key is
   replaced at its first line; dotted keys and sub-tables of that key go. A new key follows the table's last key. A
   new table follows the last table of its kind (a layout after the last layout and its elements, a first shared
   element before the first layout, a first assignment at the end). Comment and blank lines directly above a header
-  belong to the table below them. On a CRLF file inserted text gets CRLF.
+  belong to the table below them. A sub-table that becomes an inline key goes with the comment and blank lines
+  above its header; its comment lines, those above the header and those inside, move above the new key line, so
+  no comment is left above a table it does not describe. On a CRLF file inserted text gets CRLF. Tests pin CRLF,
+  a byte order mark, multi-line strings holding header text, anchor sub-tables, a file without a last line break
+  and a `[layouts.map_frame]` placed after the layout's `[[layouts.elements]]`.
 - Preflight validation, before anything is written: the changed project goes through `validate` (the load checks),
   so a bad value gives the field error. Then the new text goes through `load_text` and must equal the expected
-  project, else `ProjectError::NotEditable { file, what, table }` (tables not written as `[[…]]` of their own, such
-  as inline arrays). Then `rewrite` replaces the file, loads it and puts the old content back on a mismatch, as for
+  project, else `ProjectError::NotEditable { file, target }` (tables not written as `[[…]]` of their own, such
+  as inline arrays). `target` is an `EditTarget` (a layout, the elements of a layout, the shared elements, the
+  assignment of a course), so the CLI words it in the user's language (`error-not-editable-*`): the path and
+  "was not changed" once each, with the verb agreeing with "elements". Then `rewrite` replaces the file, loads it and puts the old content back on a mismatch, as for
   masks and numbers. `load` became `load` plus a private `load_text` for this.
 - `set_layout` merges: keys left out keep their value (or the default for a new layout), `null` clears
   `print_scale` and `centre_map_mm`, and the layout's elements are never touched. Full replacement was rejected
@@ -177,7 +205,8 @@ project" are the writer's `OutputError`, worded as in the CLI.
   costs up to 5 s of drain plus one sheet. rmcp drops the answer to a cancelled request, so an agent seldom sees
   `error-export-stopped`.
 - Not interruptible: a sheet being drawn (bounded by the number search budget of ADR 0038 and the render page
-  budget), loading project, map and course file, and every tool other than `export_project`. The single file is
+  budget), loading project, map and course file, and every tool other than `export_project` once it has started.
+  A tool that writes and is cancelled while it waits for the lock does not start. The single file is
   built in memory and written at the end, so a cancel leaves no file. Per-sheet files go through
   `write_project_pdf` (temporary `.part` and rename), so no half-written PDF remains.
 - The hostile case of the plan ("a 1000 x 200 mm sheet") is ADR 0040's course file of 1000 courses with 200 controls
@@ -209,14 +238,17 @@ tests run with `--locked`. Every new Cargo.lock entry has the version freemapper
 - A long export can be stopped between sheets. `check_project` cannot: on the hostile file it runs 110 s, and EOF
   during it waits for the end. The same `ControlFlow` approach could go into `ops::check` if that matters.
 - Closing stdin during an export lets it draw for up to 5 s more, because rmcp's drain is fixed.
-- Comments inside a rewritten key are lost: an inline comment on a changed key line, and comments in a
-  `[layouts.map_frame]` sub-table that becomes one inline key. Comments above a changed key and everywhere else
-  stay.
+- Comments inside a rewritten key are lost: a comment at the end of a changed key line, a comment inside a value
+  over several lines that changes (between the entries of `lines = [ … ]`), and comments at the end of the lines
+  of a sub-table that becomes one inline key. The comment lines of such a sub-table move above the new key.
+  Comments above a changed key and everywhere else stay. A changed key line also loses its indentation.
 - `rewrite` replaces, loads and restores. If the process dies between replace and restore, a bad file can remain.
   The edit tools avoid this with the in-memory checks first; masks and numbers keep the old order because a CLI
   test expects a link to become a regular file even when the reload fails.
 - rmcp's own deserialisation errors and library validation texts inside a localised lead-in (ADR 0024) stay
   English.
+- The plan's `docs/mcp.md` (Task 5) was dropped on purpose. The Claude Code `.mcp.json` snippet is in chapter 3
+  of the manual and in both READMEs; a fourth copy would only drift from them.
 - Cost if wrong: an editor of our own to maintain, and a switch to `toml_edit` later would touch `project/edit.rs`
   only.
 
