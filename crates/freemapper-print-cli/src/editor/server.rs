@@ -1791,7 +1791,10 @@ mod tests {
         let (reached_tx, reached_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let file = project.path().join("freemapper-print.toml");
-        *super::super::api::EXPORT_GATE.lock().unwrap() = Some((file, reached_tx, release_rx));
+        super::super::api::EXPORT_GATE
+            .lock()
+            .unwrap()
+            .push((file, reached_tx, release_rx));
         let (host, prefix) = (run.host.clone(), run.prefix.clone());
         let body = export_body(out.path(), "");
         let export = std::thread::spawn(move || {
@@ -1895,7 +1898,10 @@ mod tests {
         let (reached_tx, reached_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let file = project.path().join("freemapper-print.toml");
-        *super::super::api::EXPORT_GATE.lock().unwrap() = Some((file, reached_tx, release_rx));
+        super::super::api::EXPORT_GATE
+            .lock()
+            .unwrap()
+            .push((file, reached_tx, release_rx));
         let (host, prefix) = (run.host.clone(), run.prefix.clone());
         let body = export_body(out.path(), "");
         let export = std::thread::spawn(move || {

@@ -78,7 +78,7 @@ impl Drop for Running<'_> {
 /// Test hook: the first page an export of `project` reports tells `reached` and waits for `release`, before the
 /// cancel flag is looked at.
 #[cfg(test)]
-pub(super) static EXPORT_GATE: Mutex<Option<Gate>> = Mutex::new(None);
+pub(super) static EXPORT_GATE: Mutex<Vec<Gate>> = Mutex::new(Vec::new());
 
 /// Test hook: how many sheets were drawn for each project file (each test has a project of its own).
 #[cfg(test)]
@@ -1056,10 +1056,8 @@ pub(super) async fn post_export(
                         gated = true;
                         let gate = {
                             let mut slot = EXPORT_GATE.lock().unwrap_or_else(|e| e.into_inner());
-                            match slot.as_ref() {
-                                Some((p, ..)) if *p == worker_project => slot.take(),
-                                _ => None,
-                            }
+                            let at = slot.iter().position(|(p, ..)| *p == worker_project);
+                            at.map(|at| slot.remove(at))
                         };
                         if let Some((_, reached, release)) = gate {
                             let _ = reached.send(());
