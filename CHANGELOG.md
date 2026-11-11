@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Die Druckregeln (das Profil `iof-print`, die Kartenarten, die Symbolgrößentabelle je Druckmaßstab, die Kurssymbolgrößen) kommen jetzt aus freemapper-core v0.16.0 (Entscheidung 0056). So nutzt freemapper-courseplan dieselben Werte wie das Blatt. Die Ausgabe bleibt unverändert.
 - Die Kursüberdruckung (Start, Posten, Ziel, Strecken, Sonderobjekte, Postennummern) kommt jetzt aus freemapper-core v0.15.0 (Entscheidung 0055). So zeichnet der Browser-Editor von freemapper-courseplan dieselben Symbole wie das Blatt. Die Ausgabe bleibt unverändert.
 
 ### Hinzugefügt

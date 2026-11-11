@@ -23,7 +23,7 @@ before changing code.
 - Core crates (`freemapper-text`, `-rules`, `-fs`, `-omap`, `-course`, `-render`) are git dependencies pinned to one tag; their own
   crates are exempt from ADR 0006 (ADR 0042). `lib.rs` re-exports omap, course and render as `omap`, `course`, `placement` and `render`
   (ADR 0043). Owners: text and rules freemapper-courseplan, georef and fs freemapper, omap and course freemapper-print
-  (they live in core now; changes go there), render freemapper-print (lives in core since v0.9.0, ADR 0051, and so does the page builder since v0.13.0, ADR 0053, and the course overprint since v0.15.0, ADR 0055; the scale policy stays here). Ask the owner over
+  (they live in core now; changes go there), render freemapper-print (lives in core since v0.9.0, ADR 0051, and so does the page builder since v0.13.0, ADR 0053, the course overprint since v0.15.0, ADR 0055, and the print rules and scale tables since v0.16.0, ADR 0056 as the crate `freemapper-printrules`). Ask the owner over
   SendMessage before changing a core crate. A local `[patch]` to `../freemapper-core` never reaches `main`.
 - `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test` must pass; hooks in
   `.claude/` and `lefthook.yml` run them.

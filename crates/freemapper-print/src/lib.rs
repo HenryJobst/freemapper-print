@@ -13,7 +13,6 @@ pub mod numbers;
 pub mod output;
 pub mod print;
 pub mod project;
-pub mod rules;
 pub mod scale;
 pub mod sheet;
 
@@ -23,9 +22,12 @@ pub use freemapper_course as course;
 pub use freemapper_course::description_symbols;
 pub use freemapper_course::placement;
 pub use freemapper_omap as omap;
+/// The print rules live in freemapper-printrules since core v0.16.0 (ADR 0056).
+pub use freemapper_printrules as printrules;
 pub use freemapper_render as render;
 /// The course overprint lives in freemapper-render since core v0.15.0 (ADR 0055).
 pub use freemapper_render::overprint;
+pub use printrules::rules;
 #[cfg(test)]
 mod overprint_tests;
 
@@ -259,7 +261,12 @@ mod boundaries {
             .filter(|f| *f != lib)
         {
             let text = std::fs::read_to_string(&file).unwrap();
-            for name in ["freemapper_omap", "freemapper_course", "freemapper_render"] {
+            for name in [
+                "freemapper_omap",
+                "freemapper_course",
+                "freemapper_render",
+                "freemapper_printrules",
+            ] {
                 if text.contains(name) {
                     found.push(format!("{}: {name}", file.display()));
                 }

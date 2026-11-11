@@ -96,3 +96,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0053](0053-page-builder-comes-from-freemapper-core.md) | The page builder comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) | 2026-11-11 |
 | [0054](0054-mcp-tool-set.md) | The MCP tool set | Accepted, implements [0004](0004-mcp-over-stdio-as-a-primary-interface.md) | 2026-11-11 |
 | [0055](0055-course-overprint-comes-from-freemapper-core.md) | The course overprint comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) |
+| [0056](0056-print-rules-come-from-freemapper-core.md) | The print rules come from freemapper-core | Accepted, amends [0031](0031-print-rules-as-data-profiles.md) and [0018](0018-symbols-scale-as-the-iof-standards-set.md) |

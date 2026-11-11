@@ -27,8 +27,7 @@ pub const MAX_LENGTH_MM: f64 = 2000.0;
 pub const MAX_BORDER_MM: f64 = 20.0;
 /// Smallest and largest printed cell of a control description box (mm). Below 4 mm the symbols are hard to
 /// read; IOF events print 5 to 7 mm, and 10 mm leaves room for training sheets in large print.
-pub const MIN_CELL_MM: f64 = 4.0;
-pub const MAX_CELL_MM: f64 = 10.0;
+pub use crate::rules::{MAX_CELL_MM, MIN_CELL_MM};
 /// Largest contour interval (m).
 pub const MAX_CONTOUR_INTERVAL_M: f64 = 100.0;
 /// Farthest map point a frame may centre on, in either direction (mm on the map sheet). OOM maps
