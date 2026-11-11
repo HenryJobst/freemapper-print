@@ -236,6 +236,7 @@ mod tests {
         assert!(answer.contains("script-src 'self'"));
         assert!(answer.contains("form-action 'none'"));
         assert_eq!(get(&run, "/suite/suite.css").0, 200);
+        assert_eq!(get(&run, "/suite/api.js").0, 200);
         assert_eq!(get(&run, "/assets/app.js").0, 200);
         assert_eq!(get(&run, "/assets/nothing.js").0, 404);
         finish(run);

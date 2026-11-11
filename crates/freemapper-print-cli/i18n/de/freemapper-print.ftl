@@ -545,8 +545,8 @@ agent-masks-run-check = Mit check_project sehen Sie das Ergebnis.
 agent-note-mask-unused = Zur Information: Keine Bahn nutzt die Abdeckung „{ $id }“. assign_mask ordnet sie einer Bahn zu; wer sie nicht mehr braucht, löscht ihren Eintrag [[masks]] in der Projektdatei.
 
 # ---- edit (M6 Task 2) ----
-edit-about = Öffnet ein Projekt im Editor, einer Seite im Browser auf diesem Computer.
+edit-about = Öffnet ein Projekt zum Bearbeiten in einer Seite im Browser.
 edit-no-browser = Gibt die Adresse aus und öffnet den Browser nicht.
 edit-listening = Der Editor läuft unter { $url }. Zum Beenden Strg+C drücken oder im Browser auf „Fertig“ klicken.
 help-edit-port = Port auf 127.0.0.1; bei 0 wählt das System einen freien.
-error-serve = der Editor konnte nicht laufen
+error-serve = der Editor konnte nicht gestartet werden oder ist abgebrochen
