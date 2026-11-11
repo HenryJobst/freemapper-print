@@ -13,6 +13,7 @@ really ran, and every request and answer is in `session.jsonl`.
 |---|---|
 | `session.jsonl` | the session, one message per line |
 | `record_session.py` | the script that plays and records the session |
+| `check_record_session.py` | checks that `record_session.py` refuses a folder with content |
 | `preview.jpg` | the PDF the session wrote, as an image |
 
 The PDF itself is not stored here; `record_session.py` writes it again (see below).
@@ -100,14 +101,17 @@ cargo build --locked
 python3 -I examples/mcp-session/record_session.py target/debug/freemapper-print /tmp/mcp-session
 ```
 
-The script copies the example to `/tmp/mcp-session/Verein/viktoriapark-training`, plays the session, writes
-`session.jsonl` again and leaves the PDF in `/tmp/mcp-session/Verein/pdf`. The preview comes from
-`pdftoppm -r 100 -png` and `magick … -quality 82 preview.jpg`.
+The work folder `/tmp/mcp-session` must be missing or empty. If it holds anything, the script stops with a
+message; it deletes no folder. Without the second argument it makes a new temporary folder. The script copies the
+example to `/tmp/mcp-session/Verein/viktoriapark-training`, plays the session, writes `session.jsonl` again and
+leaves the PDF in `/tmp/mcp-session/Verein/pdf`. The preview comes from `pdftoppm -r 100 -png` and
+`magick … -quality 82 preview.jpg`. `python3 -I examples/mcp-session/check_record_session.py` checks without a
+build that the script refuses a folder with content and a file, and leaves both as they were.
 
 ## Credits and licence
 
 Map, course and project file come from
 [berlin-viktoriapark-training](../berlin-viktoriapark-training/README.en.md), which names their sources and
-licences. The map is under the terms its `ATTRIBUTION.txt` names. The session, the script and the preview were
+licences. The map is under the terms its `ATTRIBUTION.txt` names. The session, the scripts and the preview were
 made for this example and are released under CC0. The PDF and the preview were made with
 [freemapper-print](https://github.com/HenryJobst/freemapper-print).

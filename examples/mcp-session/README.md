@@ -13,6 +13,7 @@ Sitzung lief wirklich, jede Anfrage und jede Antwort steht in `session.jsonl`.
 |---|---|
 | `session.jsonl` | die Sitzung, eine Nachricht je Zeile |
 | `record_session.py` | das Skript, das die Sitzung abspielt und aufzeichnet |
+| `check_record_session.py` | prüft, dass `record_session.py` einen Ordner mit Inhalt ablehnt |
 | `preview.jpg` | das PDF, das die Sitzung geschrieben hat, als Bild |
 
 Das PDF selbst liegt nicht hier; `record_session.py` schreibt es neu (siehe unten).
@@ -99,13 +100,17 @@ cargo build --locked
 python3 -I examples/mcp-session/record_session.py target/debug/freemapper-print /tmp/mcp-session
 ```
 
-Das Skript kopiert das Beispiel nach `/tmp/mcp-session/Verein/viktoriapark-training`, spielt die Sitzung ab,
-schreibt `session.jsonl` neu und lässt das PDF in `/tmp/mcp-session/Verein/pdf`. Die Vorschau entsteht mit
+Der Arbeitsordner `/tmp/mcp-session` muss fehlen oder leer sein. Hat er Inhalt, bricht das Skript mit einer
+Meldung ab; es löscht keinen Ordner. Ohne zweites Argument legt es einen neuen temporären Ordner an. Das Skript
+kopiert das Beispiel nach `/tmp/mcp-session/Verein/viktoriapark-training`, spielt die Sitzung ab, schreibt
+`session.jsonl` neu und lässt das PDF in `/tmp/mcp-session/Verein/pdf`. Die Vorschau entsteht mit
 `pdftoppm -r 100 -png` und `magick … -quality 82 preview.jpg`.
+`python3 -I examples/mcp-session/check_record_session.py` prüft ohne Build, dass das Skript einen Ordner mit
+Inhalt und eine Datei ablehnt und beide unverändert lässt.
 
 ## Herkunft und Lizenz
 
 Karte, Bahn und Projektdatei stammen aus [berlin-viktoriapark-training](../berlin-viktoriapark-training/README.md);
-dort stehen ihre Quellen und Lizenzen. Für die Karte gilt, was dessen `ATTRIBUTION.txt` nennt. Sitzung, Skript
+dort stehen ihre Quellen und Lizenzen. Für die Karte gilt, was dessen `ATTRIBUTION.txt` nennt. Sitzung, Skripte
 und Vorschau sind für dieses Beispiel entstanden und stehen unter CC0. Das PDF und die Vorschau sind mit
 [freemapper-print](https://github.com/HenryJobst/freemapper-print) erzeugt.
