@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-11
+
 ### Added
 
 - `freemapper-print mcp` starts an MCP server on standard input and output, through which an AI agent such as Claude Code works with the program (ADR 0004, ADR 0054). It has eleven tools: `project_info`, `check_project` and `list_courses` read a project; `init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` and `assign_mask` write into the project file and keep its comments, apart from a few cases the manual lists; `export_project` writes the PDFs. Paths must be absolute. An error comes back with the message the command line prints, and the project file stays as it was. When an export fails at one sheet, the message names the PDFs it wrote before. An input a tool does not know is an error that names it. Calls that write run one after the other, also when the agent sends several at once. The results are JSON. A list of files, sheets, courses, mask variants or assignments has at most 200 entries, plus at most 200 notes; the rest is counted. Where a command-line message names an option, the server names the tool and its input. Chapter 3 of the manual describes the setup with a `.mcp.json` and every tool.
@@ -21,7 +23,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 ### Changed
 
 - The work of the commands now sits in a module `ops`, apart from the terminal output, so that the command line and the MCP server share the same steps. The command-line output stays byte-identical, checked with 136 runs in both languages. The library's export loops can stop between two sheets through a callback (`export::Proceed`); existing callers do not change.
-- The shared building blocks come from freemapper-core v0.13.0 (candidates without float noise, `MapGrid`, the suite contract). Output is unchanged.
+- The shared building blocks come from freemapper-core v0.14.0 (candidates without float noise, `MapGrid`, the suite contract). Output is unchanged.
 - The page builder (map, print scale and paper in, finished page out) comes from freemapper-core (ADR 0053). The scale rules stay here; the builder is given the symbol and geometry factors. The example PDFs stay byte-identical.
 - The renderer (page model, symbol drawing, PDF writer, Arimo font) comes from freemapper-core as `freemapper-render` (ADR 0051). The example PDFs stay byte-identical.
 - Tests: every test run now reads four maps from freemapper (schoolyard 1:1000, sprint 1:4000, a map from freemapper 0.9.0 and one with an unknown map kind) and compares map kind, title, sheet objects, base area and extent with the expected values from `freemapper-contract` (decision 0050). If freemapper changes a tag or a key of `freemapper.toml`, these tests fail before a sheet is printed wrong.

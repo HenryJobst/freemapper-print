@@ -129,12 +129,12 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.5.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.1) vom
-10. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Aktuelle Version ist [v0.6.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.0) vom
+11. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
-dazu. Auf `main` ist auch M5 fertig, der MCP-Server für KI-Agenten; er kommt mit der nächsten Version. Die erste Version richtet sich an Vereinstrainings in Stadt und
+dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Version dazu. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).

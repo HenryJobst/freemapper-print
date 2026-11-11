@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.6.0] - 2026-11-11
+
 ### Hinzugefügt
 
 - `freemapper-print mcp` startet einen MCP-Server auf Standardein- und -ausgabe, über den ein KI-Agent wie Claude Code mit dem Programm arbeitet (ADR 0004, ADR 0054). Er hat elf Werkzeuge: `project_info`, `check_project` und `list_courses` lesen ein Projekt; `init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` und `assign_mask` schreiben in die Projektdatei und lassen ihre Kommentare bis auf wenige Fälle stehen, die das Handbuch nennt; `export_project` schreibt die PDFs. Pfade müssen absolut sein. Ein Fehler kommt mit der Meldung zurück, die auch die Kommandozeile ausgibt, und die Projektdatei bleibt dann, wie sie war. Scheitert ein Export an einem Blatt, nennt die Meldung die PDFs, die er davor geschrieben hat. Eine Eingabe, die ein Werkzeug nicht kennt, ist ein Fehler, der sie nennt. Schreibende Aufrufe laufen nacheinander, auch wenn der Agent mehrere zugleich schickt. Die Ergebnisse sind JSON. Eine Liste von Dateien, Blättern, Bahnen, Abdeckungen oder Zuordnungen hat höchstens 200 Einträge, dazu kommen höchstens 200 Hinweise; der Rest wird gezählt. Wo eine Meldung der Kommandozeile eine Option nennt, nennt der Server das Werkzeug und seine Eingabe. Kapitel 3 des Handbuchs beschreibt die Einrichtung mit einer `.mcp.json` und jedes Werkzeug.
@@ -21,7 +23,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 ### Geändert
 
 - Die Arbeit der Befehle steckt jetzt in einem Modul `ops`, getrennt von der Ausgabe im Terminal, damit Kommandozeile und MCP-Server dieselben Schritte nutzen. Die Ausgabe der Kommandozeile ist Byte für Byte gleich geblieben, geprüft mit 136 Aufrufen in beiden Sprachen. Die Exportschleifen der Bibliothek können über einen Rückruf zwischen zwei Blättern anhalten (`export::Proceed`); bestehende Aufrufer ändern sich nicht.
-- Die gemeinsamen Bausteine kommen aus freemapper-core v0.13.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`, Vertrag der Suite). Die Ausgabe bleibt unverändert.
+- Die gemeinsamen Bausteine kommen aus freemapper-core v0.14.0 (Kandidaten ohne Rundungsrauschen, `MapGrid`, Vertrag der Suite). Die Ausgabe bleibt unverändert.
 - Der Seitenaufbau (Karte, Druckmaßstab und Papier ergeben die fertige Seite) kommt aus freemapper-core (ADR 0053). Die Maßstabsregeln bleiben hier; der Aufbau bekommt Symbol- und Geometriefaktor vorgegeben. Die Beispiel-PDFs sind Byte für Byte gleich geblieben.
 - Der Renderer (Seitenmodell, Symbolzeichnung, PDF-Schreiber, Schrift Arimo) kommt als `freemapper-render` aus freemapper-core (ADR 0051). Die Beispiel-PDFs sind Byte für Byte gleich geblieben.
 - Tests: Jeder Testlauf liest jetzt vier Karten von freemapper (Schulhof 1:1000, Sprint 1:4000, eine Karte von freemapper 0.9.0 und eine mit unbekannter Kartenart) und vergleicht Kartenart, Titel, Randobjekte, Grundfläche und Ausdehnung mit den Erwartungswerten aus `freemapper-contract` (Entscheidung 0050). Ändert freemapper ein Tag oder einen Schlüssel der `freemapper.toml`, schlagen diese Tests fehl, bevor ein Blatt falsch gedruckt wird.

@@ -125,12 +125,12 @@ on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows t
 
 ## Status
 
-The current version is [v0.5.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.5.1) of
-10 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+The current version is [v0.6.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.0) of
+11 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
-On `main`, M5 is done as well: the MCP server for AI agents, which comes with the next version.
+Milestone M5, the MCP server for AI agents, is part of this version.
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
