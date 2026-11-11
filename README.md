@@ -14,7 +14,7 @@ gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt di
 
 Das kann es schon:
 
-- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4 oder A3, auch in
+- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4, A3 oder einer frei gewählten Seitengröße, auch in
   einem anderen Maßstab mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die jüngsten
   Klassen mit Symbolen auf 133 %);
 - eine Projektdatei je Veranstaltung mit beliebig vielen Layouts: angelegt mit `init`, geprüft mit `check`, als

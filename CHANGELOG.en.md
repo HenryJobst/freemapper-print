@@ -7,9 +7,13 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- A layout can set `page_mm = [width, height]` (portrait, 10 to 5080 mm a side) instead of `paper`, for a map larger than A3 at map scale (decision 0058). `set_layout` takes `page_mm` too; `null` goes back to the paper. A page larger than A3 gets the note that an office printer will not take it. The command line `render` stays on A4 and A3.
+
 ### Changed
 
-- Core pin moves to freemapper-core v0.20.0 (free page size and the source position of each object in the page builder). Print offers neither yet; layouts stay A4 and A3.
+- Core pin moves to freemapper-core v0.20.0 (free page size and the source position of each object in the page builder). Print uses the free page size (see Added); the source positions it does not use yet.
 - The map kind and the reader of `freemapper.toml` come from freemapper-contract (freemapper-core v0.19.0, decision 0057), one type for the suite. Behaviour is unchanged.
 - `AGENTS.md` puts the command line first and MCP second: an agent that can run commands does the job with a few blocking calls instead of one turn per tool call. MCP stays the way for assistants without a shell. The command-line section names what only MCP offers (`project_info`, `list_courses`, `set_layout`, `set_element`, `assign_mask`) and how to do it in the project file instead.
 

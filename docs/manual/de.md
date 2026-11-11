@@ -78,7 +78,7 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | die ID der Abdeckung und die Meldungen |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` oder `layout_wide`) | `direction` und `gap`, nur zusammen | die eingetragene Korrektur und die Meldung |
-| `set_layout` | | `project`, `id` | `paper`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
+| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | das Element und `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
@@ -326,6 +326,7 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 |---|---|---|
 | `id` | | Name des Layouts und des PDFs (`a3-3000.pdf`), Pflicht |
 | `paper` | `"A4"` | `"A4"` oder `"A3"` |
+| `page_mm` | Papier | stattdessen eine Seite beliebiger Größe, `[Breite, Höhe]` im Hochformat, jede Seite 10 bis 5080 mm: `page_mm = [500.0, 700.0]`. Für eine Karte, die im Kartenmaßstab größer als A3 ist. Die Ausrichtung gilt auch dafür. Über A3 sagt `check` das, weil ein Bürodrucker so ein Blatt nicht annimmt |
 | `orientation` | `"auto"` | `"portrait"` (hoch), `"landscape"` (quer) oder `"auto"`: die Ausrichtung, in der weniger von der Karte fehlt |
 | `print_scale` | Maßstab der Karte | Nenner des Druckmaßstabs, `3000` für 1:3000 |
 | `north_lines` | `"auto"` | `"auto"` ergänzt Nordlinien, wenn die Karte keine hat; `"never"` nie |
@@ -1022,7 +1023,7 @@ Exit-Code 1 enden; eine Zeile, die mit „Zur Information:“ beginnt, nicht.
 | „Die Fußzeile … ragt über den Blattrand“ | Die Fußzeile reicht über das Blatt hinaus. Passepartout und Quellenangaben prüfen. |
 | „Das Element … ragt über den Blattrand“ | Anker oder Abstand des Elements prüfen; ein Logo eventuell schmaler machen. |
 | „Das Element … hängt am Blatt und deckt einen Teil des Kartenausschnitts ab“ | Ein Element am Blatt (`to = "page"`) liegt über der Karte. Ans Passepartout rücken oder an den Kartenausschnitt hängen, wenn es auf der Karte stehen soll. |
-| „Das Papier ist größer als A3“ | Nur bei Papierformaten über A3; derzeit kennt das Programm nur A4 und A3. |
+| „Das Papier ist größer als A3“ | Nur bei einer `page_mm` über A3. Eine Druckerei nimmt sie an, ein Bürodrucker nicht. |
 | „Im Layout … fehlt ein Text mit {print_scale} …“ | Maßstab oder Äquidistanz stehen auf keinem Blattelement, oder `map.contour_interval_m` fehlt. Einen Titelblock oder Text mit dem Platzhalter ergänzen, den Wert eintragen. |
 | „Layout … hat keine Kontrollstrecke“ | Das Layout zeigt kein Element `scale_check_bar`. Eines ergänzen (gemeinsam oder im Layout), damit ein Lineal am Ausdruck zeigt, ob der Drucker skaliert hat. |
 | „Zur Information: Die Karte hat keine Nordlinien, deshalb wurden … Linien ergänzt“ | Nur zur Information, siehe Kapitel 6. `north_lines = "never"` schaltet das ab. |

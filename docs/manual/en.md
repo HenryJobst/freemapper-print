@@ -77,7 +77,7 @@ project folder or the file `freemapper-print.toml` in it.
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | the mask id and the messages |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` or `layout_wide`) | `direction` and `gap`, only together | the correction written and the message |
-| `set_layout` | | `project`, `id` | `paper`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | the layout as the file now holds it, and `change` |
+| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | the layout as the file now holds it, and `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | the element and `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
@@ -316,6 +316,7 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 |---|---|---|
 | `id` | | name of the layout and of its PDF (`a3-3000.pdf`), required |
 | `paper` | `"A4"` | `"A4"` or `"A3"` |
+| `page_mm` | paper | a page of any size instead, `[width, height]` in portrait, each side 10 to 5080 mm: `page_mm = [500.0, 700.0]`. For a map larger than A3 at map scale. The orientation applies to it. Larger than A3, the check says so, because an office printer will not take it |
 | `orientation` | `"auto"` | `"portrait"`, `"landscape"` or `"auto"`: the orientation in which less of the map is cut off |
 | `print_scale` | scale of the map | denominator of the print scale, `3000` for 1:3000 |
 | `north_lines` | `"auto"` | `"auto"` adds north lines when the map has none; `"never"` never does |
@@ -979,7 +980,7 @@ a line that starts with "Info:" does not.
 | "the footer … reaches past the page edge" | The footer extends beyond the sheet. Check the passe-partout and the copyright lines. |
 | "the element … reaches past the page edge" | Check the element's anchor and offset; make a logo narrower if needed. |
 | "the element … hangs on the page and covers part of the map frame" | An element hung on the page (`to = "page"`) lies over the map. Move it onto the passe-partout, or hang it on the map frame if it is meant to sit on the map. |
-| "the paper is larger than A3" | Only for paper larger than A3; the program knows only A4 and A3 so far. |
+| "the paper is larger than A3" | Only for a `page_mm` larger than A3. A print shop takes it; an office printer does not. |
 | "layout … lacks a text with {print_scale} …" | No sheet element shows the scale or the contour interval, or `map.contour_interval_m` is missing. Add a title block or text with the placeholder, or set the value. |
 | "layout … has no scale check bar" | The layout shows no `scale_check_bar` element. Add one (shared or in the layout), so a ruler on the printout shows whether the printer scaled it. |
 | "Info: the map has no north lines, so … lines were added" | For information only, see chapter 6. `north_lines = "never"` turns it off. |

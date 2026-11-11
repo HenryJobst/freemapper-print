@@ -118,8 +118,7 @@ pub fn bounds_notes(
 }
 
 /// Whether `paper` is larger than A3, which most office printers do not take.
-pub fn larger_than_a3(paper: Paper) -> bool {
-    let (w, h) = paper.size_mm();
+pub fn larger_than_a3((w, h): (f64, f64)) -> bool {
     let (a3w, a3h) = Paper::A3.size_mm();
     w * h > a3w * a3h
 }
@@ -232,7 +231,7 @@ mod tests {
 
     #[test]
     fn only_paper_above_a3_is_larger_than_a3() {
-        assert!(!larger_than_a3(Paper::A4));
-        assert!(!larger_than_a3(Paper::A3));
+        assert!(!larger_than_a3(Paper::A4.size_mm()));
+        assert!(!larger_than_a3(Paper::A3.size_mm()));
     }
 }

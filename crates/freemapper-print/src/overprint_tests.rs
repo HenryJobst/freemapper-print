@@ -807,6 +807,7 @@ fn fixture_page(file: &str, kind: MapKind) -> RenderedPage {
         print_scale: None,
         kind,
         paper: crate::print::Paper::A3,
+        page_mm: None,
         orientation: crate::print::Orientation::Auto,
         centre: None,
         show_sheet_objects: false,

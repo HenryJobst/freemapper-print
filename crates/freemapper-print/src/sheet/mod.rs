@@ -369,7 +369,7 @@ fn render_body(
     centre: Option<MapCoord>,
 ) -> Result<(RenderedPage, SheetReport, ElementBoxes), SheetError> {
     let mut notes = Vec::new();
-    if layout::larger_than_a3(layout.paper) {
+    if layout::larger_than_a3(layout.portrait_mm()) {
         notes.push(SheetNote::LargerThanA3);
     }
     let original = map;
@@ -379,6 +379,7 @@ fn render_body(
         print_scale: layout.print_scale,
         kind: project.project.map.kind,
         paper: layout.paper,
+        page_mm: layout.page_mm.map(|[w, h]| (w, h)),
         orientation: layout.orientation,
         centre: layout
             .map_frame
@@ -746,6 +747,7 @@ mod tests {
         LayoutSpec {
             id: "a4".into(),
             paper: Paper::A4,
+            page_mm: None,
             orientation: Orientation::Portrait,
             print_scale: None,
             map_frame: MapFrameSpec::default(),
@@ -879,6 +881,28 @@ mod tests {
         assert_eq!(page.primitives, plain.primitives);
         assert!(uncropped.needs_attention());
         assert!(uncropped.print.overflow_mm.is_some());
+    }
+
+    #[test]
+    fn a_free_page_replaces_the_paper_of_the_layout() {
+        let map = doc(4000, vec![("default part", vec![line((25_000, 0))])]);
+        let mut layout = a4();
+        layout.page_mm = Some([500.0, 700.0]);
+        layout.orientation = Orientation::Portrait;
+        let (page, report) = sheet(&map, &layout);
+        assert_eq!(page.page_mm, (500.0, 700.0));
+        assert!(
+            report.notes.contains(&SheetNote::LargerThanA3),
+            "{:?}",
+            report.notes
+        );
+        layout.orientation = Orientation::Landscape;
+        assert_eq!(sheet(&map, &layout).0.page_mm, (700.0, 500.0));
+        // A page of A4 size by its numbers is no larger than A3.
+        layout.page_mm = Some([210.0, 297.0]);
+        let (page, report) = sheet(&map, &layout);
+        assert_eq!(page.page_mm, (297.0, 210.0));
+        assert!(!report.notes.contains(&SheetNote::LargerThanA3));
     }
 
     #[test]

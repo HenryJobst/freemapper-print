@@ -27,6 +27,9 @@ pub struct PrintOptions {
     pub print_scale: Option<u32>,
     pub kind: MapKind,
     pub paper: Paper,
+    /// A page of this size (width and height in portrait, mm) instead of `paper`; see `PageSpec::page_mm` in
+    /// freemapper-render for the limits (ADR 0058).
+    pub page_mm: Option<(f64, f64)>,
     pub orientation: Orientation,
     /// The map point (in the file's map coordinates) that lands at the centre of the page; `None`
     /// takes the centre of the box everything drawn paints in, the base area of a sprint map left
@@ -153,7 +156,7 @@ fn render_page_within(
         symbol_factor,
         geometry_factor,
         paper: options.paper,
-        page_mm: None,
+        page_mm: options.page_mm,
         orientation: options.orientation,
         centre: options.centre,
         frame_margin_mm: options.frame_margin_mm,
@@ -252,6 +255,7 @@ mod tests {
             print_scale: None,
             kind: MapKind::Sprint,
             paper: Paper::A4,
+            page_mm: None,
             orientation,
             centre: None,
             show_sheet_objects: false,

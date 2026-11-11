@@ -98,3 +98,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0055](0055-course-overprint-comes-from-freemapper-core.md) | The course overprint comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) |
 | [0056](0056-print-rules-come-from-freemapper-core.md) | The print rules come from freemapper-core | Accepted, amends [0031](0031-print-rules-as-data-profiles.md) and [0018](0018-symbols-scale-as-the-iof-standards-set.md) |
 | [0057](0057-map-kind-and-sidecar-from-the-contract.md) | The map kind and the sidecar reader come from the contract | Accepted, amends [0056](0056-print-rules-come-from-freemapper-core.md) and [0052](0052-an-unknown-map-kind-counts-as-absent.md) |
+| [0058](0058-free-page-size-in-layouts.md) | A layout can set a free page size | Accepted |

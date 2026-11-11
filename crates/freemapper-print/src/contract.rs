@@ -140,6 +140,7 @@ fn contract_bounds() {
             print_scale: None,
             kind: kind(read),
             paper: Paper::A4,
+            page_mm: None,
             orientation: Orientation::Portrait,
             centre: None,
             show_sheet_objects: false,

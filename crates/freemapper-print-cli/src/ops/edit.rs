@@ -24,6 +24,9 @@ pub struct LayoutArgs {
     pub project: PathBuf,
     pub id: String,
     pub paper: Option<Paper>,
+    /// A page of this size in mm (width and height in portrait) instead of the paper; `Some(None)` goes back to
+    /// the paper.
+    pub page_mm: Option<Option<[f64; 2]>>,
     pub orientation: Option<Orientation>,
     /// `Some(None)`: print at the map scale.
     pub print_scale: Option<Option<u32>>,
@@ -103,6 +106,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
         .unwrap_or_else(|| LayoutSpec {
             id: args.id.clone(),
             paper: Paper::A4,
+            page_mm: None,
             orientation: Orientation::Auto,
             print_scale: None,
             map_frame: MapFrameSpec::default(),
@@ -115,6 +119,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
         project: _,
         id: _,
         paper,
+        page_mm,
         orientation,
         print_scale,
         centre_map_mm,
@@ -127,6 +132,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
     } = args.clone();
     let frame = &mut layout.map_frame;
     set(&mut layout.paper, paper);
+    set(&mut layout.page_mm, page_mm);
     set(&mut layout.orientation, orientation);
     set(&mut layout.print_scale, print_scale);
     set(&mut frame.centre_map_mm, centre_map_mm);
@@ -257,6 +263,36 @@ mod tests {
     use super::*;
     use crate::ops::testing::viktoriapark_copy;
     use freemapper_print::project::{Anchor, AnchorTarget, Corner, ElementKind};
+
+    #[test]
+    fn a_free_page_is_written_changed_and_taken_back() {
+        let dir = viktoriapark_copy();
+        let project = dir.path().to_path_buf();
+        let set = |page_mm| {
+            set_layout(&LayoutArgs {
+                project: project.clone(),
+                id: "a4-4000".into(),
+                page_mm,
+                ..LayoutArgs::default()
+            })
+        };
+        let result = set(Some(Some([500.0, 700.0]))).unwrap();
+        assert_eq!(result.layout.page_mm, Some([500.0, 700.0]));
+        let text = std::fs::read_to_string(&result.path).unwrap();
+        assert!(text.contains("page_mm = [500.0, 700.0]\n"), "{text}");
+        // Out of range: refused, and the file stays as it was.
+        let error = set(Some(Some([5.0, 700.0]))).unwrap_err();
+        assert!(matches!(error, OpError::EditProject { .. }), "{error:?}");
+        assert_eq!(std::fs::read_to_string(&result.path).unwrap(), text);
+        // null goes back to the paper.
+        let back = set(Some(None)).unwrap();
+        assert_eq!(back.layout.page_mm, None);
+        assert!(
+            !std::fs::read_to_string(&back.path)
+                .unwrap()
+                .contains("page_mm")
+        );
+    }
 
     #[test]
     fn viktoriapark_gets_a_layout_an_element_and_an_assignment() {

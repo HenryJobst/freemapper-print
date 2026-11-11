@@ -46,6 +46,7 @@ fn page(path: &Path) -> RenderedPage {
         print_scale: None,
         kind: MapKind::Sprint,
         paper: Paper::A3,
+        page_mm: None,
         orientation: Orientation::Auto,
         centre: None,
         show_sheet_objects: false,
