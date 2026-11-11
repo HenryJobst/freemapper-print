@@ -31,7 +31,7 @@ freemapper-print is one executable without an installer and without dependencies
 unless the user asks; the release archives are ready to run.
 
 1. Find the newest version: `https://api.github.com/repos/HenryJobst/freemapper-print/releases/latest` returns
-   JSON with `tag_name`, for example `v0.6.0`. The release page is
+   JSON with `tag_name`, for example `v0.6.1`. The release page is
    <https://github.com/HenryJobst/freemapper-print/releases/latest>.
 2. Pick the archive for the system. The name is `freemapper-print-<tag>-<platform>` plus the extension:
 
@@ -48,7 +48,7 @@ unless the user asks; the release archives are ready to run.
 3. Download, check and unpack. macOS and Linux, for example in `~/Applications` or `~/opt`:
 
    ```sh
-   tag=v0.6.0; platform=macos-arm64
+   tag=v0.6.1; platform=macos-arm64
    base="https://github.com/HenryJobst/freemapper-print/releases/download/$tag"
    curl -fLO "$base/freemapper-print-$tag-$platform.tar.gz"
    curl -fLO "$base/freemapper-print-$tag-$platform.tar.gz.sha256"
@@ -59,7 +59,7 @@ unless the user asks; the release archives are ready to run.
    Windows (PowerShell):
 
    ```powershell
-   $tag = "v0.6.0"; $name = "freemapper-print-$tag-windows-x86_64.zip"
+   $tag = "v0.6.1"; $name = "freemapper-print-$tag-windows-x86_64.zip"
    $base = "https://github.com/HenryJobst/freemapper-print/releases/download/$tag"
    Invoke-WebRequest "$base/$name" -OutFile $name
    Invoke-WebRequest "$base/$name.sha256" -OutFile "$name.sha256"

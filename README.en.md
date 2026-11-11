@@ -125,7 +125,7 @@ on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows t
 
 ## Status
 
-The current version is [v0.6.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.0) of
+The current version is [v0.6.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.1) of
 11 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control

@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-11
+
 ### Changed
 
 - The print rules (the profile `iof-print`, the map kinds, the symbol size table by print scale, the course symbol sizes) come from freemapper-core v0.16.0 now (decision 0056), so freemapper-courseplan uses the same values as the sheet. Output is unchanged.
@@ -15,6 +17,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 ### Added
 
 - `AGENTS.md` tells an AI agent how to install freemapper-print from the release archives and how to use it through MCP or the command line, with the real message texts for the common failures. It is written in English and ships in every release archive next to the READMEs. The manual (chapter 3) and the README say how to have an agent set the program up from it.
+
+### Fixed
+
+- A crafted map can no longer multiply the work of a page build through Bézier curves: the renderer flattens at most one million points per path (freemapper-core v0.14.1). Ordinary maps are unchanged.
 
 ## [0.6.0] - 2026-11-11
 
