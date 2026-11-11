@@ -496,3 +496,4 @@ error-export-stopped = { $count ->
     [one] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; das zuvor geschriebene PDF bleibt, und keine Teildatei bleibt zurück
    *[other] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; die { $count } zuvor geschriebenen PDFs bleiben, und keine Teildatei bleibt zurück
 }
+mcp-error-export-layouts = layouts exportiert die Layouts ohne Bahnen und passt deshalb nicht zu courses oder single_file; eines davon weglassen

@@ -496,3 +496,4 @@ error-export-stopped = { $count ->
     [one] the export stopped before the next sheet because the client cancelled the call or closed the connection; the PDF written before stays, and no partial file is left
    *[other] the export stopped before the next sheet because the client cancelled the call or closed the connection; the { $count } PDFs written before stay, and no partial file is left
 }
+mcp-error-export-layouts = layouts exports the layouts without courses, so it does not go with courses or single_file; leave out one or the other

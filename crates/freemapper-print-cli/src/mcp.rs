@@ -1,15 +1,19 @@
-//! `freemapper-print mcp`: the MCP server on stdio, so an AI agent can read, check, change and (later) export
-//! a project. The tools are thin wrappers over [`crate::ops`]; results are compact JSON, notes and errors carry
+//! `freemapper-print mcp`: the MCP server on stdio, so an AI agent can read, check, change and export a
+//! project. The tools are thin wrappers over [`crate::ops`]; results are compact JSON, notes and errors carry
 //! the same texts the CLI prints (ADR 0004). Nothing but JSON-RPC goes to stdout. The tools that write hold one
 //! lock of the server, so that each sees what the one before it wrote.
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use fluent_bundle::FluentArgs;
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
-use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::service::RequestContext;
+use rmcp::{
+    ErrorData as McpError, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::ops;
@@ -32,8 +36,8 @@ freemapper-print.toml that names the map, the optional course file (Purple Pen o
 layouts. Start with project_info to see what a project holds, then check_project to see the notes \
 of every sheet. init_project starts a project; masks_window, masks_corridor, numbers_accept, \
 set_layout, set_element and assign_mask change the project file and keep its comments. Run \
-check_project after a change to see its effect. Paths must be absolute because the server does not \
-know your working folder. The messages in the results are German or English; pass lang to choose. \
+check_project after a change to see its effect. export_project writes the PDFs. Paths must be \
+absolute because the server does not know your working folder. The messages in the results are German or English; pass lang to choose. \
 Manual and source: https://github.com/HenryJobst/freemapper-print";
 
 /// The arguments of every read tool.
@@ -371,6 +375,123 @@ struct AssignIn {
     layout: Option<String>,
     /// Language of the messages: "de" or "en". Default: the language the server started with.
     lang: Option<String>,
+}
+
+/// The arguments of `export_project`, as the CLI's `export`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+struct ExportIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// Absolute path of the folder for the PDFs. It must exist.
+    out_dir: String,
+    /// Only these courses, by name. Default: every course of the course file.
+    #[serde(default)]
+    courses: Vec<String>,
+    /// These layouts by id, printed without courses. Does not go with courses or single_file.
+    #[serde(default)]
+    layouts: Vec<String>,
+    /// All courses as the pages of one PDF.
+    #[serde(default)]
+    single_file: bool,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// One PDF that `export_project` wrote.
+#[derive(Serialize)]
+struct FileOut {
+    path: PathBuf,
+    /// The size of the file; `None` when it could not be read back.
+    bytes: Option<u64>,
+    /// The course on the sheet; left out for a layout without a course and for the single file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    course: Option<String>,
+    /// The layout of the sheet; left out for the single file, whose pages may use several.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layout: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paper: Option<Paper>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    print: Option<ops::PrintFacts>,
+    /// The number of pages of the single file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages: Option<usize>,
+}
+
+/// The result of `export_project`.
+#[derive(Serialize)]
+struct ExportOut {
+    out_dir: PathBuf,
+    files: Vec<FileOut>,
+    /// The notes of the course file, then those of each sheet in the order drawn.
+    notes: Vec<Note>,
+    /// How many notes were left out past [`MAX_NOTES`].
+    #[serde(skip_serializing_if = "is_zero")]
+    more: usize,
+    /// The reminder to print at actual size; left out when nothing was written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reminder: Option<String>,
+    /// Why nothing was written, when the course file has no course to export.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+fn export_out(texts: &Texts, result: &ops::export::ExportResult) -> ExportOut {
+    use ops::export::ExportMode;
+    let bytes = |path: &Path| {
+        result
+            .files
+            .iter()
+            .find(|f| f.path == path)
+            .and_then(|f| f.bytes)
+    };
+    let files = match result.mode {
+        ExportMode::SingleFile => result
+            .files
+            .iter()
+            .map(|f| FileOut {
+                path: f.path.clone(),
+                bytes: f.bytes,
+                course: None,
+                layout: None,
+                paper: None,
+                print: None,
+                pages: Some(result.pages.iter().filter(|p| p.path == f.path).count()),
+            })
+            .collect(),
+        ExportMode::Courses | ExportMode::Layouts => result
+            .pages
+            .iter()
+            .map(|p| FileOut {
+                path: p.path.clone(),
+                bytes: bytes(&p.path),
+                course: p.sheet.course.clone(),
+                layout: Some(p.sheet.layout.clone()),
+                paper: Some(p.sheet.paper),
+                print: Some(p.sheet.print),
+                pages: None,
+            })
+            .collect(),
+    };
+    let mut budget = NoteBudget::new(MAX_NOTES);
+    let mut notes = result
+        .course_file
+        .as_ref()
+        .map(|n| budget.describe(texts, n))
+        .unwrap_or_default();
+    for page in &result.pages {
+        notes.extend(budget.describe(texts, &page.sheet.notes));
+    }
+    let written = !result.files.is_empty();
+    ExportOut {
+        out_dir: result.out_dir.clone(),
+        files,
+        notes,
+        more: budget.cut,
+        reminder: written.then(|| texts.plain("reminder-actual-size")),
+        message: (!written && result.mode != ExportMode::Layouts)
+            .then(|| texts.plain("note-no-courses-to-export")),
+    }
 }
 
 /// A result of a write tool, with what the CLI says after the same command.
@@ -1145,6 +1266,83 @@ impl PrintServer {
         })
         .await
     }
+
+    #[tool(
+        description = "Write the PDFs of a project into out_dir, as the export command does. Without \
+                       a course file it writes one PDF per layout, with one a PDF per course, named \
+                       after the course. single_file puts the courses on the pages of one PDF \
+                       instead. layouts prints the named layouts without courses and does not go \
+                       with courses or single_file. The tool replaces a PDF of the same name in \
+                       out_dir. Returns the files with their size, the notes of the sheets and the \
+                       reminder to print at actual size. At most 200 notes come back; more counts \
+                       the rest. When the client cancels the call, the export stops after the sheet \
+                       it is drawing."
+    )]
+    async fn export_project(
+        &self,
+        Parameters(args): Parameters<ExportIn>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let ExportIn {
+            project,
+            out_dir,
+            courses,
+            layouts,
+            single_file,
+            lang,
+        } = args;
+        let (texts, path) = match self.prepare(lang.as_deref(), &project) {
+            Ok(prepared) => prepared,
+            Err(refused) => return Ok(refused),
+        };
+        // The CLI's argument rule: layouts are exported as such, so they go alone.
+        if !layouts.is_empty() && (!courses.is_empty() || single_file) {
+            return failure(texts.plain("mcp-error-export-layouts"));
+        }
+        let out_dir = match agent_path(&texts, &out_dir) {
+            Ok(dir) => dir,
+            Err(message) => return failure(message),
+        };
+        if !out_dir.is_dir() {
+            return failure(op_message(
+                &texts,
+                ops::OpError::OutDirMissing { path: out_dir },
+            ));
+        }
+        // Set when the client cancels this call or the connection ends; the export stops after the sheet in hand.
+        let cancelled = context.ct.clone();
+        // The export reads the project, so it waits for a write in progress and keeps the next one waiting.
+        self.with_project_lock(texts, move |texts| {
+            let stop = || {
+                if cancelled.is_cancelled() {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            };
+            if stop().is_break() {
+                return Err(op_message(
+                    texts,
+                    ops::OpError::ExportStopped {
+                        written: Vec::new(),
+                    },
+                ));
+            }
+            let result = ops::export::export(
+                &ops::export::ExportArgs {
+                    project: path,
+                    layouts,
+                    courses,
+                    single_file,
+                    out_dir: Some(out_dir),
+                },
+                &mut |_| stop(),
+            )
+            .map_err(|e| op_message(texts, e))?;
+            json(texts, &export_out(texts, &result))
+        })
+        .await
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -1362,6 +1560,7 @@ mod tests {
             [
                 "assign_mask",
                 "check_project",
+                "export_project",
                 "init_project",
                 "list_courses",
                 "masks_corridor",
@@ -1379,6 +1578,7 @@ mod tests {
             "numbers_accept" => json!(["project", "course", "control", "scope"]),
             "set_layout" => json!(["project", "id"]),
             "set_element" => json!(["project", "id", "kind", "anchor"]),
+            "export_project" => json!(["project", "out_dir"]),
             _ => json!(["project"]),
         };
         for tool in tools {
@@ -2029,6 +2229,359 @@ mod tests {
             .call("check_project", json!({ "project": folder }))
             .await;
         assert!(!error, "{text}");
+    }
+
+    /// The number of pages of a PDF, from its page tree.
+    fn page_count(pdf: &[u8]) -> usize {
+        let text = String::from_utf8_lossy(pdf);
+        let i = text.find("/Count ").unwrap() + 7;
+        text[i..]
+            .split(|c: char| !c.is_ascii_digit())
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    /// The names in `dir`, sorted.
+    fn names_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Every file in `dir` is a whole PDF: no partial file, nothing cut short.
+    fn only_whole_pdfs(dir: &Path) -> usize {
+        let names = names_in(dir);
+        for name in &names {
+            assert!(name.ends_with(".pdf"), "{name} in {names:?}");
+            let bytes = std::fs::read(dir.join(name)).unwrap();
+            assert!(bytes.starts_with(b"%PDF"), "{name}");
+            assert!(bytes.trim_ascii_end().ends_with(b"%%EOF"), "{name}");
+        }
+        names.len()
+    }
+
+    /// The hostile case of ADR 0040 (ruling R41): a course file of 1000 courses with 200 controls each, on a copy
+    /// of the Lübeck map, every course on one A3 layout. Exporting it all takes minutes.
+    fn hostile_copy() -> tempfile::TempDir {
+        let from = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/luebeck-competition-courses"
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["luebeck.omap", "freemapper.toml"] {
+            std::fs::copy(from.join(name), dir.path().join(name)).unwrap();
+        }
+        std::fs::write(dir.path().join("hostile.xml"), hostile_courses(1000, 200)).unwrap();
+        std::fs::write(
+            dir.path().join(project::FILE_NAME),
+            "format = 1\n\n[event]\ntitle = \"Hostile\"\nlang = \"en\"\n\n[sources]\n\
+             map = \"luebeck.omap\"\ncourses = \"hostile.xml\"\n\n[map]\nkind = \"sprint\"\n\n\
+             [[layouts]]\nid = \"a3\"\npaper = \"A3\"\nmap_frame = { crop = true }\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    /// IOF XML with `courses` courses, each visiting `controls` controls on a grid over the Lübeck map in its own
+    /// shuffled order, so that legs cross and numbers collide.
+    fn hostile_courses(courses: usize, controls: usize) -> String {
+        let mut xml = String::from(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CourseData \
+             xmlns=\"http://www.orienteering.org/datastandard/3.0\" iofVersion=\"3.0\">\n\
+             <RaceCourseData><Map><Scale>4000</Scale></Map>\n\
+             <Control type=\"Start\"><Id>S1</Id><MapPosition x=\"-100\" y=\"0\" unit=\"mm\"/></Control>\n",
+        );
+        for i in 0..controls {
+            let (x, y) = (-95 + (i % 20) as i32 * 10, -70 + (i / 20) as i32 * 15);
+            xml += &format!(
+                "<Control type=\"Control\"><Id>{}</Id><MapPosition x=\"{x}\" y=\"{y}\" unit=\"mm\"/></Control>\n",
+                100 + i
+            );
+        }
+        xml += "<Control type=\"Finish\"><Id>F1</Id><MapPosition x=\"100\" y=\"0\" unit=\"mm\"/></Control>\n";
+        for c in 0..courses {
+            xml += &format!(
+                "<Course><Name>K{}</Name><CourseControl type=\"Start\"><Control>S1</Control></CourseControl>",
+                c + 1
+            );
+            let mut order: Vec<usize> = (0..controls).collect();
+            let mut seed = (c * 7919 + 1) as u64;
+            for i in (1..controls).rev() {
+                seed = (seed * 1_103_515_245 + 12_345) % (1 << 31);
+                order.swap(i, seed as usize % (i + 1));
+            }
+            for k in order {
+                xml += &format!(
+                    "<CourseControl type=\"Control\"><Control>{}</Control></CourseControl>",
+                    100 + k
+                );
+            }
+            xml +=
+                "<CourseControl type=\"Finish\"><Control>F1</Control></CourseControl></Course>\n";
+        }
+        xml + "</RaceCourseData></CourseData>\n"
+    }
+
+    #[tokio::test]
+    async fn export_project_writes_the_pdf_the_cli_writes() {
+        let dir = viktoriapark_copy();
+        let out = tempfile::tempdir().unwrap();
+        let mut client = Client::start().await;
+        let export = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": out.path() }),
+            )
+            .await;
+        let pdf = out.path().join("Training.pdf");
+        // Byte for byte the PDF in the example, which the CLI wrote.
+        let committed = std::fs::read(viktoriapark().join("out/Training.pdf")).unwrap();
+        assert!(std::fs::read(&pdf).unwrap() == committed, "{export}");
+        assert_eq!(export["out_dir"], json!(out.path()));
+        assert_eq!(
+            export["files"],
+            json!([{
+                "path": pdf, "bytes": committed.len(), "course": "Training", "layout": "a4-4000",
+                "paper": "A4",
+                "print": export["files"][0]["print"].clone(),
+            }])
+        );
+        assert_eq!(export["files"][0]["print"]["print_scale"], 4000);
+        let kinds: Vec<&str> = export["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n["kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["fit_georef_skipped", "map_cropped"], "{export}");
+        assert!(export.get("more").is_none(), "{export}");
+        let reminder = Texts::new(&Lang::english()).plain("reminder-actual-size");
+        assert_eq!(export["reminder"], json!(reminder));
+        assert!(reminder.contains("100 %"), "{reminder}");
+        assert_eq!(names_in(out.path()), ["Training.pdf"]);
+        // The map's own folder can take the PDFs: a PDF never has the map's name, and the map stays as it was.
+        let map = std::fs::read(dir.path().join("berlin-viktoriapark.omap")).unwrap();
+        let export = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": dir.path(), "lang": "de" }),
+            )
+            .await;
+        assert_eq!(
+            std::fs::read(dir.path().join("berlin-viktoriapark.omap")).unwrap(),
+            map
+        );
+        assert!(std::fs::read(dir.path().join("Training.pdf")).unwrap() == committed);
+        assert!(
+            export["reminder"]
+                .as_str()
+                .unwrap()
+                .contains("Originalgröße"),
+            "{export}"
+        );
+    }
+
+    #[tokio::test]
+    async fn single_file_puts_the_luebeck_courses_on_three_pages() {
+        let dir = luebeck_copy();
+        let out = tempfile::tempdir().unwrap();
+        let mut client = Client::start().await;
+        let export = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": out.path(), "single_file": true }),
+            )
+            .await;
+        let files = export["files"].as_array().unwrap();
+        assert_eq!(files.len(), 1, "{export}");
+        assert_eq!(files[0]["pages"], 3, "{export}");
+        assert!(files[0].get("course").is_none(), "{export}");
+        let path = PathBuf::from(files[0]["path"].as_str().unwrap());
+        assert_eq!(
+            path,
+            out.path().join("Stadtsprint Lübeck - alle Bahnen.pdf")
+        );
+        let pdf = std::fs::read(&path).unwrap();
+        assert_eq!(files[0]["bytes"], pdf.len());
+        assert_eq!(page_count(&pdf), 3);
+        assert_eq!(only_whole_pdfs(out.path()), 1);
+        let courses: Vec<&str> = export["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|n| n["course"].as_str())
+            .collect();
+        for course in ["A", "B", "C"] {
+            assert!(courses.contains(&course), "{export}");
+        }
+        // Courses by name, and layouts as such.
+        let some = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": out.path(), "courses": ["C", "A"] }),
+            )
+            .await;
+        let picked: Vec<(&str, &str)> = some["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| (f["course"].as_str().unwrap(), f["layout"].as_str().unwrap()))
+            .collect();
+        assert_eq!(picked, [("C", "a3-3000"), ("A", "a4-4000")], "{some}");
+        let layouts = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": out.path(), "layouts": ["a3-3000"] }),
+            )
+            .await;
+        assert_eq!(layouts["files"][0]["layout"], "a3-3000", "{layouts}");
+        assert!(layouts["files"][0].get("course").is_none(), "{layouts}");
+        assert_eq!(only_whole_pdfs(out.path()), 4);
+    }
+
+    #[tokio::test]
+    async fn export_project_refuses_what_the_cli_refuses() {
+        let dir = viktoriapark_copy();
+        let out = tempfile::tempdir().unwrap();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        for arguments in [
+            json!({ "project": project, "out_dir": out.path(), "layouts": ["a4-4000"], "courses": ["Training"] }),
+            json!({ "project": project, "out_dir": out.path(), "layouts": ["a4-4000"], "single_file": true }),
+        ] {
+            let message = client.refused("export_project", arguments).await;
+            assert!(
+                message.contains("does not go with courses or single_file"),
+                "{message}"
+            );
+        }
+        let unknown = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": out.path(), "courses": ["Training", "Lang"] }),
+            )
+            .await;
+        assert!(
+            unknown.contains("\"Lang\"") && unknown.contains("\"Training\""),
+            "{unknown}"
+        );
+        let layout = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": out.path(), "layouts": ["a5"] }),
+            )
+            .await;
+        assert!(
+            layout.contains("a5") && layout.contains("a4-4000"),
+            "{layout}"
+        );
+        let relative = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": "out" }),
+            )
+            .await;
+        assert!(relative.contains("relative path"), "{relative}");
+        let missing = out.path().join("missing");
+        let message = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": missing }),
+            )
+            .await;
+        assert!(
+            message.contains("does not exist") && message.contains("missing"),
+            "{message}"
+        );
+        // A file is no folder.
+        let file = dir.path().join("training.ppen");
+        let message = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": file }),
+            )
+            .await;
+        assert!(message.contains("does not exist"), "{message}");
+        let relative = client
+            .refused(
+                "export_project",
+                json!({ "project": "p", "out_dir": out.path() }),
+            )
+            .await;
+        assert!(relative.contains("relative path"), "{relative}");
+        assert!(names_in(out.path()).is_empty());
+        assert!(!dir.path().join("out").exists());
+    }
+
+    #[tokio::test]
+    async fn a_hostile_export_comes_back_with_its_notes_capped() {
+        let dir = hostile_copy();
+        let out = tempfile::tempdir().unwrap();
+        let mut client = Client::start().await;
+        let started = std::time::Instant::now();
+        let export = client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&dir), "out_dir": out.path(), "courses": ["K1", "K2"] }),
+            )
+            .await;
+        let took = started.elapsed();
+        eprintln!("hostile export of two courses: {took:?}");
+        assert!(took < std::time::Duration::from_secs(120), "{took:?}");
+        assert_eq!(export["files"].as_array().unwrap().len(), 2);
+        assert_eq!(export["notes"].as_array().unwrap().len(), MAX_NOTES);
+        assert!(export["more"].as_u64().unwrap() > 0, "{}", export["more"]);
+        assert_eq!(only_whole_pdfs(out.path()), 2);
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_hostile_export_stops_it_after_the_sheet_in_hand() {
+        let dir = hostile_copy();
+        let out = tempfile::tempdir().unwrap();
+        let mut client = Client::start().await;
+        let id = client.next_id;
+        client.next_id += 1;
+        client
+            .send(json!({
+                "jsonrpc": "2.0", "id": id, "method": "tools/call",
+                "params": {
+                    "name": "export_project",
+                    "arguments": { "project": folder(&dir), "out_dir": out.path() },
+                },
+            }))
+            .await;
+        // Wait for the first course PDF, then cancel the call.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        while !names_in(out.path()).iter().any(|n| n.ends_with(".pdf")) {
+            assert!(std::time::Instant::now() < deadline, "no PDF after 300 s");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        client
+            .send(json!({
+                "jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": { "requestId": id, "reason": "test" },
+            }))
+            .await;
+        let cancelled = std::time::Instant::now();
+        // The next export waits for the lock, so it answers once the cancelled one has stopped.
+        let other = viktoriapark_copy();
+        let other_out = tempfile::tempdir().unwrap();
+        client
+            .ok(
+                "export_project",
+                json!({ "project": folder(&other), "out_dir": other_out.path() }),
+            )
+            .await;
+        let took = cancelled.elapsed();
+        eprintln!("cancelled hostile export stopped within {took:?}");
+        assert!(took < std::time::Duration::from_secs(60), "{took:?}");
+        let written = only_whole_pdfs(out.path());
+        assert!((1..1000).contains(&written), "{written}");
     }
 
     #[test]
