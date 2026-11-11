@@ -518,17 +518,61 @@ fn metres(texts: &Texts, value: f64) -> String {
 
 /// The note about a map's `freemapper.toml` that could not be read: the kind is inferred instead.
 fn sidecar_note(texts: &Texts, error: &str) {
-    eprintln!(
-        "{}",
-        texts.get("note-sidecar", Some(&args!("error" => printable(error))))
-    );
+    eprintln!("{}", sidecar_note_line(texts, error));
+}
+
+fn sidecar_note_line(texts: &Texts, error: &str) -> String {
+    texts.get("note-sidecar", Some(&args!("error" => printable(error))))
+}
+
+/// The comments `init` writes into the new project file for the map kind and the contour interval the starter
+/// proposes.
+fn init_comments(texts: &Texts, kind: MapKind, contour: Option<f64>) -> ops::init::FileComments {
+    ops::init::FileComments {
+        contour: match contour {
+            Some(_) => texts.get(
+                "init-comment-contour",
+                Some(&args!("kind" => texts.plain(kind_word_id(kind)))),
+            ),
+            None => texts.plain("init-comment-no-contour"),
+        },
+        footer: texts.plain("init-comment-footer"),
+    }
+}
+
+/// The line `init` prints for a step while it works.
+fn init_progress_line(texts: &Texts, progress: &ops::init::InitProgress<'_>) -> String {
+    use ops::init::{InitProgress, KindSource};
+    match progress {
+        InitProgress::SidecarUnusable { error } => sidecar_note_line(texts, error),
+        InitProgress::Kind { kind, source } => {
+            let source_id = match source {
+                KindSource::Given => "init-kind-flag",
+                KindSource::Sidecar => "init-kind-sidecar",
+                KindSource::Inferred => "init-kind-inferred",
+            };
+            texts.get(
+                source_id,
+                Some(&args!("kind" => texts.plain(kind_word_id(*kind)))),
+            )
+        }
+        InitProgress::CoursesRead { path, count } => texts.get(
+            "init-courses-read",
+            // As the project file names it: relative to the project folder.
+            Some(&args!(
+                "path" => path.display().to_string(),
+                "count" => *count,
+            )),
+        ),
+        InitProgress::Fitting { scale } => {
+            texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
+        }
+    }
 }
 
 /// `init`: writes a starter project file and says what it holds: the layouts (per print scale with a course
 /// file), whether the map fits, where the kind and the contour interval came from, and what to do next.
 fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
-    use ops::init::{FileComments, InitProgress, KindSource};
-    let kind_word = |kind: MapKind| texts.plain(kind_word_id(kind));
     let result = ops::init::init(
         &ops::init::InitArgs {
             folder: args.folder.clone(),
@@ -538,147 +582,99 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             courses: args.courses.clone(),
             sheet_lang: sheet_lang(texts),
         },
-        &|kind, contour| FileComments {
-            contour: match contour {
-                Some(_) => texts.get(
-                    "init-comment-contour",
-                    Some(&args!("kind" => kind_word(kind))),
-                ),
-                None => texts.plain("init-comment-no-contour"),
-            },
-            footer: texts.plain("init-comment-footer"),
-        },
-        &mut |progress| match progress {
-            InitProgress::SidecarUnusable { error } => sidecar_note(texts, error),
-            InitProgress::Kind { kind, source } => {
-                let source_id = match source {
-                    KindSource::Given => "init-kind-flag",
-                    KindSource::Sidecar => "init-kind-sidecar",
-                    KindSource::Inferred => "init-kind-inferred",
-                };
-                eprintln!(
-                    "{}",
-                    texts.get(source_id, Some(&args!("kind" => kind_word(kind))))
-                );
-            }
-            InitProgress::CoursesRead { path, count } => eprintln!(
-                "{}",
-                texts.get(
-                    "init-courses-read",
-                    // As the project file names it: relative to the project folder.
-                    Some(&args!(
-                        "path" => path.display().to_string(),
-                        "count" => count,
-                    ))
-                )
-            ),
-            InitProgress::Fitting { scale } => eprintln!(
-                "{}",
-                texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
-            ),
-        },
+        &|kind, contour| init_comments(texts, kind, contour),
+        &mut |progress| eprintln!("{}", init_progress_line(texts, &progress)),
     )
     .map_err(|e| op_error(texts, e))?;
+    for line in init_written_lines(texts, &result) {
+        eprintln!("{line}");
+    }
+    Ok(0)
+}
+
+/// The lines `init` prints after it wrote the file.
+fn init_written_lines(texts: &Texts, result: &ops::init::InitResult) -> Vec<String> {
+    let mut lines = Vec::new();
     let path = result.path.display().to_string();
-    let kind_word = kind_word(result.kind);
+    let kind_word = texts.plain(kind_word_id(result.kind));
     let map_scale = result.map_scale;
     match &result.course_file {
         None => {
             let layout = &result.layouts[0];
-            eprintln!(
-                "{}",
-                texts.get(
-                    "init-written",
-                    Some(&args!(
-                        "path" => path.clone(),
-                        "layout" => layout.id.clone(),
-                        "paper" => paper_name(layout.paper),
-                        "margin" => metres(texts, layout.margin_mm),
-                        "scale" => map_scale.to_string(),
-                        "kind" => kind_word.clone(),
-                    ))
-                )
-            );
+            lines.push(texts.get(
+                "init-written",
+                Some(&args!(
+                    "path" => path.clone(),
+                    "layout" => layout.id.clone(),
+                    "paper" => paper_name(layout.paper),
+                    "margin" => metres(texts, layout.margin_mm),
+                    "scale" => map_scale.to_string(),
+                    "kind" => kind_word.clone(),
+                )),
+            ));
             if !result.fits() {
-                eprintln!(
-                    "{}",
-                    texts.get(
-                        "init-no-fit",
-                        Some(&args!("scale" => map_scale.to_string()))
-                    )
-                );
-                for line in result.check.iter().flat_map(|c| check_lines(texts, c)) {
-                    eprintln!("{line}");
-                }
+                lines.push(texts.get(
+                    "init-no-fit",
+                    Some(&args!("scale" => map_scale.to_string())),
+                ));
+                lines.extend(result.check.iter().flat_map(|c| check_lines(texts, c)));
             }
         }
-        Some(courses) => print_course_init(texts, &result, courses, &path, &kind_word),
+        Some(courses) => lines.extend(course_init_lines(texts, result, courses, &path, &kind_word)),
     }
-    eprintln!(
-        "{}",
-        match result.contour_interval_m {
-            Some(value) => texts.get(
-                "init-contour-hint",
-                Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
-            ),
-            None => texts.plain("init-no-contour-hint"),
-        }
-    );
+    lines.push(match result.contour_interval_m {
+        Some(value) => texts.get(
+            "init-contour-hint",
+            Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
+        ),
+        None => texts.plain("init-no-contour-hint"),
+    });
     let next = if result.fits() {
         "init-next"
     } else {
         "init-next-with-notes"
     };
-    eprintln!("{}", texts.get(next, Some(&args!("path" => path))));
-    Ok(0)
+    lines.push(texts.get(next, Some(&args!("path" => path))));
+    lines
 }
 
 /// The lines `init --courses` prints after it wrote the file: what was written, each layout with its
 /// courses, where the scales and the description box came from.
-fn print_course_init(
+fn course_init_lines(
     texts: &Texts,
     result: &ops::init::InitResult,
     courses: &ops::init::InitCourses,
     path: &str,
     kind_word: &str,
-) {
-    eprintln!(
-        "{}",
-        texts.get(
-            "init-written-courses",
-            Some(&args!(
-                "path" => path.to_string(),
-                "layouts" => result.layouts.len(),
-                "assignments" => result.assignments,
-                "kind" => kind_word.to_string(),
-            ))
-        )
-    );
+) -> Vec<String> {
+    let mut lines = vec![texts.get(
+        "init-written-courses",
+        Some(&args!(
+            "path" => path.to_string(),
+            "layouts" => result.layouts.len(),
+            "assignments" => result.assignments,
+            "kind" => kind_word.to_string(),
+        )),
+    )];
     for layout in &result.layouts {
-        eprintln!(
-            "{}",
-            texts.get(
-                "init-courses-layout",
-                Some(&args!(
-                    "layout" => printable(&layout.id),
-                    "scale" => layout.print_scale.to_string(),
-                    "paper" => paper_name(layout.paper),
-                    "margin" => metres(texts, layout.margin_mm),
-                    "courses" => quoted_list(texts, &layout.courses),
-                ))
-            )
-        );
+        lines.push(texts.get(
+            "init-courses-layout",
+            Some(&args!(
+                "layout" => printable(&layout.id),
+                "scale" => layout.print_scale.to_string(),
+                "paper" => paper_name(layout.paper),
+                "margin" => metres(texts, layout.margin_mm),
+                "courses" => quoted_list(texts, &layout.courses),
+            )),
+        ));
         if !layout.fits {
-            eprintln!(
-                "{}",
-                texts.get(
-                    "init-courses-no-fit",
-                    Some(&args!(
-                        "scale" => layout.print_scale.to_string(),
-                        "layout" => printable(&layout.id),
-                    ))
-                )
-            );
+            lines.push(texts.get(
+                "init-courses-no-fit",
+                Some(&args!(
+                    "scale" => layout.print_scale.to_string(),
+                    "layout" => printable(&layout.id),
+                )),
+            ));
         }
     }
     let scales_id = if courses.iof {
@@ -686,17 +682,15 @@ fn print_course_init(
     } else {
         "init-courses-scales-ppen"
     };
-    eprintln!(
-        "{}",
-        texts.get(
-            scales_id,
-            Some(&args!("scale" => result.map_scale.to_string()))
-        )
-    );
+    lines.push(texts.get(
+        scales_id,
+        Some(&args!("scale" => result.map_scale.to_string())),
+    ));
     if !courses.iof {
-        eprintln!("{}", texts.plain("init-courses-description-box"));
+        lines.push(texts.plain("init-courses-description-box"));
     }
-    eprintln!("{}", texts.plain("init-courses-crop"));
+    lines.push(texts.plain("init-courses-crop"));
+    lines
 }
 
 /// `numbers accept`: appends a number correction to the project file (ADR 0025, addendum).
@@ -716,20 +710,22 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
         position: args.direction.zip(args.gap),
     })
     .map_err(|e| op_error(texts, e))?;
-    eprintln!(
-        "{}",
-        texts.get(
-            "numbers-accepted",
-            Some(&args!(
-                "control" => printable(&result.control),
-                "scope" => scope_text(texts, &result.scope),
-                "path" => result.path.display().to_string(),
-                "direction" => short_decimal(texts, result.direction, 1),
-                "gap" => short_decimal(texts, result.gap_mm, 2),
-            ))
-        )
-    );
+    eprintln!("{}", numbers_accepted_line(texts, &result));
     Ok(0)
+}
+
+/// What `numbers accept` says after it wrote the correction.
+fn numbers_accepted_line(texts: &Texts, result: &ops::numbers::AcceptResult) -> String {
+    texts.get(
+        "numbers-accepted",
+        Some(&args!(
+            "control" => printable(&result.control),
+            "scope" => scope_text(texts, &result.scope),
+            "path" => result.path.display().to_string(),
+            "direction" => short_decimal(texts, result.direction, 1),
+            "gap" => short_decimal(texts, result.gap_mm, 2),
+        )),
+    )
 }
 
 /// "for course "A"", "for layout a4": the scope of a number correction.
@@ -817,21 +813,21 @@ fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
 }
 
 /// The closing lines after a mask is written: who prints with it, and `check`.
-fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<&ops::masks::Assigned>) {
-    match assigned {
-        Some(a) => eprintln!(
-            "{}",
-            texts.get(
+fn mask_written_lines(
+    texts: &Texts,
+    id: &str,
+    assigned: Option<&ops::masks::Assigned>,
+) -> [String; 2] {
+    [
+        match assigned {
+            Some(a) => texts.get(
                 "masks-assigned",
                 Some(&args!("course" => printable(&a.course), "layout" => printable(&a.layout))),
-            )
-        ),
-        None => eprintln!(
-            "{}",
-            texts.get("masks-not-assigned", Some(&args!("id" => printable(id))))
-        ),
-    }
-    eprintln!("{}", texts.plain("masks-run-check"));
+            ),
+            None => texts.get("masks-not-assigned", Some(&args!("id" => printable(id)))),
+        },
+        texts.plain("masks-run-check"),
+    ]
 }
 
 /// `masks window`: appends a mask with circular windows around the controls of a course (ADR 0047).
@@ -848,35 +844,45 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
             id: args.id.clone(),
             assign: args.assign,
         },
-        &|r| {
-            let mut comment = texts.get("masks-window-comment", Some(&window_summary(texts, r)));
-            for line in own_radius_lines(texts, r) {
-                comment.push('\n');
-                comment.push_str(&line);
-            }
-            comment
-        },
+        &|r| window_comment(texts, r),
     )
     .map_err(|e| op_error(texts, e))?;
-    let mut summary = window_summary(texts, &result);
-    summary.set("path", result.path.display().to_string());
-    eprintln!("{}", texts.get("masks-window-written", Some(&summary)));
-    for line in own_radius_lines(texts, &result) {
+    for line in window_written_lines(texts, &result) {
         eprintln!("{line}");
     }
+    Ok(0)
+}
+
+/// The comment written above a window mask.
+fn window_comment(texts: &Texts, r: &ops::masks::WindowResult) -> String {
+    let mut comment = texts.get("masks-window-comment", Some(&window_summary(texts, r)));
+    for line in own_radius_lines(texts, r) {
+        comment.push('\n');
+        comment.push_str(&line);
+    }
+    comment
+}
+
+/// What `masks window` says after it wrote the mask.
+fn window_written_lines(texts: &Texts, result: &ops::masks::WindowResult) -> Vec<String> {
+    let mut summary = window_summary(texts, result);
+    summary.set("path", result.path.display().to_string());
+    let mut lines = vec![texts.get("masks-window-written", Some(&summary))];
+    lines.extend(own_radius_lines(texts, result));
     if let Some(which) = result.without_window {
         let which = match which {
             ops::masks::StartFinish::Both => "both",
             ops::masks::StartFinish::Start => "start",
             ops::masks::StartFinish::Finish => "finish",
         };
-        eprintln!(
-            "{}",
-            texts.get("masks-no-start-finish", Some(&args!("which" => which)))
-        );
+        lines.push(texts.get("masks-no-start-finish", Some(&args!("which" => which))));
     }
-    mask_written_lines(texts, &result.id, result.assigned.as_ref());
-    Ok(0)
+    lines.extend(mask_written_lines(
+        texts,
+        &result.id,
+        result.assigned.as_ref(),
+    ));
+    lines
 }
 
 /// The arguments of the messages about a window mask: id, number of windows, the stops, course, radius and
@@ -981,22 +987,37 @@ fn masks_corridor(texts: &Texts, args: &CorridorArgs) -> anyhow::Result<u8> {
             assign: args.assign,
             course: args.course.clone(),
         },
-        &|r| {
-            // The points as read, so that the command can be run again from the comment.
-            let written: Vec<String> = r.points.iter().map(|[x, y]| format!("{x},{y}")).collect();
-            format!(
-                "{}\n--points \"{}\"",
-                texts.get("masks-corridor-comment", Some(&corridor_summary(texts, r))),
-                written.join(";")
-            )
-        },
+        &|r| corridor_comment(texts, r),
     )
     .map_err(|e| op_error(texts, e))?;
-    let mut summary = corridor_summary(texts, &result);
-    summary.set("path", result.path.display().to_string());
-    eprintln!("{}", texts.get("masks-corridor-written", Some(&summary)));
-    mask_written_lines(texts, &result.id, result.assigned.as_ref());
+    for line in corridor_written_lines(texts, &result) {
+        eprintln!("{line}");
+    }
     Ok(0)
+}
+
+/// The comment written above a corridor mask.
+fn corridor_comment(texts: &Texts, r: &ops::masks::CorridorResult) -> String {
+    // The points as read, so that the command can be run again from the comment.
+    let written: Vec<String> = r.points.iter().map(|[x, y]| format!("{x},{y}")).collect();
+    format!(
+        "{}\n--points \"{}\"",
+        texts.get("masks-corridor-comment", Some(&corridor_summary(texts, r))),
+        written.join(";")
+    )
+}
+
+/// What `masks corridor` says after it wrote the mask.
+fn corridor_written_lines(texts: &Texts, result: &ops::masks::CorridorResult) -> Vec<String> {
+    let mut summary = corridor_summary(texts, result);
+    summary.set("path", result.path.display().to_string());
+    let mut lines = vec![texts.get("masks-corridor-written", Some(&summary))];
+    lines.extend(mask_written_lines(
+        texts,
+        &result.id,
+        result.assigned.as_ref(),
+    ));
+    lines
 }
 
 /// The arguments of the messages about a corridor mask: id, number of points, width and print scale.
