@@ -489,3 +489,10 @@ error-edit-project = the project { $path } was not changed
 mcp-error-corridor-assign = assign needs a course; give the course whose sheet prints the corridor
 mcp-error-numbers-position = direction and gap go together; give both, or leave both out to take the proposal of check_project
 mcp-error-project-link = { $path } is a link, and the server does not change a project file through a link; give the path of the file it points to
+
+# ---- MCP export (M5 Task 4) ----
+error-export-stopped = { $count ->
+    [0] the export stopped before the next sheet because the client cancelled the call or closed the connection; no PDF was written, and no partial file is left
+    [one] the export stopped before the next sheet because the client cancelled the call or closed the connection; the PDF written before stays, and no partial file is left
+   *[other] the export stopped before the next sheet because the client cancelled the call or closed the connection; the { $count } PDFs written before stay, and no partial file is left
+}

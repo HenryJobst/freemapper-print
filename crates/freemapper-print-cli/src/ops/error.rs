@@ -46,6 +46,9 @@ pub enum OpError {
     Output(OutputError),
     /// A sheet could not be drawn or written. Sheets before it are written already.
     Export(ExportError),
+    /// The caller stopped the export between two sheets. `written` are the PDFs written before; a single file is
+    /// not written, and no partial file is left.
+    ExportStopped { written: Vec<PathBuf> },
     /// `masks` needs a course file for this, and the project names none (usage).
     MasksNeedCourseFile,
     /// The mask could not be built from what was given; `course` is empty for a corridor without one (usage).

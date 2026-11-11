@@ -1,5 +1,6 @@
 //! `export`: writes the PDFs of a project, per layout or per course (ADR 0041 for where they may go).
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use freemapper_print::export::{
@@ -60,7 +61,8 @@ pub struct WrittenFile {
 }
 
 /// What `export` reports while it works, so that a caller can show each page before the next is drawn. A
-/// course or layout that fails stops the export; the files before it stay written.
+/// course or layout that fails stops the export; the files before it stay written. The caller answers each report:
+/// `ControlFlow::Break(())` stops the export before the next sheet is drawn ([`OpError::ExportStopped`]).
 #[derive(Debug)]
 pub enum ExportProgress<'a> {
     /// The notes of the course file as a whole, before the first course is drawn.
@@ -87,10 +89,12 @@ pub struct ExportResult {
     pub files: Vec<WrittenFile>,
 }
 
-/// Exports the project as `args` says and hands each page to `progress` once it is drawn.
+/// Exports the project as `args` says and hands each page to `progress` once it is drawn. When `progress`
+/// answers stop, the export ends with [`OpError::ExportStopped`]: the PDFs per course or layout written so far stay
+/// written, the single file is not written, and no partial file is left.
 pub fn export(
     args: &ExportArgs,
-    progress: &mut dyn FnMut(ExportProgress<'_>),
+    progress: &mut dyn FnMut(ExportProgress<'_>) -> ControlFlow<()>,
 ) -> Result<ExportResult, OpError> {
     let loaded = load_project(&args.project)?;
     let layouts =
@@ -127,12 +131,13 @@ pub fn export(
     };
     let mut pages: Vec<ExportedPage> = Vec::new();
     let mut course_file = None;
+    let mut stopped = false;
     match (&courses, selected) {
         (Some(courses), Some(selected)) => {
             let notes = course_file_notes(courses);
-            progress(ExportProgress::CourseFileNotes(&notes));
+            stopped = progress(ExportProgress::CourseFileNotes(&notes)).is_break();
             course_file = Some(notes);
-            if !selected.is_empty() {
+            if !stopped && !selected.is_empty() {
                 let mut on_course = |done: ExportedCourse<'_>| {
                     let page = ExportedPage {
                         path: done.path,
@@ -145,8 +150,10 @@ pub fn export(
                             map_scale,
                         ),
                     };
-                    progress(ExportProgress::Page { mode, page: &page });
+                    let flow = progress(ExportProgress::Page { mode, page: &page });
+                    stopped = flow.is_break();
                     pages.push(page);
+                    flow
                 };
                 if args.single_file {
                     export_courses_single_file(
@@ -171,11 +178,22 @@ pub fn export(
                     page: 1,
                     sheet: Sheet::new(None, done.layout, done.report, kind, map_scale),
                 };
-                progress(ExportProgress::Page { mode, page: &page });
+                let flow = progress(ExportProgress::Page { mode, page: &page });
+                stopped = flow.is_break();
                 pages.push(page);
+                flow
             })
             .map_err(OpError::Export)?;
         }
+    }
+    if stopped {
+        // The single file is not written when its export stops; the files per sheet are.
+        let written = if mode == ExportMode::SingleFile {
+            Vec::new()
+        } else {
+            pages.iter().map(|p| p.path.clone()).collect()
+        };
+        return Err(OpError::ExportStopped { written });
     }
     let mut files: Vec<WrittenFile> = Vec::new();
     for page in &pages {
@@ -238,13 +256,16 @@ mod tests {
                 project: dir.path().to_path_buf(),
                 ..ExportArgs::default()
             },
-            &mut |progress| match progress {
-                ExportProgress::CourseFileNotes(notes) => {
-                    seen.push(format!("notes {}", notes.len()));
+            &mut |progress| {
+                match progress {
+                    ExportProgress::CourseFileNotes(notes) => {
+                        seen.push(format!("notes {}", notes.len()));
+                    }
+                    ExportProgress::Page { mode, page } => {
+                        seen.push(format!("{mode:?} {}", page.sheet.layout));
+                    }
                 }
-                ExportProgress::Page { mode, page } => {
-                    seen.push(format!("{mode:?} {}", page.sheet.layout));
-                }
+                ControlFlow::Continue(())
             },
         )
         .unwrap();
@@ -281,6 +302,45 @@ mod tests {
     }
 
     #[test]
+    fn a_progress_that_stops_ends_the_export_with_what_was_written() {
+        let dir = viktoriapark_copy();
+        let stopped = |single_file: bool, at_notes: bool| {
+            export(
+                &ExportArgs {
+                    project: dir.path().to_path_buf(),
+                    single_file,
+                    ..ExportArgs::default()
+                },
+                &mut |progress| match progress {
+                    ExportProgress::CourseFileNotes(_) if !at_notes => ControlFlow::Continue(()),
+                    _ => ControlFlow::Break(()),
+                },
+            )
+            .unwrap_err()
+        };
+        let out = dir.path().join("out");
+        let err = stopped(false, false);
+        assert!(
+            matches!(&err, OpError::ExportStopped { written } if written == &[out.join("Training.pdf")]),
+            "{err:?}"
+        );
+        std::fs::remove_file(out.join("Training.pdf")).unwrap();
+        // The single file is written at the end, so it is not written at all.
+        let err = stopped(true, false);
+        assert!(
+            matches!(&err, OpError::ExportStopped { written } if written.is_empty()),
+            "{err:?}"
+        );
+        // Stopped before the first sheet.
+        let err = stopped(false, true);
+        assert!(
+            matches!(&err, OpError::ExportStopped { written } if written.is_empty()),
+            "{err:?}"
+        );
+        assert_eq!(std::fs::read_dir(&out).unwrap().count(), 0);
+    }
+
+    #[test]
     fn layouts_by_id_leave_the_courses_out() {
         let dir = viktoriapark_copy();
         let result = export(
@@ -289,7 +349,7 @@ mod tests {
                 layouts: vec!["a4-4000".into()],
                 ..ExportArgs::default()
             },
-            &mut |_| {},
+            &mut |_| ControlFlow::Continue(()),
         )
         .unwrap();
         assert_eq!(result.mode, ExportMode::Layouts);
@@ -301,7 +361,7 @@ mod tests {
                 courses: vec!["Nope".into()],
                 ..ExportArgs::default()
             },
-            &mut |_| {},
+            &mut |_| ControlFlow::Continue(()),
         )
         .unwrap_err();
         assert!(

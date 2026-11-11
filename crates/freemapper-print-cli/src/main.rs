@@ -384,6 +384,10 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
         )),
         E::Output(err) => output_error(texts, &err),
         E::Export(err) => export_error(texts, &err),
+        E::ExportStopped { written } => anyhow!(texts.get(
+            "error-export-stopped",
+            Some(&args!("count" => written.len())),
+        )),
         E::MasksNeedCourseFile => UsageError(texts.plain("error-masks-no-course-file")).into(),
         E::Build { error, course } => build_error(texts, error, &course),
         E::RadiusFor { text } => UsageError(texts.get(
@@ -1220,17 +1224,20 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
             single_file: args.single_file,
             out_dir: args.out_dir.clone(),
         },
-        &mut |progress| match progress {
-            ExportProgress::CourseFileNotes(notes) => {
-                for note in notes {
-                    eprintln!("{}", note.describe(texts).message);
+        &mut |progress| {
+            match progress {
+                ExportProgress::CourseFileNotes(notes) => {
+                    for note in notes {
+                        eprintln!("{}", note.describe(texts).message);
+                    }
+                }
+                ExportProgress::Page { mode, page } => {
+                    for line in export_page_lines(texts, mode, page) {
+                        eprintln!("{line}");
+                    }
                 }
             }
-            ExportProgress::Page { mode, page } => {
-                for line in export_page_lines(texts, mode, page) {
-                    eprintln!("{line}");
-                }
-            }
+            std::ops::ControlFlow::Continue(())
         },
     )
     .map_err(|e| op_error(texts, e))?;

@@ -489,3 +489,10 @@ error-edit-project = Das Projekt { $path } wurde nicht geändert
 mcp-error-corridor-assign = assign braucht eine Bahn; course muss die Bahn nennen, auf deren Blatt der Korridor gedruckt wird
 mcp-error-numbers-position = direction und gap gehören zusammen; beide angeben oder beide weglassen, dann gilt der Vorschlag von check_project
 mcp-error-project-link = { $path } ist ein Link, und der Server ändert keine Projektdatei über einen Link; den Pfad der Datei angeben, auf die er zeigt
+
+# ---- MCP-Export (M5 Task 4) ----
+error-export-stopped = { $count ->
+    [0] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; es wurde kein PDF geschrieben, und keine Teildatei bleibt zurück
+    [one] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; das zuvor geschriebene PDF bleibt, und keine Teildatei bleibt zurück
+   *[other] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; die { $count } zuvor geschriebenen PDFs bleiben, und keine Teildatei bleibt zurück
+}
