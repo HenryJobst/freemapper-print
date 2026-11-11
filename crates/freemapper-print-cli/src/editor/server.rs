@@ -82,8 +82,12 @@ fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: P
     Router::new()
         .route(&format!("{prefix}/api/project"), get(api::get_project))
         .route(&format!("{prefix}/api/revision"), get(api::get_revision))
+        .route(&format!("{prefix}/api/spec"), get(api::get_spec))
         .route(&format!("{prefix}/api/preview"), get(api::get_preview))
         .route(&format!("{prefix}/api/hit"), post(api::post_hit))
+        .route(&format!("{prefix}/api/op/{{name}}"), post(api::post_op))
+        .route(&format!("{prefix}/api/undo"), post(api::post_undo))
+        .route(&format!("{prefix}/api/redo"), post(api::post_redo))
         .with_state(api)
         .route(&format!("{prefix}/"), get(index))
         .route(
@@ -533,6 +537,8 @@ mod tests {
             freemapper_print::web::revision(&bytes).into(),
         );
         object.insert("lang".into(), "en".into());
+        object.insert("can_undo".into(), false.into());
+        object.insert("can_redo".into(), false.into());
         assert_eq!(got, want);
         assert!(!answer.contains(env!("CARGO_MANIFEST_DIR")));
         let (_, revision) = get(&run, "/api/revision");
@@ -812,6 +818,305 @@ mod tests {
             &body,
         );
         assert_eq!(no_origin.0, 403);
+        finish(run);
+    }
+
+    /// The project file's revision as the server reports it now.
+    fn revision_of(run: &Running) -> String {
+        let (_, answer) = get(run, "/api/revision");
+        body_json(&answer)["revision"].as_str().unwrap().to_owned()
+    }
+
+    /// `POST` with the revision header (`None`: without it).
+    fn write(run: &Running, path: &str, revision: Option<&str>, body: &str) -> (u16, String) {
+        let header = revision
+            .map(|r| format!("X-Freemapper-Revision: {r}\r\n"))
+            .unwrap_or_default();
+        let extra = format!(
+            "Origin: http://{}\r\nContent-Type: application/json\r\n{header}",
+            run.host
+        );
+        request_with(
+            &run.host,
+            &run.host,
+            "POST",
+            &format!("{}{path}", run.prefix),
+            &extra,
+            body,
+        )
+    }
+
+    /// A write that must succeed; the new revision.
+    fn op(run: &Running, name: &str, body: &str) -> String {
+        let revision = revision_of(run);
+        let (code, answer) = write(run, &format!("/api/op/{name}"), Some(&revision), body);
+        assert_eq!(code, 200, "{answer}");
+        body_json(&answer)["revision"].as_str().unwrap().to_owned()
+    }
+
+    fn undo_or_redo(run: &Running, what: &str, revision: &str) -> (u16, String) {
+        write(run, &format!("/api/{what}"), Some(revision), "{}")
+    }
+
+    #[test]
+    fn an_edit_is_undone_to_the_exact_bytes_and_redone() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let original = std::fs::read(&file).unwrap();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        let edited = std::fs::read(&file).unwrap();
+        assert_ne!(edited, original);
+        // Comments survive the edit.
+        let text = String::from_utf8(edited.clone()).unwrap();
+        assert!(text.contains("margin_mm = 11"), "{text}");
+        assert_eq!(
+            text.lines().filter(|l| l.starts_with('#')).count(),
+            String::from_utf8(original.clone())
+                .unwrap()
+                .lines()
+                .filter(|l| l.starts_with('#'))
+                .count()
+        );
+        let (code, answer) = undo_or_redo(&run, "undo", &revision);
+        assert_eq!(code, 200, "{answer}");
+        let flags = body_json(&answer);
+        assert_eq!(
+            (flags["can_undo"].as_bool(), flags["can_redo"].as_bool()),
+            (Some(false), Some(true))
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        let reverted = flags["revision"].as_str().unwrap().to_owned();
+        let (code, answer) = undo_or_redo(&run, "redo", &reverted);
+        assert_eq!(code, 200, "{answer}");
+        assert_eq!(std::fs::read(&file).unwrap(), edited);
+        // Nothing left to redo.
+        let again = body_json(&answer)["revision"].as_str().unwrap().to_owned();
+        assert_eq!(undo_or_redo(&run, "redo", &again).0, 422);
+        finish(run);
+    }
+
+    #[test]
+    fn a_new_edit_clears_redo() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        let (_, answer) = undo_or_redo(&run, "undo", &revision);
+        assert_eq!(body_json(&answer)["can_redo"], true);
+        op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":12.0}"#);
+        let (_, answer) = get(&run, "/api/revision");
+        let flags = body_json(&answer);
+        assert_eq!(
+            (flags["can_undo"].as_bool(), flags["can_redo"].as_bool()),
+            (Some(true), Some(false))
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn a_stale_revision_is_409_and_leaves_the_file_alone() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let old = revision_of(&run);
+        op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        let bytes = std::fs::read(&file).unwrap();
+        let (code, answer) = write(
+            &run,
+            "/api/op/set_layout",
+            Some(&old),
+            r#"{"id":"a4-4000","margin_mm":13.0}"#,
+        );
+        assert_eq!(code, 409);
+        let body = body_json(&answer);
+        assert_eq!(body["revision"], revision_of(&run));
+        assert!(body["error"].as_str().unwrap().contains("changed"));
+        assert_eq!(std::fs::read(&file).unwrap(), bytes);
+        // Undo with the old revision is stale too.
+        assert_eq!(undo_or_redo(&run, "undo", &old).0, 409);
+        assert_eq!(std::fs::read(&file).unwrap(), bytes);
+        finish(run);
+    }
+
+    #[test]
+    fn writes_need_the_header_a_known_op_and_a_fitting_form() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = revision_of(&run);
+        assert_eq!(
+            write(&run, "/api/op/set_layout", None, r#"{"id":"a4-4000"}"#).0,
+            400
+        );
+        assert_eq!(write(&run, "/api/undo", None, "{}").0, 400);
+        assert_eq!(write(&run, "/api/op/nope", Some(&revision), "{}").0, 404);
+        assert_eq!(
+            write(
+                &run,
+                "/api/op/set_layout",
+                Some(&revision),
+                r#"{"id":"a4-4000","bogus":1}"#
+            )
+            .0,
+            400
+        );
+        assert_eq!(
+            write(&run, "/api/op/set_layout", Some(&revision), "nonsense").0,
+            400
+        );
+        // A refused change: 422 with a sentence, file unchanged.
+        let (code, answer) = write(
+            &run,
+            "/api/op/set_layout",
+            Some(&revision),
+            r#"{"id":"a4-4000","page_mm":[5,700]}"#,
+        );
+        assert_eq!(code, 422, "{answer}");
+        assert_eq!(revision_of(&run), revision);
+        let (code, answer) = write(
+            &run,
+            "/api/op/set_element",
+            Some(&revision),
+            r#"{"layout":"a4-4000","id":"x","kind":"logo","anchor":{"to":"page","corner":"top_left"},"file":"/etc/passwd"}"#,
+        );
+        assert_eq!(code, 422, "{answer}");
+        assert!(!answer.contains("/etc/"), "{answer}");
+        finish(run);
+    }
+
+    #[test]
+    fn undo_refuses_when_the_file_changed_outside() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let revision = op(&run, "set_layout", r#"{"id":"a4-4000","margin_mm":11.0}"#);
+        let mut text = std::fs::read_to_string(&file).unwrap();
+        text.push_str("\n# edited elsewhere\n");
+        std::fs::write(&file, &text).unwrap();
+        let (code, answer) = undo_or_redo(&run, "undo", &revision);
+        assert_eq!(code, 422);
+        assert!(answer.contains("outside the editor"), "{answer}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        finish(run);
+    }
+
+    #[test]
+    fn a_layout_form_sets_and_clears_the_free_page() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        op(
+            &run,
+            "set_layout",
+            r#"{"id":"a4-4000","page_mm":[500.0,700.0]}"#,
+        );
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("page_mm = [500.0, 700.0]")
+        );
+        op(&run, "set_layout", r#"{"id":"a4-4000","page_mm":null}"#);
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("page_mm"));
+        // Paper, orientation, scale, margin, border, north lines by their form values.
+        op(
+            &run,
+            "set_layout",
+            r#"{"id":"a4-4000","paper":"A3","orientation":"landscape","print_scale":5000,"margin_mm":9.0,"border_mm":0.3,"north_lines":"never"}"#,
+        );
+        let text = std::fs::read_to_string(&file).unwrap();
+        for needle in ["\"A3\"", "landscape", "print_scale = 5000", "never"] {
+            assert!(text.contains(needle), "{needle}: {text}");
+        }
+        finish(run);
+    }
+
+    #[test]
+    fn moving_an_element_shifts_its_offset_for_every_corner_and_both_anchors() {
+        use freemapper_print::project::{Anchor, AnchorTarget, Corner};
+        let dir = crate::ops::testing::luebeck_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let corners = [
+            ("top_left", Corner::TopLeft),
+            ("top_right", Corner::TopRight),
+            ("bottom_left", Corner::BottomLeft),
+            ("bottom_right", Corner::BottomRight),
+        ];
+        let rect = |id: &str| -> Vec<f64> {
+            let (_, answer) = get(&run, "/api/preview?layout=a4-4000");
+            body_json(&answer)["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["id"] == id)
+                .unwrap_or_else(|| panic!("no {id}"))["rect_mm"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap())
+                .collect()
+        };
+        for to in ["page", "map_frame"] {
+            for (name, corner) in corners {
+                let id = format!("m-{to}-{name}");
+                op(
+                    &run,
+                    "set_element",
+                    &format!(
+                        r#"{{"layout":"a4-4000","id":"{id}","kind":"text","lines":["x"],"anchor":{{"to":"{to}","corner":"{name}","offset_mm":[20.0,30.0]}}}}"#
+                    ),
+                );
+                let before = rect(&id);
+                op(
+                    &run,
+                    "move_element",
+                    &format!(r#"{{"layout":"a4-4000","id":"{id}","dx_mm":3.0,"dy_mm":2.0}}"#),
+                );
+                // The page's shift is the sheet's shift, whichever corner the element hangs from.
+                let after = rect(&id);
+                for i in 0..4 {
+                    let want = if i % 2 == 0 { 3.0 } else { 2.0 };
+                    assert!(
+                        (after[i] - before[i] - want).abs() < 1e-6,
+                        "{id}: {before:?} {after:?}"
+                    );
+                }
+                let loaded =
+                    crate::ops::load_project(&dir.path().join("freemapper-print.toml")).unwrap();
+                let layout = loaded
+                    .project
+                    .layouts
+                    .iter()
+                    .find(|l| l.id == "a4-4000")
+                    .unwrap();
+                let anchor: Anchor = layout.elements.iter().find(|e| e.id == id).unwrap().anchor;
+                let right = matches!(corner, Corner::TopRight | Corner::BottomRight);
+                let bottom = matches!(corner, Corner::BottomLeft | Corner::BottomRight);
+                assert_eq!(
+                    anchor.to,
+                    if to == "page" {
+                        AnchorTarget::Page
+                    } else {
+                        AnchorTarget::MapFrame
+                    }
+                );
+                assert_eq!(
+                    anchor.offset_mm,
+                    [
+                        if right { 17.0 } else { 23.0 },
+                        if bottom { 28.0 } else { 32.0 }
+                    ],
+                    "{id}"
+                );
+            }
+        }
+        // A shared element moves as a shared one; an unknown id is refused.
+        let revision = revision_of(&run);
+        let (code, _) = write(
+            &run,
+            "/api/op/move_element",
+            Some(&revision),
+            r#"{"layout":"a4-4000","id":"nothing","dx_mm":1,"dy_mm":1}"#,
+        );
+        assert_eq!(code, 422);
         finish(run);
     }
 }

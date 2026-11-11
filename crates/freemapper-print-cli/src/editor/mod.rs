@@ -5,8 +5,10 @@
 //! editor lives in `main.rs`.
 
 mod api;
+mod edits;
 mod preview;
 mod server;
+mod state;
 
 #[cfg(test)]
 mod page_tests;

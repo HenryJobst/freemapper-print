@@ -1,6 +1,8 @@
-//! The read API of the editor: `GET api/project`, `GET api/revision`, `GET api/preview`, `POST api/hit`.
+//! The API of the editor: `GET api/project`, `GET api/revision`, `GET api/preview`, `POST api/hit` read;
+//! `POST api/op/{name}`, `POST api/undo` and `POST api/redo` write.
 //!
-//! Reads never name a file: the project file is the one `edit` was started with. Drawing a sheet takes seconds
+//! Neither names a file: the project file is the one `edit` was started with. A write names the revision the page
+//! last saw in `X-Freemapper-Revision`; a changed file answers 409, a refused change 422 (core ADR 0030). Drawing a sheet takes seconds
 //! on a large map, so it runs on a blocking task and the server stays responsive.
 
 use std::collections::HashMap;
@@ -8,13 +10,16 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Request, State};
+use axum::extract::{Path as UrlPath, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use freemapper_print::web::{refused, revision, texts_language};
+use fluent_bundle::FluentArgs;
+use freemapper_print::web::{REVISION_HEADER, refused, revision, stale, texts_language};
 use serde::Deserialize;
 
+use super::edits::{self, EditError};
 use super::preview::{self, Drawn, PreviewError};
+use super::state::{History, Refusal};
 use crate::ops::{self, OpError};
 use crate::text::{Lang, TEXTS, Texts};
 
@@ -60,6 +65,8 @@ pub(super) struct Api {
     /// The last sheet drawn, for the click that follows its preview: the project file's revision, the course
     /// and the layout it was drawn for.
     last: Mutex<Option<Cached>>,
+    /// Undo and redo; held for the whole of a write, so two writes never interleave.
+    history: Mutex<History>,
 }
 
 impl Api {
@@ -69,6 +76,7 @@ impl Api {
             fixed,
             latest: AtomicU64::new(0),
             last: Mutex::new(None),
+            history: Mutex::new(History::default()),
         }
     }
 
@@ -123,6 +131,111 @@ impl Api {
             })
             .collect::<Vec<_>>()
             .join(",")
+    }
+
+    fn history_flags(&self) -> (bool, bool) {
+        let history = self.history.lock().unwrap();
+        (history.can_undo(), history.can_redo())
+    }
+
+    /// The project file's text as it is on disk now.
+    fn read_text(&self) -> Result<String, OpError> {
+        std::fs::read_to_string(&self.project).map_err(|source| OpError::LoadProject {
+            path: self.project.clone(),
+            source: anyhow::Error::new(source),
+        })
+    }
+
+    /// Runs one edit under the revision guard. The history stays locked throughout.
+    fn edit(&self, run: edits::Run, args: serde_json::Value, claimed: &str, lang: &Lang) -> Done {
+        let mut history = self.history.lock().unwrap();
+        let before = match self.read_text() {
+            Ok(text) => text,
+            Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
+        };
+        let current = revision(before.as_bytes());
+        if current != claimed {
+            return Done::Stale(current);
+        }
+        let result = match run(&self.project, args) {
+            Ok(result) => result,
+            Err(EditError::Form) => return Done::Form,
+            Err(EditError::Op(error)) => {
+                return Done::Refused(sentence(lang, error, &self.project));
+            }
+            Err(EditError::Say(id, value)) => {
+                let texts = Texts::new(lang);
+                return Done::Refused(
+                    texts.get(id, Some(&args!("id" => value.clone(), "path" => value))),
+                );
+            }
+        };
+        let after = match self.read_text() {
+            Ok(text) => text,
+            Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
+        };
+        if after != before {
+            history.record(before, &after);
+        }
+        Done::Changed {
+            revision: revision(after.as_bytes()),
+            result,
+            can_undo: history.can_undo(),
+            can_redo: history.can_redo(),
+        }
+    }
+
+    /// Undo or redo: the file as an earlier edit left it, if nobody else changed it since.
+    fn step(&self, undo: bool, claimed: &str, lang: &Lang) -> Done {
+        let texts = Texts::new(lang);
+        let mut history = self.history.lock().unwrap();
+        let current = match self.read_text() {
+            Ok(text) => text,
+            Err(error) => return Done::Refused(sentence(lang, error, &self.project)),
+        };
+        let target = if undo {
+            history.undo_text(&current)
+        } else {
+            history.redo_text(&current)
+        };
+        let target = match target {
+            Ok(text) => text.to_owned(),
+            Err(Refusal::ChangedOutside) => {
+                // No snapshot is safe over somebody else's change.
+                history.forget();
+                return Done::Refused(texts.get("edit-changed-outside", None));
+            }
+            Err(Refusal::Nothing) => {
+                let id = if undo {
+                    "edit-nothing-undo"
+                } else {
+                    "edit-nothing-redo"
+                };
+                return Done::Refused(texts.get(id, None));
+            }
+        };
+        let now = revision(current.as_bytes());
+        if now != claimed {
+            return Done::Stale(now);
+        }
+        if let Err(source) = freemapper_print::project::replace_text(&self.project, &target) {
+            let error = OpError::WriteFile {
+                path: self.project.clone(),
+                source: anyhow::Error::new(source),
+            };
+            return Done::Refused(sentence(lang, error, &self.project));
+        }
+        if undo {
+            history.commit_undo(current, &target);
+        } else {
+            history.commit_redo(current, &target);
+        }
+        Done::Changed {
+            revision: revision(target.as_bytes()),
+            result: serde_json::Value::Null,
+            can_undo: history.can_undo(),
+            can_redo: history.can_redo(),
+        }
     }
 
     /// The revision of the project file and the signature of its sources, as they are on disk now.
@@ -186,9 +299,14 @@ impl Api {
 /// The sentence for the person for a failed read, in the request's language. The page never gets an absolute
 /// path: the folder of the project goes, and any other path shrinks to its file name.
 fn refusal(lang: &Lang, error: OpError, project: &std::path::Path) -> Response {
+    refused(&sentence(lang, error, project))
+}
+
+/// [`refusal`]'s sentence.
+fn sentence(lang: &Lang, error: OpError, project: &std::path::Path) -> String {
     let texts = Texts::new(lang);
     let message = format!("{:#}", crate::op_error(&texts, error));
-    refused(&scrub(&message, project))
+    scrub(&message, project)
 }
 
 /// `message` without absolute paths (see [`refusal`]).
@@ -229,15 +347,20 @@ fn json(value: &serde_json::Value) -> Response {
         .into_response()
 }
 
-/// `GET api/revision`: `{ revision, sources }`: the revision of the project file and the signature of the map and
+/// `GET api/revision`: `{ revision, sources, can_undo, can_redo }`: the revision of the project file and the signature of the map and
 /// course file it names, as they are now. The page reads the project again when either changes.
 pub(super) async fn get_revision(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
     let lang = api.lang(&headers);
     let project = api.project.clone();
-    match tokio::task::spawn_blocking(move || api.stamp()).await {
-        Ok(Ok(stamp)) => {
-            json(&serde_json::json!({ "revision": stamp.revision, "sources": stamp.sources }))
-        }
+    match tokio::task::spawn_blocking(move || api.stamp().map(|stamp| (stamp, api.history_flags())))
+        .await
+    {
+        Ok(Ok((stamp, (can_undo, can_redo)))) => json(&serde_json::json!({
+            "revision": stamp.revision,
+            "sources": stamp.sources,
+            "can_undo": can_undo,
+            "can_redo": can_redo,
+        })),
         Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -260,6 +383,9 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
         object.remove("path");
         object.insert("revision".into(), stamp.revision.into());
         object.insert("sources".into(), stamp.sources.into());
+        let (can_undo, can_redo) = api.history_flags();
+        object.insert("can_undo".into(), can_undo.into());
+        object.insert("can_redo".into(), can_redo.into());
         Ok(value)
     })
     .await;
@@ -268,6 +394,28 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
             value["lang"] = lang.code().into();
             json(&value)
         }
+        Ok(Err(error)) => refusal(&lang, error, &project),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `GET api/spec`: `{ revision, layouts, shared }`, the layouts and shared elements as the project file has them,
+/// for the page's forms. Like the rest it names no file.
+pub(super) async fn get_spec(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+    let lang = api.lang(&headers);
+    let project = api.project.clone();
+    let answer = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, OpError> {
+        let text = api.read_text()?;
+        let loaded = ops::load_project(&api.project)?;
+        Ok(serde_json::json!({
+            "revision": revision(text.as_bytes()),
+            "layouts": loaded.project.layouts,
+            "shared": loaded.project.shared,
+        }))
+    })
+    .await;
+    match answer {
+        Ok(Ok(value)) => json(&value),
         Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -436,6 +584,99 @@ pub(super) async fn post_hit(
         Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+/// What a write came to.
+enum Done {
+    Changed {
+        revision: String,
+        result: serde_json::Value,
+        can_undo: bool,
+        can_redo: bool,
+    },
+    /// The file is not the one the page named; its revision now.
+    Stale(String),
+    /// The change was refused with this sentence; the file is as it was.
+    Refused(String),
+    /// The arguments do not have the op's form.
+    Form,
+}
+
+/// The revision the page names; `None` when the header is missing (400).
+fn claimed(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(REVISION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn answer(done: Done, lang: &Lang) -> Response {
+    match done {
+        Done::Changed {
+            revision,
+            result,
+            can_undo,
+            can_redo,
+        } => json(&serde_json::json!({
+            "revision": revision,
+            "can_undo": can_undo,
+            "can_redo": can_redo,
+            "result": result,
+        })),
+        Done::Stale(current) => stale(&current, &Texts::new(lang).get("edit-stale", None)),
+        Done::Refused(sentence) => refused(&sentence),
+        Done::Form => bad_request("form"),
+    }
+}
+
+/// `POST api/op/{name}` with `X-Freemapper-Revision` and the op's arguments as JSON: 200 `{ revision, can_undo,
+/// can_redo, result }`, 400 for a missing revision or a form that does not fit, 404 for a name that is no op, 409
+/// when the file is no longer the one the page saw, 422 for a change that is refused (the file stays as it was).
+pub(super) async fn post_op(
+    State(api): State<Arc<Api>>,
+    UrlPath(name): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(run) = edits::find(&name) else {
+        return (StatusCode::NOT_FOUND, "op").into_response();
+    };
+    let Some(claimed) = claimed(&headers) else {
+        return bad_request("revision");
+    };
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return bad_request("json");
+    };
+    let lang = api.lang(&headers);
+    let for_answer = lang.clone();
+    match tokio::task::spawn_blocking(move || api.edit(run, args, &claimed, &lang)).await {
+        Ok(done) => answer(done, &for_answer),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn step(api: Arc<Api>, headers: HeaderMap, undo: bool) -> Response {
+    let Some(claimed) = claimed(&headers) else {
+        return bad_request("revision");
+    };
+    let lang = api.lang(&headers);
+    let for_answer = lang.clone();
+    match tokio::task::spawn_blocking(move || api.step(undo, &claimed, &lang)).await {
+        Ok(done) => answer(done, &for_answer),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `POST api/undo` with `X-Freemapper-Revision`: puts the file back as it was before the last edit; the answer is
+/// that of `post_op` with a `null` result. 422 when there is nothing to undo or the file changed outside.
+pub(super) async fn post_undo(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+    step(api, headers, true).await
+}
+
+/// `POST api/redo`: the edit undo took back.
+pub(super) async fn post_redo(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+    step(api, headers, false).await
 }
 
 #[cfg(test)]
