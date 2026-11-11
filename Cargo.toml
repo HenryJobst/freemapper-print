@@ -33,6 +33,7 @@ quick-xml = "0.42.0"
 # freemapper-fs uses.
 same-file = "=1.0.6"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.154"
 # Same CSS tokenizer and IRI parser as usvg, so that logo SVGs are checked the way usvg reads them.
 simplecss = "0.2.2"
 svgtypes = "0.16.1"

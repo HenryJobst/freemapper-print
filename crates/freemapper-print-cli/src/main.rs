@@ -1,6 +1,7 @@
 //! The `freemapper-print` binary. Commands come with the milestones in the design
 //! (`docs/superpowers/specs/2026-11-08-freemapper-print-design.md`).
 
+mod ops;
 mod text;
 
 use std::path::{Path, PathBuf};
@@ -11,17 +12,14 @@ use fluent_bundle::FluentArgs;
 use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{
-    CorrectionScope, LoadedCourses, MaskNote, Stale, StopName, load_courses,
-};
+use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, StopName};
 use freemapper_print::export::{
     ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
-    select_courses, select_layouts, sheet_report,
+    select_courses, select_layouts,
 };
 use freemapper_print::mask_build::{self, BuildError, Selection, WindowOptions};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
-use freemapper_print::omap::read::read_map_file;
 use freemapper_print::output::{self, OutputError};
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
 use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
@@ -284,7 +282,7 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let (pdf, report, footer_notes) = print_map(&map, &options, &title, sheet_lang(texts))
         .with_context(|| texts.plain("error-print"))?;
     freemapper_print::output::write_pdf_file(&args.out, &pdf)
-        .map_err(|e| output_error(texts, e))?;
+        .map_err(|e| output_error(texts, &e))?;
     let mut lines = report_lines(
         texts,
         &report,
@@ -330,40 +328,37 @@ fn render_note_line(texts: &Texts, note: &SheetNote) -> String {
 }
 
 fn read_map(texts: &Texts, path: &Path) -> anyhow::Result<MapDocument> {
-    read_map_file(path).with_context(|| {
-        texts.get(
-            "error-read-map",
-            Some(&args!("path" => path.display().to_string())),
-        )
-    })
-}
-
-/// The project file named by `arg`: the file itself, or `freemapper-print.toml` in a folder.
-fn project_file(arg: &Path) -> PathBuf {
-    if arg.is_dir() {
-        arg.join(project::FILE_NAME)
-    } else {
-        arg.to_path_buf()
-    }
+    ops::read_map(path).map_err(|e| op_error(texts, e))
 }
 
 fn load_project(texts: &Texts, arg: &Path) -> anyhow::Result<LoadedProject> {
-    let path = project_file(arg);
-    project::load(&path)
-        .map_err(|err| match err {
-            // A rule of this program rather than a typo, so it is said in the user's language (ADR 0044).
-            project::ProjectError::BasePartHidden { file, field } => anyhow!(texts.get(
-                "error-base-part-hidden",
-                Some(&args!("path" => file, "field" => field)),
-            )),
-            other => anyhow::Error::new(other),
-        })
-        .with_context(|| {
-            texts.get(
-                "error-load-project",
-                Some(&args!("path" => path.display().to_string())),
-            )
-        })
+    ops::load_project(arg).map_err(|e| op_error(texts, e))
+}
+
+/// The message for an op that stopped. A wrong command line, such as an unknown course, is a [`UsageError`]
+/// (exit code 2).
+fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
+    use ops::OpError as E;
+    match err {
+        E::LoadProject { path, source } => source.context(texts.get(
+            "error-load-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        // A rule of this program rather than a typo, so it is said in the user's language (ADR 0044).
+        E::BasePartHidden { path, file, field } => anyhow!(texts.get(
+            "error-base-part-hidden",
+            Some(&args!("path" => file, "field" => field)),
+        ))
+        .context(texts.get(
+            "error-load-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::ReadMap { path, source } => source.context(texts.get(
+            "error-read-map",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::Courses(source) => source.context(texts.plain("error-courses")),
+    }
 }
 
 /// Metres with the decimal separator of the language and no needless `.0`: `2.5`, `5`.
@@ -421,7 +416,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
     // already (ADR 0041). A folder that does not exist yet holds no link.
     if args.folder.is_dir() {
         output::check_out_folder(&args.folder, &args.folder.join("out"))
-            .map_err(|e| output_error(texts, e))?;
+            .map_err(|e| output_error(texts, &e))?;
     }
     let map = read_map(texts, &args.map)?;
     let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
@@ -610,8 +605,8 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
                     // `init` writes the default profile.
                     rules: freemapper_print::rules::base().clone(),
                 };
-                let (lines, _) = check_lines(texts, &loaded, &map, layout, &LogoCache::new());
-                for line in lines {
+                let sheet = ops::check::check_layout(&loaded, &map, layout, &LogoCache::new());
+                for line in check_lines(texts, &sheet, map_scale) {
                     eprintln!("{line}");
                 }
             }
@@ -887,7 +882,7 @@ fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
             // The proposal of `check`: the same sheet, drawn the same way.
             let (_, report) =
                 course_sheet_report(&loaded, &map, &courses, course, &LogoCache::new())
-                    .map_err(|err| export_error(texts, err))?;
+                    .map_err(|err| export_error(texts, &err))?;
             let proposal = report.notes.iter().find_map(|n| match n {
                 SheetNote::NumberConflict(c)
                     if c.control == args.control && c.course == course.name && c.searched =>
@@ -998,7 +993,7 @@ fn layout_conflicts(
             continue;
         }
         let (_, report) = course_sheet_report(&trial, map, courses, c, &logos)
-            .map_err(|err| export_error(texts, err))?;
+            .map_err(|err| export_error(texts, &err))?;
         let conflict = report
             .notes
             .iter()
@@ -1479,63 +1474,84 @@ fn masks_corridor(texts: &Texts, args: &CorridorArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
-/// What `check` prints for one layout, and whether the layout needs a look. A layout that cannot
-/// be drawn gives its error line and counts as needing a look.
-fn check_lines(
+/// The lines about one sheet: the first line (message `id` with `keys`, the page size, scales and factors), then
+/// its notes.
+fn sheet_lines(
     texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    layout: &LayoutSpec,
-    logos: &LogoCache,
-) -> (Vec<String>, bool) {
-    // The PDF is made in memory only: the font check needs it.
-    match sheet_report(loaded, map, layout, logos) {
-        Ok(report) => {
-            let head = summary_line(
+    id: &str,
+    keys: &[(&'static str, String)],
+    sheet: &ops::Sheet,
+    map_scale: u32,
+) -> Vec<String> {
+    let mut lines = vec![summary_line(
+        texts,
+        id,
+        keys,
+        sheet.paper,
+        &sheet.print,
+        map_scale,
+    )];
+    lines.extend(sheet.notes.iter().map(|n| n.describe(texts).message));
+    lines
+}
+
+/// What `check` prints for one sheet. A sheet that cannot be drawn gives its error line.
+fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck, map_scale: u32) -> Vec<String> {
+    match sheet {
+        ops::check::SheetCheck::Drawn(s) => match &s.course {
+            Some(course) => sheet_lines(
+                texts,
+                "check-course-summary",
+                &[
+                    ("course", printable(course)),
+                    ("layout", printable(&s.layout)),
+                ],
+                s,
+                map_scale,
+            ),
+            None => sheet_lines(
                 texts,
                 "check-summary",
-                &[("layout", printable(&layout.id))],
-                layout.paper,
-                &report.print,
-                map.georef.scale_denominator,
-            );
-            layout_lines(texts, head, layout, &report, loaded.project.map.kind)
-        }
-        Err(err) => {
-            let message = printable(&format!("{:#}", export_error(texts, err)));
-            (
-                vec![texts.get("error-line", Some(&args!("message" => message)))],
-                true,
-            )
-        }
+                &[("layout", printable(&s.layout))],
+                s,
+                map_scale,
+            ),
+        },
+        ops::check::SheetCheck::Failed { error, .. } => vec![error.describe(texts).message],
     }
 }
 
-fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    if let Some(courses) = read_courses(texts, &loaded, &map)? {
-        return Ok(check_courses(texts, &loaded, &map, &courses));
-    }
-    let total = loaded.project.layouts.len();
+/// Prints the lines of `sheets` and returns how many of them need a look.
+fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck], map_scale: u32) -> usize {
     let mut with_notes = 0;
-    // One logo cache for all layouts: each logo file is decoded once.
-    let logos = LogoCache::new();
-    // Every layout is checked, also after one that cannot be drawn.
-    for layout in &loaded.project.layouts {
-        let (lines, has_notes) = check_lines(texts, &loaded, &map, layout, &logos);
-        for line in lines {
+    for sheet in sheets {
+        for line in check_lines(texts, sheet, map_scale) {
             eprintln!("{line}");
         }
-        with_notes += usize::from(has_notes);
+        with_notes += usize::from(sheet.needs_attention());
     }
-    if with_notes == 0 {
-        eprintln!(
-            "{}",
-            texts.get("check-clean", Some(&args!("count" => total)))
-        );
-        Ok(0)
-    } else {
+    with_notes
+}
+
+/// `check`: without a course file every layout; with one, the notes of the file once, then every course on its
+/// layout, then every layout sheet without a course, as `export --layout` writes it (ruling R40). Exit code 1
+/// when the file, a course or a layout sheet has notes that count.
+fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
+    let result = ops::check::check(&ops::check::CheckArgs {
+        project: args.project.clone(),
+    })
+    .map_err(|e| op_error(texts, e))?;
+    let map_scale = result.map_scale;
+    let Some(file_notes) = &result.course_file else {
+        let total = result.layouts.len();
+        let with_notes = print_checks(texts, &result.layouts, map_scale);
+        if with_notes == 0 {
+            eprintln!(
+                "{}",
+                texts.get("check-clean", Some(&args!("count" => total)))
+            );
+            return Ok(0);
+        }
         eprintln!(
             "{}",
             texts.get(
@@ -1543,81 +1559,16 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
                 Some(&args!("count" => with_notes, "total" => total))
             )
         );
-        Ok(1)
+        return Ok(1);
+    };
+    for note in file_notes {
+        eprintln!("{}", note.describe(texts).message);
     }
-}
-
-/// The course file of the project, read and fitted to `map`; `None` when the project names none.
-fn read_courses(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-) -> anyhow::Result<Option<LoadedCourses>> {
-    load_courses(loaded, map).context(texts.plain("error-courses"))
-}
-
-/// Prints the notes of the course file as a whole and returns whether one of them is a warning.
-fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
-    let notes = course_event_notes(courses);
-    for note in &notes {
-        eprintln!("{}", sheet_note_line(texts, note));
-    }
-    notes.iter().any(|n| !n.is_info())
-}
-
-/// `check` with a course file: the notes of the file once, then every course on its layout, then every layout
-/// sheet without a course, as `export --layout` writes it. Returns the exit code: 1 when the file, a course or
-/// a layout sheet has notes that count.
-fn check_courses(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    courses: &LoadedCourses,
-) -> u8 {
-    let file_notes = print_course_file_notes(texts, courses);
-    let logos = LogoCache::new();
-    let total = courses.event.courses.len();
-    let mut with_notes = 0;
-    // Every course is checked, also after one that cannot be drawn.
-    for course in &courses.event.courses {
-        let (lines, has_notes) = match course_sheet_report(loaded, map, courses, course, &logos) {
-            Ok((layout, report)) => {
-                let head = summary_line(
-                    texts,
-                    "check-course-summary",
-                    &[
-                        ("course", printable(&course.name)),
-                        ("layout", printable(&layout.id)),
-                    ],
-                    layout.paper,
-                    &report.print,
-                    map.georef.scale_denominator,
-                );
-                layout_lines(texts, head, layout, &report, loaded.project.map.kind)
-            }
-            Err(err) => {
-                let message = printable(&format!("{:#}", export_error(texts, err)));
-                (
-                    vec![texts.get("error-line", Some(&args!("message" => message)))],
-                    true,
-                )
-            }
-        };
-        for line in lines {
-            eprintln!("{line}");
-        }
-        with_notes += usize::from(has_notes);
-    }
-    // The layout sheets without a course, as `export --layout` writes them (ruling R40).
-    let layouts = loaded.project.layouts.len();
-    let mut layouts_with_notes = 0;
-    for layout in &loaded.project.layouts {
-        let (lines, has_notes) = check_lines(texts, loaded, map, layout, &logos);
-        for line in lines {
-            eprintln!("{line}");
-        }
-        layouts_with_notes += usize::from(has_notes);
-    }
+    let file_notes = result.course_file_needs_attention();
+    let total = result.courses.len();
+    let with_notes = print_checks(texts, &result.courses, map_scale);
+    let layouts = result.layouts.len();
+    let layouts_with_notes = print_checks(texts, &result.layouts, map_scale);
     if file_notes {
         eprintln!("{}", texts.plain("check-course-file-notes"));
     }
@@ -1629,7 +1580,7 @@ fn check_courses(
                 Some(&args!("count" => total, "layouts" => layouts))
             )
         );
-        0
+        Ok(0)
     } else {
         eprintln!(
             "{}",
@@ -1643,8 +1594,26 @@ fn check_courses(
                 ))
             )
         );
-        1
+        Ok(1)
     }
+}
+
+/// The course file of the project, read and fitted to `map`; `None` when the project names none.
+fn read_courses(
+    texts: &Texts,
+    loaded: &LoadedProject,
+    map: &MapDocument,
+) -> anyhow::Result<Option<LoadedCourses>> {
+    ops::read_courses(loaded, map).map_err(|e| op_error(texts, e))
+}
+
+/// Prints the notes of the course file as a whole and returns whether one of them is a warning.
+fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
+    let notes = course_event_notes(courses);
+    for note in &notes {
+        eprintln!("{}", sheet_note_line(texts, note));
+    }
+    notes.iter().any(|n| !n.is_info())
 }
 
 fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
@@ -1700,7 +1669,7 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                         ("page", done.page.to_string()),
                     ],
                     done.layout.paper,
-                    &done.report.print,
+                    &ops::PrintFacts::from(&done.report.print),
                     map_scale,
                 );
                 for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
@@ -1720,7 +1689,7 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                         print("report-course-page", String::new(), &done);
                     },
                 )
-                .map_err(|err| export_error(texts, err))?;
+                .map_err(|err| export_error(texts, &err))?;
                 if let Some(path) = path {
                     eprintln!(
                         "{}",
@@ -1738,7 +1707,7 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                         &done,
                     );
                 })
-                .map_err(|err| export_error(texts, err))?;
+                .map_err(|err| export_error(texts, &err))?;
             }
         }
         _ => {
@@ -1748,14 +1717,14 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
                     "report-summary",
                     &[("out", done.path.display().to_string())],
                     done.layout.paper,
-                    &done.report.print,
+                    &ops::PrintFacts::from(&done.report.print),
                     map_scale,
                 );
                 for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
                     eprintln!("{line}");
                 }
             })
-            .map_err(|err| export_error(texts, err))?;
+            .map_err(|err| export_error(texts, &err))?;
         }
     }
     eprintln!("{}", texts.plain("reminder-actual-size"));
@@ -1774,12 +1743,12 @@ fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::
                     Some(&args!("path" => dir.display().to_string()))
                 ));
             }
-            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, e))?;
+            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, &e))?;
             dir.clone()
         }
         None => {
             let dir = loaded.dir.join("out");
-            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, e))?;
+            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, &e))?;
             // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
             std::fs::create_dir_all(&dir).with_context(|| {
                 texts.get(
@@ -1813,20 +1782,20 @@ fn disk_full_message(texts: &Texts, needed: u64, available: Option<u64>, path: &
 
 /// A write error with a translated lead-in; a full disk and a write refused because a link leads
 /// out of the project folder are translated whole.
-fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
+fn output_error(texts: &Texts, err: &OutputError) -> anyhow::Error {
     match err {
         OutputError::DiskFull {
             needed,
             available,
             path,
-        } => anyhow!(disk_full_message(texts, needed, available, &path)),
-        OutputError::Io { path, source } if output::is_outside_project(&source) => {
+        } => anyhow!(disk_full_message(texts, *needed, *available, path)),
+        OutputError::Io { path, source } if output::is_outside_project(source) => {
             anyhow!(texts.get(
                 "error-outside-project",
                 Some(&args!("path" => path.display().to_string()))
             ))
         }
-        OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
+        OutputError::Io { path, source } => chain(source).context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
         )),
@@ -1834,20 +1803,20 @@ fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
 }
 
 /// An export error with a translated lead-in; a full disk is translated whole.
-fn export_error(texts: &Texts, err: ExportError) -> anyhow::Error {
+fn export_error(texts: &Texts, err: &ExportError) -> anyhow::Error {
     let sheet =
         |layout: &str| texts.get("error-sheet", Some(&args!("layout" => printable(layout))));
     match err {
-        ExportError::Sheet { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
-        ExportError::Pdf { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
+        ExportError::Sheet { layout, error } => chain(error).context(sheet(layout)),
+        ExportError::Pdf { layout, error } => chain(error).context(sheet(layout)),
         ExportError::Write { error, .. } => output_error(texts, error),
-        ExportError::CourseSheet { course, error } => anyhow::Error::new(error).context(texts.get(
+        ExportError::CourseSheet { course, error } => chain(error).context(texts.get(
             "error-course-sheet",
-            Some(&args!("course" => printable(&course))),
+            Some(&args!("course" => printable(course))),
         )),
-        ExportError::CoursePdf { course, error } => anyhow::Error::new(error).context(texts.get(
+        ExportError::CoursePdf { course, error } => chain(error).context(texts.get(
             "error-course-sheet",
-            Some(&args!("course" => printable(&course))),
+            Some(&args!("course" => printable(course))),
         )),
         ExportError::CourseWrite { error, .. } => output_error(texts, error),
     }
@@ -1943,7 +1912,7 @@ fn summary_line(
     id: &str,
     keys: &[(&'static str, String)],
     paper: Paper,
-    report: &PrintReport,
+    report: &ops::PrintFacts,
     map_scale: u32,
 ) -> String {
     let (w, h) = report.page_mm;
@@ -1981,7 +1950,7 @@ fn report_lines(
         "report-summary",
         &[("out", out.display().to_string())],
         paper.into(),
-        report,
+        &ops::PrintFacts::from(report),
         map_scale,
     )];
     lines.extend(print_notes(
@@ -2615,93 +2584,128 @@ fn print_notes(
     kind: MapKind,
     in_layout: bool,
 ) -> Vec<String> {
-    let mut lines = Vec::new();
-    if report.non_standard_scale {
-        lines.push(texts.get(
+    ops::note::print_notes(report, paper, explicit_orientation, kind, in_layout)
+        .iter()
+        .map(|n| print_note_line(texts, n))
+        .collect()
+}
+
+/// The message for one note of a print report. No wildcard arm.
+fn print_note_line(texts: &Texts, note: &ops::note::PrintNote) -> String {
+    use ops::note::PrintNote as P;
+    match note {
+        P::NonStandardScale { print_scale, kind } => texts.get(
             "warning-non-standard-scale",
             Some(&args!(
-                "print_scale" => report.print_scale.to_string(),
-                "kind" => texts.plain(kind_word_id(kind)),
+                "print_scale" => print_scale.to_string(),
+                "kind" => texts.plain(kind_word_id(*kind)),
                 "base_scale" => kind.base_scale().to_string(),
             )),
-        ));
-    }
-    if let Some((x, y)) = report.overflow_mm
-        && (x > 0.0 || y > 0.0)
-    {
-        let cut = cut_text(texts, x, y);
-        let mut hints = Vec::new();
-        if paper == Paper::A4 {
-            hints.push(texts.plain("hint-paper-a3"));
-        }
-        // Auto already took the orientation that cuts off less.
-        if explicit_orientation {
-            hints.push(texts.plain("hint-other-orientation"));
-        }
-        // The next larger allowed number shrinks the map on the page.
-        match kind
-            .allowed_scales()
-            .into_iter()
-            .find(|&s| s > report.print_scale)
-        {
-            Some(next) => {
-                let id = if is_standard(kind, next) {
-                    "hint-scale-example"
-                } else {
-                    "hint-scale-example-non-standard"
-                };
-                hints.push(texts.get(id, Some(&args!("next" => next.to_string()))));
+        ),
+        P::Overflow {
+            x_mm,
+            y_mm,
+            paper,
+            explicit_orientation,
+            kind,
+            print_scale,
+            in_layout,
+        } => {
+            let cut = cut_text(texts, *x_mm, *y_mm);
+            let mut hints = Vec::new();
+            if *paper == Paper::A4 {
+                hints.push(texts.plain("hint-paper-a3"));
             }
-            None => hints.push(texts.plain("hint-scale-larger")),
+            // Auto already took the orientation that cuts off less.
+            if *explicit_orientation {
+                hints.push(texts.plain("hint-other-orientation"));
+            }
+            // The next larger allowed number shrinks the map on the page.
+            match kind
+                .allowed_scales()
+                .into_iter()
+                .find(|&s| s > *print_scale)
+            {
+                Some(next) => {
+                    let id = if is_standard(*kind, next) {
+                        "hint-scale-example"
+                    } else {
+                        "hint-scale-example-non-standard"
+                    };
+                    hints.push(texts.get(id, Some(&args!("next" => next.to_string()))));
+                }
+                None => hints.push(texts.plain("hint-scale-larger")),
+            }
+            let last = hints.pop().unwrap_or_default();
+            let mut warning = if hints.is_empty() {
+                texts.get(
+                    "warning-overflow-single",
+                    Some(&args!("cut" => cut, "last" => last)),
+                )
+            } else {
+                texts.get(
+                    "warning-overflow",
+                    Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
+                )
+            };
+            if *in_layout {
+                warning.push(' ');
+                warning.push_str(&texts.plain("hint-crop"));
+            }
+            warning
         }
-        let last = hints.pop().unwrap_or_default();
-        let mut warning = if hints.is_empty() {
-            texts.get(
-                "warning-overflow-single",
-                Some(&args!("cut" => cut, "last" => last)),
-            )
-        } else {
-            texts.get(
-                "warning-overflow",
-                Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
-            )
+        P::Skipped(count) => texts.get("note-skipped", Some(&args!("count" => *count))),
+        P::UnknownType(count) => texts.get("note-unknown-type", Some(&args!("count" => *count))),
+        P::Truncated(count) => texts.get("note-truncated", Some(&args!("count" => *count))),
+        P::PageLimit(count) => texts.get("note-page-limit", Some(&args!("count" => *count))),
+        P::DroppedPattern(count) => {
+            texts.get("note-dropped-pattern", Some(&args!("count" => *count)))
+        }
+        P::SubstitutedFonts(fonts) => {
+            let names: Vec<String> = fonts.iter().map(|f| printable(f)).collect();
+            texts.get("note-fonts", Some(&args!("names" => names.join(", "))))
+        }
+        P::MissingGlyphs(glyphs) => {
+            let chars: String = glyphs
+                .iter()
+                .map(|c| printable(&c.to_string()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            texts.get("note-missing-glyphs", Some(&args!("chars" => chars)))
+        }
+    }
+}
+
+impl ops::Notice {
+    /// The note in words, with the message the CLI prints: the one conversion the CLI and the MCP server share.
+    pub(crate) fn describe(&self, texts: &Texts) -> ops::note::Note {
+        let message = match &self.value {
+            ops::NoteValue::Sheet(note) => sheet_note_line(texts, note),
+            ops::NoteValue::Print(note) => print_note_line(texts, note),
+            ops::NoteValue::SheetFailed(err) => {
+                let message = printable(&format!("{:#}", export_error(texts, err)));
+                texts.get("error-line", Some(&args!("message" => message)))
+            }
         };
-        if in_layout {
-            warning.push(' ');
-            warning.push_str(&texts.plain("hint-crop"));
-        }
-        lines.push(warning);
-    }
-    let counted = [
-        ("note-skipped", report.skipped_objects),
-        ("note-unknown-type", report.unknown_type_objects),
-        ("note-truncated", report.truncated_objects),
-        ("note-page-limit", report.objects_not_drawn_page_limit),
-        ("note-dropped-pattern", report.dropped_pattern_objects),
-    ];
-    for (id, count) in counted {
-        if count > 0 {
-            lines.push(texts.get(id, Some(&args!("count" => count))));
+        ops::note::Note {
+            kind: self.kind(),
+            severity: self.severity(),
+            course: self.course.clone(),
+            message,
         }
     }
-    if !report.substituted_fonts.is_empty() {
-        let names: Vec<String> = report
-            .substituted_fonts
-            .iter()
-            .map(|f| printable(f))
-            .collect();
-        lines.push(texts.get("note-fonts", Some(&args!("names" => names.join(", ")))));
+}
+
+/// `err` and its sources as one message, "outer: inner: innermost", as anyhow's `{:#}` writes a chain.
+fn chain(err: &dyn std::error::Error) -> anyhow::Error {
+    let mut text = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
     }
-    if !report.missing_glyphs.is_empty() {
-        let chars: String = report
-            .missing_glyphs
-            .iter()
-            .map(|c| printable(&c.to_string()))
-            .collect::<Vec<_>>()
-            .join(" ");
-        lines.push(texts.get("note-missing-glyphs", Some(&args!("chars" => chars))));
-    }
-    lines
+    anyhow::Error::msg(text)
 }
 
 /// The `--lang` value from the raw arguments, found before clap runs because the help texts
