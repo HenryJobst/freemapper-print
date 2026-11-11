@@ -82,4 +82,36 @@ pub enum OpError {
     },
     /// The layouts print at different scales, so a corridor without a course has no one width (usage).
     MasksScales { scales: Vec<u32> },
+    /// `numbers accept` needs a course file, and the project names none (usage).
+    NumbersNeedCourseFile,
+    /// The course does not visit the control; `known` are its control codes, each once, in course order (usage).
+    UnknownControl {
+        course: String,
+        control: String,
+        known: Vec<String>,
+    },
+    /// The project file has a correction for the control in this scope already (usage).
+    NumbersExists {
+        control: String,
+        scope: super::numbers::Scope,
+    },
+    /// The direction is not a finite number or the gap lies outside (0, `MAX_NUMBER_GAP_MM`] (usage).
+    NumbersValue,
+    /// The number of the control has no conflict on the course's sheet, so `check` proposes nothing (usage).
+    NumbersNoProposal { control: String, course: String },
+    /// The proposal from the sheet of `course` has a conflict on the sheets of `courses` on the same layout
+    /// (ruling R39, usage).
+    NumbersLayoutConflict {
+        control: String,
+        layout: String,
+        courses: Vec<String>,
+        course: String,
+        direction: f64,
+        gap_mm: f64,
+    },
+    /// The correction could not be appended; a file that no longer loads has been put back as it was.
+    AppendCorrection {
+        path: PathBuf,
+        source: freemapper_print::project::ProjectError,
+    },
 }

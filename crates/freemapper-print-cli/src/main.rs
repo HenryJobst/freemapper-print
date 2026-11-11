@@ -13,7 +13,7 @@ use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
 use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, StopName};
-use freemapper_print::export::{ExportError, course_sheet_report};
+use freemapper_print::export::ExportError;
 use freemapper_print::mask_build::{self, BuildError};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
@@ -328,10 +328,6 @@ fn read_map(texts: &Texts, path: &Path) -> anyhow::Result<MapDocument> {
     ops::read_map(path).map_err(|e| op_error(texts, e))
 }
 
-fn load_project(texts: &Texts, arg: &Path) -> anyhow::Result<LoadedProject> {
-    ops::load_project(arg).map_err(|e| op_error(texts, e))
-}
-
 /// The message for an op that stopped. A wrong command line, such as an unknown course, is a [`UsageError`]
 /// (exit code 2).
 fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
@@ -425,6 +421,69 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
                 Some(&args!("scales" => join_and(texts, scales))),
             ))
             .into()
+        }
+        E::NumbersNeedCourseFile => UsageError(texts.plain("error-numbers-no-course-file")).into(),
+        E::UnknownControl {
+            course,
+            control,
+            known,
+        } => {
+            let known: Vec<String> = known.iter().map(|c| printable(c)).collect();
+            UsageError(texts.get(
+                "error-unknown-control",
+                Some(&args!(
+                    "course" => printable(&course),
+                    "control" => printable(&control),
+                    "known" => known.join(", "),
+                )),
+            ))
+            .into()
+        }
+        E::NumbersExists { control, scope } => UsageError(texts.get(
+            "error-numbers-exists",
+            Some(&args!(
+                "control" => printable(&control),
+                "scope" => scope_text(texts, &scope),
+            )),
+        ))
+        .into(),
+        E::NumbersValue => UsageError(texts.get(
+            "error-numbers-value",
+            Some(&args!("max" => project::MAX_NUMBER_GAP_MM.to_string())),
+        ))
+        .into(),
+        E::NumbersNoProposal { control, course } => UsageError(texts.get(
+            "error-numbers-no-proposal",
+            Some(&args!("control" => printable(&control), "course" => printable(&course))),
+        ))
+        .into(),
+        E::NumbersLayoutConflict {
+            control,
+            layout,
+            courses,
+            course,
+            direction,
+            gap_mm,
+        } => UsageError(texts.get(
+            "error-numbers-layout-conflict",
+            Some(&args!(
+                "control" => printable(&control),
+                "layout" => printable(&layout),
+                "courses" => quoted_list(texts, &courses),
+                "course" => printable(&course),
+                "direction" => short_decimal(texts, direction, 1),
+                "gap" => short_decimal(texts, gap_mm, 2),
+            )),
+        ))
+        .into(),
+        E::AppendCorrection { path, source } => {
+            // A file that no longer loads has been put back as it was.
+            let lead_in = match source {
+                project::ProjectError::Write { .. } => "error-write-file",
+                _ => "error-load-changed-project",
+            };
+            anyhow::Error::new(source)
+                .context(texts.get(lead_in, Some(&args!("path" => path.display().to_string()))))
         }
     }
 }
@@ -858,219 +917,49 @@ fn print_course_init(
 
 /// `numbers accept`: appends a number correction to the project file (ADR 0025, addendum).
 fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
-    let usage = |id: &str, a: FluentArgs| UsageError(texts.get(id, Some(&a)));
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let Some(courses) = read_courses(texts, &loaded, &map)? else {
-        return Err(UsageError(texts.plain("error-numbers-no-course-file")).into());
-    };
-    let course = courses
-        .event
-        .courses
-        .iter()
-        .find(|c| c.name == args.course)
-        .ok_or_else(|| {
-            let known: Vec<String> = courses
-                .event
-                .courses
-                .iter()
-                .map(|c| c.name.clone())
-                .collect();
-            usage(
-                "error-unknown-course",
-                args!("name" => printable(&args.course), "known" => quoted_list(texts, &known)),
-            )
-        })?;
-    let mut known: Vec<String> = Vec::new();
-    for stop in &course.stops {
-        if !known.contains(&stop.control) {
-            known.push(stop.control.clone());
-        }
-    }
-    if !known.contains(&args.control) {
-        let known: Vec<String> = known.iter().map(|c| printable(c)).collect();
-        return Err(usage(
-            "error-unknown-control",
-            args!(
-                "course" => printable(&course.name),
-                "control" => printable(&args.control),
-                "known" => known.join(", "),
-            ),
-        )
-        .into());
-    }
-    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
-    // The scope: the sheet (the course) or every course on the course's layout.
-    let (scope_layout, scope_course, scope_text) = if args.sheet {
-        (
-            None,
-            Some(course.name.clone()),
-            texts.get(
-                "stale-scope-course",
-                Some(&args!("name" => printable(&course.name))),
-            ),
-        )
-    } else {
-        (
-            Some(layout.id.clone()),
-            None,
-            texts.get(
-                "stale-scope-layout",
-                Some(&args!("name" => printable(&layout.id))),
-            ),
-        )
-    };
-    let exists = loaded.project.numbers.iter().any(|n| {
-        n.control == args.control
-            && match (&scope_course, &scope_layout) {
-                (Some(c), _) => n.course.as_ref() == Some(c),
-                (None, Some(l)) => n.course.is_none() && n.layout.as_ref() == Some(l),
-                (None, None) => false,
-            }
-    });
-    if exists {
-        return Err(usage(
-            "error-numbers-exists",
-            args!("control" => printable(&args.control), "scope" => scope_text),
-        )
-        .into());
-    }
-    let (direction, gap) = match (args.direction, args.gap) {
-        (Some(d), Some(g)) => {
-            if !d.is_finite() || !g.is_finite() || g <= 0.0 || g > project::MAX_NUMBER_GAP_MM {
-                return Err(usage(
-                    "error-numbers-value",
-                    args!("max" => project::MAX_NUMBER_GAP_MM.to_string()),
-                )
-                .into());
-            }
-            (d, g)
-        }
-        _ => {
-            // The proposal of `check`: the same sheet, drawn the same way.
-            let (_, report) =
-                course_sheet_report(&loaded, &map, &courses, course, &LogoCache::new())
-                    .map_err(|err| export_error(texts, &err))?;
-            let proposal = report.notes.iter().find_map(|n| match n {
-                SheetNote::NumberConflict(c)
-                    if c.control == args.control && c.course == course.name && c.searched =>
-                {
-                    Some(c.proposal)
-                }
-                _ => None,
-            });
-            match proposal {
-                Some(p) => (p.direction, p.gap_mm),
-                None => {
-                    return Err(usage(
-                        "error-numbers-no-proposal",
-                        args!("control" => printable(&args.control), "course" => printable(&course.name)),
-                    )
-                    .into());
-                }
-            }
-        }
-    };
-    // 0.1 degrees and 0.01 mm, as the placement rounds.
-    let direction = (direction * 10.0).round() / 10.0;
-    let gap = (gap * 100.0).round() / 100.0;
-    // The course file's own position (level 2), so that `check` notices when the file moves the number.
-    let base_seen = freemapper_print::numbers::resolve(course, &courses.event, &loaded, &layout.id)
-        .into_iter()
-        .find(|n| n.control == args.control)
-        .and_then(|n| n.base)
-        .map(freemapper_print::course::NumberPlacement::from);
-    let correction = project::NumberCorrection {
+    use ops::numbers::AcceptScope;
+    let result = ops::numbers::accept(&ops::numbers::AcceptArgs {
+        project: args.project.clone(),
+        course: args.course.clone(),
         control: args.control.clone(),
-        layout: scope_layout,
-        course: scope_course,
-        direction,
-        gap_mm: Some(gap),
-        base_seen,
-    };
-    // A proposal for the whole layout must suit every course there that prints this number with it (ruling
-    // R39): it was searched on one sheet only.
-    if args.layout_wide && args.direction.is_none() {
-        let blocked = layout_conflicts(texts, &loaded, &map, &courses, &layout.id, &correction)?;
-        if !blocked.is_empty() {
-            return Err(usage(
-                "error-numbers-layout-conflict",
-                args!(
-                    "control" => printable(&args.control),
-                    "layout" => printable(&layout.id),
-                    "courses" => quoted_list(texts, &blocked),
-                    "course" => printable(&course.name),
-                    "direction" => short_decimal(texts, direction, 1),
-                    "gap" => short_decimal(texts, gap, 2),
-                ),
-            )
-            .into());
-        }
-    }
-    project::append_correction(&loaded.path, &correction).map_err(|err| {
-        // A file that no longer loads has been put back as it was.
-        let lead_in = match err {
-            project::ProjectError::Write { .. } => "error-write-file",
-            _ => "error-load-changed-project",
-        };
-        anyhow::Error::new(err).context(texts.get(
-            lead_in,
-            Some(&args!("path" => loaded.path.display().to_string())),
-        ))
-    })?;
+        // clap takes exactly one of `--sheet` and `--layout-wide`.
+        scope: if args.sheet {
+            AcceptScope::Sheet
+        } else {
+            AcceptScope::Layout
+        },
+        // clap takes `--direction` and `--gap` only together.
+        position: args.direction.zip(args.gap),
+    })
+    .map_err(|e| op_error(texts, e))?;
     eprintln!(
         "{}",
         texts.get(
             "numbers-accepted",
             Some(&args!(
-                "control" => printable(&args.control),
-                "scope" => scope_text,
-                "path" => loaded.path.display().to_string(),
-                "direction" => short_decimal(texts, direction, 1),
-                "gap" => short_decimal(texts, gap, 2),
+                "control" => printable(&result.control),
+                "scope" => scope_text(texts, &result.scope),
+                "path" => result.path.display().to_string(),
+                "direction" => short_decimal(texts, result.direction, 1),
+                "gap" => short_decimal(texts, result.gap_mm, 2),
             ))
         )
     );
     Ok(0)
 }
 
-/// The courses printed with layout `layout_id` whose sheet, with the layout-wide `correction` added, has a
-/// conflict at its control. Courses with a correction of their own for the control are left out: theirs wins.
-fn layout_conflicts(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    courses: &LoadedCourses,
-    layout_id: &str,
-    correction: &project::NumberCorrection,
-) -> anyhow::Result<Vec<String>> {
-    let mut trial = loaded.clone();
-    trial.project.numbers.push(correction.clone());
-    let logos = LogoCache::new();
-    let mut blocked = Vec::new();
-    for c in &courses.event.courses {
-        let on_layout = freemapper_print::courses::layout_for(&loaded.project, &c.name)
-            .0
-            .id
-            == layout_id;
-        let visits = c.stops.iter().any(|s| s.control == correction.control);
-        let own = loaded.project.numbers.iter().any(|n| {
-            n.control == correction.control && n.course.as_deref() == Some(c.name.as_str())
-        });
-        if !on_layout || !visits || own {
-            continue;
-        }
-        let (_, report) = course_sheet_report(&trial, map, courses, c, &logos)
-            .map_err(|err| export_error(texts, &err))?;
-        let conflict = report
-            .notes
-            .iter()
-            .any(|n| matches!(n, SheetNote::NumberConflict(k) if k.control == correction.control));
-        if conflict {
-            blocked.push(c.name.clone());
-        }
+/// "for course "A"", "for layout a4": the scope of a number correction.
+fn scope_text(texts: &Texts, scope: &ops::numbers::Scope) -> String {
+    match scope {
+        ops::numbers::Scope::Course(name) => texts.get(
+            "stale-scope-course",
+            Some(&args!("name" => printable(name))),
+        ),
+        ops::numbers::Scope::Layout(name) => texts.get(
+            "stale-scope-layout",
+            Some(&args!("name" => printable(name))),
+        ),
     }
-    Ok(blocked)
 }
 
 /// The message for a mask that could not be built: a usage error (exit 2).

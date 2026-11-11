@@ -10,6 +10,7 @@ pub mod error;
 pub mod export;
 pub mod masks;
 pub mod note;
+pub mod numbers;
 
 #[cfg(test)]
 pub(crate) mod testing {
