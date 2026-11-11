@@ -73,7 +73,7 @@ jobs:
           exe=""
           if [ "${{ runner.os }}" = "Windows" ]; then exe=".exe"; fi
           cp "target/${{ matrix.target }}/release/freemapper-print$exe" "$dir/"
-          cp README.md README.en.md LICENSE "$dir/"
+          cp README.md README.en.md AGENTS.md LICENSE "$dir/"
           # Arimo (SIL OFL 1.1) is embedded in the program; its licence travels with it.
           cp assets/fonts/LICENSE "$dir/FONT-LICENSE.txt"
           # Purple Pen's description symbols (BSD) are embedded too; THIRD_PARTY.md carries their notice.

@@ -304,6 +304,10 @@ er nach dem Blatt, an dem er gerade zeichnet. Das [Handbuch](docs/manual/de.md#3
 [`mcp-session`](examples/mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus dem Viktoriapark-Training,
 geprüft und als PDF geschrieben.
 
+Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jedem Release-Archiv liegt: Sie erklärt einem Agenten, wie er das Programm aus den Release-Archiven installiert und über MCP oder die Kommandozeile bedient.
+
+Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jedem Release-Archiv liegt: Sie erklärt einem Agenten, wie er das Programm aus den Release-Archiven installiert und über MCP oder die Kommandozeile bedient.
+
 ## Lizenz und Namensnennung
 
 freemapper-print steht unter der [GPL-3.0-or-later](LICENSE), wie freemapper. Es übernimmt Code aus freemapper

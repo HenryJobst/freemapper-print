@@ -294,6 +294,8 @@ comments in the project file stay, apart from a few cases the manual lists. The 
 [`mcp-session`](examples/mcp-session/README.en.md) shows a real session: window orienteering from the
 Viktoriapark training, checked and written as a PDF.
 
+For AI agents there is an [AGENTS.md](AGENTS.md), which also ships in every release archive: it tells an agent how to install the program from the release archives and how to use it through MCP or the command line.
+
 ## Licence and credit
 
 freemapper-print is licensed [GPL-3.0-or-later](LICENSE), like freemapper. It takes over code from freemapper
