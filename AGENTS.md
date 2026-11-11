@@ -109,12 +109,18 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 | `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--no-start`, `--no-finish`, `--id`, `--assign`. |
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
+| `edit <project>` | The browser editor, for people. `--port <n>`, `--no-browser`. |
 | `mcp` | The MCP server. |
 
 `<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to
 stderr. Exit codes: 0 on success; 1 when a file cannot be loaded, drawn or written, when `check` finds notes
 (notes marked Info do not count) or when `init` finds an existing project file; 2 when the command line is wrong,
 for example an unknown layout, course or control. `export` exits 0 when every PDF is written, even with notes.
+
+`edit` starts a local server and a page in a browser for a person who wants to see the sheet and move things with
+the mouse. It blocks until the person clicks Done or presses Ctrl+C and needs someone at the browser, so an agent
+does not use it; an agent does the same work with the commands above or the MCP tools. The editor writes the same
+project file through the same functions.
 
 ### What the command line does not cover
 
