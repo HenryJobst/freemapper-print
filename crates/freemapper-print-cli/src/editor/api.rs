@@ -845,9 +845,11 @@ pub(super) async fn post_export(
     job.pages.store(0, Ordering::SeqCst);
     *job.last.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let for_answer = lang.clone();
+    let typed = request.out_dir.clone();
     let worker_project = project.clone();
     let answer = tokio::task::spawn_blocking(move || {
         let _running = Running(&job);
+        #[cfg(test)]
         let mut gated = false;
         let result = ops::export::export(
             &ops::export::ExportArgs {
@@ -882,7 +884,6 @@ pub(super) async fn post_export(
                         }
                     }
                 }
-                let _ = &mut gated;
                 if job.cancel.load(Ordering::SeqCst) || job.closing.load(Ordering::SeqCst) {
                     std::ops::ControlFlow::Break(())
                 } else {
@@ -895,7 +896,10 @@ pub(super) async fn post_export(
     .await;
     match answer {
         Ok((Ok(result), project)) => {
-            json(&export_answer(&Texts::new(&for_answer), &result, &project))
+            let mut value = export_answer(&Texts::new(&for_answer), &result, &project);
+            // The folder as the person typed it.
+            value["out_dir"] = typed.into();
+            json(&value)
         }
         Ok((Err(OpError::ExportStopped { written }), project)) => json(&serde_json::json!({
             "stopped": true,

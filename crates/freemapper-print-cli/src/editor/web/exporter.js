@@ -4,6 +4,7 @@
 import { get, post } from "../suite/api.js";
 import { t } from "../suite/texts.js";
 import { say } from "../suite/status.js";
+import { noteItem } from "./notes.js";
 
 const FOLDER_KEY = "freemapper-print.export-dir";
 const POLL_MS = 500;
@@ -73,7 +74,7 @@ function showResult(data) {
     heading.textContent = t("editor-export-notes");
     const notes = document.createElement("ul");
     for (const note of data.notes) {
-      notes.append(line(note.severity, note.message));
+      notes.append(noteItem(note));
     }
     parts.push(heading, notes);
   }
@@ -98,6 +99,7 @@ function watch() {
     try {
       const answer = await get("api/export/status");
       if (answer.ok && answer.data.running && answer.data.pages > 0) {
+        // A message with values is said as text, one without as its id.
         say(t("editor-export-running-status", { pages: String(answer.data.pages), name: answer.data.last ?? "" }), true);
       }
     } catch {
@@ -141,6 +143,8 @@ async function stop() {
   $("export-stop").disabled = true;
   try {
     await post("api/export/cancel");
+  } catch {
+    showError(t("editor-export-failed"));
   } finally {
     $("export-stop").disabled = false;
   }
@@ -173,10 +177,7 @@ export async function check(notices) {
   const list = document.createElement("ul");
   const add = (sheet, notes) => {
     for (const note of notes) {
-      const item = document.createElement("li");
-      item.className = note.severity;
-      item.textContent = t("editor-check-line", { sheet, message: note.message });
-      list.append(item);
+      list.append(noteItem(note, `${sheet}: `));
     }
   };
   add(t("editor-check-file"), data.course_file ?? []);

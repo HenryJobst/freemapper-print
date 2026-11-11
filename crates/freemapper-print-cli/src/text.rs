@@ -400,7 +400,6 @@ mod tests {
             "chars",
             "id",
             "layout",
-            "sheet",
             "kb",
             "dir",
             "pages",

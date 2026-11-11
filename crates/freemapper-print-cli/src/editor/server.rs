@@ -1679,12 +1679,15 @@ mod tests {
         assert!(wrote == reference, "the PDF differs from ops::export's");
         // The single file and a layout go through the same op.
         let single = tempfile::tempdir().unwrap();
+        // The folder comes back as the person typed it, with its trailing slash.
+        let typed = format!("{}/", single.path().display());
         let (code, answer) = post_json(
             &run,
             "/api/export",
-            &export_body(single.path(), r#","single_file":true"#),
+            &export_body(std::path::Path::new(&typed), r#","single_file":true"#),
         );
         assert_eq!(code, 200, "{answer}");
+        assert_eq!(body_json(&answer)["out_dir"], typed.as_str());
         assert_eq!(body_json(&answer)["files"][0]["pages"], 1);
         assert_eq!(pdfs(single.path()).len(), 1);
         finish(run);
@@ -1833,5 +1836,62 @@ mod tests {
         let last = text.lines().last().unwrap();
         assert!(last.contains("The editor has ended"), "{text}");
         assert!(last.contains("freemapper-print.toml"), "{text}");
+    }
+
+    #[test]
+    fn done_during_an_export_stops_it_after_the_sheet_in_hand_and_ends_the_server() {
+        let project = luebeck_copy();
+        let out = tempfile::tempdir().unwrap();
+        let run = start_on(project.path().to_path_buf(), true, Some("en"));
+        let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let file = project.path().join("freemapper-print.toml");
+        *super::super::api::EXPORT_GATE.lock().unwrap() = Some((file, reached_tx, release_rx));
+        let (host, prefix) = (run.host.clone(), run.prefix.clone());
+        let body = export_body(out.path(), "");
+        let export = std::thread::spawn(move || {
+            let extra = format!("Origin: http://{host}\r\nContent-Type: application/json\r\n");
+            try_request(
+                &host,
+                &host,
+                "POST",
+                &format!("{prefix}/api/export"),
+                &extra,
+                &body,
+            )
+        });
+        reached_rx.recv_timeout(Duration::from_secs(60)).unwrap();
+        // `Fertig` while the first sheet is in hand. The answer may be lost to the shutdown.
+        let extra = format!(
+            "Origin: http://{}\r\nContent-Type: application/json\r\n",
+            run.host
+        );
+        let path = format!("{}/api/done", run.prefix);
+        if let Ok((code, _)) = try_request(&run.host, &run.host, "POST", &path, &extra, "{}") {
+            assert_eq!(code, 200);
+        }
+        release_tx.send(()).unwrap();
+        // The export ends after that sheet; its answer, if the connection still stands, says so.
+        if let Ok((code, answer)) = export.join().unwrap() {
+            assert_eq!(code, 200, "{answer}");
+            assert_eq!(body_json(&answer)["stopped"], true, "{answer}");
+        }
+        let begin = Instant::now();
+        while !run.thread.is_finished() {
+            assert!(
+                begin.elapsed() < Duration::from_secs(30),
+                "the server did not end"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        run.thread.join().unwrap().unwrap();
+        // Exactly one sheet, and it is a whole PDF.
+        let names = pdfs(out.path());
+        assert_eq!(names.len(), 1, "{names:?}");
+        let bytes = std::fs::read(out.path().join(&names[0])).unwrap();
+        assert!(bytes.starts_with(b"%PDF"));
+        assert!(
+            String::from_utf8_lossy(&bytes[bytes.len().saturating_sub(64)..]).contains("%%EOF")
+        );
     }
 }

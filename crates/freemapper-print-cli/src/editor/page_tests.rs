@@ -12,6 +12,7 @@ const SHEET_JS: &str = include_str!("web/sheet.js");
 const FORMS_JS: &str = include_str!("web/forms.js");
 const MASKS_JS: &str = include_str!("web/masks.js");
 const NUMBERS_JS: &str = include_str!("web/numbers.js");
+const NOTES_JS: &str = include_str!("web/notes.js");
 const EXPORTER_JS: &str = include_str!("web/exporter.js");
 const APP_CSS: &str = include_str!("web/app.css");
 
@@ -86,6 +87,7 @@ fn the_page_and_the_suite_assets_keep_the_suite_rules() {
         ("masks.js", MASKS_JS.as_bytes()),
         ("numbers.js", NUMBERS_JS.as_bytes()),
         ("exporter.js", EXPORTER_JS.as_bytes()),
+        ("notes.js", NOTES_JS.as_bytes()),
         ("app.css", APP_CSS.as_bytes()),
     ]);
     if let Err(problems) = check_page_rules(&files, BUDGET) {
@@ -140,4 +142,55 @@ fn the_page_turns_the_renderers_blend_style_into_a_class() {
     );
     assert!(!SHEET_JS.contains("moveStyles"));
     assert!(APP_CSS.contains(".blend-multiply { mix-blend-mode: multiply; }"));
+}
+
+/// The labels `notes.js` cuts from the front of a message.
+fn cut_labels() -> Vec<String> {
+    let line = NOTES_JS
+        .lines()
+        .find(|l| l.starts_with("const LABELS = ["))
+        .expect("notes.js lists the labels it cuts");
+    line["const LABELS = [".len()..line.rfind(']').unwrap()]
+        .split(',')
+        .map(|l| l.trim().trim_matches('"').to_owned())
+        .collect()
+}
+
+#[test]
+fn every_note_shows_its_severity_as_a_word_and_never_twice() {
+    // Every note item is built in one place, with the severity word in its own span.
+    assert!(NOTES_JS.contains(r#"word.className = "sev""#));
+    assert!(
+        NOTES_JS.contains("editor-severity-info") && NOTES_JS.contains("editor-severity-error")
+    );
+    for (name, source) in [("app.js", APP_JS), ("exporter.js", EXPORTER_JS)] {
+        assert!(
+            source.contains("noteItem("),
+            "{name} builds notes with noteItem"
+        );
+        assert!(
+            !source.contains("note.message"),
+            "{name} must not show a bare message"
+        );
+    }
+    // A note's message begins with a label of its own ("Info:", "Note:", "Hinweis:", ...); the page cuts it, so
+    // the word shown is the severity and never a second one. Every label the catalogs use must be on the list.
+    let labels = cut_labels();
+    for code in ["en", "de"] {
+        let ftl = std::fs::read_to_string(format!(
+            "{}/i18n/{code}/freemapper-print.ftl",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        for line in ftl.lines().filter(|l| l.starts_with("note-")) {
+            let text = line.split_once(" = ").map_or("", |(_, text)| text);
+            // A label is a short head before the first colon without placeholders or quotes.
+            let Some((head, _)) = text.split_once(':') else {
+                continue;
+            };
+            if head.chars().count() <= 20 && !head.contains(['{', '"', ',']) {
+                assert!(labels.iter().any(|l| l == head), "{code}: {line}");
+            }
+        }
+    }
 }

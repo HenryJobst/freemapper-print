@@ -10,6 +10,7 @@ import { elementForm, layoutForm } from "./forms.js";
 import * as masks from "./masks.js";
 import * as numbers from "./numbers.js";
 import * as exporter from "./exporter.js";
+import { noteItem } from "./notes.js";
 
 const POLL_MS = 2000;
 
@@ -256,11 +257,7 @@ function renderNotes(notes) {
   }
   const list = document.createElement("ul");
   for (const note of notes) {
-    const item = document.createElement("li");
-    item.className = note.severity;
-    // The message names its severity itself ("Warning: ..."), so colour is never the only sign.
-    item.textContent = note.message;
-    list.append(item);
+    list.append(noteItem(note));
   }
   box.replaceChildren(list);
 }
