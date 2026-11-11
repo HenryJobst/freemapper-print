@@ -12,34 +12,9 @@ pub mod init;
 pub mod masks;
 pub mod note;
 pub mod numbers;
-
-#[cfg(test)]
-pub(crate) mod testing {
-    use std::path::PathBuf;
-
-    /// The folder of the Viktoriapark example project (a course file with one course, one layout).
-    pub fn viktoriapark() -> PathBuf {
-        PathBuf::from(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/berlin-viktoriapark-training"
-        ))
-    }
-
-    /// A copy of the Viktoriapark example in a temporary folder, for ops that write: the project file, the map,
-    /// its `freemapper.toml` and the course file.
-    pub fn viktoriapark_copy() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        for name in [
-            "freemapper-print.toml",
-            "berlin-viktoriapark.omap",
-            "freemapper.toml",
-            "training.ppen",
-        ] {
-            std::fs::copy(viktoriapark().join(name), dir.path().join(name)).unwrap();
-        }
-        dir
-    }
-}
+// The MCP server's `project_info` tool (M5 task 2) is its first caller; the CLI has no command for it.
+#[cfg_attr(not(test), allow(dead_code))]
+pub mod project;
 
 use std::path::{Path, PathBuf};
 
@@ -47,7 +22,7 @@ use freemapper_print::courses::{LoadedCourses, load_courses};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::omap::read::read_map_file;
 use freemapper_print::print::{Orientation, Paper, PrintReport};
-use freemapper_print::project::{self, LayoutSpec, LoadedProject};
+use freemapper_print::project::{LayoutSpec, LoadedProject};
 use freemapper_print::scale::MapKind;
 use freemapper_print::sheet::SheetReport;
 use serde::Serialize;
@@ -71,7 +46,7 @@ pub fn is_format(c: char) -> bool {
 /// The project file named by `arg`: the file itself, or `freemapper-print.toml` in a folder.
 pub fn project_file(arg: &Path) -> PathBuf {
     if arg.is_dir() {
-        arg.join(project::FILE_NAME)
+        arg.join(freemapper_print::project::FILE_NAME)
     } else {
         arg.to_path_buf()
     }
@@ -80,8 +55,8 @@ pub fn project_file(arg: &Path) -> PathBuf {
 /// The project file named by `arg` (a file or its folder), read and checked.
 pub fn load_project(arg: &Path) -> Result<LoadedProject, OpError> {
     let path = project_file(arg);
-    project::load(&path).map_err(|err| match err {
-        project::ProjectError::BasePartHidden { file, field } => {
+    freemapper_print::project::load(&path).map_err(|err| match err {
+        freemapper_print::project::ProjectError::BasePartHidden { file, field } => {
             OpError::BasePartHidden { path, file, field }
         }
         other => OpError::LoadProject {
@@ -178,5 +153,33 @@ impl Sheet {
             notes,
             needs_attention,
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::path::PathBuf;
+
+    /// The folder of the Viktoriapark example project (a course file with one course, one layout).
+    pub fn viktoriapark() -> PathBuf {
+        PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/berlin-viktoriapark-training"
+        ))
+    }
+
+    /// A copy of the Viktoriapark example in a temporary folder, for ops that write: the project file, the map,
+    /// its `freemapper.toml` and the course file.
+    pub fn viktoriapark_copy() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "freemapper-print.toml",
+            "berlin-viktoriapark.omap",
+            "freemapper.toml",
+            "training.ppen",
+        ] {
+            std::fs::copy(viktoriapark().join(name), dir.path().join(name)).unwrap();
+        }
+        dir
     }
 }
