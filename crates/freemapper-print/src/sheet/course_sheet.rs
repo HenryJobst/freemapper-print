@@ -154,6 +154,15 @@ pub fn render_course_sheet(
         .map(|m| map_clip(m.mask(), page.clip, map_to_page))
         .collect();
 
+    report.numbers = centres.clone();
+    report.mask_ids = masks
+        .iter()
+        .take(MAX_APPLIED_MASKS)
+        .map(|m| match m {
+            MaskRef::Project(m) => m.id.clone(),
+            MaskRef::WhiteOut(m) => m.id.clone(),
+        })
+        .collect();
     let notes = &mut report.notes;
     notes.extend(placed.conflicts.into_iter().map(SheetNote::NumberConflict));
     if placed.search_limited {

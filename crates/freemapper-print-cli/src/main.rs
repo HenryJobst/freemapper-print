@@ -2425,6 +2425,7 @@ mod tests {
             dropped_pattern_objects: 0,
             substituted_fonts: vec![],
             missing_glyphs: vec![],
+            source_objects: vec![],
         }
     }
 
@@ -2459,6 +2460,7 @@ mod tests {
             truncated_objects: 2,
             substituted_fonts: vec!["Comic Sans".into(), "Papyrus".into()],
             missing_glyphs: vec!['Ж', '猫'],
+            source_objects: vec![],
             ..report()
         };
         let l = lines(&r, PaperArg::A4);
@@ -3290,6 +3292,7 @@ mod tests {
         let r = PrintReport {
             substituted_fonts: vec!["Evil\u{1b}[2J".into()],
             missing_glyphs: vec!['\u{1b}', '\u{7}', '\u{202e}'],
+            source_objects: vec![],
             ..report()
         };
         let all = lines(&r, PaperArg::A4).join("\n");
@@ -3322,6 +3325,7 @@ mod layout_tests {
             dropped_pattern_objects: 0,
             substituted_fonts: vec![],
             missing_glyphs: vec![],
+            source_objects: vec![],
         };
         let sheet = print_notes(&texts, &report, Paper::A4, false, MapKind::Sprint, true);
         assert!(

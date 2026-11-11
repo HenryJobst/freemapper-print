@@ -13,10 +13,19 @@
   <main class="panes">
     <nav class="pane" id="pane-tree" data-label="editor-pane-tree" data-tree-label=""></nav>
     <section class="pane" id="pane-sheet" data-label="editor-pane-sheet">
-      <div class="toolbar" role="toolbar" data-label="editor-toolbar-label" id="sheet-toolbar"></div>
+      <div class="toolbar" role="toolbar" data-label="editor-toolbar-label" id="sheet-toolbar">
+        <label for="course-select" id="course-label" data-text="editor-course-label"></label>
+        <select id="course-select"></select>
+        <label for="layout-select" data-text="editor-layout-label"></label>
+        <select id="layout-select"></select>
+        <span class="hint" id="no-courses" data-text="editor-no-courses-hint" hidden></span>
+      </div>
       <div id="banner" role="alert"></div>
       <div id="sheet" tabindex="0" role="application" data-label="editor-pane-sheet"></div>
-      <div id="notices" aria-live="polite"></div>
+      <div id="notes-pane">
+        <h2 data-text="editor-notices-heading"></h2>
+        <div id="notices" aria-live="polite"><p class="hint" data-text="editor-notices-empty"></p></div>
+      </div>
     </section>
     <aside class="pane" id="pane-props" tabindex="0" data-label="editor-pane-props">
       <h2 data-text="editor-props-heading"></h2>

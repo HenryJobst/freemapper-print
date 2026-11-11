@@ -44,6 +44,14 @@ pub struct SheetReport {
     /// The map on the sheet: scale, factors, overflow against the map frame, skipped objects.
     pub print: PrintReport,
     pub notes: Vec<SheetNote>,
+    /// Where each drawn element lies on the page (mm, y down), by id, in paint order; the default footer is
+    /// [`FOOTER_ID`]. The editor hit-tests with it.
+    pub elements: Vec<(String, PaperBox)>,
+    /// The control numbers a course sheet draws: the control code and the centre of its number on the page (mm).
+    /// Empty on a layout sheet.
+    pub numbers: Vec<(String, (f64, f64))>,
+    /// The ids of the masks a course sheet applies, in the order of [`RenderedPage::map_clips`]. Empty without.
+    pub mask_ids: Vec<String>,
 }
 
 impl SheetReport {
@@ -511,11 +519,21 @@ fn render_body(
         });
     }
 
-    let rects = placed_rects
+    let rects: ElementBoxes = placed_rects
         .into_iter()
         .map(|(id, rect)| (id.to_string(), rect))
         .collect();
-    Ok((page, SheetReport { print, notes }, rects))
+    Ok((
+        page,
+        SheetReport {
+            print,
+            notes,
+            elements: rects.clone(),
+            numbers: Vec::new(),
+            mask_ids: Vec::new(),
+        },
+        rects,
+    ))
 }
 
 /// Adds the default footer to `page`, a page drawn without a project (the `render` command): the

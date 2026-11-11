@@ -3199,8 +3199,12 @@ mod tests {
                 dropped_pattern_objects: 0,
                 substituted_fonts: vec![],
                 missing_glyphs: vec![],
+                source_objects: vec![],
             },
             notes,
+            elements: vec![],
+            numbers: vec![],
+            mask_ids: vec![],
         }
     }
 

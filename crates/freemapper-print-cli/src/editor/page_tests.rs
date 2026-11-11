@@ -8,6 +8,7 @@ use crate::text::TEXTS;
 
 const INDEX: &str = include_str!("web/index.html");
 const APP_JS: &str = include_str!("web/app.js");
+const SHEET_JS: &str = include_str!("web/sheet.js");
 const APP_CSS: &str = include_str!("web/app.css");
 
 /// Size limit of the page's own assets plus the suite assets (core ADR 0030).
@@ -41,14 +42,20 @@ fn every_text_the_page_names_exists() {
             named.insert(id.to_owned());
         }
     }
-    for source in [INDEX, APP_JS] {
+    for source in [INDEX, APP_JS, SHEET_JS] {
         for (at, _) in source.match_indices("\"editor-") {
             let rest = &source[at + 1..];
             named.insert(rest[..rest.find('"').unwrap()].to_owned());
         }
     }
     assert!(named.contains("editor-page-title"));
-    let missing: Vec<_> = named.difference(&known).collect();
+    // A count text (`tn`) is named by its stem; its forms end in -one and -other.
+    let missing: Vec<_> = named
+        .difference(&known)
+        .filter(|id| {
+            !(known.contains(&format!("{id}-one")) && known.contains(&format!("{id}-other")))
+        })
+        .collect();
     assert!(missing.is_empty(), "{missing:?}");
 }
 
@@ -62,6 +69,7 @@ fn the_page_and_the_suite_assets_keep_the_suite_rules() {
     files.extend([
         ("index.html", INDEX.as_bytes()),
         ("app.js", APP_JS.as_bytes()),
+        ("sheet.js", SHEET_JS.as_bytes()),
         ("app.css", APP_CSS.as_bytes()),
     ]);
     if let Err(problems) = check_page_rules(&files, BUDGET) {
@@ -84,4 +92,25 @@ fn the_page_names_the_class_names_and_ids_of_the_suite_frame() {
     ] {
         assert!(INDEX.contains(needle), "{needle}");
     }
+}
+
+#[test]
+fn the_page_knows_a_text_for_every_element_kind() {
+    use freemapper_print::project::ElementKind::*;
+    for kind in [
+        TitleBlock,
+        Text,
+        Logo,
+        ScaleCheckBar,
+        CreditLine,
+        CopyrightLine,
+        ControlDescriptions,
+    ] {
+        let name = super::preview::kind_name(kind);
+        assert!(
+            APP_JS.contains(&format!("  {name}: \"editor-kind-")),
+            "{name}"
+        );
+    }
+    assert!(APP_JS.contains("footer: \"editor-kind-footer\""));
 }

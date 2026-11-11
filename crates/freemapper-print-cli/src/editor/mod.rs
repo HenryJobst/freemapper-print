@@ -4,6 +4,8 @@
 //! ADR 0030. Everything that changes the project file goes through the `ops` functions; no logic of the
 //! editor lives in `main.rs`.
 
+mod api;
+mod preview;
 mod server;
 
 #[cfg(test)]
@@ -66,7 +68,7 @@ pub(crate) fn run_with(
             source: anyhow::Error::new(source),
         });
     }
-    server::serve_until_done(args.port, args.lang.clone(), |url| {
+    server::serve_until_done(args.port, path, args.lang.clone(), |url| {
         let line = texts.get("edit-listening", Some(&args!("url" => url.to_string())));
         // A closed stdout must not stop the editor.
         let _ = writeln!(out, "{line}");

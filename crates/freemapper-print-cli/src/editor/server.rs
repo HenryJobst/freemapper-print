@@ -12,8 +12,10 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use freemapper_print::web::{self, LocalServer, ServeOptions, WebError};
+use std::path::PathBuf;
 use tokio::sync::Notify;
 
+use super::api::{self, Api};
 use crate::ops::OpError;
 use crate::text::TEXTS;
 
@@ -75,8 +77,14 @@ async fn texts(fixed: Option<String>, headers: HeaderMap) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
 
-fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>) -> Router {
+fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: PathBuf) -> Router {
+    let api = Arc::new(Api::new(project, fixed.clone()));
     Router::new()
+        .route(&format!("{prefix}/api/project"), get(api::get_project))
+        .route(&format!("{prefix}/api/revision"), get(api::get_revision))
+        .route(&format!("{prefix}/api/preview"), get(api::get_preview))
+        .route(&format!("{prefix}/api/hit"), post(api::post_hit))
+        .with_state(api)
         .route(&format!("{prefix}/"), get(index))
         .route(
             &format!("{prefix}/api/texts"),
@@ -90,9 +98,13 @@ fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>) -> Router 
 }
 
 /// Starts the server on `port`.
-pub(super) async fn start(port: u16, fixed: Option<String>) -> Result<LocalServer, WebError> {
+pub(super) async fn start(
+    port: u16,
+    project: PathBuf,
+    fixed: Option<String>,
+) -> Result<LocalServer, WebError> {
     web::serve(
-        move |prefix, shutdown| routes(prefix, shutdown, fixed),
+        move |prefix, shutdown| routes(prefix, shutdown, fixed, project),
         options(port),
     )
     .await
@@ -101,6 +113,7 @@ pub(super) async fn start(port: u16, fixed: Option<String>) -> Result<LocalServe
 /// Starts the server, calls `announce` with its address, and waits until `POST api/done` or Ctrl+C ends it.
 pub(super) fn serve_until_done(
     port: u16,
+    project: PathBuf,
     fixed: Option<String>,
     announce: impl FnOnce(&str),
 ) -> Result<(), OpError> {
@@ -112,9 +125,11 @@ pub(super) fn serve_until_done(
         .build()
         .map_err(serve_error)?;
     runtime.block_on(async {
-        let server = start(port, fixed).await.map_err(|e| OpError::Serve {
-            source: anyhow::Error::new(e),
-        })?;
+        let server = start(port, project, fixed)
+            .await
+            .map_err(|e| OpError::Serve {
+                source: anyhow::Error::new(e),
+            })?;
         announce(&server.url);
         let stop = server.shutdown();
         let finished = server.finished();
@@ -171,12 +186,16 @@ mod tests {
     }
 
     fn start_with(no_browser: bool, lang: Option<&str>) -> Running {
+        start_on(viktoriapark(), no_browser, lang)
+    }
+
+    fn start_on(project: std::path::PathBuf, no_browser: bool, lang: Option<&str>) -> Running {
         let lang = lang.map(str::to_owned);
         let out = Shared::default();
         let opened = Arc::new(AtomicUsize::new(0));
         let (writer, counter) = (out.clone(), Arc::clone(&opened));
         let args = EditArgs {
-            project: viktoriapark(),
+            project,
             port: 0,
             no_browser,
             lang,
@@ -220,21 +239,49 @@ mod tests {
         path: &str,
         extra: &str,
     ) -> (u16, String) {
-        let mut stream = TcpStream::connect(host).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        let body = if method == "POST" { "{}" } else { "" };
+        request_with(host, request_host, method, path, extra, "{}")
+    }
+
+    /// One try of a raw request: the status line code and the whole answer.
+    fn try_request(
+        host: &str,
+        request_host: &str,
+        method: &str,
+        path: &str,
+        extra: &str,
+        post_body: &str,
+    ) -> std::io::Result<(u16, String)> {
+        let mut stream = TcpStream::connect(host)?;
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        let body = if method == "POST" { post_body } else { "" };
         write!(
             stream,
             "{method} {path} HTTP/1.1\r\nHost: {request_host}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
-        )
-        .unwrap();
+        )?;
         let mut answer = String::new();
-        stream.read_to_string(&mut answer).unwrap();
+        stream.read_to_string(&mut answer)?;
         let code = answer.split(' ').nth(1).unwrap().parse().unwrap();
-        (code, answer)
+        Ok((code, answer))
+    }
+
+    /// [`request`] with the body of a POST given. A GET that a loaded machine resets is tried again.
+    fn request_with(
+        host: &str,
+        request_host: &str,
+        method: &str,
+        path: &str,
+        extra: &str,
+        post_body: &str,
+    ) -> (u16, String) {
+        let mut tries = if method == "GET" { 3 } else { 1 };
+        loop {
+            match try_request(host, request_host, method, path, extra, post_body) {
+                Ok(answer) => return answer,
+                Err(_) if tries > 1 => tries -= 1,
+                Err(error) => panic!("{method} {path}: {error}"),
+            }
+        }
     }
 
     fn get(run: &Running, path: &str) -> (u16, String) {
@@ -262,7 +309,12 @@ mod tests {
             "Origin: http://{}\r\nContent-Type: application/json\r\n",
             run.host
         );
-        assert_eq!(post_done(&run, &origin).0, 200);
+        // The server shuts down as it answers; on a loaded machine the answer can be lost to a reset
+        // connection. Then the thread's end is the proof that `done` arrived.
+        let path = format!("{}/api/done", run.prefix);
+        if let Ok((code, _)) = try_request(&run.host, &run.host, "POST", &path, &origin, "{}") {
+            assert_eq!(code, 200);
+        }
         run.thread.join().unwrap().unwrap();
     }
 
@@ -423,5 +475,186 @@ mod tests {
             Err(crate::ops::OpError::LoadProject { .. })
         ));
         assert!(out.is_empty());
+    }
+
+    // ---- the read API ----
+
+    fn luebeck() -> std::path::PathBuf {
+        std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/luebeck-competition-layouts"
+        ))
+    }
+
+    /// The JSON body of an answer.
+    fn body_json(answer: &str) -> serde_json::Value {
+        serde_json::from_str(answer.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+    }
+
+    fn post_json(run: &Running, path: &str, body: &str) -> (u16, String) {
+        let extra = format!(
+            "Origin: http://{}\r\nContent-Type: application/json\r\n",
+            run.host
+        );
+        request_with(
+            &run.host,
+            &run.host,
+            "POST",
+            &format!("{}{path}", run.prefix),
+            &extra,
+            body,
+        )
+    }
+
+    #[test]
+    fn project_has_the_shape_of_the_project_info_and_the_files_revision() {
+        let run = start(true);
+        let (code, answer) = get(&run, "/api/project");
+        assert_eq!(code, 200);
+        let got = body_json(&answer);
+        let info = crate::ops::project::info(&crate::ops::project::InfoArgs {
+            project: viktoriapark(),
+        })
+        .unwrap();
+        let mut want = serde_json::to_value(&info).unwrap();
+        let object = want.as_object_mut().unwrap();
+        // The absolute path stays on the server.
+        object.remove("path");
+        let bytes = std::fs::read(viktoriapark().join("freemapper-print.toml")).unwrap();
+        object.insert(
+            "revision".into(),
+            freemapper_print::web::revision(&bytes).into(),
+        );
+        object.insert("lang".into(), "en".into());
+        assert_eq!(got, want);
+        assert!(!answer.contains(env!("CARGO_MANIFEST_DIR")));
+        let (_, revision) = get(&run, "/api/revision");
+        assert_eq!(body_json(&revision)["revision"], want["revision"]);
+        finish(run);
+    }
+
+    #[test]
+    fn preview_is_the_renderers_svg_for_the_same_inputs() {
+        let run = start(true);
+        let (code, answer) = get(&run, "/api/preview?course=Training&rev=1");
+        assert_eq!(code, 200);
+        let got = body_json(&answer);
+        let drawn = super::super::preview::draw(&viktoriapark(), Some("Training"), None).unwrap();
+        assert_eq!(got["svg"], drawn.svg().unwrap());
+        assert_eq!(
+            got["page_mm"],
+            serde_json::json!([drawn.page.page_mm.0, drawn.page.page_mm.1])
+        );
+        assert_eq!(got["course"], "Training");
+        assert!(got["notes"].is_array());
+        assert!(
+            got["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| e["rect_mm"].as_array().unwrap().len() == 4)
+        );
+        // An unknown course is refused with a sentence.
+        let (code, answer) = get(&run, "/api/preview?course=Nope&rev=2");
+        assert_eq!(code, 422);
+        assert!(answer.contains("Nope"), "{answer}");
+        finish(run);
+    }
+
+    #[test]
+    fn a_project_without_courses_previews_the_layout() {
+        let run = start_on(luebeck(), true, None);
+        let (code, answer) = get(&run, "/api/preview");
+        assert_eq!(code, 200);
+        let got = body_json(&answer);
+        assert!(got["course"].is_null());
+        assert_eq!(got["layout"], "a4-4000");
+        assert_eq!(got["page_mm"], serde_json::json!([297.0, 210.0]));
+        let (_, answer) = get(&run, "/api/preview?layout=a3-3000");
+        assert_eq!(
+            body_json(&answer)["page_mm"],
+            serde_json::json!([420.0, 297.0])
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn a_newer_request_supersedes_an_older_one() {
+        let run = start_on(luebeck(), true, None);
+        // Arrival: the newest number wins, an older one is dropped at once.
+        assert_eq!(get(&run, "/api/preview?layout=a4-4000&rev=5").0, 200);
+        let (code, answer) = get(&run, "/api/preview?layout=a4-4000&rev=4");
+        assert_eq!(code, 409);
+        assert_eq!(body_json(&answer)["error"], "superseded");
+        // While drawing: a request that is newer when the older one finishes drops it. The first of the
+        // two draws a layout the cache does not hold.
+        let (host, prefix) = (run.host.clone(), run.prefix.clone());
+        let older = std::thread::spawn(move || {
+            request(
+                &host,
+                &host,
+                "GET",
+                &format!("{prefix}/api/preview?layout=a3-3000&rev=10"),
+                "",
+            )
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        let (code, _) = get(&run, "/api/preview?layout=a4-4000&rev=11");
+        assert_eq!(code, 200);
+        let (code, answer) = older.join().unwrap();
+        assert_eq!(code, 409, "{}", &answer[..answer.len().min(300)]);
+        // Without a number nothing is superseded.
+        assert_eq!(get(&run, "/api/preview?layout=a4-4000").0, 200);
+        assert_eq!(get(&run, "/api/preview?rev=x").0, 400);
+        finish(run);
+    }
+
+    #[test]
+    fn hit_names_what_lies_at_a_point_and_needs_origin_and_json() {
+        let run = start_on(luebeck(), true, None);
+        let (_, answer) = get(&run, "/api/preview?layout=a4-4000");
+        let got = body_json(&answer);
+        let title = got["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == "title")
+            .unwrap();
+        let r: Vec<f64> = title["rect_mm"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        let body = format!(
+            r#"{{"layout":"a4-4000","x_mm":{},"y_mm":{}}}"#,
+            (r[0] + r[2]) / 2.0,
+            (r[1] + r[3]) / 2.0
+        );
+        let (code, answer) = post_json(&run, "/api/hit", &body);
+        assert_eq!(code, 200);
+        let pick = body_json(&answer);
+        assert_eq!(
+            (pick["kind"].as_str(), pick["id"].as_str()),
+            (Some("element"), Some("title"))
+        );
+        let (code, answer) = post_json(
+            &run,
+            "/api/hit",
+            r#"{"layout":"a4-4000","x_mm":-9,"y_mm":-9}"#,
+        );
+        assert_eq!(code, 200);
+        assert!(body_json(&answer)["kind"].is_null());
+        assert_eq!(post_json(&run, "/api/hit", "not json").0, 400);
+        let no_origin = request_with(
+            &run.host,
+            &run.host,
+            "POST",
+            &format!("{}/api/hit", run.prefix),
+            "Content-Type: application/json\r\n",
+            &body,
+        );
+        assert_eq!(no_origin.0, 403);
+        finish(run);
     }
 }
