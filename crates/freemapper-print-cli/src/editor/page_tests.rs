@@ -10,6 +10,8 @@ const INDEX: &str = include_str!("web/index.html");
 const APP_JS: &str = include_str!("web/app.js");
 const SHEET_JS: &str = include_str!("web/sheet.js");
 const FORMS_JS: &str = include_str!("web/forms.js");
+const MASKS_JS: &str = include_str!("web/masks.js");
+const NUMBERS_JS: &str = include_str!("web/numbers.js");
 const APP_CSS: &str = include_str!("web/app.css");
 
 /// Size limit of the page's own assets plus the suite assets (core ADR 0030).
@@ -43,7 +45,7 @@ fn every_text_the_page_names_exists() {
             named.insert(id.to_owned());
         }
     }
-    for source in [INDEX, APP_JS, SHEET_JS, FORMS_JS] {
+    for source in [INDEX, APP_JS, SHEET_JS, FORMS_JS, MASKS_JS, NUMBERS_JS] {
         for (at, _) in source.match_indices("\"editor-") {
             let rest = &source[at + 1..];
             named.insert(rest[..rest.find('"').unwrap()].to_owned());
@@ -72,6 +74,8 @@ fn the_page_and_the_suite_assets_keep_the_suite_rules() {
         ("app.js", APP_JS.as_bytes()),
         ("sheet.js", SHEET_JS.as_bytes()),
         ("forms.js", FORMS_JS.as_bytes()),
+        ("masks.js", MASKS_JS.as_bytes()),
+        ("numbers.js", NUMBERS_JS.as_bytes()),
         ("app.css", APP_CSS.as_bytes()),
     ]);
     if let Err(problems) = check_page_rules(&files, BUDGET) {

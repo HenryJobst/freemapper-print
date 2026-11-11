@@ -62,3 +62,21 @@ export function setZoom(host, svg, zoom) {
   svg.style.width = `${box.width * fit * zoom}px`;
   svg.style.height = `${box.height * fit * zoom}px`;
 }
+
+// The marks of a drawing mode over the sheet (page mm): a line, round marks at points, and with `ring` open
+// circles instead of dots. Called again it replaces the earlier marks; with nothing it clears them.
+export function draw(svg, { line = [], marks = [], ring = false }) {
+  for (const old of svg.querySelectorAll(".draw")) old.remove();
+  const add = (name, attributes) => {
+    const node = document.createElementNS(SVG_NS, name);
+    node.setAttribute("class", `draw ${ring && name === "circle" ? "draw-ring" : "draw-mark"}`);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    svg.append(node);
+    return node;
+  };
+  if (line.length >= 2) {
+    const path = add("polyline", { points: line.map(([x, y]) => `${x},${y}`).join(" ") });
+    path.setAttribute("class", "draw draw-line");
+  }
+  for (const [x, y] of marks) add("circle", { cx: x, cy: y, r: ring ? 3 : 1 });
+}

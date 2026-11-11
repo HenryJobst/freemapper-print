@@ -7,6 +7,8 @@ import { buildTree } from "../suite/tree.js";
 import { say, showBanner, clearBanner } from "../suite/status.js";
 import * as sheet from "./sheet.js";
 import { elementForm, layoutForm } from "./forms.js";
+import * as masks from "./masks.js";
+import * as numbers from "./numbers.js";
 
 const POLL_MS = 2000;
 
@@ -38,12 +40,35 @@ const state = {
   notified: null,
   // Shared elements the person agreed to move for every layout, in this session.
   agreed: new Set(),
+  // The numbers of the sheet on screen ({ control, centre_mm }) and its conflicts, as the preview lists them.
+  numbers: [],
+  conflicts: [],
+};
+
+// What the drawing modes and the number forms need of the page.
+const host = {
+  info: () => state.info,
+  course: () => state.shown.course || state.course,
+  layout: () => state.shown.layout || state.layout,
+  svg: () => state.svg,
+  numbers: () => state.numbers,
+  write: (name, body) => write(name, body),
+  pick: async (at) => {
+    const answer = await post("api/hit", { course: state.shown.course, layout: state.shown.layout, x_mm: at.x, y_mm: at.y });
+    return answer.ok ? answer.data : null;
+  },
+  say: (id) => say(id),
+  showProps: (node) => $("props").replaceChildren(node),
+  clearProps: () => showProps([]),
+  leave: () => leaveOk(),
+  acceptProposal: (conflict) => acceptProposal(conflict),
 };
 
 // A move: the shift (mm) not yet sent, and whether a request is on its way.
 const moves = { pending: null, sending: false };
 const SNAP_MM = 0.5;
 const DRAG_START_MM = 0.5;
+const NUMBER_REACH_MM = 2.5;
 
 const $ = (id) => document.getElementById(id);
 
@@ -171,6 +196,8 @@ function propsFor(key) {
       [t("editor-field-id"), mask.id],
       [t("editor-field-polygons"), mask.polygons],
     ]);
+    const form = masks.assignForm(host, mask);
+    if (form) $("props").append(form);
   } else if (type === "element") {
     const at = id.indexOf("@");
     if (at < 0) selectElement(decodeURIComponent(id), null);
@@ -258,9 +285,13 @@ async function showSheet() {
   state.svg = sheet.show($("sheet"), data.svg);
   state.shown = { course: data.course ?? "", layout: data.layout ?? "" };
   state.elements = data.elements;
+  state.numbers = data.numbers ?? [];
+  state.conflicts = data.conflicts ?? [];
+  numbers.renderConflicts(host, state.conflicts);
   if (state.info && state.treeLayout !== (state.shown.layout || state.layout)) renderTree();
   applyZoom();
   refreshOutline();
+  masks.redraw();
   renderNotes(data.notes);
   $("status-page").textContent = `${data.page_mm[0]} × ${data.page_mm[1]} mm`;
   $("status-scale").textContent = t("editor-status-scale-value", { scale: String(data.print_scale) });
@@ -316,6 +347,10 @@ async function pick(at) {
   }
   state.selected = null;
   sheet.outline(state.svg, null);
+  if (kind === "number" && state.shown.course) {
+    $("props").replaceChildren(numbers.numberForm(host, state.shown.course, id));
+    return;
+  }
   showProps([[t(PICK_TEXTS[kind], { id }), ""]]);
 }
 
@@ -333,6 +368,40 @@ function elementAt(at) {
   return best;
 }
 
+// The number of a control within reach of the point, on a course sheet.
+function numberAt(at) {
+  if (!state.shown.course) return null;
+  let best = null;
+  for (const number of state.numbers) {
+    const distance = Math.hypot(number.centre_mm[0] - at.x, number.centre_mm[1] - at.y);
+    if (distance <= NUMBER_REACH_MM && (!best || distance < best.distance)) best = { ...number, distance };
+  }
+  return best;
+}
+
+// Asks where the correction applies, then sends the drop point; the server works out direction and gap.
+async function dropNumber(number, at) {
+  const scope = await numbers.askScope(number.control);
+  if (!scope) {
+    masks.redraw();
+    return;
+  }
+  await write("numbers_accept", {
+    course: state.shown.course,
+    layout: state.shown.layout,
+    control: number.control,
+    scope,
+    to_page_mm: [at.x, at.y],
+  });
+  masks.redraw();
+}
+
+// The proposal of the check for one conflict, after the person said where it applies.
+async function acceptProposal(conflict) {
+  const scope = await numbers.askScope(conflict.control);
+  if (scope) await write("numbers_accept", { course: conflict.course, control: conflict.control, scope });
+}
+
 const snap = (value) => Math.round(value / SNAP_MM) * SNAP_MM;
 
 // Pointer on the sheet: a click selects through the server, a drag moves the element under the pointer. The outline
@@ -343,7 +412,15 @@ function onPointerDown(event) {
   if (!state.svg || event.button !== 0) return;
   const at = sheet.pageMm(state.svg, event);
   $("sheet").focus();
-  drag = { start: at, candidate: elementAt(at), moving: false, delta: [0, 0] };
+  if (masks.active()) {
+    drag = { start: at, tool: true };
+    $("sheet").setPointerCapture(event.pointerId);
+    return;
+  }
+  const candidate = elementAt(at);
+  // A number that no element covers can be dragged to a new place.
+  const number = candidate ? null : numberAt(at);
+  drag = { start: at, candidate, number, moving: false, delta: [0, 0] };
   $("sheet").setPointerCapture(event.pointerId);
 }
 
@@ -351,6 +428,13 @@ function onPointerMove(event) {
   if (!drag || !state.svg) return;
   const at = sheet.pageMm(state.svg, event);
   const [dx, dy] = [at.x - drag.start.x, at.y - drag.start.y];
+  if (drag.tool) return;
+  if (drag.number) {
+    if (!drag.moving && Math.hypot(dx, dy) < DRAG_START_MM) return;
+    drag.moving = true;
+    sheet.draw(state.svg, { marks: [[at.x, at.y]], ring: true });
+    return;
+  }
   if (!drag.moving) {
     if (!drag.candidate || Math.hypot(dx, dy) < DRAG_START_MM) return;
     drag.moving = true;
@@ -364,6 +448,15 @@ async function onPointerUp(event) {
   if (!drag) return;
   const finished = drag;
   drag = null;
+  if (finished.tool) {
+    const at = sheet.pageMm(state.svg, event);
+    if (Math.hypot(at.x - finished.start.x, at.y - finished.start.y) < 1) await masks.click(at);
+    return;
+  }
+  if (finished.number && finished.moving) {
+    await dropNumber(finished.number, sheet.pageMm(state.svg, event));
+    return;
+  }
   if (!finished.moving) {
     await pick(sheet.pageMm(state.svg, event));
     return;
@@ -414,7 +507,24 @@ async function moveElement(id, dx, dy) {
   }
 }
 
-function choose(course, layout) {
+// Asks before a half-drawn corridor line is thrown away (a real dialog); true when nothing is lost or the person agrees.
+function leaveOk() {
+  if (!masks.dirty()) return Promise.resolve(true);
+  const dialog = $("leave");
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok"), { once: true });
+    dialog.returnValue = "";
+    dialog.showModal();
+  });
+}
+
+async function choose(course, layout) {
+  if (!(await leaveOk())) {
+    $("course-select").value = state.course;
+    $("layout-select").value = state.layout;
+    return;
+  }
+  if (masks.active() && (course !== state.course || layout !== state.layout)) masks.stop();
   state.course = course;
   state.layout = layout;
   $("course-select").value = course;
@@ -422,7 +532,11 @@ function choose(course, layout) {
   showSheet();
 }
 
-function onSelect(key) {
+async function onSelect(key) {
+  if (masks.active()) {
+    if (!(await leaveOk())) return;
+    masks.stop();
+  }
   propsFor(key);
   if (key.startsWith("layout:")) choose("", key.slice("layout:".length));
   else if (key.startsWith("assignment:")) {
@@ -472,15 +586,16 @@ async function start() {
     choose(course, known ? known.layout : state.layout);
   });
   $("layout-select").addEventListener("change", (e) => choose($("course-select").value, e.target.value));
-  const host = $("sheet");
-  host.addEventListener("pointerdown", onPointerDown);
-  host.addEventListener("pointermove", onPointerMove);
-  host.addEventListener("pointerup", onPointerUp);
-  host.addEventListener("pointercancel", () => {
+  const surface = $("sheet");
+  surface.addEventListener("pointerdown", onPointerDown);
+  surface.addEventListener("pointermove", onPointerMove);
+  surface.addEventListener("pointerup", onPointerUp);
+  surface.addEventListener("pointercancel", () => {
     drag = null;
     if (state.selected) refreshOutline();
+    masks.redraw();
   });
-  host.addEventListener("keydown", onSheetKey);
+  surface.addEventListener("keydown", onSheetKey);
   document.addEventListener("keydown", onKey);
   addEventListener("resize", applyZoom);
   $("menu-undo").addEventListener("click", () => step("undo"));
@@ -490,6 +605,17 @@ async function start() {
   $("menu-zoom-fit").addEventListener("click", () => zoomTo(1));
   $("confirm-yes").addEventListener("click", () => $("confirm").close("ok"));
   $("confirm-no").addEventListener("click", () => $("confirm").close("cancel"));
+  $("scope-layout").addEventListener("click", () => $("scope").close("layout_wide"));
+  $("scope-sheet").addEventListener("click", () => $("scope").close("sheet"));
+  $("scope-cancel").addEventListener("click", () => $("scope").close("cancel"));
+  $("leave-yes").addEventListener("click", () => $("leave").close("ok"));
+  $("leave-no").addEventListener("click", () => $("leave").close("cancel"));
+  $("menu-mask-window").addEventListener("click", () => masks.start(host, "window"));
+  $("menu-mask-corridor").addEventListener("click", () => masks.start(host, "corridor"));
+  $("sheet").addEventListener("dblclick", () => masks.doubleClick());
+  addEventListener("beforeunload", (event) => {
+    if (masks.dirty()) event.preventDefault();
+  });
   if (!(await loadProject())) return;
   const first = state.info.courses[0];
   state.course = first ? first.name : "";
@@ -625,6 +751,11 @@ const zoomBy = (factor) => zoomTo(state.zoom * factor);
 
 // Keys everywhere on the page: undo and redo, except where a field takes them for its own text.
 function onKey(event) {
+  if (event.key === "Escape" && masks.active() && !$("leave").open && !$("scope").open) {
+    event.preventDefault();
+    masks.cancel();
+    return;
+  }
   const field = event.target instanceof HTMLElement && event.target.closest("input, textarea, select");
   if (field || !(event.ctrlKey || event.metaKey) || event.altKey) return;
   if (event.key.toLowerCase() === "z") {
@@ -682,6 +813,7 @@ async function reload() {
 
 // Ends the server; the page then has nothing left to ask.
 async function close() {
+  if (!(await leaveOk())) return;
   try {
     const answer = await post("api/done");
     if (answer.ok) state.closed = true;

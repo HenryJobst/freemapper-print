@@ -3211,6 +3211,7 @@ mod tests {
             notes,
             elements: vec![],
             numbers: vec![],
+            number_anchors: vec![],
             mask_ids: vec![],
         }
     }

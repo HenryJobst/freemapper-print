@@ -157,7 +157,7 @@ impl Api {
         if current != claimed {
             return Done::Stale(current);
         }
-        let result = match run(&self.project, args) {
+        let result = match run(&self.project, args, lang) {
             Ok(result) => result,
             Err(EditError::Form) => return Done::Form,
             Err(EditError::Op(error)) => {
@@ -496,7 +496,33 @@ fn preview_body(drawn: &Drawn, lang: &Lang) -> Result<serde_json::Value, Preview
         .iter()
         .map(|notice| notice.describe(&texts))
         .collect();
+    // The control numbers in conflict, for the panel that offers the proposal: the sentence is the note's own.
+    let conflicts: Vec<_> = drawn
+        .sheet
+        .notes
+        .iter()
+        .filter_map(|notice| match &notice.value {
+            crate::ops::note::NoteValue::Sheet(
+                freemapper_print::sheet::SheetNote::NumberConflict(c),
+            ) => Some(serde_json::json!({
+                "control": c.control,
+                "course": c.course,
+                "message": notice.describe(&texts).message,
+                "searched": c.searched,
+                "free": c.free,
+            })),
+            _ => None,
+        })
+        .collect();
+    let numbers: Vec<_> = drawn
+        .report
+        .numbers
+        .iter()
+        .map(|(control, (x, y))| serde_json::json!({ "control": control, "centre_mm": [x, y] }))
+        .collect();
     Ok(serde_json::json!({
+        "conflicts": conflicts,
+        "numbers": numbers,
         "svg": svg,
         "page_mm": [drawn.page.page_mm.0, drawn.page.page_mm.1],
         "course": drawn.sheet.course,

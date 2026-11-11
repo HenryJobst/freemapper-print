@@ -25,6 +25,10 @@
       <div id="notes-pane">
         <h2 data-text="editor-notices-heading"></h2>
         <div id="notices" aria-live="polite"><p class="hint" data-text="editor-notices-empty"></p></div>
+        <div id="conflicts-pane" hidden>
+          <h2 data-text="editor-conflicts-heading"></h2>
+          <ul id="conflicts"></ul>
+        </div>
       </div>
     </section>
     <aside class="pane" id="pane-props" tabindex="0" data-label="editor-pane-props">
@@ -44,6 +48,13 @@
       <ul>
         <li><button type="button" id="menu-undo" data-text="editor-menu-undo" disabled></button></li>
         <li><button type="button" id="menu-redo" data-text="editor-menu-redo" disabled></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-masks"></summary>
+      <ul>
+        <li><button type="button" id="menu-mask-window" data-text="editor-menu-mask-window"></button></li>
+        <li><button type="button" id="menu-mask-corridor" data-text="editor-menu-mask-corridor"></button></li>
       </ul>
     </details>
     <details class="menu">
@@ -68,6 +79,23 @@
     <div class="dialog-buttons">
       <button type="button" id="confirm-yes" data-text="editor-confirm-move"></button>
       <button type="button" id="confirm-no" data-text="editor-cancel"></button>
+    </div>
+  </dialog>
+  <dialog id="scope" aria-labelledby="scope-title">
+    <h2 id="scope-title" data-text="editor-scope-title"></h2>
+    <p id="scope-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="scope-layout" data-text="editor-scope-layout"></button>
+      <button type="button" id="scope-sheet" data-text="editor-scope-sheet"></button>
+      <button type="button" id="scope-cancel" data-text="editor-cancel"></button>
+    </div>
+  </dialog>
+  <dialog id="leave" aria-labelledby="leave-title">
+    <h2 id="leave-title" data-text="editor-leave-title"></h2>
+    <p data-text="editor-leave-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="leave-yes" data-text="editor-leave-discard"></button>
+      <button type="button" id="leave-no" data-text="editor-leave-keep"></button>
     </div>
   </dialog>
   <footer class="status">

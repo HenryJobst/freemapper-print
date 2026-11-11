@@ -19,7 +19,7 @@ const PLACEHOLDERS = [
 ];
 const PAPER_MM = { A4: [210, 297], A3: [297, 420] };
 
-function make(tag, attributes = {}, children = []) {
+export function make(tag, attributes = {}, children = []) {
   const node = document.createElement(tag);
   for (const [name, value] of Object.entries(attributes)) {
     if (name === "text") node.textContent = value;
@@ -33,14 +33,14 @@ function make(tag, attributes = {}, children = []) {
 let counter = 0;
 
 // A label and its input in one row; returns { row, input }.
-function row(label, input) {
+export function row(label, input) {
   const id = `field-${++counter}`;
   input.id = id;
   const error = make("p", { class: "field-error", id: `${id}-error`, hidden: true });
   return { row: make("div", { class: "row" }, [make("label", { for: id, text: label }), input, error]), input, error };
 }
 
-function select(options, value) {
+export function select(options, value) {
   const node = make("select");
   for (const [optionValue, label] of options) {
     const option = make("option", { value: optionValue, text: label });
@@ -50,17 +50,17 @@ function select(options, value) {
   return node;
 }
 
-function numberInput(value, step = "any") {
+export function numberInput(value, step = "any") {
   return make("input", { type: "number", step, value: value ?? "" });
 }
 
 // The number in `input`: null when empty, NaN when it is no number.
-function read(input) {
+export function read(input) {
   const text = input.value.trim();
   return text === "" ? null : Number(text);
 }
 
-function fail(field, message) {
+export function fail(field, message) {
   field.input.setAttribute("aria-invalid", "true");
   field.input.setAttribute("aria-describedby", field.error.id);
   field.error.textContent = message;
@@ -68,7 +68,7 @@ function fail(field, message) {
   return false;
 }
 
-function clear(fields) {
+export function clear(fields) {
   for (const field of fields) {
     field.input.removeAttribute("aria-invalid");
     field.input.removeAttribute("aria-describedby");
@@ -77,7 +77,7 @@ function clear(fields) {
 }
 
 // A number that must be there.
-function need(field) {
+export function need(field) {
   const value = read(field.input);
   if (value === null || !Number.isFinite(value)) {
     fail(field, t("editor-form-number-error"));

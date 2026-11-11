@@ -50,6 +50,8 @@ pub struct SheetReport {
     /// The control numbers a course sheet draws: the control code and the centre of its number on the page (mm).
     /// Empty on a layout sheet.
     pub numbers: Vec<(String, (f64, f64))>,
+    /// The symbol each number of [`Self::numbers`] hangs on, in the same order.
+    pub number_anchors: Vec<crate::numbers::NumberAnchor>,
     /// The ids of the masks a course sheet applies, in the order of [`RenderedPage::map_clips`]. Empty without.
     pub mask_ids: Vec<String>,
 }
@@ -530,6 +532,7 @@ fn render_body(
             notes,
             elements: rects.clone(),
             numbers: Vec::new(),
+            number_anchors: Vec::new(),
             mask_ids: Vec::new(),
         },
         rects,

@@ -10,7 +10,9 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::ops::{self, OpError, edit};
+use super::preview;
+use crate::ops::{self, OpError, edit, masks, numbers};
+use crate::text::{Lang, Texts};
 
 /// Why an edit did not happen.
 #[derive(Debug)]
@@ -30,7 +32,8 @@ impl From<OpError> for EditError {
 }
 
 /// One op: the project file and the JSON arguments in, the result as JSON out.
-pub(super) type Run = fn(&Path, Value) -> Result<Value, EditError>;
+/// The language is the request's; it is the one of the comment an op writes into the file.
+pub(super) type Run = fn(&Path, Value, &Lang) -> Result<Value, EditError>;
 
 /// The ops of the editor by name.
 pub(super) const EDITOR_OPS: &[(&str, Run)] = &[
@@ -38,6 +41,9 @@ pub(super) const EDITOR_OPS: &[(&str, Run)] = &[
     ("set_element", set_element),
     ("assign_mask", assign_mask),
     ("move_element", move_element),
+    ("mask_window", mask_window),
+    ("mask_corridor", mask_corridor),
+    ("numbers_accept", numbers_accept),
 ];
 
 /// The op `name`, if the editor has it.
@@ -91,7 +97,7 @@ struct LayoutBody {
     hide_shared: Option<Vec<String>>,
 }
 
-fn set_layout(project: &Path, args: Value) -> Result<Value, EditError> {
+fn set_layout(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
     apply(args, |a: LayoutBody| {
         Ok(edit::set_layout(&edit::LayoutArgs {
             project: project.to_path_buf(),
@@ -136,7 +142,7 @@ fn inside_project(file: &Path) -> bool {
         .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
 }
 
-fn set_element(project: &Path, args: Value) -> Result<Value, EditError> {
+fn set_element(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
     apply(args, |a: ElementBody| {
         if let Some(file) = &a.file
             && !inside_project(file)
@@ -169,7 +175,7 @@ struct AssignBody {
     layout: Option<String>,
 }
 
-fn assign_mask(project: &Path, args: Value) -> Result<Value, EditError> {
+fn assign_mask(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
     apply(args, |a: AssignBody| {
         Ok(edit::assign_mask(&edit::AssignArgs {
             project: project.to_path_buf(),
@@ -231,7 +237,7 @@ fn find_element<'a>(
     shared.iter().find(|e| e.id == id).map(|e| (None, e))
 }
 
-fn move_element(project: &Path, args: Value) -> Result<Value, EditError> {
+fn move_element(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
     apply(args, |a: MoveBody| {
         if !(a.dx_mm.is_finite()
             && a.dy_mm.is_finite()
@@ -255,6 +261,147 @@ fn move_element(project: &Path, args: Value) -> Result<Value, EditError> {
             project: project.to_path_buf(),
             layout,
             element,
+        })?)
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowBody {
+    course: String,
+    /// Codes (`31,32`) or places (`2-5`); left out for every control.
+    controls: Option<String>,
+    /// Print mm.
+    radius: Option<f64>,
+    #[serde(default)]
+    radius_for: Vec<String>,
+    #[serde(default)]
+    no_start: bool,
+    #[serde(default)]
+    no_finish: bool,
+    id: Option<String>,
+    #[serde(default)]
+    assign: bool,
+}
+
+fn mask_window(project: &Path, args: Value, lang: &Lang) -> Result<Value, EditError> {
+    apply(args, |a: WindowBody| {
+        let texts = Texts::new(lang);
+        Ok(masks::window(
+            &masks::WindowArgs {
+                project: project.to_path_buf(),
+                course: a.course,
+                controls: a.controls,
+                radius_mm: a.radius,
+                radius_for: a.radius_for,
+                no_start: a.no_start,
+                no_finish: a.no_finish,
+                id: a.id,
+                assign: a.assign,
+            },
+            &|r| crate::window_comment(&texts, r),
+        )?)
+    })
+}
+
+/// A corridor along a line: `points` as the op takes them (map mm, y up), or `page_points_mm` the page drew
+/// (page mm, y down) on the sheet of `course` and `layout`, which the server turns into map mm.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorridorBody {
+    points: Option<String>,
+    page_points_mm: Option<Vec<[f64; 2]>>,
+    layout: Option<String>,
+    /// Print mm.
+    width: Option<f64>,
+    course: Option<String>,
+    id: Option<String>,
+    #[serde(default)]
+    assign: bool,
+}
+
+fn mask_corridor(project: &Path, args: Value, lang: &Lang) -> Result<Value, EditError> {
+    apply(args, |a: CorridorBody| {
+        let texts = Texts::new(lang);
+        if a.assign && a.course.is_none() {
+            return Err(EditError::Say("mcp-error-corridor-assign", String::new()));
+        }
+        let points = match (a.points, a.page_points_mm) {
+            (Some(text), None) => text,
+            (None, Some(drawn)) => {
+                let sheet = preview::draw(project, a.course.as_deref(), a.layout.as_deref())?;
+                drawn
+                    .iter()
+                    .map(|[x, y]| {
+                        let [mx, my] = sheet.map_mm(*x, *y);
+                        format!("{mx},{my}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";")
+            }
+            _ => return Err(EditError::Form),
+        };
+        Ok(masks::corridor(
+            &masks::CorridorArgs {
+                project: project.to_path_buf(),
+                points,
+                width_mm: a.width,
+                id: a.id,
+                assign: a.assign,
+                course: a.course,
+            },
+            &|r| crate::corridor_comment(&texts, r),
+        )?)
+    })
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum ScopeBody {
+    LayoutWide,
+    Sheet,
+}
+
+/// A number's correction. The position is the proposal of `check` (nothing given), a direction with a gap, or the
+/// page point `to_page_mm` the number was dropped at on the sheet of `course` and `layout`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NumbersBody {
+    course: String,
+    control: String,
+    scope: ScopeBody,
+    direction: Option<f64>,
+    gap: Option<f64>,
+    to_page_mm: Option<[f64; 2]>,
+    layout: Option<String>,
+}
+
+fn numbers_accept(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+    apply(args, |a: NumbersBody| {
+        let position = match (a.direction, a.gap, a.to_page_mm) {
+            (None, None, None) => None,
+            (Some(direction), Some(gap), None) => Some((direction, gap)),
+            (None, None, Some([x, y])) => {
+                if !(x.is_finite() && y.is_finite()) {
+                    return Err(EditError::Form);
+                }
+                let sheet = preview::draw(project, Some(&a.course), a.layout.as_deref())?;
+                match sheet.number_placement_at(&a.control, x, y) {
+                    Some(position) => Some(position),
+                    None => return Err(EditError::Say("edit-no-number", a.control)),
+                }
+            }
+            _ => return Err(EditError::Form),
+        };
+        Ok(numbers::accept(&numbers::AcceptArgs {
+            project: project.to_path_buf(),
+            course: a.course,
+            control: a.control,
+            scope: match a.scope {
+                ScopeBody::LayoutWide => numbers::AcceptScope::Layout,
+                ScopeBody::Sheet => numbers::AcceptScope::Sheet,
+            },
+            position,
         })?)
     })
 }

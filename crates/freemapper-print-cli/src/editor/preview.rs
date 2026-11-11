@@ -199,6 +199,32 @@ impl Drawn {
         write_svg(&self.page, &SvgView::default())
     }
 
+    /// The page point `(x_mm, y_mm)` (mm, y down) as a point of the map in the units of a mask: map mm with y up,
+    /// to 0.001 mm.
+    pub fn map_mm(&self, x_mm: f64, y_mm: f64) -> [f64; 2] {
+        let factor = self.report.print.geometry_factor;
+        let (width, height) = self.page.page_mm;
+        let (cx, cy) = self.page.centre_mm;
+        let round = |v: f64| (v * 1000.0).round() / 1000.0 + 0.0;
+        [
+            round((x_mm - width / 2.0 + cx) / factor),
+            round(-(y_mm - height / 2.0 + cy) / factor),
+        ]
+    }
+
+    /// Direction (degrees, 0 = east, counter-clockwise) and gap (print mm) that put the number of `control` with
+    /// its box centred at the page point `(x_mm, y_mm)`. `None` when the sheet has no number for the control.
+    pub fn number_placement_at(&self, control: &str, x_mm: f64, y_mm: f64) -> Option<(f64, f64)> {
+        let at = self
+            .report
+            .numbers
+            .iter()
+            .position(|(code, _)| code == control)?;
+        let anchor = self.report.number_anchors.get(at)?;
+        let placement = anchor.placement_at((x_mm, y_mm));
+        Some((placement.direction, placement.gap_mm))
+    }
+
     /// The elements on the page, in paint order.
     pub fn elements(&self) -> Vec<ElementRect> {
         self.report

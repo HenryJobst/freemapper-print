@@ -1217,4 +1217,331 @@ mod tests {
         assert_eq!(std::fs::read(&file).unwrap(), original);
         finish(run);
     }
+
+    /// The project file of a folder, as text.
+    fn project_text(dir: &std::path::Path) -> String {
+        std::fs::read_to_string(dir.join("freemapper-print.toml")).unwrap()
+    }
+
+    fn english() -> Texts {
+        Texts::new(&Lang::english())
+    }
+
+    /// The error sentence of a refused write (422).
+    fn refused_with(run: &Running, name: &str, body: &str) -> String {
+        let revision = revision_of(run);
+        let (code, answer) = write(run, &format!("/api/op/{name}"), Some(&revision), body);
+        assert_eq!(code, 422, "{answer}");
+        answer.split("\r\n\r\n").nth(1).unwrap().to_owned()
+    }
+
+    /// The Viktoriapark example with the number of control 34 put on its leg for the whole layout: a conflict
+    /// with a proposal on the sheet of Training.
+    fn conflicted_copy() -> tempfile::TempDir {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        crate::ops::numbers::accept(&crate::ops::numbers::AcceptArgs {
+            project: dir.path().to_path_buf(),
+            course: "Training".into(),
+            control: "34".into(),
+            scope: crate::ops::numbers::AcceptScope::Layout,
+            position: Some((0.0, 1.0)),
+        })
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_window_mask_is_what_the_op_writes_and_an_id_is_never_replaced() {
+        let by_page = crate::ops::testing::viktoriapark_copy();
+        let by_op = crate::ops::testing::viktoriapark_copy();
+        let run = start_on(by_page.path().to_path_buf(), true, Some("en"));
+        let body = r#"{"course":"Training","controls":"34,35","radius":12.5,"radius_for":["35=20"],"no_start":true,"id":"w1","assign":true}"#;
+        op(&run, "mask_window", body);
+        crate::ops::masks::window(
+            &crate::ops::masks::WindowArgs {
+                project: by_op.path().to_path_buf(),
+                course: "Training".into(),
+                controls: Some("34,35".into()),
+                radius_mm: Some(12.5),
+                radius_for: vec!["35=20".into()],
+                no_start: true,
+                no_finish: false,
+                id: Some("w1".into()),
+                assign: true,
+            },
+            &|r| crate::window_comment(&english(), r),
+        )
+        .unwrap();
+        let text = project_text(by_page.path());
+        assert_eq!(text, project_text(by_op.path()));
+        assert!(text.contains("id = \"w1\""), "{text}");
+        // The same id again is refused with the sentence of the op, and the file stays as it is.
+        let sentence = refused_with(&run, "mask_window", r#"{"course":"Training","id":"w1"}"#);
+        assert!(sentence.contains("\"w1\" already"), "{sentence}");
+        assert_eq!(project_text(by_page.path()), text);
+        // Unknown keys and a missing course are a form error.
+        let revision = revision_of(&run);
+        let bad = write(
+            &run,
+            "/api/op/mask_window",
+            Some(&revision),
+            r#"{"controls":"1"}"#,
+        );
+        assert_eq!(bad.0, 400);
+        finish(run);
+    }
+
+    #[test]
+    fn a_corridor_from_a_typed_line_is_what_the_op_writes() {
+        let by_page = crate::ops::testing::viktoriapark_copy();
+        let by_op = crate::ops::testing::viktoriapark_copy();
+        let run = start_on(by_page.path().to_path_buf(), true, Some("en"));
+        let points = "10,-20;40,-25;70,-20";
+        op(
+            &run,
+            "mask_corridor",
+            &format!(r#"{{"points":"{points}","width":9,"course":"Training","assign":true}}"#),
+        );
+        crate::ops::masks::corridor(
+            &crate::ops::masks::CorridorArgs {
+                project: by_op.path().to_path_buf(),
+                points: points.into(),
+                width_mm: Some(9.0),
+                id: None,
+                assign: true,
+                course: Some("Training".into()),
+            },
+            &|r| crate::corridor_comment(&english(), r),
+        )
+        .unwrap();
+        assert_eq!(project_text(by_page.path()), project_text(by_op.path()));
+        // The line needs two sources at most: text or a drawing, and assign needs a course.
+        let revision = revision_of(&run);
+        let both = write(
+            &run,
+            "/api/op/mask_corridor",
+            Some(&revision),
+            r#"{"points":"1,1;2,2","page_points_mm":[[1,1],[2,2]]}"#,
+        );
+        assert_eq!(both.0, 400);
+        let sentence = refused_with(
+            &run,
+            "mask_corridor",
+            r#"{"points":"1,1;2,2","assign":true}"#,
+        );
+        assert!(sentence.contains("assign needs a course"), "{sentence}");
+        finish(run);
+    }
+
+    #[test]
+    fn a_drawn_corridor_lies_where_the_pointer_was() {
+        use super::super::preview::draw;
+        let dir = crate::ops::testing::viktoriapark_copy();
+        // The page point of the control "34" turns into the map point the window around it is centred on.
+        let drawn = draw(dir.path(), Some("Training"), None).unwrap();
+        let at = drawn
+            .report
+            .numbers
+            .iter()
+            .position(|(code, _)| code == "34")
+            .unwrap();
+        let centre = drawn.report.number_anchors[at].centre;
+        let loaded = crate::ops::load_project(dir.path()).unwrap();
+        let map = crate::ops::read_map(&loaded.map_path()).unwrap();
+        let courses = crate::ops::read_courses(&loaded, &map).unwrap().unwrap();
+        let course = &courses.event.courses[0];
+        let (_, windows) = freemapper_print::mask_build::windows(
+            "t",
+            course,
+            &courses.event,
+            &freemapper_print::mask_build::WindowOptions {
+                selection: freemapper_print::mask_build::Selection::Codes(vec!["34".into()]),
+                start: false,
+                finish: false,
+                radius_mm: 10.0,
+                per_control: Default::default(),
+                map_mm_per_print_mm: 1.0,
+            },
+            None,
+        )
+        .unwrap();
+        let wanted = windows[0].centre;
+        let got = drawn.map_mm(centre.0, centre.1);
+        assert!(
+            (got[0] - wanted[0]).abs() < 0.01 && (got[1] - wanted[1]).abs() < 0.01,
+            "{got:?} against {wanted:?}"
+        );
+        // Through the route: a corridor drawn on the sheet is the op with those map points.
+        let by_op = crate::ops::testing::viktoriapark_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let drawn_points = [[centre.0, centre.1], [centre.0 + 20.0, centre.1 - 5.0]];
+        let body = format!(
+            r#"{{"page_points_mm":[[{},{}],[{},{}]],"course":"Training","layout":"{}","width":8}}"#,
+            drawn_points[0][0],
+            drawn_points[0][1],
+            drawn_points[1][0],
+            drawn_points[1][1],
+            drawn.sheet.layout
+        );
+        op(&run, "mask_corridor", &body);
+        let map_points: Vec<String> = drawn_points
+            .iter()
+            .map(|p| {
+                let [x, y] = drawn.map_mm(p[0], p[1]);
+                format!("{x},{y}")
+            })
+            .collect();
+        crate::ops::masks::corridor(
+            &crate::ops::masks::CorridorArgs {
+                project: by_op.path().to_path_buf(),
+                points: map_points.join(";"),
+                width_mm: Some(8.0),
+                id: None,
+                assign: false,
+                course: Some("Training".into()),
+            },
+            &|r| crate::corridor_comment(&english(), r),
+        )
+        .unwrap();
+        assert_eq!(project_text(dir.path()), project_text(by_op.path()));
+        finish(run);
+    }
+
+    /// A control whose number is in conflict on the sheet of Training, and the preview's list of such conflicts.
+    #[test]
+    fn the_preview_lists_the_numbers_in_conflict_and_their_centres() {
+        let dir = conflicted_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let (code, answer) = get(&run, "/api/preview?course=Training");
+        assert_eq!(code, 200);
+        let preview = body_json(&answer);
+        assert!(
+            preview["numbers"].as_array().unwrap().len() > 3,
+            "{preview}"
+        );
+        let conflicts = preview["conflicts"].as_array().unwrap();
+        assert!(
+            !conflicts.is_empty(),
+            "the example has a number in conflict"
+        );
+        let first = &conflicts[0];
+        assert_eq!(first["course"], "Training");
+        assert!(
+            first["message"]
+                .as_str()
+                .unwrap()
+                .contains(first["control"].as_str().unwrap())
+        );
+        finish(run);
+    }
+
+    #[test]
+    fn a_dragged_number_stores_direction_and_gap_and_the_proposal_is_one_call() {
+        use super::super::preview::draw;
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let drawn = draw(dir.path(), Some("Training"), None).unwrap();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        // Dropped due east with a clearance of 1.0 mm to the circle line: direction 0, gap 1.0 (to the 0.01 of the file).
+        let control = "34";
+        let at = drawn
+            .report
+            .numbers
+            .iter()
+            .position(|(code, _)| code == control)
+            .unwrap();
+        let a = drawn.report.number_anchors[at];
+        let (x, y) = (a.centre.0 + a.outer_r + a.unit + a.size.0 / 2.0, a.centre.1);
+        let body = format!(
+            r#"{{"course":"Training","control":"{control}","scope":"sheet","to_page_mm":[{x},{y}]}}"#
+        );
+        let revision = op(&run, "numbers_accept", &body);
+        let loaded =
+            freemapper_print::project::load(&dir.path().join("freemapper-print.toml")).unwrap();
+        assert_eq!(loaded.project.numbers.len(), 1);
+        let stored = &loaded.project.numbers[0];
+        assert_eq!(stored.control, control);
+        assert_eq!(stored.course.as_deref(), Some("Training"));
+        assert_eq!((stored.direction, stored.gap_mm), (0.0, Some(1.0)));
+        // A second correction for the same control and sheet is refused with the op's sentence.
+        let sentence = refused_with(&run, "numbers_accept", &body);
+        assert!(
+            sentence.contains("a correction for control 34"),
+            "{sentence}"
+        );
+        // Undo takes it back.
+        assert_eq!(undo_or_redo(&run, "undo", &revision).0, 200);
+        assert!(!project_text(dir.path()).contains("[[numbers]]"));
+        // Above the circle: north is 90 degrees, counter-clockwise from east.
+        let (x, y) = (
+            a.centre.0,
+            a.centre.1 - (a.outer_r + 2.0 * a.unit + a.size.1 / 2.0),
+        );
+        op(
+            &run,
+            "numbers_accept",
+            &format!(
+                r#"{{"course":"Training","control":"{control}","scope":"layout_wide","to_page_mm":[{x},{y}]}}"#
+            ),
+        );
+        let loaded =
+            freemapper_print::project::load(&dir.path().join("freemapper-print.toml")).unwrap();
+        let stored = &loaded.project.numbers[0];
+        assert!(stored.course.is_none() && stored.layout.is_some());
+        assert_eq!((stored.direction, stored.gap_mm), (90.0, Some(2.0)));
+        finish(run);
+        // The proposal of check, in one call, equals the op.
+        let by_page = conflicted_copy();
+        let by_op = conflicted_copy();
+        let run = start_on(by_page.path().to_path_buf(), true, Some("en"));
+        let (_, answer) = get(&run, "/api/preview?course=Training");
+        let conflicts = body_json(&answer)["conflicts"].clone();
+        let conflict = conflicts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["searched"] == true)
+            .expect("a conflict with a proposal");
+        let control = conflict["control"].as_str().unwrap().to_owned();
+        let revision = revision_of(&run);
+        let (code, answer) = write(
+            &run,
+            "/api/op/numbers_accept",
+            Some(&revision),
+            &format!(r#"{{"course":"Training","control":"{control}","scope":"sheet"}}"#),
+        );
+        assert_eq!(code, 200, "{answer}");
+        assert_eq!(body_json(&answer)["result"]["proposed"], true);
+        crate::ops::numbers::accept(&crate::ops::numbers::AcceptArgs {
+            project: by_op.path().to_path_buf(),
+            course: "Training".into(),
+            control,
+            scope: crate::ops::numbers::AcceptScope::Sheet,
+            position: None,
+        })
+        .unwrap();
+        assert_eq!(project_text(by_page.path()), project_text(by_op.path()));
+        finish(run);
+    }
+
+    #[test]
+    fn a_number_drop_on_a_sheet_without_that_number_is_refused() {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        let sentence = refused_with(
+            &run,
+            "numbers_accept",
+            r#"{"course":"Training","control":"99","scope":"sheet","to_page_mm":[50,50]}"#,
+        );
+        assert!(sentence.contains("99"), "{sentence}");
+        // A direction without a gap does not fit the op's form.
+        let revision = revision_of(&run);
+        let bad = write(
+            &run,
+            "/api/op/numbers_accept",
+            Some(&revision),
+            r#"{"course":"Training","control":"34","scope":"sheet","direction":10}"#,
+        );
+        assert_eq!(bad.0, 400);
+        finish(run);
+    }
 }

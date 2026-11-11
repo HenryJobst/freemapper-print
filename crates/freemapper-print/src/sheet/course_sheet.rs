@@ -155,6 +155,7 @@ pub fn render_course_sheet(
         .collect();
 
     report.numbers = centres.clone();
+    report.number_anchors = placed.numbers.iter().map(|n| n.anchor).collect();
     report.mask_ids = masks
         .iter()
         .take(MAX_APPLIED_MASKS)
