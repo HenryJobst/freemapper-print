@@ -739,3 +739,4 @@ editor-mask-width = Width (mm on paper)
 editor-mask-assign-heading = Print with mask { $id }
 editor-mask-assign-button = Assign to the course
 editor-mask-unassign = Print the course without a mask
+editor-numbers-none = This sheet has no control numbers.

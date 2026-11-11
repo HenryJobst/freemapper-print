@@ -30,7 +30,7 @@ use crate::render::symbols::{Cap, Join};
 
 pub use course_sheet::{
     MAX_APPLIED_MASKS, course_centre, course_event_notes, course_file_stem, course_length_m,
-    render_course_sheet,
+    map_to_page_mm, page_to_map_mm, render_course_sheet,
 };
 pub use layout::anchor_point;
 pub use logo::{LogoBudget, LogoCache, MAX_PAGE_LOGO_PIXELS, MAX_PAGE_SVG_UNITS};
@@ -50,7 +50,8 @@ pub struct SheetReport {
     /// The control numbers a course sheet draws: the control code and the centre of its number on the page (mm).
     /// Empty on a layout sheet.
     pub numbers: Vec<(String, (f64, f64))>,
-    /// The symbol each number of [`Self::numbers`] hangs on, in the same order.
+    /// The symbol each number of [`Self::numbers`] hangs on, one per entry and in the same order. A control that
+    /// the course visits twice has two entries; a lookup by code finds the first.
     pub number_anchors: Vec<crate::numbers::NumberAnchor>,
     /// The ids of the masks a course sheet applies, in the order of [`RenderedPage::map_clips`]. Empty without.
     pub mask_ids: Vec<String>,

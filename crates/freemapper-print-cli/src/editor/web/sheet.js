@@ -3,28 +3,18 @@
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// The renderer writes `style="mix-blend-mode:multiply"` on the course overprint. The page's CSP blocks style
-// attributes, so the declarations are moved to the CSSOM, which it allows.
-function moveStyles(root) {
-  for (const el of root.querySelectorAll("[style]")) {
-    for (const declaration of el.getAttribute("style").split(";")) {
-      const [name, value] = declaration.split(":").map((part) => part.trim());
-      if (name && value) el.style.setProperty(name, value);
-    }
-    el.removeAttribute("style");
-  }
-}
-
 // Puts the SVG text `svg` into `host`; returns the <svg> element, or null if the text is not an SVG.
 export function show(host, svg) {
-  const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+  // The renderer writes `style="mix-blend-mode:multiply"` on the course overprint. The page's CSP blocks style
+  // attributes, so the text is changed before it is parsed: a class carries the blend (app.css).
+  const text = svg.replaceAll(' style="mix-blend-mode:multiply"', ' class="blend-multiply"');
+  const parsed = new DOMParser().parseFromString(text, "image/svg+xml");
   const root = parsed.documentElement;
   if (root.localName !== "svg" || parsed.querySelector("parsererror")) return null;
   const node = document.importNode(root, true);
   // The size comes from the container; the viewBox keeps the page's proportions.
   node.removeAttribute("width");
   node.removeAttribute("height");
-  moveStyles(node);
   host.replaceChildren(node);
   return node;
 }

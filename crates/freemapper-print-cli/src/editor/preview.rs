@@ -202,14 +202,14 @@ impl Drawn {
     /// The page point `(x_mm, y_mm)` (mm, y down) as a point of the map in the units of a mask: map mm with y up,
     /// to 0.001 mm.
     pub fn map_mm(&self, x_mm: f64, y_mm: f64) -> [f64; 2] {
-        let factor = self.report.print.geometry_factor;
-        let (width, height) = self.page.page_mm;
-        let (cx, cy) = self.page.centre_mm;
+        let (mx, my) = freemapper_print::sheet::page_to_map_mm(
+            self.page.page_mm,
+            self.page.centre_mm,
+            self.report.print.geometry_factor,
+            (x_mm, y_mm),
+        );
         let round = |v: f64| (v * 1000.0).round() / 1000.0 + 0.0;
-        [
-            round((x_mm - width / 2.0 + cx) / factor),
-            round(-(y_mm - height / 2.0 + cy) / factor),
-        ]
+        [round(mx), round(-my)]
     }
 
     /// Direction (degrees, 0 = east, counter-clockwise) and gap (print mm) that put the number of `control` with

@@ -120,3 +120,14 @@ fn the_page_knows_a_text_for_every_element_kind() {
     }
     assert!(APP_JS.contains("footer: \"editor-kind-footer\""));
 }
+
+#[test]
+fn the_page_turns_the_renderers_blend_style_into_a_class() {
+    assert!(
+        SHEET_JS.contains(
+            r#"replaceAll(' style="mix-blend-mode:multiply"', ' class="blend-multiply"')"#
+        )
+    );
+    assert!(!SHEET_JS.contains("moveStyles"));
+    assert!(APP_CSS.contains(".blend-multiply { mix-blend-mode: multiply; }"));
+}

@@ -141,12 +141,7 @@ pub fn render_course_sheet(
     );
     // Each mask of the course clips the map on its own (ADR 0045, ruling R8): page x of a map point in mm, as
     // `to_page` places a course coordinate.
-    let map_to_page = move |(x, y): Pt| -> Pt {
-        (
-            page_mm.0 / 2.0 + x * gf - centre_mm.0,
-            page_mm.1 / 2.0 + y * gf - centre_mm.1,
-        )
-    };
+    let map_to_page = move |p: Pt| map_to_page_mm(page_mm, centre_mm, gf, p);
     let masks = mask_for(&project.project, courses, &course.name);
     page.map_clips = masks
         .iter()
@@ -156,6 +151,7 @@ pub fn render_course_sheet(
 
     report.numbers = centres.clone();
     report.number_anchors = placed.numbers.iter().map(|n| n.anchor).collect();
+    debug_assert_eq!(report.numbers.len(), report.number_anchors.len());
     report.mask_ids = masks
         .iter()
         .take(MAX_APPLIED_MASKS)
@@ -215,12 +211,7 @@ pub fn render_course_sheet(
     ));
     // What the masks the sheet applies hide of the course (ADR 0046). Page mm back to the internal frame, the
     // inverse of `map_to_page`.
-    let page_to_map = move |(x, y): Pt| -> Pt {
-        (
-            (x - page_mm.0 / 2.0 + centre_mm.0) / gf,
-            (y - page_mm.1 / 2.0 + centre_mm.1) / gf,
-        )
-    };
+    let page_to_map = move |p: Pt| page_to_map_mm(page_mm, centre_mm, gf, p);
     let clipped: Vec<&Mask> = masks
         .iter()
         .take(MAX_APPLIED_MASKS)
@@ -413,6 +404,23 @@ fn elements_over_course(
         }
     }
     notes
+}
+
+/// Page mm of a point `(x, y)` of the map's internal frame (mm, y down): the page centre shows `centre_mm`, and
+/// `factor` is the geometry factor of the print.
+pub fn map_to_page_mm(page_mm: Pt, centre_mm: Pt, factor: f64, (x, y): Pt) -> Pt {
+    (
+        page_mm.0 / 2.0 + x * factor - centre_mm.0,
+        page_mm.1 / 2.0 + y * factor - centre_mm.1,
+    )
+}
+
+/// The inverse of [`map_to_page_mm`]: the point of the map's internal frame (mm, y down) under a page point.
+pub fn page_to_map_mm(page_mm: Pt, centre_mm: Pt, factor: f64, (x, y): Pt) -> Pt {
+    (
+        (x - page_mm.0 / 2.0 + centre_mm.0) / factor,
+        (y - page_mm.1 / 2.0 + centre_mm.1) / factor,
+    )
 }
 
 /// The notes of the course file as a whole, once per run: what the reader left out or found, what the fit
@@ -706,6 +714,22 @@ pub(crate) fn course_project(
 mod tests {
     use super::*;
     use crate::render::page::{Shape, SheetItem};
+
+    #[test]
+    fn page_and_map_points_round_trip() {
+        let (page, centre, factor) = ((297.0, 210.0), (12.5, -40.25), 1.6);
+        for p in [(0.0, 0.0), (-33.3, 80.1), (150.0, -2.0)] {
+            let on_page = map_to_page_mm(page, centre, factor, p);
+            let back = page_to_map_mm(page, centre, factor, on_page);
+            assert!(
+                (back.0 - p.0).abs() < 1e-9 && (back.1 - p.1).abs() < 1e-9,
+                "{p:?} {back:?}"
+            );
+        }
+        // The map point under the page centre is the one the page centre shows.
+        let centre_point = page_to_map_mm(page, centre, factor, (148.5, 105.0));
+        assert!((centre_point.0 - centre.0 / factor).abs() < 1e-9);
+    }
 
     const A4: &str =
         "[[layouts]]\nid = \"a4\"\norientation = \"portrait\"\nnorth_lines = \"never\"\n";

@@ -225,11 +225,11 @@ export async function click(at) {
   }
 }
 
-// A double-click ends the line and makes the mask. Its two clicks added the last point twice.
+// A double-click ends the line and makes the mask. The browser sends two clicks before it, so the second one added
+// the last point a second time.
 export function doubleClick() {
   if (tool.mode !== "corridor") return;
-  const [last, before] = [tool.points[tool.points.length - 1], tool.points[tool.points.length - 2]];
-  if (last && before && Math.hypot(last[0] - before[0], last[1] - before[1]) < 1) tool.points.pop();
+  tool.points.pop();
   tool.form.count();
   redraw();
   if (tool.points.length >= 2) tool.form.submit();

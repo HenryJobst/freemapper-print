@@ -267,6 +267,33 @@ impl NumberAnchor {
     }
 }
 
+#[cfg(test)]
+mod anchor_tests {
+    use super::*;
+
+    #[test]
+    fn an_anchor_turns_a_box_centre_into_direction_and_gap_in_print_mm() {
+        let anchor = NumberAnchor {
+            centre: (0.0, 0.0),
+            outer_r: 3.0,
+            size: (2.0, 2.0),
+            unit: 2.0,
+        };
+        // Due east: the box's near edge lies at 8 - 1 = 7, that is 4 page mm beyond the circle line, 2 print mm.
+        let east = anchor.placement_at((8.0, 0.0));
+        assert!(
+            east.direction.abs() < 1e-9 && (east.gap_mm - 2.0).abs() < 1e-9,
+            "{east:?}"
+        );
+        // Due north (up on the page, y down) is 90 degrees, counter-clockwise from east.
+        let north = anchor.placement_at((0.0, -8.0));
+        assert!(
+            (north.direction - 90.0).abs() < 1e-9 && (north.gap_mm - 2.0).abs() < 1e-9,
+            "{north:?}"
+        );
+    }
+}
+
 /// One number on the sheet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedNumber {

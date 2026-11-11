@@ -705,12 +705,20 @@ async fn step(api: Arc<Api>, headers: HeaderMap, undo: bool) -> Response {
 
 /// `POST api/undo` with `X-Freemapper-Revision`: puts the file back as it was before the last edit; the answer is
 /// that of `post_op` with a `null` result. 422 when there is nothing to undo or the file changed outside.
-pub(super) async fn post_undo(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+pub(super) async fn post_undo(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    _body: axum::body::Bytes,
+) -> Response {
     step(api, headers, true).await
 }
 
 /// `POST api/redo`: the edit undo took back.
-pub(super) async fn post_redo(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+pub(super) async fn post_redo(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    _body: axum::body::Bytes,
+) -> Response {
     step(api, headers, false).await
 }
 

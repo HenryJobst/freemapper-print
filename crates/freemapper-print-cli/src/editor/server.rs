@@ -49,7 +49,7 @@ async fn asset(Path(path): Path<String>) -> Response {
 }
 
 /// 200 and the end of the server; the page calls it from `Fertig`.
-async fn done(done: Arc<Notify>) -> Response {
+async fn done(done: Arc<Notify>, _body: axum::body::Bytes) -> Response {
     done.notify_one();
     ([(header::CONTENT_TYPE, "application/json")], "{}").into_response()
 }
@@ -97,7 +97,7 @@ fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>, project: P
         .route(&format!("{prefix}/assets/{{*path}}"), get(asset))
         .route(
             &format!("{prefix}/api/done"),
-            post(move || done(Arc::clone(&shutdown))),
+            post(move |body: axum::body::Bytes| done(Arc::clone(&shutdown), body)),
         )
 }
 
@@ -258,11 +258,12 @@ mod tests {
         let mut stream = TcpStream::connect(host)?;
         stream.set_read_timeout(Some(Duration::from_secs(10)))?;
         let body = if method == "POST" { post_body } else { "" };
-        write!(
-            stream,
+        // One write: headers and body in one segment, so the server never answers a half-sent request.
+        let request = format!(
             "{method} {path} HTTP/1.1\r\nHost: {request_host}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
-        )?;
+        );
+        stream.write_all(request.as_bytes())?;
         let mut answer = String::new();
         stream.read_to_string(&mut answer)?;
         let code = answer.split(' ').nth(1).unwrap().parse().unwrap();
@@ -313,8 +314,9 @@ mod tests {
             "Origin: http://{}\r\nContent-Type: application/json\r\n",
             run.host
         );
-        // The server shuts down as it answers; on a loaded machine the answer can be lost to a reset
-        // connection. Then the thread's end is the proof that `done` arrived.
+        // Only this race is tolerated: the server shuts down as it answers `done`, so the answer can be lost to a
+        // reset connection. Then the thread's end is the proof that `done` arrived. Every other request is read
+        // in full by its handler and sent in one write, so a reset there is a real failure.
         let path = format!("{}/api/done", run.prefix);
         if let Ok((code, _)) = try_request(&run.host, &run.host, "POST", &path, &origin, "{}") {
             assert_eq!(code, 200);
@@ -554,6 +556,17 @@ mod tests {
         let got = body_json(&answer);
         let drawn = super::super::preview::draw(&viktoriapark(), Some("Training"), None).unwrap();
         assert_eq!(got["svg"], drawn.svg().unwrap());
+        // The only style attribute the renderer writes is the blend of the overprint, on an element without a
+        // class of its own: the page turns exactly that text into a class (`sheet.js`), because its CSP blocks
+        // style attributes.
+        let svg = got["svg"].as_str().unwrap();
+        let blend = " style=\"mix-blend-mode:multiply\"";
+        assert!(svg.contains(blend), "the course overprint multiplies");
+        assert_eq!(svg.matches(" style=").count(), svg.matches(blend).count());
+        for (at, _) in svg.match_indices(blend) {
+            let tag = &svg[svg[..at].rfind('<').unwrap()..at];
+            assert!(!tag.contains(" class="), "{tag}");
+        }
         assert_eq!(
             got["page_mm"],
             serde_json::json!([drawn.page.page_mm.0, drawn.page.page_mm.1])
@@ -1435,33 +1448,47 @@ mod tests {
         finish(run);
     }
 
-    #[test]
-    fn a_dragged_number_stores_direction_and_gap_and_the_proposal_is_one_call() {
-        use super::super::preview::draw;
-        let dir = crate::ops::testing::viktoriapark_copy();
-        let drawn = draw(dir.path(), Some("Training"), None).unwrap();
-        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
-        // Dropped due east with a clearance of 1.0 mm to the circle line: direction 0, gap 1.0 (to the 0.01 of the file).
-        let control = "34";
+    /// The anchor of control 34 on the sheet of Training in the Viktoriapark example.
+    fn anchor_of_34(dir: &std::path::Path) -> freemapper_print::numbers::NumberAnchor {
+        let drawn = super::super::preview::draw(dir, Some("Training"), None).unwrap();
         let at = drawn
             .report
             .numbers
             .iter()
-            .position(|(code, _)| code == control)
+            .position(|(code, _)| code == "34")
             .unwrap();
-        let a = drawn.report.number_anchors[at];
+        drawn.report.number_anchors[at]
+    }
+
+    fn numbers_body(scope: &str, x: f64, y: f64) -> String {
+        // The drop puts the centre of the number's box on the pointer; where the person grabbed the number does
+        // not matter.
+        format!(
+            r#"{{"course":"Training","control":"34","scope":"{scope}","to_page_mm":[{x},{y}]}}"#
+        )
+    }
+
+    fn stored_numbers(dir: &std::path::Path) -> Vec<freemapper_print::project::NumberCorrection> {
+        freemapper_print::project::load(&dir.join("freemapper-print.toml"))
+            .unwrap()
+            .project
+            .numbers
+    }
+
+    #[test]
+    fn a_number_dropped_due_east_stores_direction_0_and_the_gap_for_the_sheet() {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let a = anchor_of_34(dir.path());
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        // A clearance of 1.0 mm to the circle line, in print mm (the symbol factor `unit` turns it into page mm).
         let (x, y) = (a.centre.0 + a.outer_r + a.unit + a.size.0 / 2.0, a.centre.1);
-        let body = format!(
-            r#"{{"course":"Training","control":"{control}","scope":"sheet","to_page_mm":[{x},{y}]}}"#
-        );
+        let body = numbers_body("sheet", x, y);
         let revision = op(&run, "numbers_accept", &body);
-        let loaded =
-            freemapper_print::project::load(&dir.path().join("freemapper-print.toml")).unwrap();
-        assert_eq!(loaded.project.numbers.len(), 1);
-        let stored = &loaded.project.numbers[0];
-        assert_eq!(stored.control, control);
-        assert_eq!(stored.course.as_deref(), Some("Training"));
-        assert_eq!((stored.direction, stored.gap_mm), (0.0, Some(1.0)));
+        let stored = stored_numbers(dir.path());
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].control, "34");
+        assert_eq!(stored[0].course.as_deref(), Some("Training"));
+        assert_eq!((stored[0].direction, stored[0].gap_mm), (0.0, Some(1.0)));
         // A second correction for the same control and sheet is refused with the op's sentence.
         let sentence = refused_with(&run, "numbers_accept", &body);
         assert!(
@@ -1471,25 +1498,28 @@ mod tests {
         // Undo takes it back.
         assert_eq!(undo_or_redo(&run, "undo", &revision).0, 200);
         assert!(!project_text(dir.path()).contains("[[numbers]]"));
-        // Above the circle: north is 90 degrees, counter-clockwise from east.
+        finish(run);
+    }
+
+    #[test]
+    fn a_number_dropped_due_north_stores_direction_90_for_the_layout() {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let a = anchor_of_34(dir.path());
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        // North is up on the page (y down) and 90 degrees, counter-clockwise from east.
         let (x, y) = (
             a.centre.0,
             a.centre.1 - (a.outer_r + 2.0 * a.unit + a.size.1 / 2.0),
         );
-        op(
-            &run,
-            "numbers_accept",
-            &format!(
-                r#"{{"course":"Training","control":"{control}","scope":"layout_wide","to_page_mm":[{x},{y}]}}"#
-            ),
-        );
-        let loaded =
-            freemapper_print::project::load(&dir.path().join("freemapper-print.toml")).unwrap();
-        let stored = &loaded.project.numbers[0];
-        assert!(stored.course.is_none() && stored.layout.is_some());
-        assert_eq!((stored.direction, stored.gap_mm), (90.0, Some(2.0)));
+        op(&run, "numbers_accept", &numbers_body("layout_wide", x, y));
+        let stored = stored_numbers(dir.path());
+        assert!(stored[0].course.is_none() && stored[0].layout.is_some());
+        assert_eq!((stored[0].direction, stored[0].gap_mm), (90.0, Some(2.0)));
         finish(run);
-        // The proposal of check, in one call, equals the op.
+    }
+
+    #[test]
+    fn the_proposal_of_check_is_accepted_with_one_call() {
         let by_page = conflicted_copy();
         let by_op = conflicted_copy();
         let run = start_on(by_page.path().to_path_buf(), true, Some("en"));
@@ -1520,6 +1550,38 @@ mod tests {
         })
         .unwrap();
         assert_eq!(project_text(by_page.path()), project_text(by_op.path()));
+        finish(run);
+    }
+
+    #[test]
+    fn absurd_values_are_refused_and_the_file_stays() {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let a = anchor_of_34(dir.path());
+        let before = project_text(dir.path());
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        for (name, body) in [
+            // A drawn line far beyond any map.
+            (
+                "mask_corridor",
+                r#"{"page_points_mm":[[1e308,1e308],[-1e308,5]],"course":"Training"}"#.to_owned(),
+            ),
+            (
+                "mask_window",
+                r#"{"course":"Training","radius":0}"#.to_owned(),
+            ),
+            (
+                "mask_window",
+                r#"{"course":"Training","radius":101}"#.to_owned(),
+            ),
+            // Dropped on its own circle: the gap would be zero or negative.
+            (
+                "numbers_accept",
+                numbers_body("sheet", a.centre.0, a.centre.1),
+            ),
+        ] {
+            refused_with(&run, name, &body);
+            assert_eq!(project_text(dir.path()), before, "{name}");
+        }
         finish(run);
     }
 

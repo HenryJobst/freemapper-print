@@ -739,3 +739,4 @@ editor-mask-width = Breite (mm auf dem Papier)
 editor-mask-assign-heading = Mit Maske { $id } drucken
 editor-mask-assign-button = Der Bahn zuweisen
 editor-mask-unassign = Bahn ohne Maske drucken
+editor-numbers-none = Dieses Blatt hat keine Postennummern.

@@ -43,6 +43,8 @@ const state = {
   // The numbers of the sheet on screen ({ control, centre_mm }) and its conflicts, as the preview lists them.
   numbers: [],
   conflicts: [],
+  // The control whose number the keyboard stepped to last.
+  numberSelected: null,
 };
 
 // What the drawing modes and the number forms need of the page.
@@ -511,6 +513,8 @@ async function moveElement(id, dx, dy) {
 function leaveOk() {
   if (!masks.dirty()) return Promise.resolve(true);
   const dialog = $("leave");
+  // The question is on screen already; a second one would throw.
+  if (dialog.open) return Promise.resolve(false);
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok"), { once: true });
     dialog.returnValue = "";
@@ -614,7 +618,10 @@ async function start() {
   $("menu-mask-corridor").addEventListener("click", () => masks.start(host, "corridor"));
   $("sheet").addEventListener("dblclick", () => masks.doubleClick());
   addEventListener("beforeunload", (event) => {
-    if (masks.dirty()) event.preventDefault();
+    if (masks.dirty()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
   });
   if (!(await loadProject())) return;
   const first = state.info.courses[0];
@@ -699,6 +706,9 @@ async function write(name, body) {
 // Undo or redo of the last change.
 async function step(which) {
   if (state.writing) return;
+  // The sheet changes under a half-drawn line, so it is thrown away, after asking.
+  if (!(await leaveOk())) return;
+  if (masks.dirty()) masks.cancel();
   state.writing = true;
   try {
     const answer = await post(`api/${which}`, {}, state.revision);
@@ -776,7 +786,24 @@ function nextElement(direction) {
   if (selectElement(next.id, ownerOf(next.id))) say(t("editor-pick-element", { id: next.id }), true);
 }
 
-// Keys on the focused sheet: arrows nudge the selected element by 0.5 mm (1 mm with Shift), else they pan; N and Shift+N select the next and previous element; + and -
+// Selects the next (or previous) control number of the sheet and opens its form: the keyboard route to any number,
+// with or without a conflict.
+function nextNumber(direction) {
+  if (!state.shown.course || !state.numbers.length) {
+    say("editor-numbers-none");
+    return;
+  }
+  const at = state.numbers.findIndex((n) => n.control === state.numberSelected);
+  const next = state.numbers[(at + direction + state.numbers.length) % state.numbers.length];
+  state.numberSelected = next.control;
+  state.selected = null;
+  const [x, y] = next.centre_mm;
+  sheet.outline(state.svg, [x - 2.5, y - 2.5, x + 2.5, y + 2.5]);
+  $("props").replaceChildren(numbers.numberForm(host, state.shown.course, next.control));
+  say(t("editor-pick-number", { id: next.control }), true);
+}
+
+// Keys on the focused sheet: arrows nudge the selected element by 0.5 mm (1 mm with Shift), else they pan; N and Shift+N select the next and previous element, M and Shift+M the next and previous control number; + and -
 // zoom, 0 fits the page. Drawing on the map is mouse only.
 function onSheetKey(event) {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -793,6 +820,9 @@ function onSheetKey(event) {
   } else if (event.key === "n" || event.key === "N") {
     event.preventDefault();
     nextElement(event.shiftKey ? -1 : 1);
+  } else if (event.key === "m" || event.key === "M") {
+    event.preventDefault();
+    nextNumber(event.shiftKey ? -1 : 1);
   } else if (event.key === "+" || event.key === "=") {
     event.preventDefault();
     zoomBy(1.25);
