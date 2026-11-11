@@ -7,6 +7,7 @@
 
 pub mod check;
 pub mod error;
+pub mod export;
 pub mod note;
 
 #[cfg(test)]
@@ -19,6 +20,21 @@ pub(crate) mod testing {
             env!("CARGO_MANIFEST_DIR"),
             "/../../examples/berlin-viktoriapark-training"
         ))
+    }
+
+    /// A copy of the Viktoriapark example in a temporary folder, for ops that write: the project file, the map,
+    /// its `freemapper.toml` and the course file.
+    pub fn viktoriapark_copy() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "freemapper-print.toml",
+            "berlin-viktoriapark.omap",
+            "freemapper.toml",
+            "training.ppen",
+        ] {
+            std::fs::copy(viktoriapark().join(name), dir.path().join(name)).unwrap();
+        }
+        dir
     }
 }
 
@@ -106,6 +122,8 @@ pub struct Sheet {
     pub layout: String,
     pub paper: Paper,
     pub print: PrintFacts,
+    /// The scale of the map file.
+    pub map_scale: u32,
     pub notes: Vec<Notice>,
     /// A note asks the user to look (`check` fails on it): any print note, or a sheet note that does more than
     /// inform.
@@ -113,12 +131,14 @@ pub struct Sheet {
 }
 
 impl Sheet {
-    /// The sheet of `layout` (with `course`, if any) that `report` describes. `kind` is the project's map kind.
+    /// The sheet of `layout` (with `course`, if any) that `report` describes. `kind` is the project's map kind,
+    /// `map_scale` the scale of the map file.
     pub fn new(
         course: Option<&str>,
         layout: &LayoutSpec,
         report: SheetReport,
         kind: MapKind,
+        map_scale: u32,
     ) -> Self {
         let needs_attention = report.needs_attention();
         let explicit_orientation = layout.orientation != Orientation::Auto;
@@ -138,6 +158,7 @@ impl Sheet {
             layout: layout.id.clone(),
             paper: layout.paper,
             print: PrintFacts::from(&report.print),
+            map_scale,
             notes,
             needs_attention,
         }

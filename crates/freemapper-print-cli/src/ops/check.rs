@@ -112,7 +112,13 @@ pub fn check_layout(
     logos: &LogoCache,
 ) -> SheetCheck {
     match sheet_report(loaded, map, layout, logos) {
-        Ok(report) => SheetCheck::Drawn(Sheet::new(None, layout, report, loaded.project.map.kind)),
+        Ok(report) => SheetCheck::Drawn(Sheet::new(
+            None,
+            layout,
+            report,
+            loaded.project.map.kind,
+            map.georef.scale_denominator,
+        )),
         Err(error) => SheetCheck::Failed {
             course: None,
             layout: layout.id.clone(),
@@ -135,6 +141,7 @@ fn check_course(
             layout,
             report,
             loaded.project.map.kind,
+            map.georef.scale_denominator,
         )),
         Err(error) => SheetCheck::Failed {
             course: Some(course.name.clone()),

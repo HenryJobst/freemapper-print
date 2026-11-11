@@ -13,10 +13,7 @@ use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
 use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, StopName};
-use freemapper_print::export::{
-    ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
-    select_courses, select_layouts,
-};
+use freemapper_print::export::{ExportError, course_sheet_report};
 use freemapper_print::mask_build::{self, BuildError, Selection, WindowOptions};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
@@ -26,7 +23,7 @@ use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, She
 use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
 use freemapper_print::sheet::{
     FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem,
-    NoBoxReason, SheetNote, SheetReport, course_event_notes,
+    NoBoxReason, SheetNote,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -358,6 +355,30 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             Some(&args!("path" => path.display().to_string())),
         )),
         E::Courses(source) => source.context(texts.plain("error-courses")),
+        E::UnknownLayout { id, known } => {
+            let known: Vec<String> = known.iter().map(|id| printable(id)).collect();
+            UsageError(texts.get(
+                "error-unknown-layout",
+                Some(&args!("id" => printable(&id), "known" => known.join(", "))),
+            ))
+            .into()
+        }
+        E::UnknownCourse { name, known } => UsageError(texts.get(
+            "error-unknown-course",
+            Some(&args!("name" => printable(&name), "known" => quoted_list(texts, &known))),
+        ))
+        .into(),
+        E::ExportNeedsCourseFile => UsageError(texts.plain("error-no-course-file")).into(),
+        E::OutDirMissing { path } => anyhow!(texts.get(
+            "error-out-dir-missing",
+            Some(&args!("path" => path.display().to_string()))
+        )),
+        E::CreateFolder { path, source } => source.context(texts.get(
+            "error-create-folder",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::Output(err) => output_error(texts, &err),
+        E::Export(err) => export_error(texts, &err),
     }
 }
 
@@ -606,7 +627,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
                     rules: freemapper_print::rules::base().clone(),
                 };
                 let sheet = ops::check::check_layout(&loaded, &map, layout, &LogoCache::new());
-                for line in check_lines(texts, &sheet, map_scale) {
+                for line in check_lines(texts, &sheet) {
                     eprintln!("{line}");
                 }
             }
@@ -1481,7 +1502,6 @@ fn sheet_lines(
     id: &str,
     keys: &[(&'static str, String)],
     sheet: &ops::Sheet,
-    map_scale: u32,
 ) -> Vec<String> {
     let mut lines = vec![summary_line(
         texts,
@@ -1489,14 +1509,14 @@ fn sheet_lines(
         keys,
         sheet.paper,
         &sheet.print,
-        map_scale,
+        sheet.map_scale,
     )];
     lines.extend(sheet.notes.iter().map(|n| n.describe(texts).message));
     lines
 }
 
 /// What `check` prints for one sheet. A sheet that cannot be drawn gives its error line.
-fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck, map_scale: u32) -> Vec<String> {
+fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck) -> Vec<String> {
     match sheet {
         ops::check::SheetCheck::Drawn(s) => match &s.course {
             Some(course) => sheet_lines(
@@ -1507,14 +1527,12 @@ fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck, map_scale: u32) ->
                     ("layout", printable(&s.layout)),
                 ],
                 s,
-                map_scale,
             ),
             None => sheet_lines(
                 texts,
                 "check-summary",
                 &[("layout", printable(&s.layout))],
                 s,
-                map_scale,
             ),
         },
         ops::check::SheetCheck::Failed { error, .. } => vec![error.describe(texts).message],
@@ -1522,10 +1540,10 @@ fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck, map_scale: u32) ->
 }
 
 /// Prints the lines of `sheets` and returns how many of them need a look.
-fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck], map_scale: u32) -> usize {
+fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck]) -> usize {
     let mut with_notes = 0;
     for sheet in sheets {
-        for line in check_lines(texts, sheet, map_scale) {
+        for line in check_lines(texts, sheet) {
             eprintln!("{line}");
         }
         with_notes += usize::from(sheet.needs_attention());
@@ -1541,10 +1559,9 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
         project: args.project.clone(),
     })
     .map_err(|e| op_error(texts, e))?;
-    let map_scale = result.map_scale;
     let Some(file_notes) = &result.course_file else {
         let total = result.layouts.len();
-        let with_notes = print_checks(texts, &result.layouts, map_scale);
+        let with_notes = print_checks(texts, &result.layouts);
         if with_notes == 0 {
             eprintln!(
                 "{}",
@@ -1566,9 +1583,9 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     }
     let file_notes = result.course_file_needs_attention();
     let total = result.courses.len();
-    let with_notes = print_checks(texts, &result.courses, map_scale);
+    let with_notes = print_checks(texts, &result.courses);
     let layouts = result.layouts.len();
-    let layouts_with_notes = print_checks(texts, &result.layouts, map_scale);
+    let layouts_with_notes = print_checks(texts, &result.layouts);
     if file_notes {
         eprintln!("{}", texts.plain("check-course-file-notes"));
     }
@@ -1607,160 +1624,94 @@ fn read_courses(
     ops::read_courses(loaded, map).map_err(|e| op_error(texts, e))
 }
 
-/// Prints the notes of the course file as a whole and returns whether one of them is a warning.
-fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
-    let notes = course_event_notes(courses);
-    for note in &notes {
-        eprintln!("{}", sheet_note_line(texts, note));
+/// The lines about a page `export` drew.
+fn export_page_lines(
+    texts: &Texts,
+    mode: ops::export::ExportMode,
+    page: &ops::export::ExportedPage,
+) -> Vec<String> {
+    use ops::export::ExportMode;
+    let sheet = &page.sheet;
+    let course_keys = |out: String| {
+        [
+            ("out", out),
+            (
+                "course",
+                printable(sheet.course.as_deref().unwrap_or_default()),
+            ),
+            ("layout", printable(&sheet.layout)),
+            ("page", page.page.to_string()),
+        ]
+    };
+    match mode {
+        ExportMode::Layouts => sheet_lines(
+            texts,
+            "report-summary",
+            &[("out", page.path.display().to_string())],
+            sheet,
+        ),
+        ExportMode::Courses => sheet_lines(
+            texts,
+            "report-course-summary",
+            &course_keys(page.path.display().to_string()),
+            sheet,
+        ),
+        ExportMode::SingleFile => sheet_lines(
+            texts,
+            "report-course-page",
+            &course_keys(String::new()),
+            sheet,
+        ),
     }
-    notes.iter().any(|n| !n.is_info())
 }
 
+/// `export`: each page's lines as soon as it is written, then the single file and the reminder to print at
+/// actual size.
 fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let layouts = select_layouts(&loaded, &args.layout).map_err(|unknown| {
-        let known: Vec<String> = unknown.known.iter().map(|id| printable(id)).collect();
-        UsageError(texts.get(
-            "error-unknown-layout",
-            Some(&args!("id" => printable(&unknown.id), "known" => known.join(", "))),
-        ))
-    })?;
-    let map = read_map(texts, &loaded.map_path())?;
-    // `--layout` exports the layouts as such, without courses, also when the project has a course file.
-    let courses = if args.layout.is_empty() {
-        read_courses(texts, &loaded, &map)?
-    } else {
-        None
-    };
-    if courses.is_none() && (!args.course.is_empty() || args.single_file) {
-        return Err(UsageError(texts.plain("error-no-course-file")).into());
+    use ops::export::ExportProgress;
+    let result = ops::export::export(
+        &ops::export::ExportArgs {
+            project: args.project.clone(),
+            layouts: args.layout.clone(),
+            courses: args.course.clone(),
+            single_file: args.single_file,
+            out_dir: args.out_dir.clone(),
+        },
+        &mut |progress| match progress {
+            ExportProgress::CourseFileNotes(notes) => {
+                for note in notes {
+                    eprintln!("{}", note.describe(texts).message);
+                }
+            }
+            ExportProgress::Page { mode, page } => {
+                for line in export_page_lines(texts, mode, page) {
+                    eprintln!("{line}");
+                }
+            }
+        },
+    )
+    .map_err(|e| op_error(texts, e))?;
+    if result.mode != ops::export::ExportMode::Layouts && result.pages.is_empty() {
+        // Every course was left out by the reader: nothing to write, not even an empty PDF.
+        eprintln!("{}", texts.plain("note-no-courses-to-export"));
+        return Ok(0);
     }
-    let selected = match &courses {
-        Some(courses) => Some(select_courses(courses, &args.course).map_err(|unknown| {
-            UsageError(texts.get(
-                "error-unknown-course",
+    if result.mode == ops::export::ExportMode::SingleFile
+        && let Some(file) = result.files.first()
+    {
+        eprintln!(
+            "{}",
+            texts.get(
+                "report-single-file",
                 Some(&args!(
-                    "name" => printable(&unknown.name),
-                    "known" => quoted_list(texts, &unknown.known),
-                )),
-            ))
-        })?),
-        None => None,
-    };
-    let out_dir = out_dir(texts, args, &loaded)?;
-    let map_scale = map.georef.scale_denominator;
-    let kind = loaded.project.map.kind;
-    match (&courses, selected) {
-        (Some(courses), Some(selected)) => {
-            print_course_file_notes(texts, courses);
-            if selected.is_empty() {
-                // Every course was left out by the reader: nothing to write, not even an empty PDF.
-                eprintln!("{}", texts.plain("note-no-courses-to-export"));
-                return Ok(0);
-            }
-            let print = |id: &str, out: String, done: &freemapper_print::export::ExportedCourse| {
-                let head = summary_line(
-                    texts,
-                    id,
-                    &[
-                        ("out", out),
-                        ("course", printable(&done.course.name)),
-                        ("layout", printable(&done.layout.id)),
-                        ("page", done.page.to_string()),
-                    ],
-                    done.layout.paper,
-                    &ops::PrintFacts::from(&done.report.print),
-                    map_scale,
-                );
-                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
-                    eprintln!("{line}");
-                }
-            };
-            if args.single_file {
-                let mut count = 0;
-                let path = export_courses_single_file(
-                    &loaded,
-                    &map,
-                    courses,
-                    &selected,
-                    &out_dir,
-                    |done| {
-                        count += 1;
-                        print("report-course-page", String::new(), &done);
-                    },
-                )
-                .map_err(|err| export_error(texts, &err))?;
-                if let Some(path) = path {
-                    eprintln!(
-                        "{}",
-                        texts.get(
-                            "report-single-file",
-                            Some(&args!("out" => path.display().to_string(), "count" => count))
-                        )
-                    );
-                }
-            } else {
-                export_courses(&loaded, &map, courses, &selected, &out_dir, |done| {
-                    print(
-                        "report-course-summary",
-                        done.path.display().to_string(),
-                        &done,
-                    );
-                })
-                .map_err(|err| export_error(texts, &err))?;
-            }
-        }
-        _ => {
-            export_layouts(&loaded, &map, &layouts, &out_dir, |done| {
-                let head = summary_line(
-                    texts,
-                    "report-summary",
-                    &[("out", done.path.display().to_string())],
-                    done.layout.paper,
-                    &ops::PrintFacts::from(&done.report.print),
-                    map_scale,
-                );
-                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
-                    eprintln!("{line}");
-                }
-            })
-            .map_err(|err| export_error(texts, &err))?;
-        }
+                    "out" => file.path.display().to_string(),
+                    "count" => result.pages.len(),
+                ))
+            )
+        );
     }
     eprintln!("{}", texts.plain("reminder-actual-size"));
     Ok(0)
-}
-
-/// The output folder: `--out-dir`, which must exist, else `out` next to the project file, created if missing.
-/// A folder inside the project by name that a link leads out of the project stops the command before anything
-/// is written (ADR 0041). Partial files older than an hour that interrupted runs left there are removed.
-fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::Result<PathBuf> {
-    let dir = match &args.out_dir {
-        Some(dir) => {
-            if !dir.is_dir() {
-                bail!(texts.get(
-                    "error-out-dir-missing",
-                    Some(&args!("path" => dir.display().to_string()))
-                ));
-            }
-            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, &e))?;
-            dir.clone()
-        }
-        None => {
-            let dir = loaded.dir.join("out");
-            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, &e))?;
-            // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
-            std::fs::create_dir_all(&dir).with_context(|| {
-                texts.get(
-                    "error-create-folder",
-                    Some(&args!("path" => dir.display().to_string())),
-                )
-            })?;
-            dir
-        }
-    };
-    output::remove_stale_parts(&loaded.dir, &dir);
-    Ok(dir)
 }
 
 /// The message for a full disk, translated whole. `available` is `None` when the volume did not
@@ -1963,30 +1914,6 @@ fn report_lines(
     ));
     lines.push(texts.plain("reminder-actual-size"));
     lines
-}
-
-/// The lines about one sheet: `head`, the notes of its print report, then its sheet notes. Also
-/// whether any of them asks the user to look ([`SheetReport::needs_attention`]).
-fn layout_lines(
-    texts: &Texts,
-    head: String,
-    layout: &LayoutSpec,
-    report: &SheetReport,
-    kind: MapKind,
-) -> (Vec<String>, bool) {
-    let print = print_notes(
-        texts,
-        &report.print,
-        layout.paper,
-        layout.orientation != Orientation::Auto,
-        kind,
-        true,
-    );
-    let has_notes = report.needs_attention();
-    let mut lines = vec![head];
-    lines.extend(print);
-    lines.extend(report.notes.iter().map(|n| sheet_note_line(texts, n)));
-    (lines, has_notes)
 }
 
 /// The message for one sheet note. No wildcard arm: a new kind of note does not compile until it
