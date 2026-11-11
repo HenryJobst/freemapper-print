@@ -49,9 +49,9 @@
     <details class="menu">
       <summary data-text="editor-menu-view"></summary>
       <ul>
-        <li><button type="button" id="menu-zoom-in" data-text="editor-menu-zoom-in" disabled></button></li>
-        <li><button type="button" id="menu-zoom-out" data-text="editor-menu-zoom-out" disabled></button></li>
-        <li><button type="button" id="menu-zoom-fit" data-text="editor-menu-zoom-fit" disabled></button></li>
+        <li><button type="button" id="menu-zoom-in" data-text="editor-menu-zoom-in"></button></li>
+        <li><button type="button" id="menu-zoom-out" data-text="editor-menu-zoom-out"></button></li>
+        <li><button type="button" id="menu-zoom-fit" data-text="editor-menu-zoom-fit"></button></li>
       </ul>
     </details>
     <details class="menu">
@@ -62,6 +62,14 @@
       </ul>
     </details>
   </header>
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <h2 id="confirm-title" data-text="editor-move-shared-title"></h2>
+    <p id="confirm-body"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="confirm-yes" data-text="editor-confirm-move"></button>
+      <button type="button" id="confirm-no" data-text="editor-cancel"></button>
+    </div>
+  </dialog>
   <footer class="status">
     <span id="status-message" role="status" aria-live="polite"></span>
     <span class="field"><span class="name" data-text="editor-status-project"></span> <span id="status-project"></span></span>

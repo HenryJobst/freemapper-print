@@ -50,3 +50,15 @@ export function outline(svg, rect) {
   box.setAttribute("height", rect[3] - rect[1]);
   svg.append(box);
 }
+
+// The size of the sheet on screen: `zoom` 1 fits the whole page into `host`, 2 is twice that. The viewBox is
+// the page in mm, so the width and height follow its proportions.
+export function setZoom(host, svg, zoom) {
+  const box = svg.viewBox.baseVal;
+  if (!box || !box.width || !box.height) return;
+  const room = 16; // the host's padding
+  const fit = Math.min((host.clientWidth - room) / box.width, (host.clientHeight - room) / box.height);
+  if (!(fit > 0)) return;
+  svg.style.width = `${box.width * fit * zoom}px`;
+  svg.style.height = `${box.height * fit * zoom}px`;
+}

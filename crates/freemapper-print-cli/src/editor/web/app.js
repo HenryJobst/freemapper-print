@@ -1,10 +1,12 @@
-// The editor page: project tree, course and layout choice, the sheet preview, notes. Reading only; the
-// operations that change the project come with later modules.
+// The editor page: project tree, course and layout choice, the sheet preview, notes, and the edits: forms for
+// layouts and elements, moving an element on the sheet, undo and redo. Every change goes to the server as one
+// operation with the revision the page last saw; the page never names a file.
 import { get, post } from "../suite/api.js";
 import { loadTexts, t, tn } from "../suite/texts.js";
 import { buildTree } from "../suite/tree.js";
 import { say, showBanner, clearBanner } from "../suite/status.js";
 import * as sheet from "./sheet.js";
+import { elementForm, layoutForm } from "./forms.js";
 
 const POLL_MS = 2000;
 
@@ -23,7 +25,25 @@ const state = {
   sources: null,
   texts: false,
   closed: false,
+  // The layouts and shared elements as the project file has them (`api/spec`), for the forms.
+  spec: null,
+  // The element the person selected: { id, layout } with the layout id, or null for a shared element.
+  selected: null,
+  zoom: 1,
+  canUndo: false,
+  canRedo: false,
+  // A write is on its way; the poll leaves the revision alone meanwhile.
+  writing: false,
+  // The revision a conflict banner was shown for, so it is not shown again at every poll.
+  notified: null,
+  // Shared elements the person agreed to move for every layout, in this session.
+  agreed: new Set(),
 };
+
+// A move: the shift (mm) not yet sent, and whether a request is on its way.
+const moves = { pending: null, sending: false };
+const SNAP_MM = 0.5;
+const DRAG_START_MM = 0.5;
 
 const $ = (id) => document.getElementById(id);
 
@@ -127,13 +147,9 @@ function propsFor(key) {
   const info = state.info;
   const [type, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
   if (type === "layout") {
-    const layout = info.layouts.find((l) => l.id === id);
-    showProps([
-      [t("editor-field-id"), layout.id],
-      [t("editor-field-paper"), layout.paper],
-      [t("editor-field-orientation"), layout.orientation],
-      [t("editor-field-scale"), t("editor-status-scale-value", { scale: String(layout.print_scale ?? info.map_scale) })],
-    ]);
+    const spec = state.spec.layouts.find((l) => l.id === id);
+    state.selected = null;
+    if (spec) $("props").replaceChildren(layoutForm(spec, (body) => write("set_layout", body)));
   } else if (type === "mask") {
     const mask = info.masks.find((m) => m.id === id);
     showProps([
@@ -141,11 +157,7 @@ function propsFor(key) {
       [t("editor-field-polygons"), mask.polygons],
     ]);
   } else if (type === "element") {
-    const element = info.shared_elements.find((e) => e.id === id);
-    showProps([
-      [t("editor-field-id"), element.id],
-      [t("editor-field-kind"), kindName(element.kind)],
-    ]);
+    selectElement(id, null);
   } else if (type === "assignment") {
     const a = info.assignments.find((x) => x.course === id);
     const course = info.courses.find((c) => c.name === id);
@@ -229,26 +241,156 @@ async function showSheet() {
   state.svg = sheet.show($("sheet"), data.svg);
   state.shown = { course: data.course ?? "", layout: data.layout ?? "" };
   state.elements = data.elements;
+  applyZoom();
+  refreshOutline();
   renderNotes(data.notes);
   $("status-page").textContent = `${data.page_mm[0]} × ${data.page_mm[1]} mm`;
   $("status-scale").textContent = t("editor-status-scale-value", { scale: String(data.print_scale) });
   say("editor-sheet-drawn");
 }
 
-async function pick(event) {
+// The element `id` of the layout `layout` (null: of the shared ones), as the project file has it.
+function elementSpec(id, layout) {
+  const owner = layout ? state.spec.layouts.find((l) => l.id === layout) : null;
+  const list = owner ? owner.elements : state.spec.shared;
+  return list.find((e) => e.id === id) ?? null;
+}
+
+// Where the element `id` lives for the sheet on screen: in the layout when the layout has it, else shared.
+function ownerOf(id) {
+  const layout = state.shown.layout || state.layout;
+  return elementSpec(id, layout) ? layout : elementSpec(id, null) ? null : undefined;
+}
+
+// Selects the element: its form in the properties pane and its outline on the sheet.
+function selectElement(id, layout) {
+  const spec = elementSpec(id, layout);
+  if (!spec) return false;
+  state.selected = { id, layout };
+  const heading = t("editor-pick-element", { id });
+  $("props").replaceChildren(elementForm(spec, layout, heading, (body) => write("set_element", body)));
+  const found = state.elements.find((e) => e.id === id);
+  if (state.svg) sheet.outline(state.svg, found ? found.rect_mm : null);
+  return true;
+}
+
+async function pick(at) {
   if (!state.svg) return;
-  const at = sheet.pageMm(state.svg, event);
   const answer = await post("api/hit", { course: state.shown.course, layout: state.shown.layout, x_mm: at.x, y_mm: at.y });
   if (!answer.ok) return;
   const { kind, id } = answer.data;
   if (!kind) {
+    state.selected = null;
     sheet.outline(state.svg, null);
     showProps([[t("editor-pick-nothing"), ""]]);
     return;
   }
   const found = kind === "element" ? state.elements.find((e) => e.id === id) : null;
-  sheet.outline(state.svg, found ? found.rect_mm : null);
-  showProps([[t(PICK_TEXTS[kind], { id }), found ? kindName(found.kind) : ""]]);
+  if (kind === "element") {
+    const owner = ownerOf(id);
+    if (owner !== undefined && selectElement(id, owner)) return;
+    sheet.outline(state.svg, found ? found.rect_mm : null);
+    showProps([[t("editor-pick-footer"), ""]]);
+    return;
+  }
+  state.selected = null;
+  sheet.outline(state.svg, null);
+  showProps([[t(PICK_TEXTS[kind], { id }), ""]]);
+}
+
+// The smallest element of the sheet under the point, if it can be moved (the footer line cannot).
+function elementAt(at) {
+  let best = null;
+  for (const element of state.elements) {
+    const [x0, y0, x1, y1] = element.rect_mm;
+    if (at.x < x0 || at.x > x1 || at.y < y0 || at.y > y1) continue;
+    if (ownerOf(element.id) === undefined) continue;
+    if (!best || (x1 - x0) * (y1 - y0) < (best.rect_mm[2] - best.rect_mm[0]) * (best.rect_mm[3] - best.rect_mm[1])) {
+      best = element;
+    }
+  }
+  return best;
+}
+
+const snap = (value) => Math.round(value / SNAP_MM) * SNAP_MM;
+
+// Pointer on the sheet: a click selects through the server, a drag moves the element under the pointer. The outline
+// follows the pointer; only the final position goes to the server, on pointer-up.
+let drag = null;
+
+function onPointerDown(event) {
+  if (!state.svg || event.button !== 0) return;
+  const at = sheet.pageMm(state.svg, event);
+  $("sheet").focus();
+  drag = { start: at, candidate: elementAt(at), moving: false, delta: [0, 0] };
+  $("sheet").setPointerCapture(event.pointerId);
+}
+
+function onPointerMove(event) {
+  if (!drag || !state.svg) return;
+  const at = sheet.pageMm(state.svg, event);
+  const [dx, dy] = [at.x - drag.start.x, at.y - drag.start.y];
+  if (!drag.moving) {
+    if (!drag.candidate || Math.hypot(dx, dy) < DRAG_START_MM) return;
+    drag.moving = true;
+  }
+  drag.delta = [snap(dx), snap(dy)];
+  const [x0, y0, x1, y1] = drag.candidate.rect_mm;
+  sheet.outline(state.svg, [x0 + drag.delta[0], y0 + drag.delta[1], x1 + drag.delta[0], y1 + drag.delta[1]]);
+}
+
+async function onPointerUp(event) {
+  if (!drag) return;
+  const finished = drag;
+  drag = null;
+  if (!finished.moving) {
+    await pick(sheet.pageMm(state.svg, event));
+    return;
+  }
+  const [dx, dy] = finished.delta;
+  const owner = ownerOf(finished.candidate.id);
+  if (dx === 0 && dy === 0) {
+    sheet.outline(state.svg, finished.candidate.rect_mm);
+    return;
+  }
+  state.selected = { id: finished.candidate.id, layout: owner };
+  await moveElement(finished.candidate.id, dx, dy);
+}
+
+// Asks once per session before a shared element moves in every layout (a real dialog).
+function confirmShared(id) {
+  if (state.agreed.has(id)) return Promise.resolve(true);
+  const dialog = $("confirm");
+  $("confirm-body").textContent = t("editor-move-shared-body", { id });
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      const ok = dialog.returnValue === "ok";
+      if (ok) state.agreed.add(id);
+      resolve(ok);
+    }, { once: true });
+    dialog.returnValue = "";
+    dialog.showModal();
+  });
+}
+
+// Sends a shift of the element; shifts that arrive while one is on its way are added up and sent next.
+async function moveElement(id, dx, dy) {
+  if (ownerOf(id) === null && !(await confirmShared(id))) {
+    await refresh();
+    return;
+  }
+  moves.pending = { id, dx: (moves.pending?.id === id ? moves.pending.dx : 0) + dx, dy: (moves.pending?.id === id ? moves.pending.dy : 0) + dy };
+  if (moves.sending) return;
+  moves.sending = true;
+  try {
+    while (moves.pending) {
+      const next = moves.pending;
+      moves.pending = null;
+      await write("move_element", { layout: state.shown.layout || state.layout, id: next.id, dx_mm: next.dx, dy_mm: next.dy });
+    }
+  } finally {
+    moves.sending = false;
+  }
 }
 
 function choose(course, layout) {
@@ -275,9 +417,16 @@ async function loadProject() {
     showBanner(typeof answer.data === "string" ? answer.data : t("editor-status-lost"));
     return false;
   }
+  const spec = await get("api/spec");
+  if (!spec.ok) {
+    showBanner(typeof spec.data === "string" ? spec.data : t("editor-status-lost"));
+    return false;
+  }
   state.info = answer.data;
+  state.spec = spec.data;
   state.revision = answer.data.revision;
   state.sources = answer.data.sources;
+  setHistory(answer.data.can_undo, answer.data.can_redo);
   document.documentElement.lang = answer.data.lang;
   $("status-project").textContent = answer.data.title;
   const tree = $("pane-tree");
@@ -296,7 +445,24 @@ async function start() {
     choose(course, known ? known.layout : state.layout);
   });
   $("layout-select").addEventListener("change", (e) => choose($("course-select").value, e.target.value));
-  $("sheet").addEventListener("click", pick);
+  const host = $("sheet");
+  host.addEventListener("pointerdown", onPointerDown);
+  host.addEventListener("pointermove", onPointerMove);
+  host.addEventListener("pointerup", onPointerUp);
+  host.addEventListener("pointercancel", () => {
+    drag = null;
+    if (state.selected) refreshOutline();
+  });
+  host.addEventListener("keydown", onSheetKey);
+  document.addEventListener("keydown", onKey);
+  addEventListener("resize", applyZoom);
+  $("menu-undo").addEventListener("click", () => step("undo"));
+  $("menu-redo").addEventListener("click", () => step("redo"));
+  $("menu-zoom-in").addEventListener("click", () => zoomBy(1.25));
+  $("menu-zoom-out").addEventListener("click", () => zoomBy(0.8));
+  $("menu-zoom-fit").addEventListener("click", () => zoomTo(1));
+  $("confirm-yes").addEventListener("click", () => $("confirm").close("ok"));
+  $("confirm-no").addEventListener("click", () => $("confirm").close("cancel"));
   if (!(await loadProject())) return;
   const first = state.info.courses[0];
   state.course = first ? first.name : "";
@@ -308,12 +474,21 @@ async function start() {
   addEventListener("focus", poll);
 }
 
-// The project file may change under the page (a text editor, an MCP session): the page then reads it again.
+// The project file may change under the page (a text editor, an MCP session): the page says so and reads it again
+// when the person asks. A changed map or course file only draws the sheet again.
 async function poll() {
-  if (state.closed || document.hidden) return;
+  if (state.closed || state.writing || document.hidden) return;
+  const known = state.revision;
   try {
     const answer = await get("api/revision");
-    if (answer.ok && (answer.data.revision !== state.revision || answer.data.sources !== state.sources)) {
+    if (!answer.ok || state.writing || state.revision !== known) return;
+    setHistory(answer.data.can_undo, answer.data.can_redo);
+    if (answer.data.revision !== known) {
+      if (state.notified !== answer.data.revision) {
+        state.notified = answer.data.revision;
+        conflict(t("editor-changed-outside"));
+      }
+    } else if (answer.data.sources !== state.sources) {
       await reload();
     }
   } catch {
@@ -321,14 +496,149 @@ async function poll() {
   }
 }
 
-async function reload() {
+// A banner with the words and a button that reads the project file again.
+function conflict(text) {
+  showBanner(text);
+  const box = document.querySelector("#banner .banner-box");
+  if (!box) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = t("editor-reload");
+  button.addEventListener("click", async () => {
+    clearBanner();
+    await reload();
+  });
+  box.insertBefore(button, box.lastElementChild);
+}
+
+function setHistory(canUndo, canRedo) {
+  state.canUndo = Boolean(canUndo);
+  state.canRedo = Boolean(canRedo);
+  $("menu-undo").disabled = !state.canUndo;
+  $("menu-redo").disabled = !state.canRedo;
+}
+
+// The project and the sheet again, keeping the choice of course, layout and element where they still exist.
+async function refresh() {
   if (!(await loadProject())) return;
   const info = state.info;
   if (state.course && !info.courses.some((c) => c.name === state.course)) state.course = "";
   if (!info.layouts.some((l) => l.id === state.layout)) state.layout = info.layouts[0]?.id ?? "";
   fillSelects();
-  say("editor-status-reloaded");
   await showSheet();
+  if (state.selected && !selectElement(state.selected.id, state.selected.layout)) {
+    state.selected = null;
+    showProps([]);
+  }
+}
+
+// One change: `POST api/op/{name}` with the revision the page last saw. Returns whether it was made.
+async function write(name, body) {
+  state.writing = true;
+  try {
+    const answer = await post(`api/op/${name}`, body, state.revision);
+    return await afterWrite(answer, "editor-status-changed");
+  } finally {
+    state.writing = false;
+  }
+}
+
+// Undo or redo of the last change.
+async function step(which) {
+  if (state.writing) return;
+  state.writing = true;
+  try {
+    const answer = await post(`api/${which}`, {}, state.revision);
+    return await afterWrite(answer, which === "undo" ? "editor-status-undone" : "editor-status-redone");
+  } finally {
+    state.writing = false;
+  }
+}
+
+async function afterWrite(answer, saidId) {
+  if (answer.ok) {
+    clearBanner();
+    state.revision = answer.data.revision;
+    setHistory(answer.data.can_undo, answer.data.can_redo);
+    await refresh();
+    say(saidId);
+    return true;
+  }
+  if (answer.status === 409) {
+    // The file is not the one the page saw: say so, and read it again on the person's word.
+    state.notified = answer.data.revision;
+    conflict(answer.data.error);
+  } else {
+    showBanner(typeof answer.data === "string" ? answer.data : t("editor-status-refused"));
+    say("editor-status-refused");
+  }
+  const revision = await get("api/revision");
+  if (revision.ok) setHistory(revision.data.can_undo, revision.data.can_redo);
+  await refreshOutline();
+  return false;
+}
+
+// The outline of the selected element on the freshly drawn sheet (or none).
+function refreshOutline() {
+  if (!state.svg) return;
+  const found = state.selected ? state.elements.find((e) => e.id === state.selected.id) : null;
+  sheet.outline(state.svg, found ? found.rect_mm : null);
+}
+
+function applyZoom() {
+  if (state.svg) sheet.setZoom($("sheet"), state.svg, state.zoom);
+}
+
+function zoomTo(zoom) {
+  state.zoom = Math.min(8, Math.max(0.25, zoom));
+  applyZoom();
+}
+
+const zoomBy = (factor) => zoomTo(state.zoom * factor);
+
+// Keys everywhere on the page: undo and redo, except where a field takes them for its own text.
+function onKey(event) {
+  const field = event.target instanceof HTMLElement && event.target.closest("input, textarea, select");
+  if (field || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+  if (event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    step(event.shiftKey ? "redo" : "undo");
+  } else if (event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    step("redo");
+  }
+}
+
+// Keys on the focused sheet: arrows nudge the selected element by 0.5 mm (1 mm with Shift), else they pan; + and -
+// zoom, 0 fits the page. Drawing on the map is mouse only.
+function onSheetKey(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const arrow = arrows[event.key];
+  if (arrow) {
+    event.preventDefault();
+    if (state.selected) {
+      const step = event.shiftKey ? 2 * SNAP_MM : SNAP_MM;
+      moveElement(state.selected.id, arrow[0] * step, arrow[1] * step);
+    } else if (!state.selected) {
+      $("sheet").scrollBy(arrow[0] * 60, arrow[1] * 60);
+    }
+  } else if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    zoomBy(1.25);
+  } else if (event.key === "-") {
+    event.preventDefault();
+    zoomBy(0.8);
+  } else if (event.key === "0") {
+    event.preventDefault();
+    zoomTo(1);
+  }
+}
+
+async function reload() {
+  state.notified = null;
+  await refresh();
+  say("editor-status-reloaded");
 }
 
 // Ends the server; the page then has nothing left to ask.
