@@ -438,17 +438,25 @@ fn scrub(message: &str, project: &std::path::Path) -> String {
             text = text.replace(&format!("{dir}{separator}"), "");
         }
     }
+    scrub_tokens(&text, false)
+}
+
+/// `text` with every word that is an absolute path cut to its file name: `/x/y`, `C:\x\y`, `C:/x/y` and `\\server\x`.
+/// With `spare_quoted_unix` a quoted `/x/y` stays: in a note that is the person's own text (a course named
+/// `/etc/passwd`), while real paths in notes come unquoted or are known paths cut before.
+fn scrub_tokens(text: &str, spare_quoted_unix: bool) -> String {
     text.split_inclusive(char::is_whitespace)
         .map(|word| {
             let body = word.trim_start_matches(['"', '\'', '`', '(', '\u{201e}', '\u{201c}']);
             let lead = &word[..word.len() - body.len()];
-            let absolute = body.starts_with('/')
+            let unix = body.starts_with('/');
+            let absolute = unix
                 || body.starts_with("\\\\")
                 || (body.len() > 2
                     && body.as_bytes()[0].is_ascii_alphabetic()
                     && body.as_bytes()[1] == b':'
                     && matches!(body.as_bytes()[2], b'/' | b'\\'));
-            if !absolute {
+            if !absolute || (spare_quoted_unix && unix && !lead.is_empty()) {
                 return word.to_owned();
             }
             // Keep what follows the last separator, and the closing punctuation with it.
@@ -913,8 +921,13 @@ fn scrub_value(value: &mut serde_json::Value, keep: &str, clean: &dyn Fn(&str) -
     }
 }
 
-/// `text` without the paths of the project folder and of the files the project names. Unlike [`scrub`] it cuts
-/// exactly those paths and nothing else, so text of the person's own (a course named `/etc/passwd`) stays whole.
+/// A note or an export message for the page: the paths of the project and its files cut by name, then any other
+/// absolute path (an operating system error may name one) cut to its file name, but a quoted `/x` stays whole.
+fn scrub_notes(text: &str, project: &std::path::Path) -> String {
+    scrub_tokens(&scrub_known(text, project), true)
+}
+
+/// `text` without the paths of the project folder and of the files the project names, and nothing else.
 fn scrub_known(text: &str, project: &std::path::Path) -> String {
     let mut files: Vec<std::path::PathBuf> = vec![project.to_path_buf()];
     if let Ok(loaded) = ops::load_project(project) {
@@ -926,6 +939,18 @@ fn scrub_known(text: &str, project: &std::path::Path) -> String {
                 .courses
                 .as_ref()
                 .map(|p| loaded.resolve(p)),
+        );
+        // The logos and other files the elements name, wherever they lie.
+        let elements = loaded
+            .project
+            .layouts
+            .iter()
+            .flat_map(|l| l.elements.iter())
+            .chain(loaded.project.shared.iter());
+        files.extend(
+            elements
+                .filter_map(|e| e.file.as_ref())
+                .map(|f| loaded.resolve(f)),
         );
     }
     // The longest first, so a folder never cuts the middle of a file's path.
@@ -978,7 +1003,7 @@ fn export_answer(
             }
         }
     }
-    scrub_value(&mut value, "out_dir", &|text| scrub_known(text, project));
+    scrub_value(&mut value, "out_dir", &|text| scrub_notes(text, project));
     value["stopped"] = false.into();
     value
 }
@@ -1131,7 +1156,7 @@ pub(super) async fn get_check(State(api): State<Arc<Api>>, headers: HeaderMap) -
     .await;
     match answer {
         Ok(Ok(mut value)) => {
-            scrub_value(&mut value, "", &|text| scrub_known(text, &project));
+            scrub_value(&mut value, "", &|text| scrub_notes(text, &project));
             json(&value)
         }
         Ok(Err(error)) => refusal(&lang, error, &project),
@@ -1199,5 +1224,47 @@ mod tests {
         assert_eq!(value["shared"][0]["file"], "logo.png");
         assert_eq!(value["shared"][1]["file"], "logos/a.svg");
         assert_eq!(value["layouts"][0]["elements"][1]["text"], "/etc/passwd");
+    }
+
+    #[test]
+    fn notes_lose_every_absolute_path_but_keep_a_quoted_course_name() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let project = dir.path().join("freemapper-print.toml");
+        // A logo outside the project folder, named by an absolute path.
+        let outside = tempfile::tempdir().unwrap();
+        let logo = outside.path().join("club.png");
+        let text = std::fs::read_to_string(&project)
+            .unwrap()
+            .replace("logos/beispiel-sponsor.png", &logo.display().to_string());
+        std::fs::write(&project, text).unwrap();
+        let notes = format!(
+            "the logo {} is missing; os says: cannot open {}/other.bin, also C:\\Users\\ann\\x.png and \\\\srv\\share\\y.png and C:/z/w.png; course \"/etc/passwd\" stays",
+            logo.display(),
+            outside.path().display(),
+        );
+        let clean = scrub_notes(&notes, &project);
+        assert_eq!(
+            clean,
+            "the logo club.png is missing; os says: cannot open other.bin, also x.png and y.png and w.png; course \"/etc/passwd\" stays"
+        );
+    }
+
+    #[test]
+    fn the_page_table_keeps_at_most_32_pages_and_never_drops_the_one_just_served() {
+        let api = Api::new(
+            PathBuf::from("freemapper-print.toml"),
+            None,
+            Arc::new(ExportJob::default()),
+        );
+        for n in 0..40 {
+            let page = format!("page{n}");
+            api.note_request(&page, 5);
+            let latest = api.latest.lock().unwrap();
+            assert!(latest.len() <= PAGES_KEPT, "{}", latest.len());
+            assert!(latest.contains_key(&page), "{page} was evicted at once");
+        }
+        // The oldest ones are gone and start counting again; the newest are still held.
+        assert!(api.note_request("page39", 4));
+        assert!(!api.note_request("page0", 4));
     }
 }

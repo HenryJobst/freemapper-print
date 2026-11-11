@@ -1428,8 +1428,8 @@ hier nicht.
 
 Beenden Sie den Editor mit „Fertig“ im Menü „Datei“ oder mit Strg+C im Terminal. Das Programm schreibt dann „Der
 Editor ist beendet. Die Projektdatei ist …“. Nach „Fertig“ meldet auch die Seite, dass Sie das Fenster schließen
-können. Nach Strg+C kann man ihr das nicht sagen; sie meldet nach wenigen Sekunden „Die Verbindung zum Editor ist
-abgebrochen.“
+können. Nach Strg+C kann man ihr das nicht sagen; sie meldet nach wenigen Sekunden, solange der Tab sichtbar ist, „Die Verbindung zum Editor ist
+abgebrochen.“ und bietet „Neu laden“ an.
 
 ### Die Seite
 

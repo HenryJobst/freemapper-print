@@ -1372,7 +1372,8 @@ of the browser, and English if that is neither German nor English. `LANG` and `L
 
 To stop the editor, click Done in the File menu or press Ctrl+C in the terminal. The program then prints "The
 editor has ended. The project file is …". After Done the page also says that you can close the window. After
-Ctrl+C it cannot be told, so within a few seconds it says "The connection to the editor is gone."
+Ctrl+C it cannot be told, so within a few seconds, while the tab is visible, it says "The connection to the editor is
+gone." and offers a Reload button.
 
 ### The page
 

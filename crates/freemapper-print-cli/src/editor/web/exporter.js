@@ -29,6 +29,8 @@ function rememberFolder(folder) {
 }
 
 let request = null;
+// The page's handler for a lost connection (the same banner as everywhere).
+let onLost = () => {};
 let timer = null;
 
 // Opens the dialog. `what` is { text } (the sentence of what is exported) and `body` the request without the
@@ -130,8 +132,7 @@ async function go() {
       say("editor-export-failed");
     }
   } catch {
-    showError(t("editor-export-failed"));
-    say("editor-status-lost");
+    onLost();
   } finally {
     clearInterval(timer);
     $("export-go").disabled = false;
@@ -144,13 +145,14 @@ async function stop() {
   try {
     await post("api/export/cancel");
   } catch {
-    showError(t("editor-export-failed"));
+    onLost();
   } finally {
     $("export-stop").disabled = false;
   }
 }
 
-export function setup() {
+export function setup(lost) {
+  onLost = lost;
   $("export-go").addEventListener("click", go);
   $("export-stop").addEventListener("click", stop);
   $("export-close").addEventListener("click", () => $("export").close());

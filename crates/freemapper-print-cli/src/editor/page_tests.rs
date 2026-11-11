@@ -195,12 +195,60 @@ fn every_note_shows_its_severity_as_a_word_and_never_twice() {
     }
 }
 
+/// The source of the function `name` in `source`: from its `function` line to the next top-level one.
+fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
+    let start = ["async function ", "function "]
+        .iter()
+        .find_map(|kind| source.find(&format!("{kind}{name}(")))
+        .unwrap_or_else(|| panic!("no function {name}"));
+    let rest = &source[start..];
+    let end = rest[1..]
+        .find("\nasync function ")
+        .into_iter()
+        .chain(rest[1..].find("\nfunction "))
+        .min()
+        .map_or(rest.len(), |at| at + 1);
+    &rest[..end]
+}
+
 #[test]
-fn the_page_says_when_the_server_is_gone() {
-    // The poll, a preview, a write and an undo each end in `lost()`, which says so, shows a banner and stops polling.
-    assert!(APP_JS.matches("lost();").count() >= 4);
-    assert!(APP_JS.contains("clearInterval(state.timer)"));
-    assert!(APP_JS.contains("showBanner(t(\"editor-status-lost\"))"));
+fn every_call_to_the_server_routes_a_dead_connection_through_the_shared_handler() {
+    // The poll, the preview, a write and undo/redo each end in `lost()`, which says so, shows a banner with a
+    // reload button and stops polling; the export dialog gets the same handler.
+    for name in ["poll", "showSheet", "write", "step"] {
+        let body = function_body(APP_JS, name);
+        assert!(body.contains("lost()"), "{name} does not call lost()");
+        assert!(body.contains("catch"), "{name} does not catch");
+    }
+    assert!(function_body(APP_JS, "poll").contains("state.misses >= 2"));
+    let lost = function_body(APP_JS, "lost");
+    assert!(lost.contains("clearInterval(state.timer)"));
+    assert!(lost.contains(r#"showBanner(t("editor-status-lost"))"#));
+    assert!(lost.contains("location.reload()"));
+    assert!(APP_JS.contains("exporter.setup(lost)"));
+    for name in ["go", "stop"] {
+        assert!(
+            function_body(EXPORTER_JS, name).contains("onLost()"),
+            "{name} of the export dialog does not use the shared handler"
+        );
+    }
+}
+
+#[test]
+fn work_chosen_for_a_window_mask_counts_as_unsent() {
+    // The rule that `Fertig` and a change of sheet ask by: a corridor line half drawn, or controls typed or
+    // clicked into the window form.
+    let dirty = MASKS_JS
+        .split("export const dirty")
+        .nth(1)
+        .expect("masks.js exports dirty");
+    let dirty = &dirty[..dirty.find(";\n").unwrap()];
+    assert!(dirty.contains(r#"tool.mode === "corridor" && tool.points.length > 0"#));
+    assert!(dirty.contains(r#"tool.mode === "window""#));
+    assert!(dirty.contains("tool.form.controls.input"));
+    // The page asks through it before `Fertig`, a new sheet and undo.
+    assert!(function_body(APP_JS, "leaveOk").contains("masks.dirty()"));
+    assert!(function_body(APP_JS, "close").contains("leaveOk()"));
 }
 
 #[test]

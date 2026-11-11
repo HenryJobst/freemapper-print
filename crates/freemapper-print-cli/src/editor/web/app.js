@@ -37,6 +37,7 @@ const state = {
   texts: false,
   closed: false,
   lost: false,
+  misses: 0,
   timer: null,
   // The layouts and shared elements as the project file has them (`api/spec`), for the forms.
   spec: null,
@@ -591,7 +592,7 @@ async function start() {
   await loadTexts();
   state.texts = true;
   $("menu-done").addEventListener("click", close);
-  exporter.setup();
+  exporter.setup(lost);
   $("menu-check").addEventListener("click", runCheck);
   $("menu-export-sheet").addEventListener("click", () => exportDialog("sheet"));
   $("menu-export-all").addEventListener("click", () => exportDialog("all"));
@@ -653,6 +654,7 @@ async function poll() {
   const known = state.revision;
   try {
     const answer = await get("api/revision");
+    state.misses = 0;
     if (!answer.ok || state.writing || state.revision !== known) return;
     setHistory(answer.data.can_undo, answer.data.can_redo);
     if (answer.data.revision !== known) {
@@ -664,12 +666,16 @@ async function poll() {
       await reload();
     }
   } catch {
-    // The server did not answer: it has ended (Ctrl+C, a closed terminal) or the connection is gone.
-    lost();
+    // The server did not answer. One miss can be a busy machine; the second in a row means it has ended
+    // (Ctrl+C, a closed terminal) or the connection is gone.
+    state.misses += 1;
+    if (state.misses >= 2) lost();
+    return;
   }
 }
 
-// The server is gone: say so, once, and stop asking.
+// The server is gone: say so, once, stop asking, and offer to load the page again (the editor may be running
+// again at the same address).
 function lost() {
   if (state.lost) return;
   state.lost = true;
@@ -677,6 +683,13 @@ function lost() {
   clearInterval(state.timer);
   say("editor-status-lost");
   showBanner(t("editor-status-lost"));
+  const box = document.querySelector("#banner .banner-box");
+  if (!box) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = t("editor-reload");
+  button.addEventListener("click", () => location.reload());
+  box.insertBefore(button, box.lastElementChild);
 }
 
 // A banner with the words and a button that reads the project file again.
