@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- Die Kursüberdruckung (Start, Posten, Ziel, Strecken, Sonderobjekte, Postennummern) kommt jetzt aus freemapper-core v0.15.0 (Entscheidung 0055). So zeichnet der Browser-Editor von freemapper-courseplan dieselben Symbole wie das Blatt. Die Ausgabe bleibt unverändert.
+
 ### Hinzugefügt
 
 - `AGENTS.md` erklärt einem KI-Agenten, wie er freemapper-print aus den Release-Archiven installiert und über MCP oder die Kommandozeile bedient, mit den echten Meldungstexten für die häufigen Fehler. Die Datei ist englisch und liegt in jedem Release-Archiv neben den READMEs. Handbuch (Kapitel 3) und README erklären, wie ein Agent das Programm damit einrichtet.

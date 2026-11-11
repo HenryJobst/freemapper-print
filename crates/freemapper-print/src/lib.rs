@@ -11,7 +11,6 @@ pub mod mask;
 pub mod mask_build;
 pub mod numbers;
 pub mod output;
-pub mod overprint;
 pub mod print;
 pub mod project;
 pub mod rules;
@@ -25,6 +24,10 @@ pub use freemapper_course::description_symbols;
 pub use freemapper_course::placement;
 pub use freemapper_omap as omap;
 pub use freemapper_render as render;
+/// The course overprint lives in freemapper-render since core v0.15.0 (ADR 0055).
+pub use freemapper_render::overprint;
+#[cfg(test)]
+mod overprint_tests;
 
 /// The program and where to find it, as named in the PDF metadata.
 pub const CREDIT: &str = concat!("freemapper-print – ", env!("CARGO_PKG_REPOSITORY"));

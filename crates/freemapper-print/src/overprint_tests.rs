@@ -1,11 +1,15 @@
 use std::f64::consts::PI;
 
-use super::*;
 use crate::course::model::Offset;
+use crate::course::{Control, ControlKind, Course, CourseKind, FittedEvent};
 use crate::course::{CourseEvent, CourseFilter, CourseSource, Leg, SourceFormat, Special, Stop};
+use crate::omap::MapCoord;
+use crate::overprint::*;
 use crate::render::draw::FillRule;
 use crate::render::page::{PaperBox, Primitive, RenderedPage, Shape};
+use crate::render::page::{Pt, RenderColour};
 use crate::render::pdf::{PdfMeta, content_of, write_pdf};
+use crate::rules::CourseSymbolSizes;
 use crate::scale::{MapKind, geometry_factor, symbol_factor};
 
 fn sizes() -> CourseSymbolSizes {
