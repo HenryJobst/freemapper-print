@@ -11,8 +11,11 @@ const tool = { mode: null, points: [], host: null, form: null };
 
 export const active = () => tool.mode !== null;
 
-// A line is half drawn: leaving would lose it.
-export const dirty = () => tool.mode === "corridor" && tool.points.length > 0;
+// The mode holds work not yet sent: a corridor line half drawn, or controls chosen for a window mask. Leaving
+// would lose it.
+export const dirty = () =>
+  (tool.mode === "corridor" && tool.points.length > 0) ||
+  (tool.mode === "window" && codesOf(tool.form.controls.input).length > 0);
 
 function courseOptions(host, withNone) {
   const options = host.info().courses.map((c) => [c.name, c.name]);

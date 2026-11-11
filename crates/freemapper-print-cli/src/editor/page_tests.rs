@@ -194,3 +194,17 @@ fn every_note_shows_its_severity_as_a_word_and_never_twice() {
         }
     }
 }
+
+#[test]
+fn the_page_says_when_the_server_is_gone() {
+    // The poll, a preview, a write and an undo each end in `lost()`, which says so, shows a banner and stops polling.
+    assert!(APP_JS.matches("lost();").count() >= 4);
+    assert!(APP_JS.contains("clearInterval(state.timer)"));
+    assert!(APP_JS.contains("showBanner(t(\"editor-status-lost\"))"));
+}
+
+#[test]
+fn a_page_names_itself_in_every_preview_request() {
+    assert!(APP_JS.contains("page: state.pageId"));
+    assert!(!APP_JS.contains("Date.now()"));
+}

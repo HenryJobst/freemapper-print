@@ -14,6 +14,12 @@ import { noteItem } from "./notes.js";
 
 const POLL_MS = 2000;
 
+function randomId() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const state = {
   info: null,
   course: "",
@@ -21,14 +27,17 @@ const state = {
   revision: null,
   svg: null,
   elements: [],
-  // The number of the newest preview request; an older answer is dropped. It starts at the time the page was
-  // opened, so the server ranks a reload or a second tab above the requests of the page before it.
-  request: Date.now(),
+  // The number of the newest preview request; an older answer is dropped. The page names itself to the server
+  // with a random id, so the numbers of another tab or of an earlier load never outdate this page's requests.
+  request: 0,
+  pageId: randomId(),
   // The course and layout of the sheet on screen, which a click is resolved against.
   shown: { course: "", layout: "" },
   sources: null,
   texts: false,
   closed: false,
+  lost: false,
+  timer: null,
   // The layouts and shared elements as the project file has them (`api/spec`), for the forms.
   spec: null,
   // The element the person selected: { id, layout } with the layout id, or null for a shared element.
@@ -265,8 +274,14 @@ function renderNotes(notes) {
 async function showSheet() {
   const request = ++state.request;
   say("editor-sheet-loading");
-  const query = new URLSearchParams({ course: state.course, layout: state.layout, rev: String(request) });
-  const answer = await get(`api/preview?${query}`);
+  const query = new URLSearchParams({ course: state.course, layout: state.layout, rev: String(request), page: state.pageId });
+  let answer;
+  try {
+    answer = await get(`api/preview?${query}`);
+  } catch {
+    lost();
+    return;
+  }
   if (answer.status === 409 && answer.data?.error === "superseded") return;
   if (request !== state.request) return;
   if (!answer.ok) {
@@ -627,7 +642,7 @@ async function start() {
   fillSelects();
   say("editor-status-ready");
   await showSheet();
-  setInterval(poll, POLL_MS);
+  state.timer = setInterval(poll, POLL_MS);
   addEventListener("focus", poll);
 }
 
@@ -649,8 +664,19 @@ async function poll() {
       await reload();
     }
   } catch {
-    // The server is gone or busy; the next poll tries again.
+    // The server did not answer: it has ended (Ctrl+C, a closed terminal) or the connection is gone.
+    lost();
   }
+}
+
+// The server is gone: say so, once, and stop asking.
+function lost() {
+  if (state.lost) return;
+  state.lost = true;
+  state.closed = true;
+  clearInterval(state.timer);
+  say("editor-status-lost");
+  showBanner(t("editor-status-lost"));
 }
 
 // A banner with the words and a button that reads the project file again.
@@ -695,6 +721,9 @@ async function write(name, body) {
   try {
     const answer = await post(`api/op/${name}`, body, state.revision);
     return await afterWrite(answer, "editor-status-changed");
+  } catch {
+    lost();
+    return false;
   } finally {
     state.writing = false;
   }
@@ -710,6 +739,9 @@ async function step(which) {
   try {
     const answer = await post(`api/${which}`, {}, state.revision);
     return await afterWrite(answer, which === "undo" ? "editor-status-undone" : "editor-status-redone");
+  } catch {
+    lost();
+    return false;
   } finally {
     state.writing = false;
   }
@@ -763,6 +795,14 @@ function onKey(event) {
     masks.cancel();
     return;
   }
+  if (event.key === "Escape" && state.selected && !masks.active()) {
+    // Nothing selected: the arrow keys pan the sheet again.
+    event.preventDefault();
+    state.selected = null;
+    sheet.outline(state.svg, null);
+    showProps([]);
+    return;
+  }
   const field = event.target instanceof HTMLElement && event.target.closest("input, textarea, select");
   if (field || !(event.ctrlKey || event.metaKey) || event.altKey) return;
   if (event.key.toLowerCase() === "z") {
@@ -811,7 +851,7 @@ function onSheetKey(event) {
     if (state.selected) {
       const step = event.shiftKey ? 2 * SNAP_MM : SNAP_MM;
       moveElement(state.selected.id, arrow[0] * step, arrow[1] * step);
-    } else if (!state.selected) {
+    } else {
       $("sheet").scrollBy(arrow[0] * 60, arrow[1] * 60);
     }
   } else if (event.key === "n" || event.key === "N") {

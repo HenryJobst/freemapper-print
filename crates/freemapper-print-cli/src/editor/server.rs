@@ -627,41 +627,58 @@ mod tests {
         finish(run);
     }
 
+    fn draws_of(project: &std::path::Path) -> usize {
+        super::super::api::DRAWS
+            .lock()
+            .unwrap()
+            .get(project)
+            .copied()
+            .unwrap_or(0)
+    }
+
     #[test]
-    fn a_newer_request_supersedes_an_older_one() {
+    fn a_newer_request_supersedes_an_older_one_of_the_same_page() {
         let dir = luebeck_copy();
         let run = start_on(dir.path().to_path_buf(), true, None);
-        // Arrival: the newest number wins, an older one is dropped at once.
-        assert_eq!(get(&run, "/api/preview?layout=a4-4000&rev=5").0, 200);
-        let (code, answer) = get(&run, "/api/preview?layout=a4-4000&rev=4");
+        let project = dir.path().join("freemapper-print.toml");
+        // Arrival: the newest number of a page wins, an older one is dropped at once.
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&page=p1&rev=5").0,
+            200
+        );
+        let (code, answer) = get(&run, "/api/preview?layout=a4-4000&page=p1&rev=4");
         assert_eq!(code, 409);
         assert_eq!(body_json(&answer)["error"], "superseded");
-        // While drawing: the older request waits inside the draw until the newer one has been sent.
+        // While waiting for its turn: the older request is held before it draws until the newer one is sent.
         let (reached_tx, reached_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let project = dir.path().join("freemapper-print.toml");
-        *super::super::api::GATE.lock().unwrap() = Some((project, reached_tx, release_rx));
+        *super::super::api::GATE.lock().unwrap() = Some((project.clone(), reached_tx, release_rx));
+        let drawn_before = draws_of(&project);
         let (host, prefix) = (run.host.clone(), run.prefix.clone());
         let older = std::thread::spawn(move || {
             request(
                 &host,
                 &host,
                 "GET",
-                &format!("{prefix}/api/preview?layout=a3-3000&rev=10"),
+                &format!("{prefix}/api/preview?layout=a3-3000&page=p1&rev=10"),
                 "",
             )
         });
         reached_rx.recv_timeout(Duration::from_secs(30)).unwrap();
-        let (code, newer) = get(&run, "/api/preview?layout=a4-4000&rev=11");
+        let (code, newer) = get(&run, "/api/preview?layout=a4-4000&page=p1&rev=11");
         assert_eq!(code, 200);
         assert_eq!(
             body_json(&newer)["page_mm"],
             serde_json::json!([297.0, 210.0])
         );
+        let drawn_by_newer = draws_of(&project);
         release_tx.send(()).unwrap();
         let (code, answer) = older.join().unwrap();
         assert_eq!(code, 409, "{}", &answer[..answer.len().min(300)]);
-        // The superseded sheet did not replace the newer one in the cache: a click resolves on a4-4000 as before.
+        // The older request dropped out before it started: no sheet was drawn for it.
+        assert_eq!(draws_of(&project), drawn_by_newer);
+        assert!(drawn_by_newer >= drawn_before);
+        // The superseded request did not replace the newer sheet in the cache: a click resolves on a4-4000 as before.
         let (code, _) = post_json(
             &run,
             "/api/hit",
@@ -671,24 +688,50 @@ mod tests {
         // Without a number nothing is superseded.
         assert_eq!(get(&run, "/api/preview?layout=a4-4000").0, 200);
         assert_eq!(get(&run, "/api/preview?rev=x").0, 400);
+        assert_eq!(get(&run, "/api/preview?page=a%20b&rev=1").0, 400);
         finish(run);
     }
 
     #[test]
-    fn a_page_opened_later_outranks_an_earlier_one() {
-        // `rev` starts at the page's opening time (ms), so a reload or a second tab is never dropped by the
-        // counter of the page before it; the page before it is the one that finds itself superseded.
+    fn two_pages_do_not_outdate_each_other() {
+        // A second tab (or a reload) has an id of its own; neither page drops the other's requests, however its
+        // numbers compare, and each gets its sheet.
         let run = start_on(luebeck(), true, None);
         assert_eq!(
-            get(&run, "/api/preview?layout=a4-4000&rev=1700000000007").0,
+            get(
+                &run,
+                "/api/preview?layout=a4-4000&page=tab1&rev=1700000050000"
+            )
+            .0,
             200
         );
         assert_eq!(
-            get(&run, "/api/preview?layout=a4-4000&rev=1700000050000").0,
+            get(&run, "/api/preview?layout=a3-3000&page=tab2&rev=3").0,
             200
         );
         assert_eq!(
-            get(&run, "/api/preview?layout=a4-4000&rev=1700000000008").0,
+            get(
+                &run,
+                "/api/preview?layout=a4-4000&page=tab1&rev=1700000050001"
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            get(&run, "/api/preview?layout=a3-3000&page=tab2&rev=4").0,
+            200
+        );
+        // Within a page an older number is still dropped.
+        assert_eq!(
+            get(&run, "/api/preview?layout=a4-4000&page=tab2&rev=3").0,
+            409
+        );
+        assert_eq!(
+            get(
+                &run,
+                "/api/preview?layout=a4-4000&page=tab1&rev=1700000000000"
+            )
+            .0,
             409
         );
         finish(run);
@@ -1705,10 +1748,16 @@ mod tests {
             "{body}"
         );
         assert!(!gone.exists());
-        for dir in ["relative/out", ""] {
+        for (dir, words) in [
+            ("relative/out", "is not a full path"),
+            ("", "Type the folder first"),
+        ] {
             let (code, answer) =
                 post_json(&run, "/api/export", &format!(r#"{{"out_dir":"{dir}"}}"#));
             assert_eq!(code, 422, "{answer}");
+            let text = answer.split("\r\n\r\n").nth(1).unwrap();
+            assert!(text.contains(words), "{text}");
+            assert!(!text.contains("agent"), "{text}");
         }
         // Layouts do not go with courses; a form that does not fit is 400; a GET is no export.
         let here = tempfile::tempdir().unwrap();

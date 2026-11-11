@@ -33,7 +33,12 @@ impl From<OpError> for EditError {
 
 /// One op: the project file and the JSON arguments in, the result as JSON out.
 /// The language is the request's; it is the one of the comment an op writes into the file.
-pub(super) type Run = fn(&Path, Value, &Lang) -> Result<Value, EditError>;
+pub(super) type Run = fn(&Path, Value, &Lang, Sheets<'_>) -> Result<Value, EditError>;
+
+/// The sheet on screen for a course and a layout: the cached one when the file has not changed, so an edit that
+/// needs the sheet's geometry does not draw it again while the history is locked.
+pub(super) type Sheets<'a> =
+    &'a dyn Fn(Option<&str>, Option<&str>) -> Result<std::sync::Arc<preview::Drawn>, OpError>;
 
 /// The ops of the editor by name.
 pub(super) const EDITOR_OPS: &[(&str, Run)] = &[
@@ -97,7 +102,12 @@ struct LayoutBody {
     hide_shared: Option<Vec<String>>,
 }
 
-fn set_layout(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+fn set_layout(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: LayoutBody| {
         Ok(edit::set_layout(&edit::LayoutArgs {
             project: project.to_path_buf(),
@@ -142,7 +152,12 @@ fn inside_project(file: &Path) -> bool {
         .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
 }
 
-fn set_element(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+fn set_element(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: ElementBody| {
         if let Some(file) = &a.file
             && !inside_project(file)
@@ -175,7 +190,12 @@ struct AssignBody {
     layout: Option<String>,
 }
 
-fn assign_mask(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+fn assign_mask(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: AssignBody| {
         Ok(edit::assign_mask(&edit::AssignArgs {
             project: project.to_path_buf(),
@@ -237,7 +257,12 @@ fn find_element<'a>(
     shared.iter().find(|e| e.id == id).map(|e| (None, e))
 }
 
-fn move_element(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+fn move_element(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: MoveBody| {
         if !(a.dx_mm.is_finite()
             && a.dy_mm.is_finite()
@@ -284,7 +309,12 @@ struct WindowBody {
     assign: bool,
 }
 
-fn mask_window(project: &Path, args: Value, lang: &Lang) -> Result<Value, EditError> {
+fn mask_window(
+    project: &Path,
+    args: Value,
+    lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: WindowBody| {
         let texts = Texts::new(lang);
         Ok(masks::window(
@@ -320,7 +350,12 @@ struct CorridorBody {
     assign: bool,
 }
 
-fn mask_corridor(project: &Path, args: Value, lang: &Lang) -> Result<Value, EditError> {
+fn mask_corridor(
+    project: &Path,
+    args: Value,
+    lang: &Lang,
+    sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: CorridorBody| {
         let texts = Texts::new(lang);
         if a.assign && a.course.is_none() {
@@ -329,7 +364,7 @@ fn mask_corridor(project: &Path, args: Value, lang: &Lang) -> Result<Value, Edit
         let points = match (a.points, a.page_points_mm) {
             (Some(text), None) => text,
             (None, Some(drawn)) => {
-                let sheet = preview::draw(project, a.course.as_deref(), a.layout.as_deref())?;
+                let sheet = sheets(a.course.as_deref(), a.layout.as_deref())?;
                 drawn
                     .iter()
                     .map(|[x, y]| {
@@ -376,7 +411,12 @@ struct NumbersBody {
     layout: Option<String>,
 }
 
-fn numbers_accept(project: &Path, args: Value, _lang: &Lang) -> Result<Value, EditError> {
+fn numbers_accept(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
     apply(args, |a: NumbersBody| {
         let position = match (a.direction, a.gap, a.to_page_mm) {
             (None, None, None) => None,
@@ -385,7 +425,7 @@ fn numbers_accept(project: &Path, args: Value, _lang: &Lang) -> Result<Value, Ed
                 if !(x.is_finite() && y.is_finite()) {
                     return Err(EditError::Form);
                 }
-                let sheet = preview::draw(project, Some(&a.course), a.layout.as_deref())?;
+                let sheet = sheets(Some(&a.course), a.layout.as_deref())?;
                 match sheet.number_placement_at(&a.control, x, y) {
                     Some(position) => Some(position),
                     None => return Err(EditError::Say("edit-no-number", a.control)),

@@ -80,6 +80,14 @@ impl Drop for Running<'_> {
 #[cfg(test)]
 pub(super) static EXPORT_GATE: Mutex<Option<Gate>> = Mutex::new(None);
 
+/// Test hook: how many sheets were drawn for each project file (each test has a project of its own).
+#[cfg(test)]
+pub(super) static DRAWS: std::sync::LazyLock<Mutex<HashMap<PathBuf, usize>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// How many pages the server remembers a preview counter for.
+const PAGES_KEPT: usize = 32;
+
 /// What the handlers share.
 pub(super) struct Api {
     /// The export in progress.
@@ -88,12 +96,16 @@ pub(super) struct Api {
     pub(super) project: PathBuf,
     /// The language the person set, if any (see `editor::fixed_language`).
     pub(super) fixed: Option<String>,
-    /// The highest `rev` a preview request has named; a request with a lower one is superseded.
-    ///
-    /// `rev` counts the requests of one page, and the page starts counting at the time it was opened (ms), so
-    /// a page opened later, a reload or a second tab always outranks the requests of an earlier one. A page
-    /// opened earlier then finds its own previews superseded, which is right: the person looks at the newer one.
-    latest: AtomicU64,
+    /// The highest `rev` each page has named in a preview request; a request with a lower one from the same page
+    /// is superseded. `rev` counts the requests of one page and the page names itself with a random id, so a
+    /// second tab or a reload never outranks (or is outranked by) another page. The map holds the most recently
+    /// used [`PAGES_KEPT`] pages; an older page starts counting again.
+    latest: Mutex<HashMap<String, (u64, u64)>>,
+    /// Counts the entries of `latest`, to find the least recently used.
+    tick: AtomicU64,
+    /// One sheet is drawn at a time, so superseded requests wait here and drop out before they start.
+    render: Mutex<()>,
+
     /// The last sheet drawn, for the click that follows its preview: the project file's revision, the course
     /// and the layout it was drawn for.
     last: Mutex<Option<Cached>>,
@@ -107,7 +119,9 @@ impl Api {
             export,
             project,
             fixed,
-            latest: AtomicU64::new(0),
+            latest: Mutex::new(HashMap::new()),
+            tick: AtomicU64::new(0),
+            render: Mutex::new(()),
             last: Mutex::new(None),
             history: Mutex::new(History::default()),
         }
@@ -190,7 +204,8 @@ impl Api {
         if current != claimed {
             return Done::Stale(current);
         }
-        let result = match run(&self.project, args, lang) {
+        let sheets = |course: Option<&str>, layout: Option<&str>| self.drawn_now(course, layout);
+        let result = match run(&self.project, args, lang, &sheets) {
             Ok(result) => result,
             Err(EditError::Form) => return Done::Form,
             Err(EditError::Op(error)) => {
@@ -288,28 +303,68 @@ impl Api {
         })
     }
 
+    /// Records that `page` has asked for `rev`; whether an older request of the page was seen already.
+    fn note_request(&self, page: &str, rev: u64) -> bool {
+        let mut latest = self.latest.lock().unwrap_or_else(|e| e.into_inner());
+        let tick = self.tick.fetch_add(1, Ordering::SeqCst);
+        let entry = latest.entry(page.to_owned()).or_insert((0, tick));
+        let newer = entry.0 > rev;
+        *entry = (entry.0.max(rev), tick);
+        if latest.len() > PAGES_KEPT
+            && let Some(oldest) = latest
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(id, _)| id.clone())
+        {
+            latest.remove(&oldest);
+        }
+        newer
+    }
+
+    /// A newer request of the same page has been seen.
+    fn superseded(&self, ask: Option<(&str, u64)>) -> bool {
+        ask.is_some_and(|(page, rev)| {
+            self.latest
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(page)
+                .is_some_and(|(newest, _)| *newest > rev)
+        })
+    }
+
+    /// The cached sheet, if it is for this stamp and choice.
+    fn cached(
+        &self,
+        stamp: &Stamp,
+        course: &Option<String>,
+        layout: &Option<String>,
+    ) -> Option<Arc<Drawn>> {
+        let last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        last.as_ref()
+            .filter(|hit| hit.stamp == *stamp && hit.course == *course && hit.layout == *layout)
+            .map(|hit| Arc::clone(&hit.drawn))
+    }
+
     /// The sheet for `course` and `layout`, drawn again only when the project file, its sources or the choice
-    /// changed. A sheet whose request was superseded while it was drawn (`rev` below the newest) is answered but
-    /// not kept, so the cache never falls back to an older choice.
+    /// changed. One sheet is drawn at a time. `ask` names the page and its request number: a request that a
+    /// newer one of the same page has outdated, when it comes to the front of the queue or when its sheet is
+    /// done, gives `None`; a sheet drawn for an outdated request is answered but not kept, so the cache never falls
+    /// back to an older choice.
     fn drawn(
         &self,
         course: Option<&str>,
         layout: Option<&str>,
-        rev: Option<u64>,
-    ) -> Result<Arc<Drawn>, OpError> {
+        ask: Option<(&str, u64)>,
+    ) -> Result<Option<Arc<Drawn>>, OpError> {
         let stamp = self.stamp()?;
         let (course, layout) = (course.map(str::to_owned), layout.map(str::to_owned));
-        if let Some(hit) = self.last.lock().unwrap().as_ref()
-            && hit.stamp == stamp
-            && hit.course == course
-            && hit.layout == layout
-        {
-            return Ok(Arc::clone(&hit.drawn));
+        if let Some(hit) = self.cached(&stamp, &course, &layout) {
+            return Ok(Some(hit));
         }
         #[cfg(test)]
         {
             let gate = {
-                let mut slot = GATE.lock().unwrap();
+                let mut slot = GATE.lock().unwrap_or_else(|e| e.into_inner());
                 match slot.as_ref() {
                     Some((project, ..)) if *project == self.project => slot.take(),
                     _ => None,
@@ -320,21 +375,43 @@ impl Api {
                 let _ = release.recv_timeout(std::time::Duration::from_secs(30));
             }
         }
+        let _turn = self.render.lock().unwrap_or_else(|e| e.into_inner());
+        // Waiting took time: a newer request may have outdated this one, or drawn this very sheet.
+        if self.superseded(ask) {
+            return Ok(None);
+        }
+        if let Some(hit) = self.cached(&stamp, &course, &layout) {
+            return Ok(Some(hit));
+        }
+        #[cfg(test)]
+        {
+            *DRAWS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .entry(self.project.clone())
+                .or_default() += 1;
+        }
         let drawn = Arc::new(preview::draw(
             &self.project,
             course.as_deref(),
             layout.as_deref(),
         )?);
-        let stale = rev.is_some_and(|rev| self.latest.load(Ordering::SeqCst) > rev);
-        if !stale {
-            *self.last.lock().unwrap() = Some(Cached {
+        if !self.superseded(ask) {
+            *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(Cached {
                 stamp,
                 course,
                 layout,
                 drawn: Arc::clone(&drawn),
             });
         }
-        Ok(drawn)
+        Ok(Some(drawn))
+    }
+
+    /// The sheet for a request without a number (a click, an edit): never outdated.
+    fn drawn_now(&self, course: Option<&str>, layout: Option<&str>) -> Result<Arc<Drawn>, OpError> {
+        Ok(self
+            .drawn(course, layout, None)?
+            .expect("a request without a number is never superseded"))
     }
 }
 
@@ -423,6 +500,17 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
             .expect("a project description is an object");
         // The page shows what the person gave; the absolute path stays on the server.
         object.remove("path");
+        // The map and course file by name only: the page shows names, and a project may name them anywhere.
+        for key in ["map", "courses_file"] {
+            if let Some(name) = object
+                .get(key)
+                .and_then(|v| v.as_str())
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+            {
+                object.insert(key.into(), name.into());
+            }
+        }
         object.insert("revision".into(), stamp.revision.into());
         object.insert("sources".into(), stamp.sources.into());
         let (can_undo, can_redo) = api.history_flags();
@@ -441,6 +529,29 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
     }
 }
 
+/// Every `file` that is an absolute path becomes its file name; a path inside the project (`logos/a.svg`) stays,
+/// since the form edits it as the project file has it.
+fn absolute_files_to_names(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                match v {
+                    serde_json::Value::String(path)
+                        if key == "file" && std::path::Path::new(path.as_str()).is_absolute() =>
+                    {
+                        if let Some(name) = std::path::Path::new(path.as_str()).file_name() {
+                            *path = name.to_string_lossy().into_owned();
+                        }
+                    }
+                    _ => absolute_files_to_names(v),
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(absolute_files_to_names),
+        _ => {}
+    }
+}
+
 /// `GET api/spec`: `{ revision, layouts, shared }`, the layouts and shared elements as the project file has them,
 /// for the page's forms. Like the rest it names no file.
 pub(super) async fn get_spec(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
@@ -449,11 +560,13 @@ pub(super) async fn get_spec(State(api): State<Arc<Api>>, headers: HeaderMap) ->
     let answer = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, OpError> {
         let text = api.read_text()?;
         let loaded = ops::load_project(&api.project)?;
-        Ok(serde_json::json!({
+        let mut value = serde_json::json!({
             "revision": revision(text.as_bytes()),
             "layouts": loaded.project.layouts,
             "shared": loaded.project.shared,
-        }))
+        });
+        absolute_files_to_names(&mut value);
+        Ok(value)
     })
     .await;
     match answer {
@@ -567,10 +680,12 @@ fn preview_body(drawn: &Drawn, lang: &Lang) -> Result<serde_json::Value, Preview
     }))
 }
 
-/// `GET api/preview?course=&layout=&rev=`: `{ svg, page_mm, notes, elements, ... }`.
+/// `GET api/preview?course=&layout=&page=&rev=`: `{ svg, page_mm, notes, elements, ... }`.
 ///
-/// `rev` is a number the page counts up with each request, starting at the time it was opened (see `Api`). A request whose `rev` is lower than one already seen,
-/// when it arrives or when its sheet is drawn, answers 409 `superseded`: the page shows the newest answer only.
+/// `page` is a random id the page makes when it opens, `rev` a number it counts up with each request. A request
+/// whose `rev` is lower than one its page has sent already, when it arrives, when its turn to draw comes or when
+/// its sheet is done, answers 409 `superseded`: the page shows its newest answer only. Pages do not outdate each
+/// other.
 pub(super) async fn get_preview(
     State(api): State<Arc<Api>>,
     headers: HeaderMap,
@@ -585,8 +700,16 @@ pub(super) async fn get_preview(
             Err(_) => return bad_request("rev"),
         },
     };
+    let page = params.get("page").cloned().unwrap_or_default();
+    if page.len() > 64
+        || !page
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return bad_request("page");
+    }
     if let Some(rev) = rev
-        && api.latest.fetch_max(rev, Ordering::SeqCst) > rev
+        && api.note_request(&page, rev)
     {
         return superseded();
     }
@@ -594,23 +717,28 @@ pub(super) async fn get_preview(
     let project = api.project.clone();
     let worker = Arc::clone(&api);
     let body_lang = lang.clone();
+    let ask_page = page.clone();
     let answer = tokio::task::spawn_blocking(move || {
-        let drawn = worker.drawn(course.as_deref(), layout.as_deref(), rev)?;
-        preview_body(&drawn, &body_lang).map_err(|e| match e {
-            PreviewError::Op(error) => error,
-            PreviewError::Svg(error) => OpError::Serve {
-                source: anyhow::Error::new(error),
-            },
-        })
+        let ask = rev.map(|rev| (ask_page.as_str(), rev));
+        let Some(drawn) = worker.drawn(course.as_deref(), layout.as_deref(), ask)? else {
+            return Ok(None);
+        };
+        preview_body(&drawn, &body_lang)
+            .map(Some)
+            .map_err(|e| match e {
+                PreviewError::Op(error) => error,
+                PreviewError::Svg(error) => OpError::Serve {
+                    source: anyhow::Error::new(error),
+                },
+            })
     })
     .await;
-    if let Some(rev) = rev
-        && api.latest.load(Ordering::SeqCst) > rev
-    {
+    if api.superseded(rev.map(|rev| (page.as_str(), rev))) {
         return superseded();
     }
     match answer {
-        Ok(Ok(body)) => json(&body),
+        Ok(Ok(Some(body))) => json(&body),
+        Ok(Ok(None)) => superseded(),
         Ok(Err(error)) => refusal(&lang, error, &project),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -642,7 +770,7 @@ pub(super) async fn post_hit(
     let layout = request.layout.filter(|v| !v.is_empty());
     let project = api.project.clone();
     let answer = tokio::task::spawn_blocking(move || {
-        let drawn = api.drawn(course.as_deref(), layout.as_deref(), None)?;
+        let drawn = api.drawn_now(course.as_deref(), layout.as_deref())?;
         Ok::<_, OpError>(drawn.pick(request.x_mm, request.y_mm))
     })
     .await;
@@ -767,22 +895,67 @@ struct ExportRequest {
     single_file: bool,
 }
 
-/// `value` with every string scrubbed of absolute paths (see [`scrub`]), except under the key `keep`.
-fn scrub_value(value: &mut serde_json::Value, project: &std::path::Path, keep: &str) {
+/// `value` with `clean` applied to every string, except under the key `keep`.
+fn scrub_value(value: &mut serde_json::Value, keep: &str, clean: &dyn Fn(&str) -> String) {
     match value {
-        serde_json::Value::String(text) => *text = scrub(text, project),
+        serde_json::Value::String(text) => *text = clean(text),
         serde_json::Value::Array(items) => {
-            items.iter_mut().for_each(|v| scrub_value(v, project, keep));
+            items.iter_mut().for_each(|v| scrub_value(v, keep, clean));
         }
         serde_json::Value::Object(map) => {
             for (key, v) in map.iter_mut() {
                 if key != keep {
-                    scrub_value(v, project, keep);
+                    scrub_value(v, keep, clean);
                 }
             }
         }
         _ => {}
     }
+}
+
+/// `text` without the paths of the project folder and of the files the project names. Unlike [`scrub`] it cuts
+/// exactly those paths and nothing else, so text of the person's own (a course named `/etc/passwd`) stays whole.
+fn scrub_known(text: &str, project: &std::path::Path) -> String {
+    let mut files: Vec<std::path::PathBuf> = vec![project.to_path_buf()];
+    if let Ok(loaded) = ops::load_project(project) {
+        files.push(loaded.map_path());
+        files.extend(
+            loaded
+                .project
+                .sources
+                .courses
+                .as_ref()
+                .map(|p| loaded.resolve(p)),
+        );
+    }
+    // The longest first, so a folder never cuts the middle of a file's path.
+    let mut paths: Vec<(String, String)> = files
+        .iter()
+        .map(|p| {
+            let name = p
+                .file_name()
+                .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+            (p.display().to_string(), name)
+        })
+        .collect();
+    paths.sort_by_key(|(path, _)| std::cmp::Reverse(path.len()));
+    let mut out = text.to_owned();
+    for (path, name) in &paths {
+        out = out.replace(path.as_str(), name);
+    }
+    let mut dirs: Vec<String> = files
+        .iter()
+        .filter_map(|p| p.parent().map(|d| d.display().to_string()))
+        .filter(|d| !d.is_empty())
+        .collect();
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
+    dirs.dedup();
+    for dir in dirs {
+        for separator in ["/", "\\"] {
+            out = out.replace(&format!("{dir}{separator}"), "");
+        }
+    }
+    out
 }
 
 /// The export's answer: what `export_project` returns, with each file by its name (the folder is the one the person
@@ -805,7 +978,7 @@ fn export_answer(
             }
         }
     }
-    scrub_value(&mut value, project, "out_dir");
+    scrub_value(&mut value, "out_dir", &|text| scrub_known(text, project));
     value["stopped"] = false.into();
     value
 }
@@ -828,10 +1001,20 @@ pub(super) async fn post_export(
     if !request.layouts.is_empty() && (!request.courses.is_empty() || request.single_file) {
         return refused(&texts.plain("mcp-error-export-layouts"));
     }
-    let out_dir = match crate::mcp::agent_path(&texts, &request.out_dir) {
-        Ok(dir) => dir,
-        Err(message) => return refused(&message),
-    };
+    // The one path the person types: it must be a full path (the server does not know where the browser is).
+    if request.out_dir.trim().is_empty() {
+        return refused(&texts.plain("editor-export-no-dir"));
+    }
+    if request.out_dir.contains('\0') {
+        return bad_request("form");
+    }
+    let out_dir = std::path::PathBuf::from(&request.out_dir);
+    if !out_dir.is_absolute() {
+        return refused(&texts.get(
+            "editor-export-relative",
+            Some(&args!("path" => crate::printable(&request.out_dir))),
+        ));
+    }
     let project = api.project.clone();
     if !out_dir.is_dir() {
         let error = OpError::OutDirMissing { path: out_dir };
@@ -872,7 +1055,7 @@ pub(super) async fn post_export(
                     if !gated {
                         gated = true;
                         let gate = {
-                            let mut slot = EXPORT_GATE.lock().unwrap();
+                            let mut slot = EXPORT_GATE.lock().unwrap_or_else(|e| e.into_inner());
                             match slot.as_ref() {
                                 Some((p, ..)) if *p == worker_project => slot.take(),
                                 _ => None,
@@ -950,7 +1133,7 @@ pub(super) async fn get_check(State(api): State<Arc<Api>>, headers: HeaderMap) -
     .await;
     match answer {
         Ok(Ok(mut value)) => {
-            scrub_value(&mut value, &project, "");
+            scrub_value(&mut value, "", &|text| scrub_known(text, &project));
             json(&value)
         }
         Ok(Err(error)) => refusal(&lang, error, &project),
@@ -989,5 +1172,34 @@ mod tests {
         assert!(!query(Some("a=%zz&b=1")).contains_key("a"));
         assert_eq!(query(Some("a=%zz&b=1"))["b"], "1");
         assert!(query(None).is_empty());
+    }
+
+    #[test]
+    fn scrub_known_cuts_the_paths_of_the_project_and_nothing_else() {
+        let dir = crate::ops::testing::viktoriapark_copy();
+        let project = dir.path().join("freemapper-print.toml");
+        let map = dir.path().join("berlin-viktoriapark.omap");
+        let text = format!(
+            "course \"/etc/passwd\" on {}, file {} and {}/x.pdf",
+            map.display(),
+            project.display(),
+            dir.path().display()
+        );
+        assert_eq!(
+            scrub_known(&text, &project),
+            "course \"/etc/passwd\" on berlin-viktoriapark.omap, file freemapper-print.toml and x.pdf"
+        );
+    }
+
+    #[test]
+    fn absolute_logo_files_shrink_to_names_and_relative_ones_stay() {
+        let mut value = serde_json::json!({
+            "shared": [{ "file": "/home/ann/x/logo.png" }, { "file": "logos/a.svg" }],
+            "layouts": [{ "elements": [{ "file": "/home/ann/y/b.png" }, { "text": "/etc/passwd" }] }],
+        });
+        absolute_files_to_names(&mut value);
+        assert_eq!(value["shared"][0]["file"], "logo.png");
+        assert_eq!(value["shared"][1]["file"], "logos/a.svg");
+        assert_eq!(value["layouts"][0]["elements"][1]["text"], "/etc/passwd");
     }
 }
