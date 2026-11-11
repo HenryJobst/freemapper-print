@@ -17,6 +17,11 @@ clap.workspace = true
 anyhow.workspace = true
 fluent-bundle.workspace = true
 freemapper-text.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 freemapper-print = { workspace = true, features = ["test-hooks"] }

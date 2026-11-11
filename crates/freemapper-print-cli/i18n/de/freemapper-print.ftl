@@ -471,3 +471,75 @@ masks-corridor-written = Abdeckung „{ $id }“ in { $path } eingetragen: ein K
 masks-assigned = Die Bahn „{ $course }“ wird jetzt damit gedruckt, auf Layout { $layout }.
 masks-not-assigned = Noch nutzt keine Bahn sie. Nennen Sie sie in einer Zuordnung mit mask = "{ $id }", oder rufen Sie den Befehl noch einmal mit --assign auf.
 masks-run-check = Mit check sehen Sie das Ergebnis.
+
+# ---- mcp (M5 Task 2) ----
+mcp-about = Stellt die Projektwerkzeuge einem KI-Agenten über MCP auf Standardein- und -ausgabe bereit.
+mcp-after-content = Der Server liest JSON-RPC-Nachrichten von der Standardeingabe und antwortet auf der Standardausgabe, bis die Standardeingabe endet. Fehler gehen auf die Standardfehlerausgabe. Pfade in Werkzeugaufrufen müssen absolut sein. --lang legt die Sprache der Meldungen in den Ergebnissen fest; ein Werkzeugaufruf kann mit seinem Argument lang eine andere wählen.
+mcp-after-exit-codes = Exit-Codes: 0, wenn der Client die Standardeingabe schließt, 1, wenn der Server nicht starten kann oder die Verbindung abbricht, 2, wenn die Befehlszeile falsch ist.
+mcp-error-relative-path = { $path } ist ein relativer Pfad; einen absoluten Pfad angeben, denn der Server kennt den Arbeitsordner des Agenten nicht
+mcp-error-empty-path = Der Pfad ist leer; einen absoluten Pfad angeben
+mcp-error-nul-path = Der Pfad { $path } enthält ein NUL-Zeichen
+mcp-error-internal = Interner Fehler: { $error }
+
+# ---- MCP-Werkzeuge, die schreiben (M5 Task 3) ----
+error-assign-no-course-file = assign_mask braucht eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+error-unknown-mask = Das Projekt hat keine Abdeckungsvariante „{ $id }“; vorhanden sind { $known }
+error-unknown-mask-none = Das Projekt hat keine Abdeckungsvariante „{ $id }“: Die Projektdatei hat keine [[masks]], und die Bahndatei hat keine Abdeckflächen
+error-edit-project = Das Projekt { $path } wurde nicht geändert
+error-not-editable-layout = Das Projekt { $path } wurde nicht geändert: Das Layout „{ $name }“ steht nicht als eigene Tabelle [[layouts]] in der Datei, deshalb kann das Programm es nicht ändern. Ändern Sie es von Hand.
+error-not-editable-elements = Das Projekt { $path } wurde nicht geändert: Die Elemente des Layouts „{ $name }“ stehen nicht als eigene Tabellen [[layouts.elements]] in der Datei, deshalb kann das Programm sie nicht ändern. Ändern Sie sie von Hand.
+error-not-editable-shared = Das Projekt { $path } wurde nicht geändert: Die gemeinsamen Elemente stehen nicht als eigene Tabellen [[shared]] in der Datei, deshalb kann das Programm sie nicht ändern. Ändern Sie sie von Hand.
+error-not-editable-assignment = Das Projekt { $path } wurde nicht geändert: Die Zuordnung der Bahn „{ $name }“ steht nicht als eigene Tabelle [[assignments]] in der Datei, deshalb kann das Programm sie nicht ändern. Ändern Sie sie von Hand.
+mcp-error-corridor-assign = assign braucht eine Bahn; course muss die Bahn nennen, auf deren Blatt der Korridor gedruckt wird
+mcp-error-numbers-position = direction und gap gehören zusammen; beide angeben oder beide weglassen, dann gilt der Vorschlag von check_project
+mcp-error-project-link = { $path } ist ein Link, und der Server ändert keine Projektdatei über einen Link; den Pfad der Datei angeben, auf die er zeigt
+mcp-error-cancelled = Der Client hat den Aufruf abgebrochen, bevor er begann; es wurde nichts geschrieben
+
+# ---- MCP-Export (M5 Task 4) ----
+error-export-stopped = { $count ->
+    [0] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; es wurde kein PDF geschrieben, und keine Teildatei bleibt zurück
+    [one] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; das zuvor geschriebene PDF bleibt, und keine Teildatei bleibt zurück
+   *[other] Der Export endete vor dem nächsten Blatt, weil der Client den Aufruf abgebrochen oder die Verbindung geschlossen hat; die { $count } zuvor geschriebenen PDFs bleiben, und keine Teildatei bleibt zurück
+}
+mcp-error-export-layouts = layouts exportiert die Layouts ohne Bahnen und passt deshalb nicht zu courses oder single_file; eines davon weglassen
+mcp-error-export-written = { $error }. { $count ->
+    [one] Das zuvor geschriebene PDF bleibt: { $files }
+   *[other] Die { $count } zuvor geschriebenen PDFs bleiben: { $files }
+}
+
+# ---- Wortlaut für einen KI-Agenten (M5 Task 5): agent-<id> ersetzt <id> in den Ergebnissen des MCP-Servers, wo
+# ---- der CLI-Text Optionen oder Befehle nennt. Nur Variablen von <id>.
+agent-error-kind-unknown = Die Kartenart lässt sich aus der Datei nicht erkennen; kind als sprint, schoolyard oder forest angeben
+agent-error-title-control = Der Titel darf keine Zeilenumbrüche, Tabulatoren oder anderen Steuer- oder unsichtbaren Formatzeichen enthalten
+agent-error-no-course-file = courses und single_file brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+agent-error-outside-project = { $path }: Ein Link führt aus dem Projektordner hinaus, deshalb wird dort nichts geschrieben; den Link durch einen echten Ordner ersetzen oder den Zielordner als out_dir angeben
+agent-error-project-exists = { $path } gibt es schon; init_project überschreibt die Datei nicht
+agent-init-kind-flag = Kartenart: { $kind }, wie mit kind angegeben.
+agent-init-no-fit = Warnung: Weder auf A4 noch auf A3 zeigt ein Blatt die Karte im Maßstab 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt das Projekt bei A4. check_project meldet Folgendes:
+agent-init-courses-no-fit = Warnung: Kein A4- oder A3-Blatt zeigt die Karte bei 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt Layout { $layout } bei A4. check_project meldet das.
+agent-init-next = Als Nächstes check_project für { $path } aufrufen.
+agent-init-next-with-notes = Als Nächstes check_project für { $path } aufrufen. Es meldet die Hinweise oben, bis das Layout geändert ist.
+agent-note-number-conflict = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. { $proposal } Um diese Lage zu nutzen, rufen Sie numbers_accept mit course „{ $course }“, control „{ $control }“ und scope sheet oder layout_wide auf.
+agent-note-number-conflict-unsearched = Hinweis: Auf dem Blatt der Bahn „{ $course }“ überdeckt die Nummer von Posten { $control } { $conflicts }. Sie wird trotzdem dort gedruckt. Das Blatt hat seine Suchgrenze erreicht, deshalb gibt es keinen Vorschlag. Eine Lage setzen Sie mit numbers_accept, direction und gap.
+agent-error-numbers-no-course-file = numbers_accept braucht eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+agent-error-numbers-no-proposal = für Posten { $control } auf dem Blatt der Bahn „{ $course }“ gibt es keinen Vorschlag, denn seine Nummer hat keinen Konflikt. Mit direction und gap setzen Sie eine Lage selbst.
+agent-error-numbers-layout-conflict = der Vorschlag für Posten { $control } (Richtung { $direction }° mit { $gap } mm Abstand) stammt vom Blatt der Bahn „{ $course }“ und ist auf dem Layout { $layout } nicht für jede Bahn frei: Er hat einen Konflikt auf den Blättern von { $courses }. Nehmen Sie scope sheet für das Blatt der Bahn „{ $course }“ allein, oder geben Sie mit direction und gap eine Lage für alle selbst an. Die Projektdatei blieb unverändert.
+agent-error-numbers-exists = die Projektdatei hat für Posten { $control } schon eine Korrektur für { $scope }. Ändern Sie sie in der Datei; numbers_accept legt nur neue an.
+agent-error-numbers-value = direction braucht eine endliche Zahl, und gap muss größer als 0 und höchstens { $max } mm sein
+agent-numbers-accepted = Korrektur für die Nummer von Posten { $control } für { $scope } in { $path } eingetragen: Richtung { $direction }° mit einem Abstand von { $gap } mm. Mit check_project sehen Sie das Ergebnis.
+agent-error-masks-no-course-file = masks_window, und masks_corridor mit einer Bahn, brauchen eine Bahndatei, das Projekt nennt aber keine unter [sources] courses
+agent-error-masks-id-taken = die Projektdatei hat schon eine Abdeckung „{ $id }“. Wählen Sie eine andere id, oder ändern Sie die Abdeckung in der Datei.
+agent-error-masks-course-has-mask = die Bahn „{ $course }“ wird schon mit der Abdeckung „{ $mask }“ gedruckt. assign_mask gibt ihr eine andere; masks_window und masks_corridor ersetzen sie nicht.
+agent-error-masks-radius-for = jeder Eintrag von radius_for hat die Form CODE=MM, etwa 35=20, und „{ $text }“ ist nicht so geschrieben
+agent-error-masks-selection = controls nimmt Postencodes mit Kommas dazwischen (31,32,35) oder einen Bereich von Postennummern (3-6), und „{ $text }“ ist keins von beidem
+agent-error-masks-radius-unselected = Posten { $control } bekommt kein Fenster, deshalb kann radius_for seinen Radius nicht setzen
+agent-error-masks-points = points nimmt Punkte als x,y;x,y;… in Karten-mm mit y nach oben, Dezimalstellen mit Punkt, und „{ $text }“ ist keine solche Liste
+agent-error-masks-scales = die Layouts drucken in verschiedenen Maßstäben ({ $scales }), und die Breite ist in Druck-mm angegeben. Geben Sie course an, damit die Breite dem Layout dieser Bahn folgt.
+agent-masks-no-start-finish = { $which ->
+        [start] Der Start hat kein Fenster, deshalb nennt check_project ihn. Ohne no_start bekommt er eins.
+        [finish] Das Ziel hat kein Fenster, deshalb nennt check_project es. Ohne no_finish bekommt es eins.
+       *[both] Start und Ziel haben kein Fenster, deshalb nennt check_project sie. Ohne no_start und no_finish bekommen sie eins.
+    }
+agent-masks-not-assigned = Noch nutzt keine Bahn sie. assign_mask ordnet sie einer Bahn zu.
+agent-masks-run-check = Mit check_project sehen Sie das Ergebnis.
+agent-note-mask-unused = Zur Information: Keine Bahn nutzt die Abdeckung „{ $id }“. assign_mask ordnet sie einer Bahn zu; wer sie nicht mehr braucht, löscht ihren Eintrag [[masks]] in der Projektdatei.

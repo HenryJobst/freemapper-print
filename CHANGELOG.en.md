@@ -7,12 +7,20 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- `freemapper-print mcp` starts an MCP server on standard input and output, through which an AI agent such as Claude Code works with the program (ADR 0004, ADR 0054). It has eleven tools: `project_info`, `check_project` and `list_courses` read a project; `init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` and `assign_mask` write into the project file and keep its comments, apart from a few cases the manual lists; `export_project` writes the PDFs. Paths must be absolute. An error comes back with the message the command line prints, and the project file stays as it was. When an export fails at one sheet, the message names the PDFs it wrote before. An input a tool does not know is an error that names it. Calls that write run one after the other, also when the agent sends several at once. The results are JSON. A list of files, sheets, courses, mask variants or assignments has at most 200 entries, plus at most 200 notes; the rest is counted. Where a command-line message names an option, the server names the tool and its input. Chapter 3 of the manual describes the setup with a `.mcp.json` and every tool.
+- `set_layout`, `set_element` and `assign_mask` change layouts, sheet elements and assignments in the project file without editing it by hand. They change only the lines that must change and check the changed file before they write it.
+- When the agent cancels `export_project` or closes the connection, the export stops after the sheet it is drawing. The PDFs before it stay whole, and no partial file is left.
+- Example [`mcp-session`](examples/mcp-session/README.en.md): a recorded session in which an agent turns the Viktoriapark training into window orienteering, checks it and writes the PDF.
+
 ### Fixed
 
 - If `freemapper.toml` names a map kind the program does not know (from a newer freemapper, say), the file no longer counts as broken (ADR 0052). The map kind then comes from the map file or from `--kind`, and `init` still takes the title from the file. Before, the title was lost and the note for a broken file appeared.
 
 ### Changed
 
+- The work of the commands now sits in a module `ops`, apart from the terminal output, so that the command line and the MCP server share the same steps. The command-line output stays byte-identical, checked with 136 runs in both languages. The library's export loops can stop between two sheets through a callback (`export::Proceed`); existing callers do not change.
 - The shared building blocks come from freemapper-core v0.13.0 (candidates without float noise, `MapGrid`, the suite contract). Output is unchanged.
 - The page builder (map, print scale and paper in, finished page out) comes from freemapper-core (ADR 0053). The scale rules stay here; the builder is given the symbol and geometry factors. The example PDFs stay byte-identical.
 - The renderer (page model, symbol drawing, PDF writer, Arimo font) comes from freemapper-core as `freemapper-render` (ADR 0051). The example PDFs stay byte-identical.

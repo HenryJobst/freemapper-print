@@ -6,6 +6,7 @@
 //! several pages keeps only its bytes. The CLI, the MCP server and the editor share these loops.
 
 use std::collections::HashSet;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use crate::course::Course;
@@ -78,6 +79,26 @@ pub enum ExportError {
         #[source]
         error: OutputError,
     },
+}
+
+/// What the callback of an export loop answers after each sheet: `()` goes on, and
+/// `ControlFlow::Break(())` stops the loop before the next sheet is drawn, so a caller can cancel a long export.
+/// A sheet that is being drawn is never cut short.
+pub trait Proceed {
+    /// True to draw the next sheet.
+    fn go_on(self) -> bool;
+}
+
+impl Proceed for () {
+    fn go_on(self) -> bool {
+        true
+    }
+}
+
+impl Proceed for ControlFlow<()> {
+    fn go_on(self) -> bool {
+        self.is_continue()
+    }
 }
 
 /// One course drawn by [`export_courses`] or [`export_courses_single_file`].
@@ -185,13 +206,14 @@ fn sheet_pdf_at(
 /// folder is a write error, never created), each through [`write_project_pdf`], and hands each
 /// written layout to `on_layout` before the next is drawn.
 /// Stops at the first layout that fails; the ones before it stay written. Each logo file is
-/// decoded once for all layouts ([`LogoCache`]).
-pub fn export_layouts<'a>(
+/// decoded once for all layouts ([`LogoCache`]). When `on_layout` answers stop ([`Proceed`]), the
+/// export ends there with `Ok`, and the layouts written so far stay written.
+pub fn export_layouts<'a, R: Proceed>(
     project: &LoadedProject,
     map: &MapDocument,
     layouts: &[&'a LayoutSpec],
     out_dir: &Path,
-    mut on_layout: impl FnMut(Exported<'a>),
+    mut on_layout: impl FnMut(Exported<'a>) -> R,
 ) -> Result<(), ExportError> {
     let logos = LogoCache::new();
     for &layout in layouts {
@@ -202,11 +224,15 @@ pub fn export_layouts<'a>(
             error,
         })?;
         drop(pdf);
-        on_layout(Exported {
+        let go_on = on_layout(Exported {
             layout,
             path,
             report,
-        });
+        })
+        .go_on();
+        if !go_on {
+            break;
+        }
     }
     Ok(())
 }
@@ -344,14 +370,15 @@ fn course_sheet_pdf_at<'a>(
 /// Draws and writes `selected` (courses of `courses`) one after the other into `out_dir` (which must exist; a
 /// missing folder is a write error, never created), each to its file of [`course_pdf_paths`] through
 /// [`write_project_pdf`], and hands each written course to `on_course` before the next is drawn. Stops at the
-/// first course that fails; the ones before it stay written.
-pub fn export_courses<'a>(
+/// first course that fails; the ones before it stay written. When `on_course` answers stop ([`Proceed`]), the
+/// export ends there with `Ok`, and the courses written so far stay written.
+pub fn export_courses<'a, R: Proceed>(
     project: &'a LoadedProject,
     map: &MapDocument,
     courses: &'a LoadedCourses,
     selected: &[&'a Course<MapCoord>],
     out_dir: &Path,
-    mut on_course: impl FnMut(ExportedCourse<'a>),
+    mut on_course: impl FnMut(ExportedCourse<'a>) -> R,
 ) -> Result<(), ExportError> {
     let logos = LogoCache::new();
     let paths = course_pdf_paths(courses, out_dir);
@@ -369,13 +396,17 @@ pub fn export_courses<'a>(
             error,
         })?;
         drop(pdf);
-        on_course(ExportedCourse {
+        let go_on = on_course(ExportedCourse {
             course,
             layout,
             path,
             page: 1,
             report,
-        });
+        })
+        .go_on();
+        if !go_on {
+            break;
+        }
     }
     Ok(())
 }
@@ -385,14 +416,15 @@ pub fn export_courses<'a>(
 /// paper. Each page is dropped once it is in the PDF, so only one is held at a time; the PDF bytes grow until
 /// the file is written at the end. `on_course` gets each course once its page is in the PDF, before the file is
 /// written. Returns the file written, or `None` without a course: a PDF has at least one page. Nothing is
-/// written when a course fails.
-pub fn export_courses_single_file<'a>(
+/// written when a course fails, and nothing when `on_course` answers stop ([`Proceed`]): then the result is
+/// `None` too.
+pub fn export_courses_single_file<'a, R: Proceed>(
     project: &'a LoadedProject,
     map: &MapDocument,
     courses: &'a LoadedCourses,
     selected: &[&'a Course<MapCoord>],
     out_dir: &Path,
-    mut on_course: impl FnMut(ExportedCourse<'a>),
+    mut on_course: impl FnMut(ExportedCourse<'a>) -> R,
 ) -> Result<Option<PathBuf>, ExportError> {
     if selected.is_empty() {
         return Ok(None);
@@ -410,13 +442,17 @@ pub fn export_courses_single_file<'a>(
             })?;
         drop(page);
         report.print.missing_glyphs = info.missing_glyphs.into_iter().collect();
-        on_course(ExportedCourse {
+        let go_on = on_course(ExportedCourse {
             course,
             layout,
             path: path.clone(),
             page: pdf.len(),
             report,
-        });
+        })
+        .go_on();
+        if !go_on {
+            return Ok(None);
+        }
     }
     let bytes = pdf.finish(&PdfMeta::new(&project.project.event.title));
     write_project_pdf(&project.dir, &path, &bytes).map_err(|error| ExportError::CourseWrite {
@@ -697,6 +733,50 @@ mod tests {
                 .join("Lübeck Training - alle Bahnen.pdf")
                 .exists()
         );
+    }
+
+    #[test]
+    fn a_callback_that_stops_ends_the_export_after_its_sheet() {
+        let (dir, p, map, courses) = crate::sheet::course_sheet::course_project(TWO_PAPERS);
+        let selected = select_courses(&courses, &[]).unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        let mut seen = Vec::new();
+        export_courses(&p, &map, &courses, &selected, &out, |c| {
+            seen.push(c.course.name.clone());
+            ControlFlow::Break(())
+        })
+        .unwrap();
+        assert_eq!(seen, ["Kurz"]);
+        let names = |dir: &Path| {
+            let mut names: Vec<String> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(&out), ["Kurz.pdf"]);
+        // The single file is written at the end, so stopping leaves no file and no partial file.
+        let single = dir.path().join("single");
+        std::fs::create_dir(&single).unwrap();
+        let mut pages = 0;
+        let none = export_courses_single_file(&p, &map, &courses, &selected, &single, |_| {
+            pages += 1;
+            if pages == 2 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap();
+        assert_eq!((none, pages), (None, 2));
+        assert!(names(&single).is_empty());
+        let layouts_out = dir.path().join("layouts");
+        std::fs::create_dir(&layouts_out).unwrap();
+        let layouts = select_layouts(&p, &[]).unwrap();
+        export_layouts(&p, &map, &layouts, &layouts_out, |_| ControlFlow::Break(())).unwrap();
+        assert_eq!(names(&layouts_out), ["a4.pdf"]);
     }
 
     #[test]

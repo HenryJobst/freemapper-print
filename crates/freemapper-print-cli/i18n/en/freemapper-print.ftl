@@ -471,3 +471,75 @@ masks-corridor-written = Added the mask "{ $id }" to { $path }: a corridor { $wi
 masks-assigned = Course "{ $course }" prints with it now, on layout { $layout }.
 masks-not-assigned = No course uses it yet. Name it in an assignment with mask = "{ $id }", or run the command again with --assign.
 masks-run-check = Run check to see the result.
+
+# ---- mcp (M5 Task 2) ----
+mcp-about = Serve the project tools to an AI agent over MCP on standard input and output.
+mcp-after-content = The server reads JSON-RPC messages from standard input and answers on standard output until standard input closes. Errors go to standard error. Paths in tool calls must be absolute. --lang sets the language of the messages in the results; a tool call can choose another one with its lang argument.
+mcp-after-exit-codes = Exit codes: 0 when the client closes standard input, 1 when the server cannot start or the connection breaks, 2 when the command line is wrong.
+mcp-error-relative-path = { $path } is a relative path; give an absolute path, because the server does not know the working folder of the agent
+mcp-error-empty-path = the path is empty; give an absolute path
+mcp-error-nul-path = the path { $path } contains a NUL character
+mcp-error-internal = internal error: { $error }
+
+# ---- MCP write tools (M5 Task 3) ----
+error-assign-no-course-file = assign_mask needs a course file, and the project names none under [sources] courses
+error-unknown-mask = the project has no mask variant "{ $id }"; it has { $known }
+error-unknown-mask-none = the project has no mask variant "{ $id }": the project file has no [[masks]], and the course file has no white-out areas
+error-edit-project = the project { $path } was not changed
+error-not-editable-layout = the project { $path } was not changed: layout "{ $name }" is not written as a table [[layouts]] of its own, so the program cannot change it. Change it by hand.
+error-not-editable-elements = the project { $path } was not changed: the elements of layout "{ $name }" are not written as tables [[layouts.elements]] of their own, so the program cannot change them. Change them by hand.
+error-not-editable-shared = the project { $path } was not changed: the shared elements are not written as tables [[shared]] of their own, so the program cannot change them. Change them by hand.
+error-not-editable-assignment = the project { $path } was not changed: the assignment of course "{ $name }" is not written as a table [[assignments]] of its own, so the program cannot change it. Change it by hand.
+mcp-error-corridor-assign = assign needs a course; give the course whose sheet prints the corridor
+mcp-error-numbers-position = direction and gap go together; give both, or leave both out to take the proposal of check_project
+mcp-error-project-link = { $path } is a link, and the server does not change a project file through a link; give the path of the file it points to
+mcp-error-cancelled = the client cancelled the call before it began, so nothing was written
+
+# ---- MCP export (M5 Task 4) ----
+error-export-stopped = { $count ->
+    [0] the export stopped before the next sheet because the client cancelled the call or closed the connection; no PDF was written, and no partial file is left
+    [one] the export stopped before the next sheet because the client cancelled the call or closed the connection; the PDF written before stays, and no partial file is left
+   *[other] the export stopped before the next sheet because the client cancelled the call or closed the connection; the { $count } PDFs written before stay, and no partial file is left
+}
+mcp-error-export-layouts = layouts exports the layouts without courses, so it does not go with courses or single_file; leave out one or the other
+mcp-error-export-written = { $error }. { $count ->
+    [one] The PDF written before it stays: { $files }
+   *[other] The { $count } PDFs written before it stay: { $files }
+}
+
+# ---- Wording for an AI agent (M5 Task 5): agent-<id> replaces <id> in the MCP server's results where the
+# ---- CLI text names flags or commands. It uses only variables of <id>.
+agent-error-kind-unknown = cannot tell the map kind from the file; give kind as sprint, schoolyard or forest
+agent-error-title-control = the title must not contain line breaks, tabs or other control or invisible formatting characters
+agent-error-no-course-file = courses and single_file need a course file, and the project names none under [sources] courses
+agent-error-outside-project = { $path }: a link leads out of the project folder, so nothing is written there; replace the link with a real folder, or give the folder it leads to as out_dir
+agent-error-project-exists = { $path } exists already; init_project does not overwrite it
+agent-init-kind-flag = Map kind: { $kind } maps, as kind says.
+agent-init-no-fit = Warning: no A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so the project keeps A4. check_project reports this:
+agent-init-courses-no-fit = Warning: no A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so layout { $layout } keeps A4. check_project reports this.
+agent-init-next = Call check_project on { $path } next.
+agent-init-next-with-notes = Call check_project on { $path } next. It lists the notes above until the layout changes.
+agent-note-number-conflict = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. { $proposal } To use that position, call numbers_accept with course "{ $course }", control "{ $control }" and scope sheet or layout_wide.
+agent-note-number-conflict-unsearched = Note: on the sheet of course "{ $course }" the number of control { $control } covers { $conflicts }. It is printed there all the same. The sheet reached its search limit, so there is no proposal. Set a position with numbers_accept, direction and gap.
+agent-error-numbers-no-course-file = numbers_accept needs a course file, and the project names none under [sources] courses
+agent-error-numbers-no-proposal = there is no proposal for control { $control } on the sheet of course "{ $course }": its number has no conflict. Give direction and gap to set a position yourself.
+agent-error-numbers-layout-conflict = the proposal for control { $control } (direction { $direction }° with a gap of { $gap } mm) comes from the sheet of course "{ $course }" and is not free for every course on layout { $layout }: it has a conflict on the sheets of { $courses }. Use scope sheet for the sheet of course "{ $course }" alone, or give a position for all with direction and gap. The project file was left unchanged.
+agent-error-numbers-exists = the project file has a correction for control { $control } for { $scope } already. Edit the file to change it; numbers_accept only adds new ones.
+agent-error-numbers-value = direction needs a finite number, and gap must be above 0 and at most { $max } mm
+agent-numbers-accepted = Added a correction for the number of control { $control } for { $scope } to { $path }: direction { $direction }° with a gap of { $gap } mm. Call check_project to see the result.
+agent-error-masks-no-course-file = masks_window, and masks_corridor with a course, need a course file, and the project names none under [sources] courses
+agent-error-masks-id-taken = the project file has a mask "{ $id }" already. Choose another id, or change the mask in the file.
+agent-error-masks-course-has-mask = course "{ $course }" prints with the mask "{ $mask }" already. assign_mask gives it another one; masks_window and masks_corridor do not replace it.
+agent-error-masks-radius-for = each entry of radius_for is CODE=MM, such as 35=20, and "{ $text }" is not written that way
+agent-error-masks-selection = controls takes control codes separated by commas (31,32,35) or a range of control numbers (3-6), and "{ $text }" is neither
+agent-error-masks-radius-unselected = control { $control } gets no window, so radius_for cannot set its radius
+agent-error-masks-points = points takes points as x,y;x,y;… in map mm with y up, decimals with a point, and "{ $text }" is not such a list
+agent-error-masks-scales = the layouts print at different scales ({ $scales }), and the width is print mm. Give course, so that the width follows the layout of that course.
+agent-masks-no-start-finish = { $which ->
+        [start] The start has no window, so check_project names it. Without no_start it gets one.
+        [finish] The finish has no window, so check_project names it. Without no_finish it gets one.
+       *[both] The start and the finish have no window, so check_project names them. Without no_start and no_finish they get one.
+    }
+agent-masks-not-assigned = No course uses it yet. assign_mask assigns it to a course.
+agent-masks-run-check = Call check_project to see the result.
+agent-note-mask-unused = Info: no course uses the mask "{ $id }". assign_mask assigns it to a course; to drop it, delete its [[masks]] entry from the project file.

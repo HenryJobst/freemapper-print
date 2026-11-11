@@ -1,6 +1,7 @@
 //! The `freemapper-print` binary. Commands come with the milestones in the design
 //! (`docs/superpowers/specs/2026-11-08-freemapper-print-design.md`).
 
+mod ops;
 mod text;
 
 use std::path::{Path, PathBuf};
@@ -8,27 +9,20 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use fluent_bundle::FluentArgs;
-use freemapper_print::course::SourceFormat;
 use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
-use freemapper_print::courses::{
-    CorrectionScope, LoadedCourses, MaskNote, Stale, StopName, load_courses,
-};
-use freemapper_print::export::{
-    ExportError, course_sheet_report, export_courses, export_courses_single_file, export_layouts,
-    select_courses, select_layouts, sheet_report,
-};
-use freemapper_print::mask_build::{self, BuildError, Selection, WindowOptions};
+use freemapper_print::courses::{CorrectionScope, MaskNote, Stale, StopName};
+use freemapper_print::export::ExportError;
+use freemapper_print::mask_build::{self, BuildError};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
-use freemapper_print::omap::read::read_map_file;
 use freemapper_print::output::{self, OutputError};
 use freemapper_print::print::{Orientation, Paper, PrintOptions, PrintReport, print_map};
-use freemapper_print::project::{self, KeyComment, LayoutSpec, LoadedProject, SheetLang};
-use freemapper_print::scale::{MapKind, infer_kind, is_standard, read_sidecar};
+use freemapper_print::project::{self, SheetLang};
+use freemapper_print::scale::{MapKind, is_standard};
 use freemapper_print::sheet::{
-    FooterContent, LogoCache, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem,
-    NoBoxReason, SheetNote, SheetReport, course_event_notes,
+    FooterContent, LogoSimplification, LogoSkipReason, MaskedObject, MissingItem, NoBoxReason,
+    SheetNote,
 };
 
 use text::{Lang, Texts, detect_lang};
@@ -51,6 +45,7 @@ enum Commands {
     Export(ExportArgs),
     Numbers(NumbersArgs),
     Masks(MasksArgs),
+    Mcp,
 }
 
 #[derive(Args)]
@@ -248,9 +243,18 @@ macro_rules! args {
     }};
 }
 
+// After `args!`, which it uses.
+mod mcp;
+
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
-    let (kind, _) = detect_kind(texts, &map, &args.map, args.kind)?;
+    let (kind, _) = ops::init::detect_kind(
+        &map,
+        &args.map,
+        args.kind.map(MapKind::from),
+        &mut |error| sidecar_note(texts, error),
+    )
+    .map_err(|e| op_error(texts, e))?;
     let parent = match args.out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
@@ -284,7 +288,7 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let (pdf, report, footer_notes) = print_map(&map, &options, &title, sheet_lang(texts))
         .with_context(|| texts.plain("error-print"))?;
     freemapper_print::output::write_pdf_file(&args.out, &pdf)
-        .map_err(|e| output_error(texts, e))?;
+        .map_err(|e| output_error(texts, &e))?;
     let mut lines = report_lines(
         texts,
         &report,
@@ -330,40 +334,211 @@ fn render_note_line(texts: &Texts, note: &SheetNote) -> String {
 }
 
 fn read_map(texts: &Texts, path: &Path) -> anyhow::Result<MapDocument> {
-    read_map_file(path).with_context(|| {
-        texts.get(
+    ops::read_map(path).map_err(|e| op_error(texts, e))
+}
+
+/// The message for an op that stopped. A wrong command line, such as an unknown course, is a [`UsageError`]
+/// (exit code 2).
+fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
+    use ops::OpError as E;
+    match err {
+        E::LoadProject { path, source } => source.context(texts.get(
+            "error-load-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        // A rule of this program rather than a typo, so it is said in the user's language (ADR 0044).
+        E::BasePartHidden { path, file, field } => anyhow!(texts.get(
+            "error-base-part-hidden",
+            Some(&args!("path" => file, "field" => field)),
+        ))
+        .context(texts.get(
+            "error-load-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::ReadMap { path, source } => source.context(texts.get(
             "error-read-map",
             Some(&args!("path" => path.display().to_string())),
-        )
-    })
-}
-
-/// The project file named by `arg`: the file itself, or `freemapper-print.toml` in a folder.
-fn project_file(arg: &Path) -> PathBuf {
-    if arg.is_dir() {
-        arg.join(project::FILE_NAME)
-    } else {
-        arg.to_path_buf()
-    }
-}
-
-fn load_project(texts: &Texts, arg: &Path) -> anyhow::Result<LoadedProject> {
-    let path = project_file(arg);
-    project::load(&path)
-        .map_err(|err| match err {
-            // A rule of this program rather than a typo, so it is said in the user's language (ADR 0044).
-            project::ProjectError::BasePartHidden { file, field } => anyhow!(texts.get(
-                "error-base-part-hidden",
-                Some(&args!("path" => file, "field" => field)),
+        )),
+        E::Courses(source) => source.context(texts.plain("error-courses")),
+        E::UnknownLayout { id, known } => {
+            let known: Vec<String> = known.iter().map(|id| printable(id)).collect();
+            UsageError(texts.get(
+                "error-unknown-layout",
+                Some(&args!("id" => printable(&id), "known" => known.join(", "))),
+            ))
+            .into()
+        }
+        E::UnknownCourse { name, known } => UsageError(texts.get(
+            "error-unknown-course",
+            Some(&args!("name" => printable(&name), "known" => quoted_list(texts, &known))),
+        ))
+        .into(),
+        E::ExportNeedsCourseFile => UsageError(texts.plain("error-no-course-file")).into(),
+        E::OutDirMissing { path } => anyhow!(texts.get(
+            "error-out-dir-missing",
+            Some(&args!("path" => path.display().to_string()))
+        )),
+        E::CreateFolder { path, source } => source.context(texts.get(
+            "error-create-folder",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::Output(err) => output_error(texts, &err),
+        E::Export(err) => export_error(texts, &err),
+        E::ExportStopped { written } => anyhow!(texts.get(
+            "error-export-stopped",
+            Some(&args!("count" => written.len())),
+        )),
+        E::MasksNeedCourseFile => UsageError(texts.plain("error-masks-no-course-file")).into(),
+        E::Build { error, course } => build_error(texts, error, &course),
+        E::RadiusFor { text } => UsageError(texts.get(
+            "error-masks-radius-for",
+            Some(&args!("text" => printable(&text))),
+        ))
+        .into(),
+        E::MasksMapScale => anyhow!(texts.plain("error-masks-map-scale")),
+        E::MaskId => UsageError(texts.get(
+            "error-masks-id",
+            Some(&args!("max" => freemapper_print::mask::MAX_ID_CHARS.to_string())),
+        ))
+        .into(),
+        E::MaskIdTaken { id } => {
+            UsageError(texts.get("error-masks-id-taken", Some(&args!("id" => printable(&id)))))
+                .into()
+        }
+        E::CourseHasMask { course, mask } => UsageError(texts.get(
+            "error-masks-course-has-mask",
+            Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
+        ))
+        .into(),
+        E::AssignmentInline { course, mask, new } => UsageError(texts.get(
+            if new {
+                "error-masks-assignments-inline"
+            } else {
+                "error-masks-assignment-inline"
+            },
+            Some(&args!("course" => printable(&course), "id" => printable(&mask))),
+        ))
+        .into(),
+        E::WriteFile { path, source } => source.context(texts.get(
+            "error-write-file",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::LoadChangedMask { path, source } => source.context(texts.get(
+            "error-load-changed-mask",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::MasksScales { scales } => {
+            let scales: Vec<String> = scales.iter().map(|s| format!("1:{s}")).collect();
+            UsageError(texts.get(
+                "error-masks-scales",
+                Some(&args!("scales" => join_and(texts, scales))),
+            ))
+            .into()
+        }
+        E::NumbersNeedCourseFile => UsageError(texts.plain("error-numbers-no-course-file")).into(),
+        E::UnknownControl {
+            course,
+            control,
+            known,
+        } => {
+            let known: Vec<String> = known.iter().map(|c| printable(c)).collect();
+            UsageError(texts.get(
+                "error-unknown-control",
+                Some(&args!(
+                    "course" => printable(&course),
+                    "control" => printable(&control),
+                    "known" => known.join(", "),
+                )),
+            ))
+            .into()
+        }
+        E::NumbersExists { control, scope } => UsageError(texts.get(
+            "error-numbers-exists",
+            Some(&args!(
+                "control" => printable(&control),
+                "scope" => scope_text(texts, &scope),
             )),
-            other => anyhow::Error::new(other),
-        })
-        .with_context(|| {
+        ))
+        .into(),
+        E::NumbersValue => UsageError(texts.get(
+            "error-numbers-value",
+            Some(&args!("max" => project::MAX_NUMBER_GAP_MM.to_string())),
+        ))
+        .into(),
+        E::NumbersNoProposal { control, course } => UsageError(texts.get(
+            "error-numbers-no-proposal",
+            Some(&args!("control" => printable(&control), "course" => printable(&course))),
+        ))
+        .into(),
+        E::NumbersLayoutConflict {
+            control,
+            layout,
+            courses,
+            course,
+            direction,
+            gap_mm,
+        } => UsageError(texts.get(
+            "error-numbers-layout-conflict",
+            Some(&args!(
+                "control" => printable(&control),
+                "layout" => printable(&layout),
+                "courses" => quoted_list(texts, &courses),
+                "course" => printable(&course),
+                "direction" => short_decimal(texts, direction, 1),
+                "gap" => short_decimal(texts, gap_mm, 2),
+            )),
+        ))
+        .into(),
+        E::TitleControl => UsageError(texts.plain("error-title-control")).into(),
+        E::KindUnknown => anyhow!(texts.plain("error-kind-unknown")),
+        E::ProjectExists { path } => anyhow!(texts.get(
+            "error-project-exists",
+            Some(&args!("path" => path.display().to_string()))
+        )),
+        E::ReadCourses { path, source } => source.context(texts.get(
+            "error-read-courses",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::AssignNeedsCourseFile => UsageError(texts.plain("error-assign-no-course-file")).into(),
+        E::UnknownMask { id, known } => UsageError(if known.is_empty() {
             texts.get(
-                "error-load-project",
-                Some(&args!("path" => path.display().to_string())),
+                "error-unknown-mask-none",
+                Some(&args!("id" => printable(&id))),
+            )
+        } else {
+            texts.get(
+                "error-unknown-mask",
+                Some(&args!("id" => printable(&id), "known" => quoted_list(texts, &known))),
             )
         })
+        .into(),
+        E::NotEditable { path, target } => {
+            use project::EditTarget as T;
+            let (id, name) = match &target {
+                T::Layout(id) => ("error-not-editable-layout", id.as_str()),
+                T::LayoutElements(id) => ("error-not-editable-elements", id.as_str()),
+                T::SharedElements => ("error-not-editable-shared", ""),
+                T::Assignment(course) => ("error-not-editable-assignment", course.as_str()),
+            };
+            anyhow!(texts.get(
+                id,
+                Some(&args!("path" => path.display().to_string(), "name" => printable(name))),
+            ))
+        }
+        E::EditProject { path, source } => anyhow::Error::new(source).context(texts.get(
+            "error-edit-project",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::AppendCorrection { path, source } => {
+            // A file that no longer loads has been put back as it was.
+            let lead_in = match source {
+                project::ProjectError::Write { .. } => "error-write-file",
+                _ => "error-load-changed-project",
+            };
+            anyhow::Error::new(source)
+                .context(texts.get(lead_in, Some(&args!("path" => path.display().to_string()))))
+        }
+    }
 }
 
 /// Metres with the decimal separator of the language and no needless `.0`: `2.5`, `5`.
@@ -375,639 +550,230 @@ fn metres(texts: &Texts, value: f64) -> String {
     }
 }
 
-/// Where the map kind came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum KindSource {
-    Flag,
-    Sidecar,
-    Inferred,
+/// The note about a map's `freemapper.toml` that could not be read: the kind is inferred instead.
+fn sidecar_note(texts: &Texts, error: &str) {
+    eprintln!("{}", sidecar_note_line(texts, error));
 }
 
-/// The map kind: `arg`, else `map_kind` in `freemapper.toml` next to the map, else inferred from
-/// the symbol set and scale (ADR 0021), and where it came from. A `freemapper.toml` that cannot
-/// be read or parsed gets a note that says so; without any kind the error asks for `--kind`.
-fn detect_kind(
-    texts: &Texts,
-    map: &MapDocument,
-    path: &Path,
-    arg: Option<KindArg>,
-) -> anyhow::Result<(MapKind, KindSource)> {
-    if let Some(kind) = arg {
-        return Ok((kind.into(), KindSource::Flag));
-    }
-    match read_sidecar(path) {
-        Ok(Some(kind)) => return Ok((kind, KindSource::Sidecar)),
-        Ok(None) => {}
-        Err(err) => eprintln!(
-            "{}",
-            texts.get(
-                "note-sidecar",
-                // The whole chain: the operating system's error is the source.
-                Some(&args!("error" => printable(&format!("{:#}", anyhow::Error::new(err)))))
-            )
-        ),
-    }
-    let kind = infer_kind(map, path).context(texts.plain("error-kind-unknown"))?;
-    Ok((kind, KindSource::Inferred))
+fn sidecar_note_line(texts: &Texts, error: &str) -> String {
+    texts.get("note-sidecar", Some(&args!("error" => printable(error))))
 }
 
-fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
-    if let Some(title) = &args.title
-        && title.chars().any(|c| c.is_control() || is_format(c))
-    {
-        return Err(UsageError(texts.plain("error-title-control")).into());
-    }
-    // `export` writes into `out` later; a link there that leads out of the project stops `init`
-    // already (ADR 0041). A folder that does not exist yet holds no link.
-    if args.folder.is_dir() {
-        output::check_out_folder(&args.folder, &args.folder.join("out"))
-            .map_err(|e| output_error(texts, e))?;
-    }
-    let map = read_map(texts, &args.map)?;
-    let (kind, source) = detect_kind(texts, &map, &args.map, args.kind)?;
-    let shown = args.folder.join(project::FILE_NAME);
-    if shown.exists() {
-        bail!(texts.get(
-            "error-project-exists",
-            Some(&args!("path" => shown.display().to_string()))
-        ));
-    }
-    // The course file is read and fitted before anything is created, so that an error writes nothing.
-    let plan = match &args.courses {
-        Some(file) => Some(plan_courses(texts, args, &map, kind, file)?),
-        None => None,
-    };
-    let folder_error = || {
-        texts.get(
-            "error-create-folder",
-            Some(&args!("path" => args.folder.display().to_string())),
-        )
-    };
-    std::fs::create_dir_all(&args.folder).with_context(folder_error)?;
-    // Both canonical, so that links and `..` do not spoil the relative path.
-    let dir = args.folder.canonicalize().with_context(folder_error)?;
-    let map_path = args.map.canonicalize().with_context(|| {
-        texts.get(
-            "error-read-map",
-            Some(&args!("path" => args.map.display().to_string())),
-        )
-    })?;
-    // The title of the map's `freemapper.toml` comes before the file name (an unusable sidecar counts as missing).
-    let title = args
-        .title
-        .clone()
-        .or_else(|| {
-            freemapper_print::scale::read_sidecar_title(&map_path)
-                .ok()
-                .flatten()
-        })
-        .unwrap_or_else(|| {
-            args.map
-                .file_stem()
-                .map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned())
-        });
-    let sheet_lang = sheet_lang(texts);
-    let map_scale = map.georef.scale_denominator;
-    let map_rel = project::relative_path(&dir, &map_path);
-    let kind_word = texts.plain(kind_word_id(kind));
-    let source_id = match source {
-        KindSource::Flag => "init-kind-flag",
-        KindSource::Sidecar => "init-kind-sidecar",
-        KindSource::Inferred => "init-kind-inferred",
-    };
-    eprintln!(
-        "{}",
-        texts.get(source_id, Some(&args!("kind" => kind_word.clone())))
-    );
-    if let Some(plan) = &plan {
-        eprintln!(
-            "{}",
-            texts.get(
-                "init-courses-read",
-                // As the project file names it: relative to the project folder.
-                Some(&args!(
-                    "path" => project::relative_path(&dir, &plan.file).display().to_string(),
-                    "count" => plan.courses.len(),
-                ))
-            )
-        );
-    }
-    // One layout per print scale; without a course file, one at the map scale.
-    let scales = match &plan {
-        Some(plan) if !plan.courses.is_empty() => plan.scales(),
-        _ => vec![map_scale],
-    };
-    // Fitting up to twenty sheets per layout takes a moment on a large map.
-    let mut fitted: Vec<(LayoutSpec, bool, u32)> = Vec::new();
-    let mut first: Option<project::Project> = None;
-    for &scale in &scales {
-        let mut starter = project::starter(&title, map_rel.clone(), kind, scale, sheet_lang);
-        // Course sheets cut the map to the course by design.
-        starter.layouts[0].map_frame.crop = plan.is_some();
-        eprintln!(
-            "{}",
-            texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
-        );
-        let (new, fits) = project::fit_starter(starter, &dir, &map);
-        let mut layout = new.layouts[0].clone();
-        // With a course file the id names the print scale too, whether the courses need one layout or several.
-        if plan.is_some() {
-            layout.id = format!("{}-{scale}", layout.id);
-        }
-        fitted.push((layout, fits, scale));
-        first.get_or_insert(new);
-    }
-    let mut new = first.expect("at least one scale");
-    new.layouts = fitted.iter().map(|(l, _, _)| l.clone()).collect();
-    if let Some(plan) = &plan {
-        new.sources.courses = Some(project::relative_path(&dir, &plan.file));
-        // A sheet without a description box (IOF XML) names its course only in the title block.
-        new.shared[0].lines[0] = "{event} \u{b7} {course}".into();
-        for (name, scale) in &plan.courses {
-            let layout = &fitted
-                .iter()
-                .find(|(_, _, s)| s == scale)
-                .expect("a layout for every scale")
-                .0;
-            new.assignments.push(project::Assignment {
-                course: name.clone(),
-                layout: layout.id.clone(),
-                mask: None,
-            });
-        }
-        if !plan.iof {
-            for layout in &mut new.layouts {
-                layout.elements.push(description_box());
-            }
-        }
-    }
-    let fits = fitted.iter().all(|(_, f, _)| *f);
-    let contour = new.map.contour_interval_m;
-    let contour_comment = match contour {
-        Some(_) => texts.get(
-            "init-comment-contour",
-            Some(&args!("kind" => kind_word.clone())),
-        ),
-        None => texts.plain("init-comment-no-contour"),
-    };
-    let footer_comment = texts.plain("init-comment-footer");
-    let comments = [
-        KeyComment {
-            table: "map",
-            key: Some("contour_interval_m"),
-            text: &contour_comment,
-        },
-        KeyComment {
-            table: "shared",
-            key: None,
-            text: &footer_comment,
-        },
-    ];
-    let file = dir.join(project::FILE_NAME);
-    match project::save_new_with_comments(&file, &new, &comments) {
-        Ok(()) => {}
-        Err(project::ProjectError::Exists { .. }) => bail!(texts.get(
-            "error-project-exists",
-            Some(&args!("path" => shown.display().to_string()))
-        )),
-        Err(err) => {
-            return Err(anyhow::Error::new(err).context(texts.get(
-                "error-write-file",
-                Some(&args!("path" => shown.display().to_string())),
-            )));
-        }
-    }
-    let path = shown.display().to_string();
-    match &plan {
-        None => {
-            let layout = &new.layouts[0];
-            eprintln!(
-                "{}",
-                texts.get(
-                    "init-written",
-                    Some(&args!(
-                        "path" => path.clone(),
-                        "layout" => layout.id.clone(),
-                        "paper" => paper_name(layout.paper),
-                        "margin" => metres(texts, layout.map_frame.margin_mm),
-                        "scale" => map_scale.to_string(),
-                        "kind" => kind_word.clone(),
-                    ))
-                )
-            );
-            if !fits {
-                eprintln!(
-                    "{}",
-                    texts.get(
-                        "init-no-fit",
-                        Some(&args!("scale" => map_scale.to_string()))
-                    )
-                );
-                let loaded = LoadedProject {
-                    path: file.clone(),
-                    dir: dir.clone(),
-                    project: new.clone(),
-                    // `init` writes the default profile.
-                    rules: freemapper_print::rules::base().clone(),
-                };
-                let (lines, _) = check_lines(texts, &loaded, &map, layout, &LogoCache::new());
-                for line in lines {
-                    eprintln!("{line}");
-                }
-            }
-        }
-        Some(plan) => print_course_init(texts, plan, &new, &fitted, &path, &kind_word, map_scale),
-    }
-    eprintln!(
-        "{}",
-        match contour {
-            Some(value) => texts.get(
-                "init-contour-hint",
-                Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
+/// The comments `init` writes into the new project file for the map kind and the contour interval the starter
+/// proposes.
+fn init_comments(texts: &Texts, kind: MapKind, contour: Option<f64>) -> ops::init::FileComments {
+    ops::init::FileComments {
+        contour: match contour {
+            Some(_) => texts.get(
+                "init-comment-contour",
+                Some(&args!("kind" => texts.plain(kind_word_id(kind)))),
             ),
-            None => texts.plain("init-no-contour-hint"),
+            None => texts.plain("init-comment-no-contour"),
+        },
+        footer: texts.plain("init-comment-footer"),
+    }
+}
+
+/// The line `init` prints for a step while it works.
+fn init_progress_line(texts: &Texts, progress: &ops::init::InitProgress<'_>) -> String {
+    use ops::init::{InitProgress, KindSource};
+    match progress {
+        InitProgress::SidecarUnusable { error } => sidecar_note_line(texts, error),
+        InitProgress::Kind { kind, source } => {
+            let source_id = match source {
+                KindSource::Given => "init-kind-flag",
+                KindSource::Sidecar => "init-kind-sidecar",
+                KindSource::Inferred => "init-kind-inferred",
+            };
+            texts.get(
+                source_id,
+                Some(&args!("kind" => texts.plain(kind_word_id(*kind)))),
+            )
         }
-    );
-    let next = if fits {
+        InitProgress::CoursesRead { path, count } => texts.get(
+            "init-courses-read",
+            // As the project file names it: relative to the project folder.
+            Some(&args!(
+                "path" => path.display().to_string(),
+                "count" => *count,
+            )),
+        ),
+        InitProgress::Fitting { scale } => {
+            texts.get("init-fitting", Some(&args!("scale" => scale.to_string())))
+        }
+    }
+}
+
+/// `init`: writes a starter project file and says what it holds: the layouts (per print scale with a course
+/// file), whether the map fits, where the kind and the contour interval came from, and what to do next.
+fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
+    let result = ops::init::init(
+        &ops::init::InitArgs {
+            folder: args.folder.clone(),
+            map: args.map.clone(),
+            title: args.title.clone(),
+            kind: args.kind.map(MapKind::from),
+            courses: args.courses.clone(),
+            sheet_lang: sheet_lang(texts),
+        },
+        &|kind, contour| init_comments(texts, kind, contour),
+        &mut |progress| eprintln!("{}", init_progress_line(texts, &progress)),
+    )
+    .map_err(|e| op_error(texts, e))?;
+    for line in init_written_lines(texts, &result) {
+        eprintln!("{line}");
+    }
+    Ok(0)
+}
+
+/// The lines `init` prints after it wrote the file.
+fn init_written_lines(texts: &Texts, result: &ops::init::InitResult) -> Vec<String> {
+    let mut lines = Vec::new();
+    let path = result.path.display().to_string();
+    let kind_word = texts.plain(kind_word_id(result.kind));
+    let map_scale = result.map_scale;
+    match &result.course_file {
+        None => {
+            let layout = &result.layouts[0];
+            lines.push(texts.get(
+                "init-written",
+                Some(&args!(
+                    "path" => path.clone(),
+                    "layout" => layout.id.clone(),
+                    "paper" => paper_name(layout.paper),
+                    "margin" => metres(texts, layout.margin_mm),
+                    "scale" => map_scale.to_string(),
+                    "kind" => kind_word.clone(),
+                )),
+            ));
+            if !result.fits() {
+                lines.push(texts.get(
+                    "init-no-fit",
+                    Some(&args!("scale" => map_scale.to_string())),
+                ));
+                lines.extend(result.check.iter().flat_map(|c| check_lines(texts, c)));
+            }
+        }
+        Some(courses) => lines.extend(course_init_lines(texts, result, courses, &path, &kind_word)),
+    }
+    lines.push(match result.contour_interval_m {
+        Some(value) => texts.get(
+            "init-contour-hint",
+            Some(&args!("value" => metres(texts, value), "kind" => kind_word)),
+        ),
+        None => texts.plain("init-no-contour-hint"),
+    });
+    let next = if result.fits() {
         "init-next"
     } else {
         "init-next-with-notes"
     };
-    eprintln!("{}", texts.get(next, Some(&args!("path" => path))));
-    Ok(0)
-}
-
-/// What `init --courses` learned from the course file before it wrote anything.
-struct CoursePlan {
-    /// The course file, absolute.
-    file: PathBuf,
-    /// Each course and the print scale of its layout, in file order.
-    courses: Vec<(String, u32)>,
-    /// The file is IOF XML: no print scales, no descriptions.
-    iof: bool,
-}
-
-impl CoursePlan {
-    /// The distinct print scales, in the order the courses first use them.
-    fn scales(&self) -> Vec<u32> {
-        let mut out: Vec<u32> = Vec::new();
-        for (_, scale) in &self.courses {
-            if !out.contains(scale) {
-                out.push(*scale);
-            }
-        }
-        out
-    }
-}
-
-/// Reads and fits the course file of `init --courses` with the real loader, so that a course file that does
-/// not fit the map stops `init` before it writes anything. A `.ppen` gives each course its print scale (the
-/// map scale where the file has none); IOF XML has none, so every course takes the map scale.
-fn plan_courses(
-    texts: &Texts,
-    args: &InitArgs,
-    map: &MapDocument,
-    kind: MapKind,
-    file: &Path,
-) -> anyhow::Result<CoursePlan> {
-    let file = file.canonicalize().with_context(|| {
-        texts.get(
-            "error-read-courses",
-            Some(&args!("path" => file.display().to_string())),
-        )
-    })?;
-    let map_scale = map.georef.scale_denominator;
-    let map_path = args.map.canonicalize().unwrap_or_else(|_| args.map.clone());
-    let mut probe = project::starter("probe", map_path, kind, map_scale, SheetLang::En);
-    probe.sources.courses = Some(file.clone());
-    let loaded = LoadedProject {
-        path: args.folder.join(project::FILE_NAME),
-        dir: args.folder.clone(),
-        project: probe,
-        rules: freemapper_print::rules::base().clone(),
-    };
-    let courses =
-        read_courses(texts, &loaded, map)?.expect("the probe project names a course file");
-    let iof = courses.event.source.format == SourceFormat::IofXml;
-    let scale_of = |hint: Option<u32>| match hint {
-        Some(scale) if !iof && scale > 0 => scale,
-        _ => map_scale,
-    };
-    Ok(CoursePlan {
-        file,
-        courses: courses
-            .event
-            .courses
-            .iter()
-            .map(|c| (c.name.clone(), scale_of(c.print_scale_hint)))
-            .collect(),
-        iof,
-    })
-}
-
-/// The control description box of a course layout: top-right corner of the map frame, which the starter's
-/// title block (top left) and scale check bar (bottom right) leave free. The cell size is the rule profile's.
-fn description_box() -> project::ElementSpec {
-    project::ElementSpec {
-        id: "descriptions".into(),
-        kind: project::ElementKind::ControlDescriptions,
-        anchor: project::Anchor {
-            to: project::AnchorTarget::MapFrame,
-            corner: project::Corner::TopRight,
-            offset_mm: [2.0, 2.0],
-        },
-        lines: vec![],
-        size_pt: None,
-        box_white: None,
-        file: None,
-        width_mm: None,
-        cell_mm: None,
-    }
+    lines.push(texts.get(next, Some(&args!("path" => path))));
+    lines
 }
 
 /// The lines `init --courses` prints after it wrote the file: what was written, each layout with its
 /// courses, where the scales and the description box came from.
-fn print_course_init(
+fn course_init_lines(
     texts: &Texts,
-    plan: &CoursePlan,
-    new: &project::Project,
-    fitted: &[(LayoutSpec, bool, u32)],
+    result: &ops::init::InitResult,
+    courses: &ops::init::InitCourses,
     path: &str,
     kind_word: &str,
-    map_scale: u32,
-) {
-    eprintln!(
-        "{}",
-        texts.get(
-            "init-written-courses",
+) -> Vec<String> {
+    let mut lines = vec![texts.get(
+        "init-written-courses",
+        Some(&args!(
+            "path" => path.to_string(),
+            "layouts" => result.layouts.len(),
+            "assignments" => result.assignments,
+            "kind" => kind_word.to_string(),
+        )),
+    )];
+    for layout in &result.layouts {
+        lines.push(texts.get(
+            "init-courses-layout",
             Some(&args!(
-                "path" => path.to_string(),
-                "layouts" => new.layouts.len(),
-                "assignments" => new.assignments.len(),
-                "kind" => kind_word.to_string(),
-            ))
-        )
-    );
-    for (layout, fits, scale) in fitted {
-        let names: Vec<String> = plan
-            .courses
-            .iter()
-            .filter(|(_, s)| s == scale)
-            .map(|(n, _)| n.clone())
-            .collect();
-        eprintln!(
-            "{}",
-            texts.get(
-                "init-courses-layout",
+                "layout" => printable(&layout.id),
+                "scale" => layout.print_scale.to_string(),
+                "paper" => paper_name(layout.paper),
+                "margin" => metres(texts, layout.margin_mm),
+                "courses" => quoted_list(texts, &layout.courses),
+            )),
+        ));
+        if !layout.fits {
+            lines.push(texts.get(
+                "init-courses-no-fit",
                 Some(&args!(
+                    "scale" => layout.print_scale.to_string(),
                     "layout" => printable(&layout.id),
-                    "scale" => scale.to_string(),
-                    "paper" => paper_name(layout.paper),
-                    "margin" => metres(texts, layout.map_frame.margin_mm),
-                    "courses" => quoted_list(texts, &names),
-                ))
-            )
-        );
-        if !fits {
-            eprintln!(
-                "{}",
-                texts.get(
-                    "init-courses-no-fit",
-                    Some(&args!("scale" => scale.to_string(), "layout" => printable(&layout.id)))
-                )
-            );
+                )),
+            ));
         }
     }
-    let scales_id = if plan.iof {
+    let scales_id = if courses.iof {
         "init-courses-scales-iof"
     } else {
         "init-courses-scales-ppen"
     };
-    eprintln!(
-        "{}",
-        texts.get(scales_id, Some(&args!("scale" => map_scale.to_string())))
-    );
-    if !plan.iof {
-        eprintln!("{}", texts.plain("init-courses-description-box"));
+    lines.push(texts.get(
+        scales_id,
+        Some(&args!("scale" => result.map_scale.to_string())),
+    ));
+    if !courses.iof {
+        lines.push(texts.plain("init-courses-description-box"));
     }
-    eprintln!("{}", texts.plain("init-courses-crop"));
+    lines.push(texts.plain("init-courses-crop"));
+    lines
 }
 
 /// `numbers accept`: appends a number correction to the project file (ADR 0025, addendum).
 fn numbers_accept(texts: &Texts, args: &AcceptArgs) -> anyhow::Result<u8> {
-    let usage = |id: &str, a: FluentArgs| UsageError(texts.get(id, Some(&a)));
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let Some(courses) = read_courses(texts, &loaded, &map)? else {
-        return Err(UsageError(texts.plain("error-numbers-no-course-file")).into());
-    };
-    let course = courses
-        .event
-        .courses
-        .iter()
-        .find(|c| c.name == args.course)
-        .ok_or_else(|| {
-            let known: Vec<String> = courses
-                .event
-                .courses
-                .iter()
-                .map(|c| c.name.clone())
-                .collect();
-            usage(
-                "error-unknown-course",
-                args!("name" => printable(&args.course), "known" => quoted_list(texts, &known)),
-            )
-        })?;
-    let mut known: Vec<String> = Vec::new();
-    for stop in &course.stops {
-        if !known.contains(&stop.control) {
-            known.push(stop.control.clone());
-        }
-    }
-    if !known.contains(&args.control) {
-        let known: Vec<String> = known.iter().map(|c| printable(c)).collect();
-        return Err(usage(
-            "error-unknown-control",
-            args!(
-                "course" => printable(&course.name),
-                "control" => printable(&args.control),
-                "known" => known.join(", "),
-            ),
-        )
-        .into());
-    }
-    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
-    // The scope: the sheet (the course) or every course on the course's layout.
-    let (scope_layout, scope_course, scope_text) = if args.sheet {
-        (
-            None,
-            Some(course.name.clone()),
-            texts.get(
-                "stale-scope-course",
-                Some(&args!("name" => printable(&course.name))),
-            ),
-        )
-    } else {
-        (
-            Some(layout.id.clone()),
-            None,
-            texts.get(
-                "stale-scope-layout",
-                Some(&args!("name" => printable(&layout.id))),
-            ),
-        )
-    };
-    let exists = loaded.project.numbers.iter().any(|n| {
-        n.control == args.control
-            && match (&scope_course, &scope_layout) {
-                (Some(c), _) => n.course.as_ref() == Some(c),
-                (None, Some(l)) => n.course.is_none() && n.layout.as_ref() == Some(l),
-                (None, None) => false,
-            }
-    });
-    if exists {
-        return Err(usage(
-            "error-numbers-exists",
-            args!("control" => printable(&args.control), "scope" => scope_text),
-        )
-        .into());
-    }
-    let (direction, gap) = match (args.direction, args.gap) {
-        (Some(d), Some(g)) => {
-            if !d.is_finite() || !g.is_finite() || g <= 0.0 || g > project::MAX_NUMBER_GAP_MM {
-                return Err(usage(
-                    "error-numbers-value",
-                    args!("max" => project::MAX_NUMBER_GAP_MM.to_string()),
-                )
-                .into());
-            }
-            (d, g)
-        }
-        _ => {
-            // The proposal of `check`: the same sheet, drawn the same way.
-            let (_, report) =
-                course_sheet_report(&loaded, &map, &courses, course, &LogoCache::new())
-                    .map_err(|err| export_error(texts, err))?;
-            let proposal = report.notes.iter().find_map(|n| match n {
-                SheetNote::NumberConflict(c)
-                    if c.control == args.control && c.course == course.name && c.searched =>
-                {
-                    Some(c.proposal)
-                }
-                _ => None,
-            });
-            match proposal {
-                Some(p) => (p.direction, p.gap_mm),
-                None => {
-                    return Err(usage(
-                        "error-numbers-no-proposal",
-                        args!("control" => printable(&args.control), "course" => printable(&course.name)),
-                    )
-                    .into());
-                }
-            }
-        }
-    };
-    // 0.1 degrees and 0.01 mm, as the placement rounds.
-    let direction = (direction * 10.0).round() / 10.0;
-    let gap = (gap * 100.0).round() / 100.0;
-    // The course file's own position (level 2), so that `check` notices when the file moves the number.
-    let base_seen = freemapper_print::numbers::resolve(course, &courses.event, &loaded, &layout.id)
-        .into_iter()
-        .find(|n| n.control == args.control)
-        .and_then(|n| n.base)
-        .map(freemapper_print::course::NumberPlacement::from);
-    let correction = project::NumberCorrection {
+    use ops::numbers::AcceptScope;
+    let result = ops::numbers::accept(&ops::numbers::AcceptArgs {
+        project: args.project.clone(),
+        course: args.course.clone(),
         control: args.control.clone(),
-        layout: scope_layout,
-        course: scope_course,
-        direction,
-        gap_mm: Some(gap),
-        base_seen,
-    };
-    // A proposal for the whole layout must suit every course there that prints this number with it (ruling
-    // R39): it was searched on one sheet only.
-    if args.layout_wide && args.direction.is_none() {
-        let blocked = layout_conflicts(texts, &loaded, &map, &courses, &layout.id, &correction)?;
-        if !blocked.is_empty() {
-            return Err(usage(
-                "error-numbers-layout-conflict",
-                args!(
-                    "control" => printable(&args.control),
-                    "layout" => printable(&layout.id),
-                    "courses" => quoted_list(texts, &blocked),
-                    "course" => printable(&course.name),
-                    "direction" => short_decimal(texts, direction, 1),
-                    "gap" => short_decimal(texts, gap, 2),
-                ),
-            )
-            .into());
-        }
-    }
-    project::append_correction(&loaded.path, &correction).map_err(|err| {
-        // A file that no longer loads has been put back as it was.
-        let lead_in = match err {
-            project::ProjectError::Write { .. } => "error-write-file",
-            _ => "error-load-changed-project",
-        };
-        anyhow::Error::new(err).context(texts.get(
-            lead_in,
-            Some(&args!("path" => loaded.path.display().to_string())),
-        ))
-    })?;
-    eprintln!(
-        "{}",
-        texts.get(
-            "numbers-accepted",
-            Some(&args!(
-                "control" => printable(&args.control),
-                "scope" => scope_text,
-                "path" => loaded.path.display().to_string(),
-                "direction" => short_decimal(texts, direction, 1),
-                "gap" => short_decimal(texts, gap, 2),
-            ))
-        )
-    );
+        // clap takes exactly one of `--sheet` and `--layout-wide`.
+        scope: if args.sheet {
+            AcceptScope::Sheet
+        } else {
+            AcceptScope::Layout
+        },
+        // clap takes `--direction` and `--gap` only together.
+        position: args.direction.zip(args.gap),
+    })
+    .map_err(|e| op_error(texts, e))?;
+    eprintln!("{}", numbers_accepted_line(texts, &result));
     Ok(0)
 }
 
-/// The courses printed with layout `layout_id` whose sheet, with the layout-wide `correction` added, has a
-/// conflict at its control. Courses with a correction of their own for the control are left out: theirs wins.
-fn layout_conflicts(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    courses: &LoadedCourses,
-    layout_id: &str,
-    correction: &project::NumberCorrection,
-) -> anyhow::Result<Vec<String>> {
-    let mut trial = loaded.clone();
-    trial.project.numbers.push(correction.clone());
-    let logos = LogoCache::new();
-    let mut blocked = Vec::new();
-    for c in &courses.event.courses {
-        let on_layout = freemapper_print::courses::layout_for(&loaded.project, &c.name)
-            .0
-            .id
-            == layout_id;
-        let visits = c.stops.iter().any(|s| s.control == correction.control);
-        let own = loaded.project.numbers.iter().any(|n| {
-            n.control == correction.control && n.course.as_deref() == Some(c.name.as_str())
-        });
-        if !on_layout || !visits || own {
-            continue;
-        }
-        let (_, report) = course_sheet_report(&trial, map, courses, c, &logos)
-            .map_err(|err| export_error(texts, err))?;
-        let conflict = report
-            .notes
-            .iter()
-            .any(|n| matches!(n, SheetNote::NumberConflict(k) if k.control == correction.control));
-        if conflict {
-            blocked.push(c.name.clone());
-        }
+/// What `numbers accept` says after it wrote the correction.
+fn numbers_accepted_line(texts: &Texts, result: &ops::numbers::AcceptResult) -> String {
+    texts.get(
+        "numbers-accepted",
+        Some(&args!(
+            "control" => printable(&result.control),
+            "scope" => scope_text(texts, &result.scope),
+            "path" => result.path.display().to_string(),
+            "direction" => short_decimal(texts, result.direction, 1),
+            "gap" => short_decimal(texts, result.gap_mm, 2),
+        )),
+    )
+}
+
+/// "for course "A"", "for layout a4": the scope of a number correction.
+fn scope_text(texts: &Texts, scope: &ops::numbers::Scope) -> String {
+    match scope {
+        ops::numbers::Scope::Course(name) => texts.get(
+            "stale-scope-course",
+            Some(&args!("name" => printable(name))),
+        ),
+        ops::numbers::Scope::Layout(name) => texts.get(
+            "stale-scope-layout",
+            Some(&args!("name" => printable(name))),
+        ),
     }
-    Ok(blocked)
 }
 
 /// The message for a mask that could not be built: a usage error (exit 2).
@@ -1080,187 +846,96 @@ fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
     UsageError(texts.get(id, Some(&a))).into()
 }
 
-/// Map mm per print mm when the map is printed at 1:`print_scale`.
-fn map_mm_per_print_mm(texts: &Texts, map: &MapDocument, print_scale: u32) -> anyhow::Result<f64> {
-    let map_scale = map.georef.scale_denominator;
-    if map_scale == 0 {
-        bail!(texts.plain("error-masks-map-scale"));
-    }
-    Ok(f64::from(print_scale) / f64::from(map_scale))
-}
-
-/// The id a new mask gets: `given` after the checks of the project file, else `default` made unique. A taken id is
-/// a usage error.
-fn new_mask_id(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    given: Option<&str>,
-    default: impl FnOnce(&[&str]) -> String,
-) -> anyhow::Result<String> {
-    let taken: Vec<&str> = loaded.project.masks.iter().map(|m| m.id.as_str()).collect();
-    let Some(id) = given else {
-        return Ok(default(&taken));
-    };
-    let count = id.chars().count();
-    if count == 0
-        || count > freemapper_print::mask::MAX_ID_CHARS
-        || id.chars().any(char::is_control)
-    {
-        return Err(UsageError(texts.get(
-            "error-masks-id",
-            Some(&args!("max" => freemapper_print::mask::MAX_ID_CHARS.to_string())),
-        ))
-        .into());
-    }
-    if taken.contains(&id) {
-        return Err(UsageError(
-            texts.get("error-masks-id-taken", Some(&args!("id" => printable(id)))),
-        )
-        .into());
-    }
-    Ok(id.to_string())
-}
-
-/// Refuses `--assign` for a course whose assignment names another mask (exit 2).
-fn check_assignable(texts: &Texts, loaded: &LoadedProject, course: &str) -> anyhow::Result<()> {
-    let other = loaded
-        .project
-        .assignments
-        .iter()
-        .find(|a| a.course == course)
-        .and_then(|a| a.mask.as_deref());
-    match other {
-        Some(mask) => Err(UsageError(texts.get(
-            "error-masks-course-has-mask",
-            Some(&args!("course" => printable(course), "mask" => printable(mask))),
-        ))
-        .into()),
-        None => Ok(()),
-    }
-}
-
-/// Writes `mask` with [`project::append_mask`] and says what went wrong in the user's language.
-fn write_mask(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    mask: &freemapper_print::mask::Mask,
-    assign: Option<(&str, &str)>,
-    comment: &str,
-) -> anyhow::Result<()> {
-    project::append_mask(&loaded.path, mask, assign, comment).map_err(|err| {
-        let path = loaded.path.display().to_string();
-        match err {
-            project::ProjectError::DuplicateId { id, .. } => {
-                UsageError(texts.get("error-masks-id-taken", Some(&args!("id" => printable(&id)))))
-                    .into()
-            }
-            project::ProjectError::CourseHasMask { course, mask, .. } => UsageError(texts.get(
-                "error-masks-course-has-mask",
-                Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
-            ))
-            .into(),
-            project::ProjectError::AssignmentNotEditable {
-                course, mask, new, ..
-            } => UsageError(texts.get(
-                if new {
-                    "error-masks-assignments-inline"
-                } else {
-                    "error-masks-assignment-inline"
-                },
-                Some(&args!("course" => printable(&course), "id" => printable(&mask))),
-            ))
-            .into(),
-            err @ project::ProjectError::Write { .. } => anyhow::Error::new(err)
-                .context(texts.get("error-write-file", Some(&args!("path" => path)))),
-            // A file that no longer loads has been put back as it was.
-            err => anyhow::Error::new(err)
-                .context(texts.get("error-load-changed-mask", Some(&args!("path" => path)))),
-        }
-    })?;
-    Ok(())
-}
-
 /// The closing lines after a mask is written: who prints with it, and `check`.
-fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<(&str, &str)>) {
-    match assigned {
-        Some((course, layout)) => eprintln!(
-            "{}",
-            texts.get(
+fn mask_written_lines(
+    texts: &Texts,
+    id: &str,
+    assigned: Option<&ops::masks::Assigned>,
+) -> [String; 2] {
+    [
+        match assigned {
+            Some(a) => texts.get(
                 "masks-assigned",
-                Some(&args!("course" => printable(course), "layout" => printable(layout))),
-            )
-        ),
-        None => eprintln!(
-            "{}",
-            texts.get("masks-not-assigned", Some(&args!("id" => printable(id))))
-        ),
-    }
-    eprintln!("{}", texts.plain("masks-run-check"));
+                Some(&args!("course" => printable(&a.course), "layout" => printable(&a.layout))),
+            ),
+            None => texts.get("masks-not-assigned", Some(&args!("id" => printable(id)))),
+        },
+        texts.plain("masks-run-check"),
+    ]
 }
 
 /// `masks window`: appends a mask with circular windows around the controls of a course (ADR 0047).
 fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
-    let usage = |id: &str, a: FluentArgs| UsageError(texts.get(id, Some(&a)));
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let Some(courses) = read_courses(texts, &loaded, &map)? else {
-        return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
-    };
-    let course = find_course(texts, &courses, &args.course)?;
-    let selection = match &args.controls {
-        Some(text) => Selection::parse(text).map_err(|e| build_error(texts, e, &course.name))?,
-        None => Selection::All,
-    };
-    let mut per_control = std::collections::BTreeMap::new();
-    for item in &args.radius_for {
-        let parsed = item.rsplit_once('=').and_then(|(code, mm)| {
-            let mm: f64 = mm.trim().parse().ok()?;
-            let code = code.trim();
-            (!code.is_empty()).then(|| (code.to_string(), mm))
-        });
-        let Some((code, mm)) = parsed else {
-            return Err(usage("error-masks-radius-for", args!("text" => printable(item))).into());
-        };
-        per_control.insert(code, mm);
-    }
-    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
-    let print_scale = layout.print_scale.unwrap_or(map.georef.scale_denominator);
-    let options = WindowOptions {
-        selection,
-        start: !args.no_start,
-        finish: !args.no_finish,
-        radius_mm: args.radius.unwrap_or(mask_build::DEFAULT_RADIUS_MM),
-        per_control,
-        map_mm_per_print_mm: map_mm_per_print_mm(texts, &map, print_scale)?,
-    };
-    let id = new_mask_id(texts, &loaded, args.id.as_deref(), |taken| {
-        mask_build::window_id(&course.name, taken)
-    })?;
-    if args.assign {
-        check_assignable(texts, &loaded, &course.name)?;
-    }
-    let (mask, windows) = mask_build::windows(
-        &id,
-        course,
-        &courses.event,
-        &options,
-        mask_build::map_extent(&map),
+    let result = ops::masks::window(
+        &ops::masks::WindowArgs {
+            project: args.project.clone(),
+            course: args.course.clone(),
+            controls: args.controls.clone(),
+            radius_mm: args.radius,
+            radius_for: args.radius_for.clone(),
+            no_start: args.no_start,
+            no_finish: args.no_finish,
+            id: args.id.clone(),
+            assign: args.assign,
+        },
+        &|r| window_comment(texts, r),
     )
-    .map_err(|e| build_error(texts, e, &course.name))?;
-    let stops: Vec<StopName> = windows.iter().map(|w| w.stop.clone()).collect();
-    let radius = short_decimal(texts, options.radius_mm, 2);
-    let summary = args!(
-        "id" => printable(&id),
-        "count" => windows.len(),
-        "controls" => stops_phrase(texts, &stops, true),
-        "course" => printable(&course.name),
-        "radius" => radius,
-        "scale" => print_scale.to_string(),
-    );
-    // The windows whose radius differs from the default, one line each.
-    let own_radius: Vec<String> = windows
+    .map_err(|e| op_error(texts, e))?;
+    for line in window_written_lines(texts, &result) {
+        eprintln!("{line}");
+    }
+    Ok(0)
+}
+
+/// The comment written above a window mask.
+fn window_comment(texts: &Texts, r: &ops::masks::WindowResult) -> String {
+    let mut comment = texts.get("masks-window-comment", Some(&window_summary(texts, r)));
+    for line in own_radius_lines(texts, r) {
+        comment.push('\n');
+        comment.push_str(&line);
+    }
+    comment
+}
+
+/// What `masks window` says after it wrote the mask.
+fn window_written_lines(texts: &Texts, result: &ops::masks::WindowResult) -> Vec<String> {
+    let mut summary = window_summary(texts, result);
+    summary.set("path", result.path.display().to_string());
+    let mut lines = vec![texts.get("masks-window-written", Some(&summary))];
+    lines.extend(own_radius_lines(texts, result));
+    if let Some(which) = result.without_window {
+        let which = match which {
+            ops::masks::StartFinish::Both => "both",
+            ops::masks::StartFinish::Start => "start",
+            ops::masks::StartFinish::Finish => "finish",
+        };
+        lines.push(texts.get("masks-no-start-finish", Some(&args!("which" => which))));
+    }
+    lines.extend(mask_written_lines(
+        texts,
+        &result.id,
+        result.assigned.as_ref(),
+    ));
+    lines
+}
+
+/// The arguments of the messages about a window mask: id, number of windows, the stops, course, radius and
+/// print scale.
+fn window_summary<'a>(texts: &Texts, r: &ops::masks::WindowResult) -> FluentArgs<'a> {
+    args!(
+        "id" => printable(&r.id),
+        "count" => r.windows.len(),
+        "controls" => stops_phrase(texts, &r.windows, true),
+        "course" => printable(&r.course),
+        "radius" => short_decimal(texts, r.radius_mm, 2),
+        "scale" => r.print_scale.to_string(),
+    )
+}
+
+/// One line per window whose radius differs from the default.
+fn own_radius_lines(texts: &Texts, r: &ops::masks::WindowResult) -> Vec<String> {
+    r.own_radius
         .iter()
-        .filter(|w| w.radius_mm != options.radius_mm)
         .map(|w| {
             texts.get(
                 "masks-window-radius-for",
@@ -1271,53 +946,7 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
                 )),
             )
         })
-        .collect();
-    let mut comment = texts.get("masks-window-comment", Some(&summary));
-    for line in &own_radius {
-        comment.push('\n');
-        comment.push_str(line);
-    }
-    let assign = args
-        .assign
-        .then_some((course.name.as_str(), layout.id.as_str()));
-    write_mask(texts, &loaded, &mask, assign, &comment)?;
-    let mut summary = summary;
-    summary.set("path", loaded.path.display().to_string());
-    eprintln!("{}", texts.get("masks-window-written", Some(&summary)));
-    for line in &own_radius {
-        eprintln!("{line}");
-    }
-    use freemapper_print::course::model::ControlKind;
-    // A start or finish of the course whose code got no window: check names it.
-    let without_window = |kind: ControlKind| {
-        course.stops.iter().any(|s| {
-            let of_kind = courses
-                .event
-                .controls
-                .iter()
-                .find(|c| c.code == s.control)
-                .is_some_and(|c| s.kind.unwrap_or(c.kind) == kind);
-            of_kind && !windows.iter().any(|w| w.stop.code() == s.control)
-        })
-    };
-    let (start, finish) = (
-        without_window(ControlKind::Start),
-        without_window(ControlKind::Finish),
-    );
-    let which = match (start, finish) {
-        (true, true) => Some("both"),
-        (true, false) => Some("start"),
-        (false, true) => Some("finish"),
-        (false, false) => None,
-    };
-    if let Some(which) = which {
-        eprintln!(
-            "{}",
-            texts.get("masks-no-start-finish", Some(&args!("which" => which)))
-        );
-    }
-    mask_written_lines(texts, &id, assign);
-    Ok(0)
+        .collect()
 }
 
 /// `start`, `finish` or `control`: a selector for the messages that name a stop by kind.
@@ -1381,161 +1010,134 @@ fn stops_with_codes(texts: &Texts, stops: &[StopName]) -> String {
     join_and(texts, items)
 }
 
-/// The course `name` of the course file, or a usage error that lists the courses.
-fn find_course<'a>(
-    texts: &Texts,
-    courses: &'a LoadedCourses,
-    name: &str,
-) -> anyhow::Result<&'a freemapper_print::course::model::Course<freemapper_print::omap::MapCoord>> {
-    courses
-        .event
-        .courses
-        .iter()
-        .find(|c| c.name == name)
-        .ok_or_else(|| {
-            let known: Vec<String> = courses
-                .event
-                .courses
-                .iter()
-                .map(|c| c.name.clone())
-                .collect();
-            UsageError(texts.get(
-                "error-unknown-course",
-                Some(&args!("name" => printable(name), "known" => quoted_list(texts, &known))),
-            ))
-            .into()
-        })
-}
-
 /// `masks corridor`: appends a mask with a corridor along the polyline the user gives (ADR 0047).
 fn masks_corridor(texts: &Texts, args: &CorridorArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let points = mask_build::parse_points(&args.points).map_err(|e| build_error(texts, e, ""))?;
-    let map_scale = map.georef.scale_denominator;
-    let scale_of = |l: &LayoutSpec| l.print_scale.unwrap_or(map_scale);
-    // The width is print mm, so it needs the print scale: the course's layout, or the one all layouts share.
-    let (course, layout) = match &args.course {
-        Some(name) => {
-            let Some(courses) = read_courses(texts, &loaded, &map)? else {
-                return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
-            };
-            let course = find_course(texts, &courses, name)?.name.clone();
-            let layout = freemapper_print::courses::layout_for(&loaded.project, &course).0;
-            (Some(course), layout)
-        }
-        None => {
-            let mut scales: Vec<u32> = loaded.project.layouts.iter().map(scale_of).collect();
-            scales.sort_unstable();
-            scales.dedup();
-            if scales.len() > 1 {
-                let scales: Vec<String> = scales.iter().map(|s| format!("1:{s}")).collect();
-                return Err(UsageError(texts.get(
-                    "error-masks-scales",
-                    Some(&args!("scales" => join_and(texts, scales))),
-                ))
-                .into());
-            }
-            (None, &loaded.project.layouts[0])
-        }
-    };
-    let print_scale = scale_of(layout);
-    let width = args.width.unwrap_or(mask_build::DEFAULT_WIDTH_MM);
-    let k = map_mm_per_print_mm(texts, &map, print_scale)?;
-    let id = new_mask_id(texts, &loaded, args.id.as_deref(), mask_build::corridor_id)?;
-    if args.assign
-        && let Some(course) = &course
-    {
-        check_assignable(texts, &loaded, course)?;
+    let result = ops::masks::corridor(
+        &ops::masks::CorridorArgs {
+            project: args.project.clone(),
+            points: args.points.clone(),
+            width_mm: args.width,
+            id: args.id.clone(),
+            assign: args.assign,
+            course: args.course.clone(),
+        },
+        &|r| corridor_comment(texts, r),
+    )
+    .map_err(|e| op_error(texts, e))?;
+    for line in corridor_written_lines(texts, &result) {
+        eprintln!("{line}");
     }
-    let polygon = mask_build::corridor(&points, width, k, mask_build::map_extent(&map))
-        .map_err(|e| build_error(texts, e, course.as_deref().unwrap_or("")))?;
-    let mask = freemapper_print::mask::Mask {
-        id: id.clone(),
-        polygons: vec![polygon],
-    };
-    let summary = args!(
-        "id" => printable(&id),
-        "count" => points.len(),
-        "width" => short_decimal(texts, width, 2),
-        "scale" => print_scale.to_string(),
-    );
-    // The points as read, so that the command can be run again from the comment.
-    let written: Vec<String> = points.iter().map(|[x, y]| format!("{x},{y}")).collect();
-    let comment = format!(
-        "{}\n--points \"{}\"",
-        texts.get("masks-corridor-comment", Some(&summary)),
-        written.join(";")
-    );
-    let assigned = match (&course, args.assign) {
-        (Some(c), true) => Some((c.as_str(), layout.id.as_str())),
-        _ => None,
-    };
-    write_mask(texts, &loaded, &mask, assigned, &comment)?;
-    let mut summary = summary;
-    summary.set("path", loaded.path.display().to_string());
-    eprintln!("{}", texts.get("masks-corridor-written", Some(&summary)));
-    mask_written_lines(texts, &id, assigned);
     Ok(0)
 }
 
-/// What `check` prints for one layout, and whether the layout needs a look. A layout that cannot
-/// be drawn gives its error line and counts as needing a look.
-fn check_lines(
+/// The comment written above a corridor mask.
+fn corridor_comment(texts: &Texts, r: &ops::masks::CorridorResult) -> String {
+    // The points as read, so that the command can be run again from the comment.
+    let written: Vec<String> = r.points.iter().map(|[x, y]| format!("{x},{y}")).collect();
+    format!(
+        "{}\n--points \"{}\"",
+        texts.get("masks-corridor-comment", Some(&corridor_summary(texts, r))),
+        written.join(";")
+    )
+}
+
+/// What `masks corridor` says after it wrote the mask.
+fn corridor_written_lines(texts: &Texts, result: &ops::masks::CorridorResult) -> Vec<String> {
+    let mut summary = corridor_summary(texts, result);
+    summary.set("path", result.path.display().to_string());
+    let mut lines = vec![texts.get("masks-corridor-written", Some(&summary))];
+    lines.extend(mask_written_lines(
+        texts,
+        &result.id,
+        result.assigned.as_ref(),
+    ));
+    lines
+}
+
+/// The arguments of the messages about a corridor mask: id, number of points, width and print scale.
+fn corridor_summary<'a>(texts: &Texts, r: &ops::masks::CorridorResult) -> FluentArgs<'a> {
+    args!(
+        "id" => printable(&r.id),
+        "count" => r.points.len(),
+        "width" => short_decimal(texts, r.width_mm, 2),
+        "scale" => r.print_scale.to_string(),
+    )
+}
+
+/// The lines about one sheet: the first line (message `id` with `keys`, the page size, scales and factors), then
+/// its notes.
+fn sheet_lines(
     texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    layout: &LayoutSpec,
-    logos: &LogoCache,
-) -> (Vec<String>, bool) {
-    // The PDF is made in memory only: the font check needs it.
-    match sheet_report(loaded, map, layout, logos) {
-        Ok(report) => {
-            let head = summary_line(
+    id: &str,
+    keys: &[(&'static str, String)],
+    sheet: &ops::Sheet,
+) -> Vec<String> {
+    let mut lines = vec![summary_line(
+        texts,
+        id,
+        keys,
+        sheet.paper,
+        &sheet.print,
+        sheet.map_scale,
+    )];
+    lines.extend(sheet.notes.iter().map(|n| n.describe(texts).message));
+    lines
+}
+
+/// What `check` prints for one sheet. A sheet that cannot be drawn gives its error line.
+fn check_lines(texts: &Texts, sheet: &ops::check::SheetCheck) -> Vec<String> {
+    match sheet {
+        ops::check::SheetCheck::Drawn(s) => match &s.course {
+            Some(course) => sheet_lines(
+                texts,
+                "check-course-summary",
+                &[
+                    ("course", printable(course)),
+                    ("layout", printable(&s.layout)),
+                ],
+                s,
+            ),
+            None => sheet_lines(
                 texts,
                 "check-summary",
-                &[("layout", printable(&layout.id))],
-                layout.paper,
-                &report.print,
-                map.georef.scale_denominator,
-            );
-            layout_lines(texts, head, layout, &report, loaded.project.map.kind)
-        }
-        Err(err) => {
-            let message = printable(&format!("{:#}", export_error(texts, err)));
-            (
-                vec![texts.get("error-line", Some(&args!("message" => message)))],
-                true,
-            )
-        }
+                &[("layout", printable(&s.layout))],
+                s,
+            ),
+        },
+        ops::check::SheetCheck::Failed { error, .. } => vec![error.describe(texts).message],
     }
 }
 
-fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    if let Some(courses) = read_courses(texts, &loaded, &map)? {
-        return Ok(check_courses(texts, &loaded, &map, &courses));
-    }
-    let total = loaded.project.layouts.len();
+/// Prints the lines of `sheets` and returns how many of them need a look.
+fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck]) -> usize {
     let mut with_notes = 0;
-    // One logo cache for all layouts: each logo file is decoded once.
-    let logos = LogoCache::new();
-    // Every layout is checked, also after one that cannot be drawn.
-    for layout in &loaded.project.layouts {
-        let (lines, has_notes) = check_lines(texts, &loaded, &map, layout, &logos);
-        for line in lines {
+    for sheet in sheets {
+        for line in check_lines(texts, sheet) {
             eprintln!("{line}");
         }
-        with_notes += usize::from(has_notes);
+        with_notes += usize::from(sheet.needs_attention());
     }
-    if with_notes == 0 {
-        eprintln!(
-            "{}",
-            texts.get("check-clean", Some(&args!("count" => total)))
-        );
-        Ok(0)
-    } else {
+    with_notes
+}
+
+/// `check`: without a course file every layout; with one, the notes of the file once, then every course on its
+/// layout, then every layout sheet without a course, as `export --layout` writes it (ruling R40). Exit code 1
+/// when the file, a course or a layout sheet has notes that count.
+fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
+    let result = ops::check::check(&ops::check::CheckArgs {
+        project: args.project.clone(),
+    })
+    .map_err(|e| op_error(texts, e))?;
+    let Some(file_notes) = &result.course_file else {
+        let total = result.layouts.len();
+        let with_notes = print_checks(texts, &result.layouts);
+        if with_notes == 0 {
+            eprintln!(
+                "{}",
+                texts.get("check-clean", Some(&args!("count" => total)))
+            );
+            return Ok(0);
+        }
         eprintln!(
             "{}",
             texts.get(
@@ -1543,81 +1145,16 @@ fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
                 Some(&args!("count" => with_notes, "total" => total))
             )
         );
-        Ok(1)
+        return Ok(1);
+    };
+    for note in file_notes {
+        eprintln!("{}", note.describe(texts).message);
     }
-}
-
-/// The course file of the project, read and fitted to `map`; `None` when the project names none.
-fn read_courses(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-) -> anyhow::Result<Option<LoadedCourses>> {
-    load_courses(loaded, map).context(texts.plain("error-courses"))
-}
-
-/// Prints the notes of the course file as a whole and returns whether one of them is a warning.
-fn print_course_file_notes(texts: &Texts, courses: &LoadedCourses) -> bool {
-    let notes = course_event_notes(courses);
-    for note in &notes {
-        eprintln!("{}", sheet_note_line(texts, note));
-    }
-    notes.iter().any(|n| !n.is_info())
-}
-
-/// `check` with a course file: the notes of the file once, then every course on its layout, then every layout
-/// sheet without a course, as `export --layout` writes it. Returns the exit code: 1 when the file, a course or
-/// a layout sheet has notes that count.
-fn check_courses(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    map: &MapDocument,
-    courses: &LoadedCourses,
-) -> u8 {
-    let file_notes = print_course_file_notes(texts, courses);
-    let logos = LogoCache::new();
-    let total = courses.event.courses.len();
-    let mut with_notes = 0;
-    // Every course is checked, also after one that cannot be drawn.
-    for course in &courses.event.courses {
-        let (lines, has_notes) = match course_sheet_report(loaded, map, courses, course, &logos) {
-            Ok((layout, report)) => {
-                let head = summary_line(
-                    texts,
-                    "check-course-summary",
-                    &[
-                        ("course", printable(&course.name)),
-                        ("layout", printable(&layout.id)),
-                    ],
-                    layout.paper,
-                    &report.print,
-                    map.georef.scale_denominator,
-                );
-                layout_lines(texts, head, layout, &report, loaded.project.map.kind)
-            }
-            Err(err) => {
-                let message = printable(&format!("{:#}", export_error(texts, err)));
-                (
-                    vec![texts.get("error-line", Some(&args!("message" => message)))],
-                    true,
-                )
-            }
-        };
-        for line in lines {
-            eprintln!("{line}");
-        }
-        with_notes += usize::from(has_notes);
-    }
-    // The layout sheets without a course, as `export --layout` writes them (ruling R40).
-    let layouts = loaded.project.layouts.len();
-    let mut layouts_with_notes = 0;
-    for layout in &loaded.project.layouts {
-        let (lines, has_notes) = check_lines(texts, loaded, map, layout, &logos);
-        for line in lines {
-            eprintln!("{line}");
-        }
-        layouts_with_notes += usize::from(has_notes);
-    }
+    let file_notes = result.course_file_needs_attention();
+    let total = result.courses.len();
+    let with_notes = print_checks(texts, &result.courses);
+    let layouts = result.layouts.len();
+    let layouts_with_notes = print_checks(texts, &result.layouts);
     if file_notes {
         eprintln!("{}", texts.plain("check-course-file-notes"));
     }
@@ -1629,7 +1166,7 @@ fn check_courses(
                 Some(&args!("count" => total, "layouts" => layouts))
             )
         );
-        0
+        Ok(0)
     } else {
         eprintln!(
             "{}",
@@ -1643,155 +1180,101 @@ fn check_courses(
                 ))
             )
         );
-        1
+        Ok(1)
     }
 }
 
-fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let layouts = select_layouts(&loaded, &args.layout).map_err(|unknown| {
-        let known: Vec<String> = unknown.known.iter().map(|id| printable(id)).collect();
-        UsageError(texts.get(
-            "error-unknown-layout",
-            Some(&args!("id" => printable(&unknown.id), "known" => known.join(", "))),
-        ))
-    })?;
-    let map = read_map(texts, &loaded.map_path())?;
-    // `--layout` exports the layouts as such, without courses, also when the project has a course file.
-    let courses = if args.layout.is_empty() {
-        read_courses(texts, &loaded, &map)?
-    } else {
-        None
+/// The lines about a page `export` drew.
+fn export_page_lines(
+    texts: &Texts,
+    mode: ops::export::ExportMode,
+    page: &ops::export::ExportedPage,
+) -> Vec<String> {
+    use ops::export::ExportMode;
+    let sheet = &page.sheet;
+    let course_keys = |out: String| {
+        [
+            ("out", out),
+            (
+                "course",
+                printable(sheet.course.as_deref().unwrap_or_default()),
+            ),
+            ("layout", printable(&sheet.layout)),
+            ("page", page.page.to_string()),
+        ]
     };
-    if courses.is_none() && (!args.course.is_empty() || args.single_file) {
-        return Err(UsageError(texts.plain("error-no-course-file")).into());
+    match mode {
+        ExportMode::Layouts => sheet_lines(
+            texts,
+            "report-summary",
+            &[("out", page.path.display().to_string())],
+            sheet,
+        ),
+        ExportMode::Courses => sheet_lines(
+            texts,
+            "report-course-summary",
+            &course_keys(page.path.display().to_string()),
+            sheet,
+        ),
+        ExportMode::SingleFile => sheet_lines(
+            texts,
+            "report-course-page",
+            &course_keys(String::new()),
+            sheet,
+        ),
     }
-    let selected = match &courses {
-        Some(courses) => Some(select_courses(courses, &args.course).map_err(|unknown| {
-            UsageError(texts.get(
-                "error-unknown-course",
+}
+
+/// `export`: each page's lines as soon as it is written, then the single file and the reminder to print at
+/// actual size.
+fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
+    use ops::export::ExportProgress;
+    let result = ops::export::export(
+        &ops::export::ExportArgs {
+            project: args.project.clone(),
+            layouts: args.layout.clone(),
+            courses: args.course.clone(),
+            single_file: args.single_file,
+            out_dir: args.out_dir.clone(),
+        },
+        &mut |progress| {
+            match progress {
+                ExportProgress::CourseFileNotes(notes) => {
+                    for note in notes {
+                        eprintln!("{}", note.describe(texts).message);
+                    }
+                }
+                ExportProgress::Page { mode, page } => {
+                    for line in export_page_lines(texts, mode, page) {
+                        eprintln!("{line}");
+                    }
+                }
+            }
+            std::ops::ControlFlow::Continue(())
+        },
+    )
+    .map_err(|e| op_error(texts, e))?;
+    if result.mode != ops::export::ExportMode::Layouts && result.pages.is_empty() {
+        // Every course was left out by the reader: nothing to write, not even an empty PDF.
+        eprintln!("{}", texts.plain("note-no-courses-to-export"));
+        return Ok(0);
+    }
+    if result.mode == ops::export::ExportMode::SingleFile
+        && let Some(file) = result.files.first()
+    {
+        eprintln!(
+            "{}",
+            texts.get(
+                "report-single-file",
                 Some(&args!(
-                    "name" => printable(&unknown.name),
-                    "known" => quoted_list(texts, &unknown.known),
-                )),
-            ))
-        })?),
-        None => None,
-    };
-    let out_dir = out_dir(texts, args, &loaded)?;
-    let map_scale = map.georef.scale_denominator;
-    let kind = loaded.project.map.kind;
-    match (&courses, selected) {
-        (Some(courses), Some(selected)) => {
-            print_course_file_notes(texts, courses);
-            if selected.is_empty() {
-                // Every course was left out by the reader: nothing to write, not even an empty PDF.
-                eprintln!("{}", texts.plain("note-no-courses-to-export"));
-                return Ok(0);
-            }
-            let print = |id: &str, out: String, done: &freemapper_print::export::ExportedCourse| {
-                let head = summary_line(
-                    texts,
-                    id,
-                    &[
-                        ("out", out),
-                        ("course", printable(&done.course.name)),
-                        ("layout", printable(&done.layout.id)),
-                        ("page", done.page.to_string()),
-                    ],
-                    done.layout.paper,
-                    &done.report.print,
-                    map_scale,
-                );
-                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
-                    eprintln!("{line}");
-                }
-            };
-            if args.single_file {
-                let mut count = 0;
-                let path = export_courses_single_file(
-                    &loaded,
-                    &map,
-                    courses,
-                    &selected,
-                    &out_dir,
-                    |done| {
-                        count += 1;
-                        print("report-course-page", String::new(), &done);
-                    },
-                )
-                .map_err(|err| export_error(texts, err))?;
-                if let Some(path) = path {
-                    eprintln!(
-                        "{}",
-                        texts.get(
-                            "report-single-file",
-                            Some(&args!("out" => path.display().to_string(), "count" => count))
-                        )
-                    );
-                }
-            } else {
-                export_courses(&loaded, &map, courses, &selected, &out_dir, |done| {
-                    print(
-                        "report-course-summary",
-                        done.path.display().to_string(),
-                        &done,
-                    );
-                })
-                .map_err(|err| export_error(texts, err))?;
-            }
-        }
-        _ => {
-            export_layouts(&loaded, &map, &layouts, &out_dir, |done| {
-                let head = summary_line(
-                    texts,
-                    "report-summary",
-                    &[("out", done.path.display().to_string())],
-                    done.layout.paper,
-                    &done.report.print,
-                    map_scale,
-                );
-                for line in layout_lines(texts, head, done.layout, &done.report, kind).0 {
-                    eprintln!("{line}");
-                }
-            })
-            .map_err(|err| export_error(texts, err))?;
-        }
+                    "out" => file.path.display().to_string(),
+                    "count" => result.pages.len(),
+                ))
+            )
+        );
     }
     eprintln!("{}", texts.plain("reminder-actual-size"));
     Ok(0)
-}
-
-/// The output folder: `--out-dir`, which must exist, else `out` next to the project file, created if missing.
-/// A folder inside the project by name that a link leads out of the project stops the command before anything
-/// is written (ADR 0041). Partial files older than an hour that interrupted runs left there are removed.
-fn out_dir(texts: &Texts, args: &ExportArgs, loaded: &LoadedProject) -> anyhow::Result<PathBuf> {
-    let dir = match &args.out_dir {
-        Some(dir) => {
-            if !dir.is_dir() {
-                bail!(texts.get(
-                    "error-out-dir-missing",
-                    Some(&args!("path" => dir.display().to_string()))
-                ));
-            }
-            output::check_out_folder(&loaded.dir, dir).map_err(|e| output_error(texts, e))?;
-            dir.clone()
-        }
-        None => {
-            let dir = loaded.dir.join("out");
-            output::check_out_folder(&loaded.dir, &dir).map_err(|e| output_error(texts, e))?;
-            // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
-            std::fs::create_dir_all(&dir).with_context(|| {
-                texts.get(
-                    "error-create-folder",
-                    Some(&args!("path" => dir.display().to_string())),
-                )
-            })?;
-            dir
-        }
-    };
-    output::remove_stale_parts(&loaded.dir, &dir);
-    Ok(dir)
 }
 
 /// The message for a full disk, translated whole. `available` is `None` when the volume did not
@@ -1813,20 +1296,20 @@ fn disk_full_message(texts: &Texts, needed: u64, available: Option<u64>, path: &
 
 /// A write error with a translated lead-in; a full disk and a write refused because a link leads
 /// out of the project folder are translated whole.
-fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
+fn output_error(texts: &Texts, err: &OutputError) -> anyhow::Error {
     match err {
         OutputError::DiskFull {
             needed,
             available,
             path,
-        } => anyhow!(disk_full_message(texts, needed, available, &path)),
-        OutputError::Io { path, source } if output::is_outside_project(&source) => {
+        } => anyhow!(disk_full_message(texts, *needed, *available, path)),
+        OutputError::Io { path, source } if output::is_outside_project(source) => {
             anyhow!(texts.get(
                 "error-outside-project",
                 Some(&args!("path" => path.display().to_string()))
             ))
         }
-        OutputError::Io { path, source } => anyhow::Error::new(source).context(texts.get(
+        OutputError::Io { path, source } => chain(source).context(texts.get(
             "error-write-file",
             Some(&args!("path" => path.display().to_string())),
         )),
@@ -1834,20 +1317,20 @@ fn output_error(texts: &Texts, err: OutputError) -> anyhow::Error {
 }
 
 /// An export error with a translated lead-in; a full disk is translated whole.
-fn export_error(texts: &Texts, err: ExportError) -> anyhow::Error {
+fn export_error(texts: &Texts, err: &ExportError) -> anyhow::Error {
     let sheet =
         |layout: &str| texts.get("error-sheet", Some(&args!("layout" => printable(layout))));
     match err {
-        ExportError::Sheet { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
-        ExportError::Pdf { layout, error } => anyhow::Error::new(error).context(sheet(&layout)),
+        ExportError::Sheet { layout, error } => chain(error).context(sheet(layout)),
+        ExportError::Pdf { layout, error } => chain(error).context(sheet(layout)),
         ExportError::Write { error, .. } => output_error(texts, error),
-        ExportError::CourseSheet { course, error } => anyhow::Error::new(error).context(texts.get(
+        ExportError::CourseSheet { course, error } => chain(error).context(texts.get(
             "error-course-sheet",
-            Some(&args!("course" => printable(&course))),
+            Some(&args!("course" => printable(course))),
         )),
-        ExportError::CoursePdf { course, error } => anyhow::Error::new(error).context(texts.get(
+        ExportError::CoursePdf { course, error } => chain(error).context(texts.get(
             "error-course-sheet",
-            Some(&args!("course" => printable(&course))),
+            Some(&args!("course" => printable(course))),
         )),
         ExportError::CourseWrite { error, .. } => output_error(texts, error),
     }
@@ -1871,19 +1354,6 @@ fn same_file(map: &Path, out: &Path) -> bool {
     }
 }
 
-/// Unicode format characters (category Cf): bidi controls, zero-width characters, joiners, tags.
-///
-/// A hand-written table of Unicode 16.0's category Cf, kept on purpose: `std` has no lookup of
-/// general categories ([`char::is_control`] covers Cc only), and a dependency for this one table
-/// is not worth it (ADR 0006). Re-check it when a Unicode version adds format characters.
-fn is_format(c: char) -> bool {
-    matches!(c as u32,
-        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
-        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
-        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
-        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
-}
-
 /// Map text for the terminal. Control characters get Rust's readable escapes (`\n`, `\t`,
 /// `\u{1b}`) and format characters such as bidi overrides get `\u{..}`, so a map cannot drive
 /// the terminal.
@@ -1892,7 +1362,7 @@ fn printable(text: &str) -> String {
     for c in text.chars() {
         if c.is_control() {
             out.extend(c.escape_debug());
-        } else if is_format(c) {
+        } else if ops::is_format(c) {
             out.extend(c.escape_unicode());
         } else {
             out.push(c);
@@ -1943,7 +1413,7 @@ fn summary_line(
     id: &str,
     keys: &[(&'static str, String)],
     paper: Paper,
-    report: &PrintReport,
+    report: &ops::PrintFacts,
     map_scale: u32,
 ) -> String {
     let (w, h) = report.page_mm;
@@ -1981,7 +1451,7 @@ fn report_lines(
         "report-summary",
         &[("out", out.display().to_string())],
         paper.into(),
-        report,
+        &ops::PrintFacts::from(report),
         map_scale,
     )];
     lines.extend(print_notes(
@@ -1994,30 +1464,6 @@ fn report_lines(
     ));
     lines.push(texts.plain("reminder-actual-size"));
     lines
-}
-
-/// The lines about one sheet: `head`, the notes of its print report, then its sheet notes. Also
-/// whether any of them asks the user to look ([`SheetReport::needs_attention`]).
-fn layout_lines(
-    texts: &Texts,
-    head: String,
-    layout: &LayoutSpec,
-    report: &SheetReport,
-    kind: MapKind,
-) -> (Vec<String>, bool) {
-    let print = print_notes(
-        texts,
-        &report.print,
-        layout.paper,
-        layout.orientation != Orientation::Auto,
-        kind,
-        true,
-    );
-    let has_notes = report.needs_attention();
-    let mut lines = vec![head];
-    lines.extend(print);
-    lines.extend(report.notes.iter().map(|n| sheet_note_line(texts, n)));
-    (lines, has_notes)
 }
 
 /// The message for one sheet note. No wildcard arm: a new kind of note does not compile until it
@@ -2615,93 +2061,128 @@ fn print_notes(
     kind: MapKind,
     in_layout: bool,
 ) -> Vec<String> {
-    let mut lines = Vec::new();
-    if report.non_standard_scale {
-        lines.push(texts.get(
+    ops::note::print_notes(report, paper, explicit_orientation, kind, in_layout)
+        .iter()
+        .map(|n| print_note_line(texts, n))
+        .collect()
+}
+
+/// The message for one note of a print report. No wildcard arm.
+fn print_note_line(texts: &Texts, note: &ops::note::PrintNote) -> String {
+    use ops::note::PrintNote as P;
+    match note {
+        P::NonStandardScale { print_scale, kind } => texts.get(
             "warning-non-standard-scale",
             Some(&args!(
-                "print_scale" => report.print_scale.to_string(),
-                "kind" => texts.plain(kind_word_id(kind)),
+                "print_scale" => print_scale.to_string(),
+                "kind" => texts.plain(kind_word_id(*kind)),
                 "base_scale" => kind.base_scale().to_string(),
             )),
-        ));
-    }
-    if let Some((x, y)) = report.overflow_mm
-        && (x > 0.0 || y > 0.0)
-    {
-        let cut = cut_text(texts, x, y);
-        let mut hints = Vec::new();
-        if paper == Paper::A4 {
-            hints.push(texts.plain("hint-paper-a3"));
-        }
-        // Auto already took the orientation that cuts off less.
-        if explicit_orientation {
-            hints.push(texts.plain("hint-other-orientation"));
-        }
-        // The next larger allowed number shrinks the map on the page.
-        match kind
-            .allowed_scales()
-            .into_iter()
-            .find(|&s| s > report.print_scale)
-        {
-            Some(next) => {
-                let id = if is_standard(kind, next) {
-                    "hint-scale-example"
-                } else {
-                    "hint-scale-example-non-standard"
-                };
-                hints.push(texts.get(id, Some(&args!("next" => next.to_string()))));
+        ),
+        P::Overflow {
+            x_mm,
+            y_mm,
+            paper,
+            explicit_orientation,
+            kind,
+            print_scale,
+            in_layout,
+        } => {
+            let cut = cut_text(texts, *x_mm, *y_mm);
+            let mut hints = Vec::new();
+            if *paper == Paper::A4 {
+                hints.push(texts.plain("hint-paper-a3"));
             }
-            None => hints.push(texts.plain("hint-scale-larger")),
+            // Auto already took the orientation that cuts off less.
+            if *explicit_orientation {
+                hints.push(texts.plain("hint-other-orientation"));
+            }
+            // The next larger allowed number shrinks the map on the page.
+            match kind
+                .allowed_scales()
+                .into_iter()
+                .find(|&s| s > *print_scale)
+            {
+                Some(next) => {
+                    let id = if is_standard(*kind, next) {
+                        "hint-scale-example"
+                    } else {
+                        "hint-scale-example-non-standard"
+                    };
+                    hints.push(texts.get(id, Some(&args!("next" => next.to_string()))));
+                }
+                None => hints.push(texts.plain("hint-scale-larger")),
+            }
+            let last = hints.pop().unwrap_or_default();
+            let mut warning = if hints.is_empty() {
+                texts.get(
+                    "warning-overflow-single",
+                    Some(&args!("cut" => cut, "last" => last)),
+                )
+            } else {
+                texts.get(
+                    "warning-overflow",
+                    Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
+                )
+            };
+            if *in_layout {
+                warning.push(' ');
+                warning.push_str(&texts.plain("hint-crop"));
+            }
+            warning
         }
-        let last = hints.pop().unwrap_or_default();
-        let mut warning = if hints.is_empty() {
-            texts.get(
-                "warning-overflow-single",
-                Some(&args!("cut" => cut, "last" => last)),
-            )
-        } else {
-            texts.get(
-                "warning-overflow",
-                Some(&args!("cut" => cut, "hints" => hints.join(", "), "last" => last)),
-            )
+        P::Skipped(count) => texts.get("note-skipped", Some(&args!("count" => *count))),
+        P::UnknownType(count) => texts.get("note-unknown-type", Some(&args!("count" => *count))),
+        P::Truncated(count) => texts.get("note-truncated", Some(&args!("count" => *count))),
+        P::PageLimit(count) => texts.get("note-page-limit", Some(&args!("count" => *count))),
+        P::DroppedPattern(count) => {
+            texts.get("note-dropped-pattern", Some(&args!("count" => *count)))
+        }
+        P::SubstitutedFonts(fonts) => {
+            let names: Vec<String> = fonts.iter().map(|f| printable(f)).collect();
+            texts.get("note-fonts", Some(&args!("names" => names.join(", "))))
+        }
+        P::MissingGlyphs(glyphs) => {
+            let chars: String = glyphs
+                .iter()
+                .map(|c| printable(&c.to_string()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            texts.get("note-missing-glyphs", Some(&args!("chars" => chars)))
+        }
+    }
+}
+
+impl ops::Notice {
+    /// The note in words, with the message the CLI prints: the one conversion the CLI and the MCP server share.
+    pub(crate) fn describe(&self, texts: &Texts) -> ops::note::Note {
+        let message = match &self.value {
+            ops::NoteValue::Sheet(note) => sheet_note_line(texts, note),
+            ops::NoteValue::Print(note) => print_note_line(texts, note),
+            ops::NoteValue::SheetFailed(err) => {
+                let message = printable(&format!("{:#}", export_error(texts, err)));
+                texts.get("error-line", Some(&args!("message" => message)))
+            }
         };
-        if in_layout {
-            warning.push(' ');
-            warning.push_str(&texts.plain("hint-crop"));
-        }
-        lines.push(warning);
-    }
-    let counted = [
-        ("note-skipped", report.skipped_objects),
-        ("note-unknown-type", report.unknown_type_objects),
-        ("note-truncated", report.truncated_objects),
-        ("note-page-limit", report.objects_not_drawn_page_limit),
-        ("note-dropped-pattern", report.dropped_pattern_objects),
-    ];
-    for (id, count) in counted {
-        if count > 0 {
-            lines.push(texts.get(id, Some(&args!("count" => count))));
+        ops::note::Note {
+            kind: self.kind(),
+            severity: self.severity(),
+            course: self.course.clone(),
+            message,
         }
     }
-    if !report.substituted_fonts.is_empty() {
-        let names: Vec<String> = report
-            .substituted_fonts
-            .iter()
-            .map(|f| printable(f))
-            .collect();
-        lines.push(texts.get("note-fonts", Some(&args!("names" => names.join(", ")))));
+}
+
+/// `err` and its sources as one message, "outer: inner: innermost", as anyhow's `{:#}` writes a chain.
+fn chain(err: &dyn std::error::Error) -> anyhow::Error {
+    let mut text = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
     }
-    if !report.missing_glyphs.is_empty() {
-        let chars: String = report
-            .missing_glyphs
-            .iter()
-            .map(|c| printable(&c.to_string()))
-            .collect::<Vec<_>>()
-            .join(" ");
-        lines.push(texts.get("note-missing-glyphs", Some(&args!("chars" => chars))));
-    }
-    lines
+    anyhow::Error::msg(text)
 }
 
 /// The `--lang` value from the raw arguments, found before clap runs because the help texts
@@ -2841,6 +2322,13 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         })
                 })
         })
+        .mut_subcommand("mcp", |c| {
+            c.about(texts.plain("mcp-about")).after_long_help(format!(
+                "{}\n\n{}",
+                texts.plain("mcp-after-content"),
+                texts.plain("mcp-after-exit-codes")
+            ))
+        })
 }
 
 fn main() -> std::process::ExitCode {
@@ -2881,6 +2369,7 @@ fn main() -> std::process::ExitCode {
             MasksCommand::Window(args) => masks_window(&texts, &args),
             MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
+        Commands::Mcp => mcp::run(&texts),
     };
     match result {
         Ok(code) => std::process::ExitCode::from(code),
