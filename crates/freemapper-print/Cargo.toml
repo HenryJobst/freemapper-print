@@ -17,6 +17,7 @@ test-hooks = []
 freemapper-course.workspace = true
 freemapper-fs.workspace = true
 freemapper-omap.workspace = true
+freemapper-printrules.workspace = true
 freemapper-render.workspace = true
 freemapper-rules.workspace = true
 fs4.workspace = true
@@ -38,6 +39,7 @@ same-file.workspace = true
 
 [dev-dependencies]
 freemapper-contract.workspace = true
+freemapper-printrules = { workspace = true, features = ["test-support"] }
 freemapper-render = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 

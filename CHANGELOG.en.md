@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- The print rules (the profile `iof-print`, the map kinds, the symbol size table by print scale, the course symbol sizes) come from freemapper-core v0.16.0 now (decision 0056), so freemapper-courseplan uses the same values as the sheet. Output is unchanged.
 - The course overprint (start, controls, finish, legs, special objects, control numbers) comes from freemapper-core v0.15.0 now (decision 0055), so the browser editor of freemapper-courseplan draws the same symbols as the sheet. Output is unchanged.
 
 ### Added
