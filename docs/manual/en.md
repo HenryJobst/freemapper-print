@@ -106,7 +106,8 @@ result" instead of "Run check to see the result".
   comment at the end of that line is lost, and so is one inside a value that spans several lines, such as between
   the entries of `lines = [ … ]`. A sub-table such as `[layouts.map_frame]` or `[layouts.elements.anchor]` becomes
   one line in the short form `map_frame = { … }`: the comment lines above and inside it move above that line, and
-  comments at the end of its lines are lost. A new line also loses the indentation of the old one.
+  comments at the end of its lines are lost. When the key goes away instead, its comments go with it. A new line
+  also loses the indentation of the old one.
 - When the project file is a link, the server does not change it and says so. The command line replaces the link
   with a file in that case, which an agent would not notice. A project folder that is a link works.
 - `export_project` writes into `out_dir`, a folder that exists already. It replaces a PDF of the same name there.
@@ -115,13 +116,15 @@ result" instead of "Run check to see the result".
   sheets, `project_info` 200 courses, mask variants and assignments, `list_courses` 200 courses, and
   `init_project` 200 course names over its layouts. `check_project` and `export_project` return at most 200
   notes. `more_files`, `more_sheets`, `more_courses`, `more_masks`, `more_assignments` and `more` count the rest.
-  `needs_attention` covers every sheet, also those left out.
+  `needs_attention` covers every sheet, also those left out, and `more_sheets_needing_attention` counts the sheets
+  left out that need attention.
 - Only `export_project` can be cancelled. When the agent cancels the call, the export stops after the sheet it is
   drawing. The PDFs before it stay whole, and no partial file is left. With `single_file` no PDF is written then.
   When the agent closes the connection, the server draws for up to five more seconds and then stops the same way.
   The other tools run to the end. For `check_project` on a very large course file (1000 courses of 200 controls
   each) that takes almost two minutes. A tool that writes and is cancelled while it waits for another write
-  changes nothing.
+  changes nothing. Closing the connection counts as a cancel: a write sent just before the agent closes it may be
+  left out. After such a session, `project_info` shows what the file holds.
 - Standard output belongs to the protocol. Errors of the server itself go to standard error.
 
 What no tool changes, such as `[event]`, `[print]` or an existing correction under `[[numbers]]`, the agent

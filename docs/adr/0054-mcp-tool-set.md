@@ -90,7 +90,8 @@ itself, both sides canonicalised where possible, as `init` stores the map.
   courses, layouts; `more` counts the rest and is left out at 0. It lists at most 200 sheets, course sheets first,
   and `more_sheets` counts the rest; a sheet left out takes no notes from the budget. One drawn sheet without notes
   is about 190 bytes, so the hostile project of ADR 0040 would return about 190 KB of sheets without the cap.
-  `needs_attention` covers every sheet, also those left out. A failed sheet has `outcome: "failed"` and its `sheet_failed` note (severity
+  `needs_attention` covers every sheet, also those left out, and `more_sheets_needing_attention` counts the sheets
+  left out whose outcome needs attention, so an agent knows whether the cut part hides a problem. A failed sheet has `outcome: "failed"` and its `sheet_failed` note (severity
   error). `needs_attention` at the top matches the CLI's `check` exit code 1.
 - `list_courses` reuses `ops::project::info` and returns `{courses_file, courses, more_courses?}`, so an agent can
   tell "no course file" from an empty one. `project_info` and `list_courses` returned 56 KB each on the hostile
@@ -131,7 +132,10 @@ English twin differs from its original. Text written into the project file (the 
   takes the lock therefore takes the `RequestContext` and checks its token in the blocking task right after the
   lock is acquired: a call cancelled while it waited in the queue does not run and writes nothing
   (`mcp-error-cancelled`). Before, it wrote once the lock was free, and since rmcp drops the answer to a cancelled
-  request, the agent never learned of it.
+  request, the agent never learned of it. rmcp also cancels every request's token when the connection closes, so
+  a client that sends writes and closes stdin at once (`… | freemapper-print mcp`) may find a write skipped,
+  depending on timing; its answer was dropped either way. An agent reads `project_info` after such a session to see
+  what the file holds.
   Every write tool and `export_project` (it reads the project) take it; the read tools do not. The lock is per
   server, so writes to different projects queue too, which is simple and safe.
 - The project already had no `toml_edit`: `masks` and `numbers` append text. The new edits follow that and use an
@@ -148,8 +152,9 @@ English twin differs from its original. Text written into the project file (the 
   new table follows the last table of its kind (a layout after the last layout and its elements, a first shared
   element before the first layout, a first assignment at the end). Comment and blank lines directly above a header
   belong to the table below them. A sub-table that becomes an inline key goes with the comment and blank lines
-  above its header; its comment lines, those above the header and those inside, move above the new key line, so
-  no comment is left above a table it does not describe. On a CRLF file inserted text gets CRLF. Tests pin CRLF,
+  above its header; its comment lines, those above the header and those inside, move above the new key line when
+  the key stays, so no comment is left above a table it does not describe. When the key goes away there is no line
+  to move them to, and they go with the sub-table. On a CRLF file inserted text gets CRLF. Tests pin CRLF,
   a byte order mark, multi-line strings holding header text, anchor sub-tables, a file without a last line break
   and a `[layouts.map_frame]` placed after the layout's `[[layouts.elements]]`.
 - Preflight validation, before anything is written: the changed project goes through `validate` (the load checks),
@@ -240,7 +245,8 @@ tests run with `--locked`. Every new Cargo.lock entry has the version freemapper
 - Closing stdin during an export lets it draw for up to 5 s more, because rmcp's drain is fixed.
 - Comments inside a rewritten key are lost: a comment at the end of a changed key line, a comment inside a value
   over several lines that changes (between the entries of `lines = [ … ]`), and comments at the end of the lines
-  of a sub-table that becomes one inline key. The comment lines of such a sub-table move above the new key.
+  of a sub-table that becomes one inline key. The comment lines of such a sub-table move above the new key, or go
+  with it when the key goes away.
   Comments above a changed key and everywhere else stay. A changed key line also loses its indentation.
 - `rewrite` replaces, loads and restores. If the process dies between replace and restore, a bad file can remain.
   The edit tools avoid this with the in-memory checks first; masks and numbers keep the old order because a CLI

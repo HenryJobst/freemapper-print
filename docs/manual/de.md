@@ -109,7 +109,8 @@ Eingabe: „Mit check_project sehen Sie das Ergebnis“ statt „Mit check sehen
   Wert über mehrere Zeilen, etwa zwischen den Einträgen von `lines = [ … ]`. Eine Untertabelle wie
   `[layouts.map_frame]` oder `[layouts.elements.anchor]` wird zu einer Zeile in der kurzen Form
   `map_frame = { … }`. Die Kommentarzeilen über und in ihr wandern über diese Zeile, Kommentare am Ende ihrer
-  Zeilen gehen verloren. Eine neue Zeile verliert außerdem die Einrückung der alten.
+  Zeilen gehen verloren. Fällt der Schlüssel dagegen weg, gehen seine Kommentare mit. Eine neue Zeile verliert
+  außerdem die Einrückung der alten.
 - Ist die Projektdatei ein Link, ändert der Server sie nicht und sagt das. Die Kommandozeile ersetzt den Link in
   diesem Fall durch eine Datei, was ein Agent nicht bemerken würde. Ein Projektordner, der ein Link ist, ist
   dagegen kein Problem.
@@ -120,13 +121,15 @@ Eingabe: „Mit check_project sehen Sie das Ergebnis“ statt „Mit check sehen
   Bahnen und `init_project` 200 Bahnnamen über alle Layouts. `check_project` und `export_project` geben
   höchstens 200 Hinweise zurück. `more_files`, `more_sheets`, `more_courses`, `more_masks`,
   `more_assignments` und `more` zählen den Rest. `needs_attention` gilt für alle Blätter, auch die
-  weggelassenen.
+  weggelassenen, und `more_sheets_needing_attention` zählt die weggelassenen Blätter, die einen Blick brauchen.
 - Abbrechen lässt sich nur `export_project`. Bricht der Agent den Aufruf ab, endet der Export nach dem Blatt, an
   dem er gerade zeichnet. Die PDFs davor bleiben ganz, eine halbe Datei bleibt nicht zurück. Mit `single_file`
   entsteht dann gar kein PDF. Schließt der Agent die Verbindung, zeichnet der Server noch bis zu fünf Sekunden
   weiter und endet dann ebenso. Die anderen Werkzeuge laufen bis zum Ende. Das dauert bei `check_project` mit
   einer sehr großen Bahndatei (1000 Bahnen mit je 200 Posten) knapp zwei Minuten. Ein Werkzeug, das schreibt
-  und abgebrochen wird, während es auf einen anderen Schreibvorgang wartet, ändert nichts.
+  und abgebrochen wird, während es auf einen anderen Schreibvorgang wartet, ändert nichts. Das Schließen der
+  Verbindung zählt als Abbruch: Ein Schreibaufruf, den der Agent kurz davor schickt, kann ausbleiben. Nach so
+  einer Sitzung zeigt `project_info`, was in der Datei steht.
 - Die Standardausgabe gehört dem Protokoll. Fehler des Servers selbst stehen auf der Standardfehlerausgabe.
 
 Was kein Werkzeug ändert, etwa `[event]`, `[print]` oder eine vorhandene Korrektur unter `[[numbers]]`, ändert
