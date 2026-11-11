@@ -46,4 +46,40 @@ pub enum OpError {
     Output(OutputError),
     /// A sheet could not be drawn or written. Sheets before it are written already.
     Export(ExportError),
+    /// `masks` needs a course file for this, and the project names none (usage).
+    MasksNeedCourseFile,
+    /// The mask could not be built from what was given; `course` is empty for a corridor without one (usage).
+    Build {
+        error: freemapper_print::mask_build::BuildError,
+        course: String,
+    },
+    /// A `--radius-for` item that is not `CODE=MM` (usage).
+    RadiusFor { text: String },
+    /// The map file has no scale, so print mm cannot become map mm.
+    MasksMapScale,
+    /// The mask id given is empty, too long or has control characters (usage).
+    MaskId,
+    /// The mask id is taken (usage).
+    MaskIdTaken { id: String },
+    /// The course's assignment names another mask already (usage).
+    CourseHasMask { course: String, mask: String },
+    /// The assignment of the course is written inline and cannot be changed by the program (usage). `new`: the
+    /// course has no assignment yet, but the others are inline.
+    AssignmentInline {
+        course: String,
+        mask: String,
+        new: bool,
+    },
+    /// A file could not be written.
+    WriteFile {
+        path: PathBuf,
+        source: anyhow::Error,
+    },
+    /// The project file with the new mask no longer loads; it has been put back as it was.
+    LoadChangedMask {
+        path: PathBuf,
+        source: anyhow::Error,
+    },
+    /// The layouts print at different scales, so a corridor without a course has no one width (usage).
+    MasksScales { scales: Vec<u32> },
 }

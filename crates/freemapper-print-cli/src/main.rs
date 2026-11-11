@@ -14,7 +14,7 @@ use freemapper_print::course::fit::{SkipReason, YAxis};
 use freemapper_print::course::{CourseNote, FitNote};
 use freemapper_print::courses::{CorrectionScope, LoadedCourses, MaskNote, Stale, StopName};
 use freemapper_print::export::{ExportError, course_sheet_report};
-use freemapper_print::mask_build::{self, BuildError, Selection, WindowOptions};
+use freemapper_print::mask_build::{self, BuildError};
 use freemapper_print::numbers::{Conflict, NumberConflict};
 use freemapper_print::omap::MapDocument;
 use freemapper_print::output::{self, OutputError};
@@ -379,6 +379,53 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
         )),
         E::Output(err) => output_error(texts, &err),
         E::Export(err) => export_error(texts, &err),
+        E::MasksNeedCourseFile => UsageError(texts.plain("error-masks-no-course-file")).into(),
+        E::Build { error, course } => build_error(texts, error, &course),
+        E::RadiusFor { text } => UsageError(texts.get(
+            "error-masks-radius-for",
+            Some(&args!("text" => printable(&text))),
+        ))
+        .into(),
+        E::MasksMapScale => anyhow!(texts.plain("error-masks-map-scale")),
+        E::MaskId => UsageError(texts.get(
+            "error-masks-id",
+            Some(&args!("max" => freemapper_print::mask::MAX_ID_CHARS.to_string())),
+        ))
+        .into(),
+        E::MaskIdTaken { id } => {
+            UsageError(texts.get("error-masks-id-taken", Some(&args!("id" => printable(&id)))))
+                .into()
+        }
+        E::CourseHasMask { course, mask } => UsageError(texts.get(
+            "error-masks-course-has-mask",
+            Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
+        ))
+        .into(),
+        E::AssignmentInline { course, mask, new } => UsageError(texts.get(
+            if new {
+                "error-masks-assignments-inline"
+            } else {
+                "error-masks-assignment-inline"
+            },
+            Some(&args!("course" => printable(&course), "id" => printable(&mask))),
+        ))
+        .into(),
+        E::WriteFile { path, source } => source.context(texts.get(
+            "error-write-file",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::LoadChangedMask { path, source } => source.context(texts.get(
+            "error-load-changed-mask",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::MasksScales { scales } => {
+            let scales: Vec<String> = scales.iter().map(|s| format!("1:{s}")).collect();
+            UsageError(texts.get(
+                "error-masks-scales",
+                Some(&args!("scales" => join_and(texts, scales))),
+            ))
+            .into()
+        }
     }
 }
 
@@ -1096,114 +1143,14 @@ fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
     UsageError(texts.get(id, Some(&a))).into()
 }
 
-/// Map mm per print mm when the map is printed at 1:`print_scale`.
-fn map_mm_per_print_mm(texts: &Texts, map: &MapDocument, print_scale: u32) -> anyhow::Result<f64> {
-    let map_scale = map.georef.scale_denominator;
-    if map_scale == 0 {
-        bail!(texts.plain("error-masks-map-scale"));
-    }
-    Ok(f64::from(print_scale) / f64::from(map_scale))
-}
-
-/// The id a new mask gets: `given` after the checks of the project file, else `default` made unique. A taken id is
-/// a usage error.
-fn new_mask_id(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    given: Option<&str>,
-    default: impl FnOnce(&[&str]) -> String,
-) -> anyhow::Result<String> {
-    let taken: Vec<&str> = loaded.project.masks.iter().map(|m| m.id.as_str()).collect();
-    let Some(id) = given else {
-        return Ok(default(&taken));
-    };
-    let count = id.chars().count();
-    if count == 0
-        || count > freemapper_print::mask::MAX_ID_CHARS
-        || id.chars().any(char::is_control)
-    {
-        return Err(UsageError(texts.get(
-            "error-masks-id",
-            Some(&args!("max" => freemapper_print::mask::MAX_ID_CHARS.to_string())),
-        ))
-        .into());
-    }
-    if taken.contains(&id) {
-        return Err(UsageError(
-            texts.get("error-masks-id-taken", Some(&args!("id" => printable(id)))),
-        )
-        .into());
-    }
-    Ok(id.to_string())
-}
-
-/// Refuses `--assign` for a course whose assignment names another mask (exit 2).
-fn check_assignable(texts: &Texts, loaded: &LoadedProject, course: &str) -> anyhow::Result<()> {
-    let other = loaded
-        .project
-        .assignments
-        .iter()
-        .find(|a| a.course == course)
-        .and_then(|a| a.mask.as_deref());
-    match other {
-        Some(mask) => Err(UsageError(texts.get(
-            "error-masks-course-has-mask",
-            Some(&args!("course" => printable(course), "mask" => printable(mask))),
-        ))
-        .into()),
-        None => Ok(()),
-    }
-}
-
-/// Writes `mask` with [`project::append_mask`] and says what went wrong in the user's language.
-fn write_mask(
-    texts: &Texts,
-    loaded: &LoadedProject,
-    mask: &freemapper_print::mask::Mask,
-    assign: Option<(&str, &str)>,
-    comment: &str,
-) -> anyhow::Result<()> {
-    project::append_mask(&loaded.path, mask, assign, comment).map_err(|err| {
-        let path = loaded.path.display().to_string();
-        match err {
-            project::ProjectError::DuplicateId { id, .. } => {
-                UsageError(texts.get("error-masks-id-taken", Some(&args!("id" => printable(&id)))))
-                    .into()
-            }
-            project::ProjectError::CourseHasMask { course, mask, .. } => UsageError(texts.get(
-                "error-masks-course-has-mask",
-                Some(&args!("course" => printable(&course), "mask" => printable(&mask))),
-            ))
-            .into(),
-            project::ProjectError::AssignmentNotEditable {
-                course, mask, new, ..
-            } => UsageError(texts.get(
-                if new {
-                    "error-masks-assignments-inline"
-                } else {
-                    "error-masks-assignment-inline"
-                },
-                Some(&args!("course" => printable(&course), "id" => printable(&mask))),
-            ))
-            .into(),
-            err @ project::ProjectError::Write { .. } => anyhow::Error::new(err)
-                .context(texts.get("error-write-file", Some(&args!("path" => path)))),
-            // A file that no longer loads has been put back as it was.
-            err => anyhow::Error::new(err)
-                .context(texts.get("error-load-changed-mask", Some(&args!("path" => path)))),
-        }
-    })?;
-    Ok(())
-}
-
 /// The closing lines after a mask is written: who prints with it, and `check`.
-fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<(&str, &str)>) {
+fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<&ops::masks::Assigned>) {
     match assigned {
-        Some((course, layout)) => eprintln!(
+        Some(a) => eprintln!(
             "{}",
             texts.get(
                 "masks-assigned",
-                Some(&args!("course" => printable(course), "layout" => printable(layout))),
+                Some(&args!("course" => printable(&a.course), "layout" => printable(&a.layout))),
             )
         ),
         None => eprintln!(
@@ -1216,67 +1163,66 @@ fn mask_written_lines(texts: &Texts, id: &str, assigned: Option<(&str, &str)>) {
 
 /// `masks window`: appends a mask with circular windows around the controls of a course (ADR 0047).
 fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
-    let usage = |id: &str, a: FluentArgs| UsageError(texts.get(id, Some(&a)));
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let Some(courses) = read_courses(texts, &loaded, &map)? else {
-        return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
-    };
-    let course = find_course(texts, &courses, &args.course)?;
-    let selection = match &args.controls {
-        Some(text) => Selection::parse(text).map_err(|e| build_error(texts, e, &course.name))?,
-        None => Selection::All,
-    };
-    let mut per_control = std::collections::BTreeMap::new();
-    for item in &args.radius_for {
-        let parsed = item.rsplit_once('=').and_then(|(code, mm)| {
-            let mm: f64 = mm.trim().parse().ok()?;
-            let code = code.trim();
-            (!code.is_empty()).then(|| (code.to_string(), mm))
-        });
-        let Some((code, mm)) = parsed else {
-            return Err(usage("error-masks-radius-for", args!("text" => printable(item))).into());
-        };
-        per_control.insert(code, mm);
-    }
-    let layout = freemapper_print::courses::layout_for(&loaded.project, &course.name).0;
-    let print_scale = layout.print_scale.unwrap_or(map.georef.scale_denominator);
-    let options = WindowOptions {
-        selection,
-        start: !args.no_start,
-        finish: !args.no_finish,
-        radius_mm: args.radius.unwrap_or(mask_build::DEFAULT_RADIUS_MM),
-        per_control,
-        map_mm_per_print_mm: map_mm_per_print_mm(texts, &map, print_scale)?,
-    };
-    let id = new_mask_id(texts, &loaded, args.id.as_deref(), |taken| {
-        mask_build::window_id(&course.name, taken)
-    })?;
-    if args.assign {
-        check_assignable(texts, &loaded, &course.name)?;
-    }
-    let (mask, windows) = mask_build::windows(
-        &id,
-        course,
-        &courses.event,
-        &options,
-        mask_build::map_extent(&map),
+    let result = ops::masks::window(
+        &ops::masks::WindowArgs {
+            project: args.project.clone(),
+            course: args.course.clone(),
+            controls: args.controls.clone(),
+            radius_mm: args.radius,
+            radius_for: args.radius_for.clone(),
+            no_start: args.no_start,
+            no_finish: args.no_finish,
+            id: args.id.clone(),
+            assign: args.assign,
+        },
+        &|r| {
+            let mut comment = texts.get("masks-window-comment", Some(&window_summary(texts, r)));
+            for line in own_radius_lines(texts, r) {
+                comment.push('\n');
+                comment.push_str(&line);
+            }
+            comment
+        },
     )
-    .map_err(|e| build_error(texts, e, &course.name))?;
-    let stops: Vec<StopName> = windows.iter().map(|w| w.stop.clone()).collect();
-    let radius = short_decimal(texts, options.radius_mm, 2);
-    let summary = args!(
-        "id" => printable(&id),
-        "count" => windows.len(),
-        "controls" => stops_phrase(texts, &stops, true),
-        "course" => printable(&course.name),
-        "radius" => radius,
-        "scale" => print_scale.to_string(),
-    );
-    // The windows whose radius differs from the default, one line each.
-    let own_radius: Vec<String> = windows
+    .map_err(|e| op_error(texts, e))?;
+    let mut summary = window_summary(texts, &result);
+    summary.set("path", result.path.display().to_string());
+    eprintln!("{}", texts.get("masks-window-written", Some(&summary)));
+    for line in own_radius_lines(texts, &result) {
+        eprintln!("{line}");
+    }
+    if let Some(which) = result.without_window {
+        let which = match which {
+            ops::masks::StartFinish::Both => "both",
+            ops::masks::StartFinish::Start => "start",
+            ops::masks::StartFinish::Finish => "finish",
+        };
+        eprintln!(
+            "{}",
+            texts.get("masks-no-start-finish", Some(&args!("which" => which)))
+        );
+    }
+    mask_written_lines(texts, &result.id, result.assigned.as_ref());
+    Ok(0)
+}
+
+/// The arguments of the messages about a window mask: id, number of windows, the stops, course, radius and
+/// print scale.
+fn window_summary<'a>(texts: &Texts, r: &ops::masks::WindowResult) -> FluentArgs<'a> {
+    args!(
+        "id" => printable(&r.id),
+        "count" => r.windows.len(),
+        "controls" => stops_phrase(texts, &r.windows, true),
+        "course" => printable(&r.course),
+        "radius" => short_decimal(texts, r.radius_mm, 2),
+        "scale" => r.print_scale.to_string(),
+    )
+}
+
+/// One line per window whose radius differs from the default.
+fn own_radius_lines(texts: &Texts, r: &ops::masks::WindowResult) -> Vec<String> {
+    r.own_radius
         .iter()
-        .filter(|w| w.radius_mm != options.radius_mm)
         .map(|w| {
             texts.get(
                 "masks-window-radius-for",
@@ -1287,53 +1233,7 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
                 )),
             )
         })
-        .collect();
-    let mut comment = texts.get("masks-window-comment", Some(&summary));
-    for line in &own_radius {
-        comment.push('\n');
-        comment.push_str(line);
-    }
-    let assign = args
-        .assign
-        .then_some((course.name.as_str(), layout.id.as_str()));
-    write_mask(texts, &loaded, &mask, assign, &comment)?;
-    let mut summary = summary;
-    summary.set("path", loaded.path.display().to_string());
-    eprintln!("{}", texts.get("masks-window-written", Some(&summary)));
-    for line in &own_radius {
-        eprintln!("{line}");
-    }
-    use freemapper_print::course::model::ControlKind;
-    // A start or finish of the course whose code got no window: check names it.
-    let without_window = |kind: ControlKind| {
-        course.stops.iter().any(|s| {
-            let of_kind = courses
-                .event
-                .controls
-                .iter()
-                .find(|c| c.code == s.control)
-                .is_some_and(|c| s.kind.unwrap_or(c.kind) == kind);
-            of_kind && !windows.iter().any(|w| w.stop.code() == s.control)
-        })
-    };
-    let (start, finish) = (
-        without_window(ControlKind::Start),
-        without_window(ControlKind::Finish),
-    );
-    let which = match (start, finish) {
-        (true, true) => Some("both"),
-        (true, false) => Some("start"),
-        (false, true) => Some("finish"),
-        (false, false) => None,
-    };
-    if let Some(which) = which {
-        eprintln!(
-            "{}",
-            texts.get("masks-no-start-finish", Some(&args!("which" => which)))
-        );
-    }
-    mask_written_lines(texts, &id, assign);
-    Ok(0)
+        .collect()
 }
 
 /// `start`, `finish` or `control`: a selector for the messages that name a stop by kind.
@@ -1397,102 +1297,43 @@ fn stops_with_codes(texts: &Texts, stops: &[StopName]) -> String {
     join_and(texts, items)
 }
 
-/// The course `name` of the course file, or a usage error that lists the courses.
-fn find_course<'a>(
-    texts: &Texts,
-    courses: &'a LoadedCourses,
-    name: &str,
-) -> anyhow::Result<&'a freemapper_print::course::model::Course<freemapper_print::omap::MapCoord>> {
-    courses
-        .event
-        .courses
-        .iter()
-        .find(|c| c.name == name)
-        .ok_or_else(|| {
-            let known: Vec<String> = courses
-                .event
-                .courses
-                .iter()
-                .map(|c| c.name.clone())
-                .collect();
-            UsageError(texts.get(
-                "error-unknown-course",
-                Some(&args!("name" => printable(name), "known" => quoted_list(texts, &known))),
-            ))
-            .into()
-        })
-}
-
 /// `masks corridor`: appends a mask with a corridor along the polyline the user gives (ADR 0047).
 fn masks_corridor(texts: &Texts, args: &CorridorArgs) -> anyhow::Result<u8> {
-    let loaded = load_project(texts, &args.project)?;
-    let map = read_map(texts, &loaded.map_path())?;
-    let points = mask_build::parse_points(&args.points).map_err(|e| build_error(texts, e, ""))?;
-    let map_scale = map.georef.scale_denominator;
-    let scale_of = |l: &LayoutSpec| l.print_scale.unwrap_or(map_scale);
-    // The width is print mm, so it needs the print scale: the course's layout, or the one all layouts share.
-    let (course, layout) = match &args.course {
-        Some(name) => {
-            let Some(courses) = read_courses(texts, &loaded, &map)? else {
-                return Err(UsageError(texts.plain("error-masks-no-course-file")).into());
-            };
-            let course = find_course(texts, &courses, name)?.name.clone();
-            let layout = freemapper_print::courses::layout_for(&loaded.project, &course).0;
-            (Some(course), layout)
-        }
-        None => {
-            let mut scales: Vec<u32> = loaded.project.layouts.iter().map(scale_of).collect();
-            scales.sort_unstable();
-            scales.dedup();
-            if scales.len() > 1 {
-                let scales: Vec<String> = scales.iter().map(|s| format!("1:{s}")).collect();
-                return Err(UsageError(texts.get(
-                    "error-masks-scales",
-                    Some(&args!("scales" => join_and(texts, scales))),
-                ))
-                .into());
-            }
-            (None, &loaded.project.layouts[0])
-        }
-    };
-    let print_scale = scale_of(layout);
-    let width = args.width.unwrap_or(mask_build::DEFAULT_WIDTH_MM);
-    let k = map_mm_per_print_mm(texts, &map, print_scale)?;
-    let id = new_mask_id(texts, &loaded, args.id.as_deref(), mask_build::corridor_id)?;
-    if args.assign
-        && let Some(course) = &course
-    {
-        check_assignable(texts, &loaded, course)?;
-    }
-    let polygon = mask_build::corridor(&points, width, k, mask_build::map_extent(&map))
-        .map_err(|e| build_error(texts, e, course.as_deref().unwrap_or("")))?;
-    let mask = freemapper_print::mask::Mask {
-        id: id.clone(),
-        polygons: vec![polygon],
-    };
-    let summary = args!(
-        "id" => printable(&id),
-        "count" => points.len(),
-        "width" => short_decimal(texts, width, 2),
-        "scale" => print_scale.to_string(),
-    );
-    // The points as read, so that the command can be run again from the comment.
-    let written: Vec<String> = points.iter().map(|[x, y]| format!("{x},{y}")).collect();
-    let comment = format!(
-        "{}\n--points \"{}\"",
-        texts.get("masks-corridor-comment", Some(&summary)),
-        written.join(";")
-    );
-    let assigned = match (&course, args.assign) {
-        (Some(c), true) => Some((c.as_str(), layout.id.as_str())),
-        _ => None,
-    };
-    write_mask(texts, &loaded, &mask, assigned, &comment)?;
-    let mut summary = summary;
-    summary.set("path", loaded.path.display().to_string());
+    let result = ops::masks::corridor(
+        &ops::masks::CorridorArgs {
+            project: args.project.clone(),
+            points: args.points.clone(),
+            width_mm: args.width,
+            id: args.id.clone(),
+            assign: args.assign,
+            course: args.course.clone(),
+        },
+        &|r| {
+            // The points as read, so that the command can be run again from the comment.
+            let written: Vec<String> = r.points.iter().map(|[x, y]| format!("{x},{y}")).collect();
+            format!(
+                "{}\n--points \"{}\"",
+                texts.get("masks-corridor-comment", Some(&corridor_summary(texts, r))),
+                written.join(";")
+            )
+        },
+    )
+    .map_err(|e| op_error(texts, e))?;
+    let mut summary = corridor_summary(texts, &result);
+    summary.set("path", result.path.display().to_string());
     eprintln!("{}", texts.get("masks-corridor-written", Some(&summary)));
-    mask_written_lines(texts, &id, assigned);
+    mask_written_lines(texts, &result.id, result.assigned.as_ref());
     Ok(0)
+}
+
+/// The arguments of the messages about a corridor mask: id, number of points, width and print scale.
+fn corridor_summary<'a>(texts: &Texts, r: &ops::masks::CorridorResult) -> FluentArgs<'a> {
+    args!(
+        "id" => printable(&r.id),
+        "count" => r.points.len(),
+        "width" => short_decimal(texts, r.width_mm, 2),
+        "scale" => r.print_scale.to_string(),
+    )
 }
 
 /// The lines about one sheet: the first line (message `id` with `keys`, the page size, scales and factors), then

@@ -8,6 +8,7 @@
 pub mod check;
 pub mod error;
 pub mod export;
+pub mod masks;
 pub mod note;
 
 #[cfg(test)]
