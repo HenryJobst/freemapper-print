@@ -241,6 +241,10 @@ fn edit_error(path: &std::path::Path, source: ProjectError) -> OpError {
             path: path.to_path_buf(),
             source: anyhow::Error::new(err),
         },
+        ProjectError::NotEditable { target, .. } => OpError::NotEditable {
+            path: path.to_path_buf(),
+            target,
+        },
         source => OpError::EditProject {
             path: path.to_path_buf(),
             source,

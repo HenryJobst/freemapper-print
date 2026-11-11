@@ -133,6 +133,12 @@ pub enum OpError {
     /// A mask id that is neither a `[[masks]]` entry nor a white-out of the course file; `known` are the ids there
     /// are (usage).
     UnknownMask { id: String, known: Vec<String> },
+    /// The layout, the elements or the assignment to change are not written as tables of their own, so the program
+    /// cannot change them.
+    NotEditable {
+        path: PathBuf,
+        target: freemapper_print::project::EditTarget,
+    },
     /// A change of a layout, element or assignment was refused, or the changed file did not read back and was put
     /// back as it was.
     EditProject {

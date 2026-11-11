@@ -512,6 +512,19 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             )
         })
         .into(),
+        E::NotEditable { path, target } => {
+            use project::EditTarget as T;
+            let (id, name) = match &target {
+                T::Layout(id) => ("error-not-editable-layout", id.as_str()),
+                T::LayoutElements(id) => ("error-not-editable-elements", id.as_str()),
+                T::SharedElements => ("error-not-editable-shared", ""),
+                T::Assignment(course) => ("error-not-editable-assignment", course.as_str()),
+            };
+            anyhow!(texts.get(
+                id,
+                Some(&args!("path" => path.display().to_string(), "name" => printable(name))),
+            ))
+        }
         E::EditProject { path, source } => anyhow::Error::new(source).context(texts.get(
             "error-edit-project",
             Some(&args!("path" => path.display().to_string())),

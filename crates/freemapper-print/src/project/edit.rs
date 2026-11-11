@@ -3,6 +3,9 @@
 //! text, so whatever they do not change stays byte for byte as it was, comments included. A key whose value stays
 //! the same keeps its line, a changed key gets its new line in the place of the old one, a new key goes after the
 //! last key of its table, a key that goes away loses its line, and a new table follows the last table of its kind.
+//! A changed key written as a sub-table (`[layouts.map_frame]`) becomes one line, and the comment lines above and
+//! inside the sub-table move above that line. Strings with a line break are written on one line with `\n`, so the
+//! file keeps its line breaks (CRLF or LF).
 //!
 //! Each change is checked twice before the file is replaced: the changed project must pass the checks of
 //! [`super::load`], and the changed text must read back as that project. Only then is the file replaced, through
@@ -14,8 +17,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::{
-    Assignment, ElementSpec, LayoutSpec, LoadedProject, MAX_PROJECT_FILE_BYTES, Project,
-    ProjectError, load, load_text, rewrite, validate, with_newlines,
+    Assignment, EditTarget, ElementSpec, LayoutSpec, LoadedProject, MAX_PROJECT_FILE_BYTES,
+    Project, ProjectError, load, load_text, rewrite, validate, with_newlines,
 };
 
 /// What a change did to the project file.
@@ -59,8 +62,7 @@ pub fn set_layout(
     check(&file, &before, &expected)?;
     let not_editable = || ProjectError::NotEditable {
         file: file.clone(),
-        what: format!("layout \"{}\"", layout.id),
-        table: "layouts".into(),
+        target: EditTarget::Layout(layout.id.clone()),
     };
     let doc = Doc::new(text_of(&old).ok_or_else(not_editable)?);
     let layouts = doc.arrays(&["layouts"], 0..doc.lines.len());
@@ -140,11 +142,10 @@ pub fn set_element(
     };
     let not_editable = || ProjectError::NotEditable {
         file: file.clone(),
-        what: match layout {
-            Some(l) => format!("the elements of layout \"{l}\""),
-            None => "the shared elements".into(),
+        target: match layout {
+            Some(l) => EditTarget::LayoutElements(l.to_string()),
+            None => EditTarget::SharedElements,
         },
-        table: table.into(),
     };
     let doc = Doc::new(text_of(&old).ok_or_else(not_editable)?);
     let all = 0..doc.lines.len();
@@ -232,8 +233,7 @@ pub fn set_assignment(
     check(&file, &before, &expected)?;
     let not_editable = || ProjectError::NotEditable {
         file: file.clone(),
-        what: format!("the assignment of course \"{}\"", assignment.course),
-        table: "assignments".into(),
+        target: EditTarget::Assignment(assignment.course.clone()),
     };
     let doc = Doc::new(text_of(&old).ok_or_else(not_editable)?);
     let assignments = doc.arrays(&["assignments"], 0..doc.lines.len());
@@ -346,12 +346,92 @@ fn apply(text: &str, mut edits: Vec<Edit>, old: &[u8]) -> String {
 /// left out.
 type Keys = Vec<(&'static str, Option<String>)>;
 
-/// `v` as an inline TOML value.
+/// `v` as an inline TOML value. A string with a line break is written on one line, with `\n` escaped.
 fn value(v: &impl Serialize) -> Result<String, ProjectError> {
     let mut out = String::new();
     v.serialize(toml::ser::ValueSerializer::new(&mut out))
         .map_err(|e| ProjectError::Serialize(e.to_string()))?;
-    Ok(out)
+    Ok(one_line_strings(&out))
+}
+
+/// `text`, a TOML value, with each multi-line string rewritten as a basic string on one line. The line breaks
+/// left in the value are then outside strings, so they can take the file's (CRLF or LF) without changing a string:
+/// a CRLF file would otherwise turn `"a\nb"` into `"a\r\nb"`.
+fn one_line_strings(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let (mut i, mut copied) = (0, 0);
+    while i < b.len() {
+        let q = b[i];
+        if q != b'"' && q != b'\'' {
+            i += 1;
+            continue;
+        }
+        let multi = b[i..].starts_with(&[q, q, q]);
+        let end = string_end(b, i, multi);
+        if multi && let Some(decoded) = decoded_string(&text[i..end]) {
+            out.push_str(&text[copied..i]);
+            out.push_str(&basic_string(&decoded));
+            copied = end;
+        }
+        i = end;
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
+/// The byte after the string that starts at `start` (its opening quote) in `b`.
+fn string_end(b: &[u8], start: usize, multi: bool) -> usize {
+    let q = b[start];
+    let mut i = start + if multi { 3 } else { 1 };
+    while i < b.len() {
+        if q == b'"' && b[i] == b'\\' {
+            i += 2;
+            continue;
+        }
+        if multi && b[i..].starts_with(&[q, q, q]) {
+            // Up to two more quotes belong to the string (`"""a""""` ends with a quote).
+            let mut end = i + 3;
+            while end < b.len() && end < i + 5 && b[end] == q {
+                end += 1;
+            }
+            return end;
+        }
+        if !multi && b[i] == q {
+            return i + 1;
+        }
+        i += 1;
+    }
+    b.len()
+}
+
+/// The string a TOML string literal holds; `None` when it does not read.
+fn decoded_string(literal: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Holder {
+        v: String,
+    }
+    toml::from_str::<Holder>(&format!("v = {literal}"))
+        .ok()
+        .map(|h| h.v)
+}
+
+/// `s` as a TOML basic string on one line.
+fn basic_string(s: &str) -> String {
+    let mut out = String::from('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// A list of strings, left out when empty.
@@ -496,6 +576,11 @@ impl<'a> Doc<'a> {
         self.lines.get(i).map_or(self.text.len(), |l| l.start)
     }
 
+    /// Line `i` with its line break.
+    fn line_text(&self, i: usize) -> &str {
+        &self.text[self.lines[i].start..self.lines[i].end]
+    }
+
     fn name(&self, i: usize) -> Option<&[String]> {
         match self.kinds.get(i)? {
             Kind::Header(name, _) => Some(name),
@@ -594,21 +679,29 @@ impl<'a> Doc<'a> {
                 };
                 edits.push((self.byte(range.start)..self.byte(range.end), with));
             }
-            // The key written as an inner table `[name.key]`, with the blank lines before it.
+            // The key written as an inner table `[name.key]`, with the blank and comment lines before it. Its comment
+            // lines, those above the header and those inside, move to the line that replaces it.
             let mut path = name.clone();
             path.push((*key).to_string());
+            let mut comments = String::new();
             for inner in (body_end..group_end).filter(|&i| {
                 self.name(i)
                     .is_some_and(|n| n.len() >= path.len() && n.starts_with(&path))
             }) {
                 let mut start = inner;
-                while start > h + 1 && self.kinds[start - 1] == Kind::Blank {
+                while start > h + 1 && matches!(self.kinds[start - 1], Kind::Blank | Kind::Comment)
+                {
                     start -= 1;
                 }
                 let end = self.trimmed(inner, self.table_end(inner));
+                for i in (start..end).filter(|&i| self.kinds[i] == Kind::Comment) {
+                    comments.push_str(self.line_text(i).trim_end_matches(['\r', '\n']));
+                    comments.push('\n');
+                }
                 edits.push((self.byte(start)..self.byte(end), String::new()));
             }
             if !placed && let Some(line) = line {
+                added.push_str(&comments);
                 added.push_str(&line);
             }
         }
@@ -713,7 +806,10 @@ fn kind_of(text: &str, line: &Line) -> Kind {
     if !line.top {
         return Kind::Inner;
     }
-    let t = text[line.start..line.end].trim();
+    // A byte order mark before the first line is no part of it.
+    let t = text[line.start..line.end]
+        .trim_start_matches('\u{feff}')
+        .trim();
     if t.is_empty() {
         Kind::Blank
     } else if t.starts_with('#') {
@@ -1114,6 +1210,189 @@ layout = "a4"
             text(&path),
             format!("{body}\r\n[[assignments]]\r\ncourse = \"A\"\r\nlayout = \"a4\"\r\n"),
         );
+    }
+
+    #[test]
+    fn a_line_with_a_line_break_is_written_escaped_on_lf_and_crlf_files() {
+        for newline in ["\n", "\r\n"] {
+            let body = PROJECT.replace('\n', newline);
+            let (_d, path) = temp(&body);
+            let mut note = element("note", ElementKind::Text);
+            note.lines = vec!["a\nb".into(), "it's \"quoted\"\r\n\tend".into()];
+            let (lp, change) = set_element(&path, Some("a4"), &note).unwrap();
+            assert_eq!(change, Change::Added);
+            assert_eq!(lp.project.layouts[0].elements[1], note);
+            let mut title = lp.project.shared[0].clone();
+            title.lines = vec!["x\ny".into()];
+            let (lp, change) = set_element(&path, None, &title).unwrap();
+            assert_eq!(change, Change::Changed);
+            assert_eq!(lp.project.shared[0], title);
+            let new = text(&path);
+            assert!(new.contains(r#"    "a\nb","#), "{new:?}");
+            assert!(new.contains(r#"lines = ["x\ny"]"#), "{new:?}");
+            // Every line break of the file is still the file's.
+            assert_eq!(
+                new.matches('\n').count(),
+                new.matches(newline).count(),
+                "{new:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_byte_order_mark_stays_where_it_is() {
+        let body = format!("\u{feff}{PROJECT}");
+        let (_d, path) = temp(&body);
+        let mut layout = a4(&load(&path).unwrap());
+        layout.print_scale = Some(5000);
+        set_layout(&path, &layout).unwrap();
+        assert_eq!(
+            text(&path),
+            body.replace(
+                "map_frame = { margin_mm = 12.0 }\n",
+                "map_frame = { margin_mm = 12.0 }\nprint_scale = 5000\n",
+            )
+        );
+        assert_eq!(Doc::new(&body).kinds[0], Kind::Comment);
+    }
+
+    #[test]
+    fn headers_inside_a_multi_line_literal_string_are_text() {
+        let body = PROJECT.replace(
+            "    \"[[layouts]]\",\n",
+            "    '''\n[[layouts]]\n[layouts.map_frame]\n''',\n",
+        );
+        let (_d, path) = temp(&body);
+        let shared = load(&path).unwrap().project.shared;
+        assert_eq!(shared[0].lines[1], "[[layouts]]\n[layouts.map_frame]\n");
+        let mut layout = a4(&load(&path).unwrap());
+        layout.id = "a3".into();
+        let (lp, change) = set_layout(&path, &layout).unwrap();
+        assert_eq!(change, Change::Added);
+        assert_eq!(lp.project.layouts.len(), 2);
+        assert_eq!(lp.project.shared, shared);
+        let new = text(&path);
+        let at = new.find("[[layouts]]\nid = \"a3\"").unwrap();
+        assert!(at > new.find("id = \"bar\"").unwrap(), "{new}");
+        assert_eq!(new[..at].trim_end(), body[..at].trim_end());
+    }
+
+    #[test]
+    fn an_anchor_written_as_a_sub_table_becomes_one_line_and_keeps_its_comments() {
+        let body = PROJECT
+            .replace(
+                "# anchor comment\nanchor = { to = \"page\", corner = \"bottom_right\" }\n",
+                "\n# anchor comment\n[layouts.elements.anchor]\n# inside\nto = \"page\" # end of line\n\
+                 corner = \"bottom_right\"\n",
+            )
+            .replace(
+                "anchor = { to = \"map_frame\", corner = \"top_left\" }\n",
+                "\n[shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n",
+            );
+        let (_d, path) = temp(&body);
+        let lp = load(&path).unwrap();
+        let mut bar = lp.project.layouts[0].elements[0].clone();
+        bar.anchor.offset_mm = [5.0, 5.0];
+        set_element(&path, Some("a4"), &bar).unwrap();
+        let mut title = lp.project.shared[0].clone();
+        title.anchor.offset_mm = [1.0, 2.0];
+        set_element(&path, None, &title).unwrap();
+        let expected = body
+            .replace(
+                "kind = \"scale_check_bar\"\n\n# anchor comment\n[layouts.elements.anchor]\n# inside\n\
+                 to = \"page\" # end of line\ncorner = \"bottom_right\"\n",
+                "kind = \"scale_check_bar\"\n# anchor comment\n# inside\n\
+                 anchor = { to = \"page\", corner = \"bottom_right\", offset_mm = [5.0, 5.0] }\n",
+            )
+            .replace(
+                "]\n\n[shared.anchor]\nto = \"map_frame\"\ncorner = \"top_left\"\n",
+                "]\nanchor = { to = \"map_frame\", corner = \"top_left\", offset_mm = [1.0, 2.0] }\n",
+            );
+        assert_eq!(text(&path), expected);
+        let lp = load(&path).unwrap();
+        assert_eq!(lp.project.layouts[0].elements[0], bar);
+        assert_eq!(lp.project.shared[0], title);
+    }
+
+    #[test]
+    fn the_comment_above_a_map_frame_table_moves_with_it() {
+        let body = PROJECT.replace(
+            "# frame comment\nmap_frame = { margin_mm = 12.0 }\n",
+            "\n# frame comment\n[layouts.map_frame]\nmargin_mm = 12.0 # twelve\n",
+        );
+        let (_d, path) = temp(&body);
+        let mut layout = a4(&load(&path).unwrap());
+        layout.map_frame.crop = true;
+        set_layout(&path, &layout).unwrap();
+        assert_eq!(
+            text(&path),
+            PROJECT.replace(
+                "map_frame = { margin_mm = 12.0 }",
+                "map_frame = { margin_mm = 12.0, border_mm = 0.25, crop = true }",
+            )
+        );
+    }
+
+    #[test]
+    fn a_map_frame_table_after_the_elements_of_its_layout_is_found() {
+        let body = PROJECT
+            .replace("# frame comment\nmap_frame = { margin_mm = 12.0 }\n", "")
+            .replace(
+                "anchor = { to = \"page\", corner = \"bottom_right\" }\n",
+                "anchor = { to = \"page\", corner = \"bottom_right\" }\n\n# frame comment\n\
+                 [layouts.map_frame]\nmargin_mm = 12.0\n",
+            );
+        let (_d, path) = temp(&body);
+        let mut layout = a4(&load(&path).unwrap());
+        assert_eq!(layout.map_frame.margin_mm, 12.0);
+        layout.map_frame.margin_mm = 10.0;
+        set_layout(&path, &layout).unwrap();
+        assert_eq!(
+            text(&path),
+            PROJECT.replace(
+                "map_frame = { margin_mm = 12.0 }",
+                "map_frame = { margin_mm = 10.0, border_mm = 0.25 }",
+            )
+        );
+    }
+
+    #[test]
+    fn a_file_without_a_last_line_break_gets_one_before_new_text() {
+        let body = PROJECT.trim_end();
+        let (_d, path) = temp(body);
+        let a = Assignment {
+            course: "A".into(),
+            layout: "a4".into(),
+            mask: Some("whiteout-1".into()),
+        };
+        set_assignment(&path, &a).unwrap();
+        assert_eq!(text(&path), format!("{body}\nmask = \"whiteout-1\"\n"));
+        // A new layout after the last table, which ends without a line break.
+        let cut = PROJECT.find("\n# assignments comment").unwrap();
+        let body = PROJECT[..cut].trim_end();
+        let (_d, path) = temp(body);
+        let mut layout = a4(&load(&path).unwrap());
+        layout.id = "a3".into();
+        layout.elements.clear();
+        let (lp, change) = set_layout(&path, &layout).unwrap();
+        assert_eq!(change, Change::Added);
+        assert_eq!(lp.project.layouts[1].id, "a3");
+        assert!(
+            text(&path).starts_with(&format!("{body}\n\n[[layouts]]\nid = \"a3\"\n")),
+            "{}",
+            text(&path)
+        );
+    }
+
+    #[test]
+    fn multi_line_strings_of_a_value_become_basic_strings() {
+        assert_eq!(one_line_strings(r#"["a", 'b']"#), r#"["a", 'b']"#);
+        assert_eq!(
+            one_line_strings("[\"\"\"\na\nb\"\"\", '''\nc\\d''']"),
+            r#"["a\nb", "c\\d"]"#
+        );
+        assert_eq!(one_line_strings("'''a\"\"\"b'''"), r#""a\"\"\"b""#);
+        assert_eq!(basic_string("\u{1}\u{7f}é"), r#""\u0001\u007Fé""#);
     }
 
     #[test]

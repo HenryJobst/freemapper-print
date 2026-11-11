@@ -492,19 +492,56 @@ pub enum ProjectError {
     /// [`set_layout`], [`set_element`] or [`set_assignment`] found the table to change, or the place for a new
     /// one, not written as tables of their own (`[[layouts]]` and so on), so the change is left to the user.
     /// Nothing was written.
-    #[error(
-        "{file}: {what} is not written as tables [[{table}]] of its own, so the program cannot change it; \
-         change it by hand. The project file was left unchanged."
-    )]
+    #[error("{file}: {target}; the file was left unchanged")]
     NotEditable {
         file: String,
-        /// What was to change, such as `layout "a4"`.
-        what: String,
-        /// The table name, such as `layouts.elements`.
-        table: String,
+        /// What was to change.
+        target: EditTarget,
     },
     #[error("cannot write the project file: {0}")]
     Serialize(String),
+}
+
+/// What [`set_layout`], [`set_element`] or [`set_assignment`] was to change when it found it not written as tables
+/// of their own ([`ProjectError::NotEditable`]). Its text says so in English; the CLI words it in the user's
+/// language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditTarget {
+    /// The `[[layouts]]` table of the layout with this id.
+    Layout(String),
+    /// The `[[layouts.elements]]` tables of the layout with this id.
+    LayoutElements(String),
+    /// The `[[shared]]` tables.
+    SharedElements,
+    /// The `[[assignments]]` table of the course with this name.
+    Assignment(String),
+}
+
+impl std::fmt::Display for EditTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EditTarget::Layout(id) => write!(
+                f,
+                "layout \"{id}\" is not written as a table [[layouts]] of its own, so the program cannot change \
+                 it; change it by hand"
+            ),
+            EditTarget::LayoutElements(id) => write!(
+                f,
+                "the elements of layout \"{id}\" are not written as tables [[layouts.elements]] of their own, so \
+                 the program cannot change them; change them by hand"
+            ),
+            EditTarget::SharedElements => write!(
+                f,
+                "the shared elements are not written as tables [[shared]] of their own, so the program cannot \
+                 change them; change them by hand"
+            ),
+            EditTarget::Assignment(course) => write!(
+                f,
+                "the assignment of course \"{course}\" is not written as a table [[assignments]] of its own, so \
+                 the program cannot change it; change it by hand"
+            ),
+        }
+    }
 }
 
 fn line_col(text: &str, offset: usize) -> (usize, usize) {
