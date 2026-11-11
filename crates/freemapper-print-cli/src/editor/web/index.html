@@ -1,13 +1,63 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>freemapper-print</title>
-<link rel="stylesheet" href="suite/suite.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-text="editor-page-title"></title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="suite/suite.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script type="module" src="assets/app.js"></script>
 </head>
-<body>
-<h1>freemapper-print</h1>
-<script type="module" src="assets/app.js"></script>
+<body class="frame">
+  <main class="panes">
+    <nav class="pane" id="pane-tree" data-label="editor-pane-tree" data-tree-label=""></nav>
+    <section class="pane" id="pane-sheet" data-label="editor-pane-sheet">
+      <div class="toolbar" role="toolbar" data-label="editor-toolbar-label" id="sheet-toolbar"></div>
+      <div id="banner" role="alert"></div>
+      <div id="sheet" tabindex="0" role="application" data-label="editor-pane-sheet"></div>
+      <div id="notices" aria-live="polite"></div>
+    </section>
+    <aside class="pane" id="pane-props" tabindex="0" data-label="editor-pane-props">
+      <h2 data-text="editor-props-heading"></h2>
+      <div id="props"><p class="hint" data-text="editor-props-empty"></p></div>
+    </aside>
+  </main>
+  <header class="menubar">
+    <details class="menu">
+      <summary data-text="editor-menu-file"></summary>
+      <ul>
+        <li><button type="button" id="menu-done" data-text="editor-menu-done"></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-edit"></summary>
+      <ul>
+        <li><button type="button" id="menu-undo" data-text="editor-menu-undo" disabled></button></li>
+        <li><button type="button" id="menu-redo" data-text="editor-menu-redo" disabled></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-view"></summary>
+      <ul>
+        <li><button type="button" id="menu-zoom-in" data-text="editor-menu-zoom-in" disabled></button></li>
+        <li><button type="button" id="menu-zoom-out" data-text="editor-menu-zoom-out" disabled></button></li>
+        <li><button type="button" id="menu-zoom-fit" data-text="editor-menu-zoom-fit" disabled></button></li>
+      </ul>
+    </details>
+    <details class="menu">
+      <summary data-text="editor-menu-export"></summary>
+      <ul>
+        <li><button type="button" id="menu-export-sheet" data-text="editor-menu-export-sheet" disabled></button></li>
+        <li><button type="button" id="menu-export-all" data-text="editor-menu-export-all" disabled></button></li>
+      </ul>
+    </details>
+  </header>
+  <footer class="status">
+    <span id="status-message" role="status" aria-live="polite"></span>
+    <span class="field"><span class="name" data-text="editor-status-project"></span> <span id="status-project"></span></span>
+    <span class="field"><span class="name" data-text="editor-status-scale"></span> <span id="status-scale"></span></span>
+    <span class="field"><span class="name" data-text="editor-status-page"></span> <span id="status-page"></span></span>
+  </footer>
 </body>
 </html>

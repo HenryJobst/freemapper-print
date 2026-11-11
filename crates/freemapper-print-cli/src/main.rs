@@ -2343,6 +2343,7 @@ fn localised_command(texts: &Texts) -> clap::Command {
 fn main() -> std::process::ExitCode {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let env = |name: &str| std::env::var(name).ok();
+    let fixed_lang = editor::fixed_language(lang_from_args(&args).as_deref(), &env);
     let lang = match detect_lang(lang_from_args(&args).as_deref(), &env) {
         Ok(lang) => lang,
         Err(unknown) => {
@@ -2378,9 +2379,12 @@ fn main() -> std::process::ExitCode {
             MasksCommand::Window(args) => masks_window(&texts, &args),
             MasksCommand::Corridor(args) => masks_corridor(&texts, &args),
         },
-        Commands::Edit(args) => editor::run(&args, &texts)
-            .map(|()| 0)
-            .map_err(|err| op_error(&texts, err)),
+        Commands::Edit(mut args) => {
+            args.lang = fixed_lang;
+            editor::run(&args, &texts)
+                .map(|()| 0)
+                .map_err(|err| op_error(&texts, err))
+        }
         Commands::Mcp => mcp::run(&texts),
     };
     match result {

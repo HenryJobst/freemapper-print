@@ -1,0 +1,22 @@
+/* App-specific layout of the editor. Tokens and base elements come from suite/suite.css. */
+
+.panes {
+  display: grid;
+  grid-template-columns: 16rem 1fr 20rem;
+  min-height: 0;
+  height: 100%;
+}
+
+.pane { min-width: 0; min-height: 0; overflow: auto; padding: 0.5rem; border-right: 1px solid var(--line); }
+#pane-props { border-right: 0; border-left: 1px solid var(--line); }
+#pane-sheet { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+
+#sheet { flex: 1; min-height: 0; overflow: auto; background: var(--map-bg); }
+#notices { max-height: 30%; overflow: auto; border-top: 1px solid var(--line); padding: 0 0.5rem; }
+
+h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+
+@media (max-width: 60rem) {
+  .panes { grid-template-columns: 12rem 1fr; }
+  #pane-props { display: none; }
+}

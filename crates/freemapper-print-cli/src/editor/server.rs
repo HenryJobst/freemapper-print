@@ -1,19 +1,21 @@
 //! The server of the editor: the routes on top of `freemapper_web::serve`.
 //!
 //! Routes below the token: `GET /` (the page), `GET /assets/*` (the page's own files), `POST /api/done` (ends
-//! the server). The suite assets at `/suite/*` come from `freemapper-web`.
+//! the server), `GET /api/texts` (the page's words). The suite assets at `/suite/*` come from `freemapper-web`.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::Path;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use freemapper_print::web::{self, LocalServer, ServeOptions, WebError};
 use tokio::sync::Notify;
 
 use crate::ops::OpError;
+use crate::text::TEXTS;
 
 /// Only the page's own files, plus the suite assets of `freemapper-web`; nothing from the network.
 pub(super) const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
@@ -50,9 +52,36 @@ async fn done(done: Arc<Notify>) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], "{}").into_response()
 }
 
-fn routes(prefix: &str, shutdown: Arc<Notify>) -> Router {
+/// Every `editor-*` and `suite-*` message for the page, as `{ lang, texts }`. The language is the one the
+/// person set (`--lang`, `FREEMAPPER_LANG`), else the browser's `Accept-Language`, else English (core ADR 0030).
+async fn texts(fixed: Option<String>, headers: HeaderMap) -> Response {
+    let accept = headers
+        .get(header::ACCEPT_LANGUAGE)
+        .and_then(|value| value.to_str().ok());
+    let code = web::texts_language(fixed.as_deref(), accept);
+    let lang = TEXTS
+        .parse_lang_arg(code)
+        .unwrap_or_else(|_| crate::text::Lang::english());
+    let texts: BTreeMap<String, String> = TEXTS
+        .message_ids("en")
+        .into_iter()
+        .filter(|id| id.starts_with("editor-") || id.starts_with("suite-"))
+        .map(|id| {
+            let message = TEXTS.text(&lang, &id, &[]);
+            (id, message)
+        })
+        .collect();
+    let body = serde_json::json!({ "lang": lang.code(), "texts": texts }).to_string();
+    ([(header::CONTENT_TYPE, "application/json")], body).into_response()
+}
+
+fn routes(prefix: &str, shutdown: Arc<Notify>, fixed: Option<String>) -> Router {
     Router::new()
         .route(&format!("{prefix}/"), get(index))
+        .route(
+            &format!("{prefix}/api/texts"),
+            get(move |headers: HeaderMap| texts(fixed.clone(), headers)),
+        )
         .route(&format!("{prefix}/assets/{{*path}}"), get(asset))
         .route(
             &format!("{prefix}/api/done"),
@@ -61,12 +90,20 @@ fn routes(prefix: &str, shutdown: Arc<Notify>) -> Router {
 }
 
 /// Starts the server on `port`.
-pub(super) async fn start(port: u16) -> Result<LocalServer, WebError> {
-    web::serve(routes, options(port)).await
+pub(super) async fn start(port: u16, fixed: Option<String>) -> Result<LocalServer, WebError> {
+    web::serve(
+        move |prefix, shutdown| routes(prefix, shutdown, fixed),
+        options(port),
+    )
+    .await
 }
 
 /// Starts the server, calls `announce` with its address, and waits until `POST api/done` or Ctrl+C ends it.
-pub(super) fn serve_until_done(port: u16, announce: impl FnOnce(&str)) -> Result<(), OpError> {
+pub(super) fn serve_until_done(
+    port: u16,
+    fixed: Option<String>,
+    announce: impl FnOnce(&str),
+) -> Result<(), OpError> {
     let serve_error = |source: std::io::Error| OpError::Serve {
         source: anyhow::Error::new(source),
     };
@@ -75,7 +112,7 @@ pub(super) fn serve_until_done(port: u16, announce: impl FnOnce(&str)) -> Result
         .build()
         .map_err(serve_error)?;
     runtime.block_on(async {
-        let server = start(port).await.map_err(|e| OpError::Serve {
+        let server = start(port, fixed).await.map_err(|e| OpError::Serve {
             source: anyhow::Error::new(e),
         })?;
         announce(&server.url);
@@ -130,6 +167,11 @@ mod tests {
     }
 
     fn start(no_browser: bool) -> Running {
+        start_with(no_browser, None)
+    }
+
+    fn start_with(no_browser: bool, lang: Option<&str>) -> Running {
+        let lang = lang.map(str::to_owned);
         let out = Shared::default();
         let opened = Arc::new(AtomicUsize::new(0));
         let (writer, counter) = (out.clone(), Arc::clone(&opened));
@@ -137,6 +179,7 @@ mod tests {
             project: viktoriapark(),
             port: 0,
             no_browser,
+            lang,
         };
         let thread = std::thread::spawn(move || {
             let texts = Texts::new(&Lang::english());
@@ -286,6 +329,65 @@ mod tests {
         finish(run);
     }
 
+    fn texts_with(run: &Running, accept: Option<&str>) -> serde_json::Value {
+        let extra = accept.map_or(String::new(), |a| format!("Accept-Language: {a}\r\n"));
+        let (code, answer) = request(
+            &run.host,
+            &run.host,
+            "GET",
+            &format!("{}/api/texts", run.prefix),
+            &extra,
+        );
+        assert_eq!(code, 200);
+        serde_json::from_str(answer.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn texts_come_as_lang_and_texts_in_the_language_order() {
+        // The person's setting wins over the browser.
+        let run = start_with(true, Some("de"));
+        let answer = texts_with(&run, Some("en-US,en;q=0.9"));
+        assert_eq!(answer["lang"], "de");
+        assert_eq!(answer["texts"]["editor-menu-file"], "Datei");
+        assert_eq!(answer["texts"]["suite-banner-dismiss"], "Schließen");
+        finish(run);
+        // Nothing set: the browser decides, the highest q-value first, else English.
+        let run = start(true);
+        assert_eq!(texts_with(&run, Some("de;q=0.5,en;q=0.8"))["lang"], "en");
+        assert_eq!(texts_with(&run, Some("fr, de-AT;q=0.7"))["lang"], "de");
+        let plain = texts_with(&run, Some("fr"));
+        assert_eq!(plain["lang"], "en");
+        assert_eq!(plain["texts"]["editor-menu-file"], "File");
+        assert_eq!(texts_with(&run, None)["lang"], "en");
+        finish(run);
+        // A language the program has no texts in counts as unset.
+        let run = start_with(true, Some("fr"));
+        assert_eq!(texts_with(&run, Some("de"))["lang"], "de");
+        finish(run);
+    }
+
+    #[test]
+    fn the_language_the_person_set_is_the_argument_then_the_environment() {
+        use super::super::fixed_language;
+        let env = |name: &str| (name == "FREEMAPPER_LANG").then(|| "de".to_owned());
+        assert_eq!(fixed_language(Some("en"), &env).as_deref(), Some("en"));
+        assert_eq!(fixed_language(None, &env).as_deref(), Some("de"));
+        let none = |_: &str| None;
+        assert_eq!(fixed_language(None, &none), None);
+        // LANG and LC_* do not fix the page's language.
+        let locale = |name: &str| (name == "LANG").then(|| "de_DE.UTF-8".to_owned());
+        assert_eq!(fixed_language(None, &locale), None);
+    }
+
+    #[test]
+    fn a_post_without_origin_is_refused_even_with_a_revision() {
+        let run = start(true);
+        let extra = "Content-Type: application/json\r\nX-Freemapper-Revision: 0123456789abcdef\r\n";
+        assert_eq!(post_done(&run, extra).0, 403);
+        assert_eq!(get(&run, "/").0, 200);
+        finish(run);
+    }
+
     #[test]
     fn done_ends_run() {
         let run = start(true);
@@ -311,6 +413,7 @@ mod tests {
             project: "/nonexistent/freemapper-print-project".into(),
             port: 0,
             no_browser: true,
+            lang: None,
         };
         let texts = Texts::new(&Lang::english());
         let mut out = Vec::new();
