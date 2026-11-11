@@ -574,6 +574,9 @@ struct CheckOut {
     /// How many sheets were left out past [`MAX_ENTRIES`].
     #[serde(skip_serializing_if = "is_zero")]
     more_sheets: usize,
+    /// How many of the sheets left out need attention.
+    #[serde(skip_serializing_if = "is_zero")]
+    more_sheets_needing_attention: usize,
     /// How many notes were left out past [`MAX_NOTES`].
     #[serde(skip_serializing_if = "is_zero")]
     more: usize,
@@ -721,6 +724,11 @@ fn check_out(texts: &Texts, result: &ops::check::CheckResult, max_sheets: usize)
     };
     let courses = described(&result.courses);
     let layouts = described(&result.layouts);
+    let more_sheets_needing_attention = result.courses[courses.len()..]
+        .iter()
+        .chain(&result.layouts[layouts.len()..])
+        .filter(|s| s.needs_attention())
+        .count();
     CheckOut {
         map_scale: result.map_scale,
         needs_attention: result.course_file_needs_attention()
@@ -733,6 +741,7 @@ fn check_out(texts: &Texts, result: &ops::check::CheckResult, max_sheets: usize)
         courses,
         layouts,
         more_sheets: sheets.cut,
+        more_sheets_needing_attention,
         more: budget.cut,
     }
 }
@@ -1012,7 +1021,8 @@ impl PrintServer {
                        course, then one per layout without a course. Each note has kind, severity \
                        (info, warning or error), course and message. needs_attention is true when a \
                        note is more than info or a sheet could not be drawn, on any sheet. At most 200 \
-                       sheets and 200 notes come back; more_sheets and more count the rest."
+                       sheets and 200 notes come back; more_sheets and more count the rest, and \
+                       more_sheets_needing_attention counts the sheets left out that need attention."
     )]
     async fn check_project(
         &self,
@@ -1470,6 +1480,7 @@ impl PrintServer {
             };
             // The PDFs per sheet written so far, for the error of a later sheet.
             let mut written: Vec<PathBuf> = Vec::new();
+            let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
             let result = ops::export::export(
                 &ops::export::ExportArgs {
                     project: path,
@@ -1481,7 +1492,7 @@ impl PrintServer {
                 &mut |progress| {
                     if let ops::export::ExportProgress::Page { mode, page } = &progress
                         && *mode != ops::export::ExportMode::SingleFile
-                        && !written.contains(&page.path)
+                        && seen.insert(page.path.clone())
                     {
                         written.push(page.path.clone());
                     }
@@ -3122,10 +3133,15 @@ mod tests {
         assert_eq!(list["courses"][0]["name"], "A", "{list}");
         assert_eq!(list["more_courses"], 2, "{list}");
         // check: the first sheets in order, and needs_attention over all of them.
-        let result = ops::check::check(&ops::check::CheckArgs {
+        let mut result = ops::check::check(&ops::check::CheckArgs {
             project: dir.path().to_path_buf(),
         })
         .unwrap();
+        // The third course, which the cap of 2 leaves out, needs attention.
+        let ops::check::SheetCheck::Drawn(third) = &mut result.courses[2] else {
+            panic!("{:?}", result.courses[2]);
+        };
+        third.needs_attention = true;
         let texts = Texts::for_agent(&Lang::english());
         let full = serde_json::to_value(check_out(&texts, &result, MAX_ENTRIES)).unwrap();
         let capped = serde_json::to_value(check_out(&texts, &result, 2)).unwrap();
@@ -3138,7 +3154,22 @@ mod tests {
         assert_eq!(courses, ["A", "B"], "{capped}");
         let sheets = result.courses.len() + result.layouts.len();
         assert_eq!(capped["more_sheets"], sheets - 2, "{capped}");
+        let cut_needing = result.courses[2..]
+            .iter()
+            .chain(&result.layouts)
+            .filter(|s| s.needs_attention())
+            .count();
+        assert!(cut_needing >= 1);
+        assert_eq!(
+            capped["more_sheets_needing_attention"], cut_needing,
+            "{capped}"
+        );
+        assert_eq!(capped["needs_attention"], true, "{capped}");
         assert!(full.get("more_sheets").is_none(), "{full}");
+        assert!(
+            full.get("more_sheets_needing_attention").is_none(),
+            "{full}"
+        );
         assert_eq!(capped["needs_attention"], full["needs_attention"]);
         let layouts = vec![
             ops::init::InitLayout {
