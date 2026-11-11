@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.6.2] - 2026-11-11
+
 ### Hinzugefügt
 
 - Ein Layout kann `page_mm = [Breite, Höhe]` (Hochformat, 10 bis 5080 mm je Seite) statt `paper` setzen, für eine Karte, die im Kartenmaßstab größer als A3 ist (Entscheidung 0058). `set_layout` nimmt `page_mm` ebenfalls; `null` geht zurück zum Papier. Eine Seite über A3 bekommt den Hinweis, dass ein Bürodrucker sie nicht annimmt. Der Befehl `render` bleibt bei A4 und A3.

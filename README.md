@@ -129,7 +129,7 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.6.1](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.1) vom
+Aktuelle Version ist [v0.6.2](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.2) vom
 11. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und

@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-11
+
 ### Added
 
 - A layout can set `page_mm = [width, height]` (portrait, 10 to 5080 mm a side) instead of `paper`, for a map larger than A3 at map scale (decision 0058). `set_layout` takes `page_mm` too; `null` goes back to the paper. A page larger than A3 gets the note that an office printer will not take it. The command line `render` stays on A4 and A3.
