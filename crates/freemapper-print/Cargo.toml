@@ -21,6 +21,7 @@ freemapper-omap.workspace = true
 freemapper-printrules.workspace = true
 freemapper-render.workspace = true
 freemapper-rules.workspace = true
+freemapper-web.workspace = true
 fs4.workspace = true
 image.workspace = true
 miniz_oxide.workspace = true

@@ -27,6 +27,9 @@ pub use freemapper_printrules as printrules;
 pub use freemapper_render as render;
 /// The course overprint lives in freemapper-render since core v0.15.0 (ADR 0055).
 pub use freemapper_render::overprint;
+/// The shell of the local web pages (token, guards, suite assets) lives in freemapper-web since core v0.21.0
+/// (ADR 0059).
+pub use freemapper_web as web;
 pub use printrules::rules;
 #[cfg(test)]
 mod overprint_tests;
@@ -266,6 +269,7 @@ mod boundaries {
                 "freemapper_course",
                 "freemapper_render",
                 "freemapper_printrules",
+                "freemapper_web",
             ] {
                 if text.contains(name) {
                     found.push(format!("{}: {name}", file.display()));
@@ -289,6 +293,7 @@ mod boundaries {
             "pub use freemapper_course::placement;",
             "pub use freemapper_omap as omap;",
             "pub use freemapper_render as render;",
+            "pub use freemapper_web as web;",
         ] {
             assert!(lib.contains(line), "missing: {line}");
         }
