@@ -24,8 +24,11 @@ use freemapper_print::print::{Orientation, Paper};
 use freemapper_print::project::{self, AnchorTarget, Corner, ElementKind, NorthLines};
 use freemapper_print::scale::MapKind;
 
-/// The most notes `check_project` returns; `more` counts the rest.
+/// The most notes `check_project` and `export_project` return; `more` counts the rest.
 const MAX_NOTES: usize = 200;
+
+/// The most files `export_project` lists; `more_files` counts the rest.
+const MAX_FILES: usize = 200;
 
 /// The public home of the program, named in the server info and the instructions.
 const WEBSITE: &str = "https://github.com/HenryJobst/freemapper-print";
@@ -422,7 +425,11 @@ struct FileOut {
 #[derive(Serialize)]
 struct ExportOut {
     out_dir: PathBuf,
+    /// The first [`MAX_FILES`] files written, in the order written.
     files: Vec<FileOut>,
+    /// How many files were written past [`MAX_FILES`].
+    #[serde(skip_serializing_if = "is_zero")]
+    more_files: usize,
     /// The notes of the course file, then those of each sheet in the order drawn.
     notes: Vec<Note>,
     /// How many notes were left out past [`MAX_NOTES`].
@@ -436,7 +443,7 @@ struct ExportOut {
     message: Option<String>,
 }
 
-fn export_out(texts: &Texts, result: &ops::export::ExportResult) -> ExportOut {
+fn export_out(texts: &Texts, result: &ops::export::ExportResult, max_files: usize) -> ExportOut {
     use ops::export::ExportMode;
     let bytes = |path: &Path| {
         result
@@ -473,6 +480,8 @@ fn export_out(texts: &Texts, result: &ops::export::ExportResult) -> ExportOut {
             })
             .collect(),
     };
+    let mut file_budget = NoteBudget::new(max_files);
+    let files = file_budget.take(files);
     let mut budget = NoteBudget::new(MAX_NOTES);
     let mut notes = result
         .course_file
@@ -486,6 +495,7 @@ fn export_out(texts: &Texts, result: &ops::export::ExportResult) -> ExportOut {
     ExportOut {
         out_dir: result.out_dir.clone(),
         files,
+        more_files: file_budget.cut,
         notes,
         more: budget.cut,
         reminder: written.then(|| texts.plain("reminder-actual-size")),
@@ -560,7 +570,7 @@ struct CoursesOut {
     courses: Vec<ops::project::CourseInfo>,
 }
 
-/// Keeps at most a fixed number of notes over several lists and counts the rest.
+/// Keeps at most a fixed number of notes (or files) over several lists and counts the rest.
 struct NoteBudget {
     left: usize,
     cut: usize,
@@ -708,13 +718,13 @@ impl PrintServer {
     /// The texts for a call: its `lang`, else the server's.
     fn texts(&self, lang: Option<&str>) -> Result<Texts, String> {
         let Some(given) = lang else {
-            return Ok(Texts::new(&self.lang));
+            return Ok(Texts::for_agent(&self.lang));
         };
         detect_lang(Some(given), &|_| None)
-            .map(|lang| Texts::new(&lang))
+            .map(|lang| Texts::for_agent(&lang))
             .map_err(|unknown| {
                 let available: Vec<String> = unknown.available.iter().map(Lang::code).collect();
-                Texts::new(&self.lang).get(
+                Texts::for_agent(&self.lang).get(
                     "error-unknown-lang",
                     Some(&args!(
                         "lang" => printable(&unknown.given),
@@ -796,7 +806,7 @@ async fn blocking(
     match tokio::task::spawn_blocking(move || op(&texts)).await {
         Ok(Ok(json)) => text(json),
         Ok(Err(message)) => failure(message),
-        Err(e) => failure(Texts::new(&lang).get(
+        Err(e) => failure(Texts::for_agent(&lang).get(
             "mcp-error-internal",
             Some(&args!("error" => printable(&panic_text(e)))),
         )),
@@ -1274,8 +1284,8 @@ impl PrintServer {
                        instead. layouts prints the named layouts without courses and does not go \
                        with courses or single_file. The tool replaces a PDF of the same name in \
                        out_dir. Returns the files with their size, the notes of the sheets and the \
-                       reminder to print at actual size. At most 200 notes come back; more counts \
-                       the rest. When the client cancels the call, the export stops after the sheet \
+                       reminder to print at actual size. At most 200 files and 200 notes come \
+                       back; more_files and more count the rest. When the client cancels the call, the export stops after the sheet \
                        it is drawing."
     )]
     async fn export_project(
@@ -1339,7 +1349,7 @@ impl PrintServer {
                 &mut |_| stop(),
             )
             .map_err(|e| op_message(texts, e))?;
-            json(texts, &export_out(texts, &result))
+            json(texts, &export_out(texts, &result, MAX_FILES))
         })
         .await
     }
@@ -2582,6 +2592,116 @@ mod tests {
         assert!(took < std::time::Duration::from_secs(60), "{took:?}");
         let written = only_whole_pdfs(out.path());
         assert!((1..1000).contains(&written), "{written}");
+    }
+
+    #[tokio::test]
+    async fn messages_name_the_tools_and_fields_not_the_cli_flags() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        for lang in ["en", "de"] {
+            let id = format!("window-{lang}");
+            let window = client
+                .ok(
+                    "masks_window",
+                    json!({ "project": project, "course": "Training", "id": id, "lang": lang }),
+                )
+                .await;
+            let messages: Vec<&str> = window["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m.as_str().unwrap())
+                .collect();
+            assert!(
+                messages.iter().any(|m| m.contains("assign_mask")),
+                "{messages:?}"
+            );
+            assert!(
+                messages.iter().any(|m| m.contains("check_project")),
+                "{messages:?}"
+            );
+            let taken = client
+                .refused(
+                    "masks_window",
+                    json!({ "project": project, "course": "Training", "id": id, "lang": lang }),
+                )
+                .await;
+            let radius_for = client
+                .refused(
+                    "masks_window",
+                    json!({ "project": project, "course": "Training", "radius_for": ["35:20"], "lang": lang }),
+                )
+                .await;
+            assert!(radius_for.contains("radius_for"), "{radius_for}");
+            let no_proposal = client
+                .refused(
+                    "numbers_accept",
+                    json!({ "project": project, "course": "Training", "control": "34", "scope": "sheet", "lang": lang }),
+                )
+                .await;
+            assert!(no_proposal.contains("direction"), "{no_proposal}");
+            for text in messages.iter().copied().chain([
+                taken.as_str(),
+                radius_for.as_str(),
+                no_proposal.as_str(),
+            ]) {
+                assert!(!text.contains("--"), "{text}");
+            }
+        }
+        // A project without a course file: init's messages and the export refusal name the tools and fields.
+        let target = tempfile::tempdir().unwrap();
+        let event = target.path().join("event");
+        let init = client
+            .ok(
+                "init_project",
+                json!({ "folder": event, "map": dir.path().join("berlin-viktoriapark.omap") }),
+            )
+            .await;
+        let messages = init["messages"].to_string();
+        assert!(messages.contains("check_project"), "{messages}");
+        assert!(!messages.contains("--"), "{messages}");
+        let out = tempfile::tempdir().unwrap();
+        let refused = client
+            .refused(
+                "export_project",
+                json!({ "project": event, "out_dir": out.path(), "single_file": true }),
+            )
+            .await;
+        assert!(refused.contains("single_file"), "{refused}");
+        assert!(!refused.contains("--"), "{refused}");
+    }
+
+    #[test]
+    fn export_files_past_the_cap_are_counted() {
+        let dir = luebeck_copy();
+        let out = tempfile::tempdir().unwrap();
+        let result = ops::export::export(
+            &ops::export::ExportArgs {
+                project: dir.path().to_path_buf(),
+                layouts: Vec::new(),
+                courses: Vec::new(),
+                single_file: false,
+                out_dir: Some(out.path().to_path_buf()),
+            },
+            &mut |_| ControlFlow::Continue(()),
+        )
+        .unwrap();
+        assert_eq!(result.files.len(), 3);
+        let texts = Texts::for_agent(&Lang::english());
+        let capped = serde_json::to_value(export_out(&texts, &result, 2)).unwrap();
+        let courses: Vec<&str> = capped["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["course"].as_str().unwrap())
+            .collect();
+        assert_eq!(courses, ["A", "B"], "{capped}");
+        assert_eq!(capped["more_files"], 1, "{capped}");
+        // Under the cap the field is left out.
+        let all = serde_json::to_value(export_out(&texts, &result, MAX_FILES)).unwrap();
+        assert_eq!(all["files"].as_array().unwrap().len(), 3);
+        assert!(all.get("more_files").is_none(), "{all}");
     }
 
     #[test]

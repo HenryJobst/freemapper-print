@@ -49,14 +49,46 @@ pub fn detect_lang(
     Ok(TEXTS.detect_lang(None, env))
 }
 
+/// The prefix of a message worded for an AI agent: `agent-<id>` takes the place of `<id>` in
+/// [`Texts::for_agent`], where the CLI text names command-line flags or commands the agent cannot
+/// use. It uses only variables of `<id>`.
+pub const AGENT_PREFIX: &str = "agent-";
+
+/// The ids `agent-<id>` of the English catalog, read once.
+fn agent_ids() -> &'static std::collections::BTreeSet<String> {
+    static IDS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    IDS.get_or_init(|| {
+        TEXTS
+            .message_ids("en")
+            .into_iter()
+            .filter(|id| id.starts_with(AGENT_PREFIX))
+            .collect()
+    })
+}
+
 /// The program texts in one language, with English as the fallback.
 pub struct Texts {
     lang: Lang,
+    /// Words messages for an AI agent (the MCP server): `agent-<id>` where the catalog has it.
+    agent: bool,
 }
 
 impl Texts {
     pub fn new(lang: &Lang) -> Texts {
-        Texts { lang: lang.clone() }
+        Texts {
+            lang: lang.clone(),
+            agent: false,
+        }
+    }
+
+    /// The texts for an AI agent: a message that names CLI flags or commands comes in the
+    /// wording of its `agent-<id>` twin, which names the tool and its fields instead.
+    pub fn for_agent(lang: &Lang) -> Texts {
+        Texts {
+            lang: lang.clone(),
+            agent: true,
+        }
     }
 
     /// The text `id`, falling back to English, and to the id itself as a last resort.
@@ -68,6 +100,12 @@ impl Texts {
                     .collect()
             })
             .unwrap_or_default();
+        if self.agent {
+            let twin = format!("{AGENT_PREFIX}{id}");
+            if agent_ids().contains(&twin) {
+                return TEXTS.text(&self.lang, &twin, &args);
+            }
+        }
         TEXTS.text(&self.lang, id, &args)
     }
 
@@ -221,6 +259,93 @@ mod tests {
             "expected the CLI sources under {}",
             dir.display()
         );
+    }
+
+    /// The variables `{ $name }` of each message in a Fluent source, by message id.
+    fn variables_by_id(
+        source: &str,
+    ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut current: Option<String> = None;
+        for line in source.lines() {
+            if line.starts_with(|c: char| c.is_ascii_lowercase()) {
+                current = line.split_once(" =").map(|(id, _)| id.to_owned());
+            } else if !line.starts_with([' ', '\t', '}']) {
+                current = None;
+            }
+            let Some(id) = &current else { continue };
+            let vars: &mut std::collections::BTreeSet<String> = out.entry(id.clone()).or_default();
+            for part in line.split("$").skip(1) {
+                let name: String = part
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                vars.insert(name);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn agent_wording_names_a_message_and_only_its_variables() {
+        for (code, source) in [
+            ("en", include_str!("../i18n/en/freemapper-print.ftl")),
+            ("de", include_str!("../i18n/de/freemapper-print.ftl")),
+        ] {
+            let vars = variables_by_id(source);
+            let twins: Vec<&String> = vars
+                .keys()
+                .filter(|id| id.starts_with(AGENT_PREFIX))
+                .collect();
+            assert!(twins.len() >= 20, "{code}: {twins:?}");
+            for twin in twins {
+                let base = &twin[AGENT_PREFIX.len()..];
+                let Some(base_vars) = vars.get(base) else {
+                    panic!("{code}/{twin}: there is no message {base}");
+                };
+                assert!(
+                    vars[twin].is_subset(base_vars),
+                    "{code}/{twin}: variables {:?} beyond those of {base} {base_vars:?}",
+                    vars[twin]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn agent_texts_take_the_agent_wording_and_the_cli_keeps_its_own() {
+        for lang in available() {
+            let (cli, agent) = (Texts::new(&lang), Texts::for_agent(&lang));
+            assert!(cli.plain("masks-run-check").contains("check"));
+            assert!(!cli.plain("masks-run-check").contains("check_project"));
+            assert!(agent.plain("masks-run-check").contains("check_project"));
+            let mut args = FluentArgs::new();
+            args.set("id", "window-A");
+            let cli_text = cli.get("masks-not-assigned", Some(&args));
+            let agent_text = agent.get("masks-not-assigned", Some(&args));
+            assert!(cli_text.contains("--assign"), "{cli_text}");
+            assert!(agent_text.contains("assign_mask"), "{agent_text}");
+            assert!(!agent_text.contains("--"), "{agent_text}");
+            // A message without an agent twin reads the same for both.
+            assert_eq!(
+                cli.plain("reminder-actual-size"),
+                agent.plain("reminder-actual-size")
+            );
+        }
+        // Every twin of the English catalog differs from its CLI text, so none is there for nothing.
+        let (cli, agent) = (
+            Texts::new(&Lang::english()),
+            Texts::for_agent(&Lang::english()),
+        );
+        let args = sample_args();
+        for twin in agent_ids() {
+            let base = &twin[AGENT_PREFIX.len()..];
+            assert_ne!(
+                cli.get(base, Some(&args)),
+                agent.get(base, Some(&args)),
+                "{twin}"
+            );
+        }
     }
 
     #[test]
