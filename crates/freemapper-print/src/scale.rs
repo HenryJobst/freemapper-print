@@ -3,69 +3,27 @@
 
 use std::path::Path;
 
-use serde::Deserialize;
-
 pub use crate::printrules::scale::*;
 
 use crate::omap::MapDocument;
 
-#[derive(Deserialize)]
-struct Sidecar {
-    /// The name as written; a name this version does not know is no error (ADR 0052).
-    map_kind: Option<String>,
-    title: Option<String>,
-}
-
-/// `freemapper.toml` next to a map could not be used.
-#[derive(Debug, thiserror::Error)]
-pub enum SidecarError {
-    /// The operating system's error is the `source`, not part of the message.
-    #[error("could not read {path}")]
-    Read {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
-    #[error("{path} is not valid: {message}")]
-    Invalid {
-        path: std::path::PathBuf,
-        message: String,
-    },
-}
+pub use freemapper_contract::SidecarError;
+use freemapper_contract::{Sidecar, SidecarKind};
 
 /// The map kind from `freemapper.toml` next to `map_path`: `Ok(None)` without the file, without
 /// `map_kind` in it or with a kind this version does not know (a newer freemapper may write one), an
-/// error when the file exists but cannot be read or parsed.
+/// error when the file exists but cannot be read or parsed. The reader is the contract's (core ADR 0027).
 pub fn read_sidecar(map_path: &Path) -> Result<Option<MapKind>, SidecarError> {
-    Ok(read_sidecar_file(map_path)?
-        .and_then(|s| s.map_kind)
-        .and_then(|name| MapKind::ALL.into_iter().find(|k| k.name() == name)))
+    Ok(Sidecar::next_to(map_path)?.and_then(|s| match s.map_kind {
+        SidecarKind::Known(kind) => Some(kind),
+        SidecarKind::Absent | SidecarKind::Unknown(_) => None,
+    }))
 }
 
 /// The map title from `freemapper.toml` next to `map_path`: `Ok(None)` without the file, without `title`
 /// in it or with an empty one, an error when the file exists but cannot be read or parsed.
 pub fn read_sidecar_title(map_path: &Path) -> Result<Option<String>, SidecarError> {
-    Ok(read_sidecar_file(map_path)?
-        .and_then(|s| s.title)
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty()))
-}
-
-fn read_sidecar_file(map_path: &Path) -> Result<Option<Sidecar>, SidecarError> {
-    let Some(dir) = map_path.parent() else {
-        return Ok(None);
-    };
-    let path = dir.join("freemapper.toml");
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => return Err(SidecarError::Read { path, source }),
-    };
-    toml::from_str::<Sidecar>(&text)
-        .map(Some)
-        .map_err(|e| SidecarError::Invalid {
-            path,
-            message: e.message().to_string(),
-        })
+    Ok(Sidecar::next_to(map_path)?.and_then(|s| s.title().map(str::to_owned)))
 }
 
 /// Infers the map kind: `freemapper.toml` next to the map wins; otherwise the symbol set name and
@@ -152,7 +110,10 @@ mod tests {
     fn broken_sidecar_is_reported_and_ignored() {
         let dir = tempfile::tempdir().unwrap();
         let map_path = dir.path().join("a.omap");
+        // A key of the wrong type counts as absent in the contract's reader; only text that is no TOML fails.
         std::fs::write(dir.path().join("freemapper.toml"), "map_kind = 4000\n").unwrap();
+        assert_eq!(read_sidecar(&map_path).unwrap(), None);
+        std::fs::write(dir.path().join("freemapper.toml"), "map_kind = \n").unwrap();
         let err = read_sidecar(&map_path).unwrap_err();
         assert!(
             err.to_string().contains("freemapper.toml is not valid"),
