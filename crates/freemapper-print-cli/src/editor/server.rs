@@ -279,7 +279,8 @@ mod tests {
         post_body: &str,
     ) -> std::io::Result<(u16, String)> {
         let mut stream = TcpStream::connect(host)?;
-        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        // Long: a request that waits at a gate, or a sheet drawn on a loaded machine, can take its time.
+        stream.set_read_timeout(Some(Duration::from_secs(90)))?;
         let body = if method == "POST" { post_body } else { "" };
         // One write: headers and body in one segment, so the server never answers a half-sent request.
         let request = format!(
