@@ -5,7 +5,8 @@ Status: Proposed, amends [0054](0054-mcp-tool-set.md)
 
 ## Context
 
-A new release reaches nobody until they download it again, and checksums prove integrity, not origin. freemapper
+A new release reaches nobody until they download it again. The checksums next to the archives prove integrity, not
+origin, so the update needs a signature. freemapper
 solved this on 2026-11-11 (its ADR 0094; the pure parts are in freemapper-core ADR 0026, crate `freemapper-update`,
 pinned here since v0.21.1). The user asked for the same in print on 2026-11-12.
 
@@ -19,6 +20,7 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
   Tests sign with core's test pair (`tests/keys/`), which a release build refuses at compile time.
 - **P2 Release gating.** freemapper's workflow plus a job `gate` that checks only whether the signing secret is set.
   Without it the release is unsigned and says so, unless an earlier release has a manifest; then `gate` fails.
+  `gate` runs in the `release` environment, so it waits for that environment's required reviewer, if it has one.
 - **P3 When.** After `init`, `check`, `export`, `render`; at the start of `mcp` and `edit`; not after `numbers`,
   `masks`, `update`. No `--offline`; mode `off` does that.
 - **P4 Editor.** One stderr line at the start of `edit`, no page banner (no new endpoint, script or CSP change).
@@ -33,9 +35,10 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
   about the person or project, no telemetry.
 - **P10** Folders from `dirs` 7.0.0, clock from `SystemTime`, no `chrono`.
 
-Dependencies sit at freemapper's locked versions, older than two weeks (ADR 0006), with one exception: `flate2`
-1.1.11 (published 2026-11-06). Core pins `=1.1.11` in `freemapper-update`, so 1.1.10 cannot resolve. Core's own
-crates are exempt from the rule (ADR 0042); the exception ends with the next core tag that moves `flate2`.
+New dependencies (`freemapper-update`, `ureq`, `dirs`, `minisign-verify`, `sha2`) have the versions of freemapper's
+Cargo.lock, older than two weeks (ADR 0006), with one exception: `flate2`
+1.1.11 (published 2026-11-06). Core pins `=1.1.11` in `freemapper-update`, so 1.1.10 cannot resolve. ADR 0042
+exempts core's own crates, not `flate2`; this exception ends with the next core tag that moves `flate2`.
 
 ## Consequences
 
