@@ -1,7 +1,7 @@
 # 0060. Self-update from signed releases
 
 Date: 2026-11-12
-Status: Proposed, amends [0054](0054-mcp-tool-set.md)
+Status: Accepted, amends [0054](0054-mcp-tool-set.md)
 
 ## Context
 

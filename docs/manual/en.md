@@ -2,14 +2,14 @@
 
 [Deutsch](de.md) · [README](../../README.en.md)
 
-This manual grows with the program. Chapters 3 and 5 to 12 are written. In the end it should lead step by
+This manual grows with the program. Chapters 2, 3 and 5 to 12 are written. In the end it should lead step by
 step from the finished OOM map and the Purple Pen file to the printed sheets, without needing experience with
 the command line.
 
 Chapters:
 
 1. What freemapper-print does
-2. Installation
+2. [Installation](#2-installation)
 3. [With an AI agent](#3-with-an-ai-agent)
 4. Without an agent: editor and command line
 5. [Setting up an event](#5-setting-up-an-event)
@@ -24,6 +24,65 @@ Chapters:
 The program speaks German or English. It takes the language from `--lang de` or `--lang en`, else from the
 environment variables `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` and `LANG`. The messages quoted in this manual
 are the English ones.
+
+## 2. Installation
+
+Download the archive for your system from the [release page](https://github.com/HenryJobst/freemapper-print/releases/latest), unpack it and check the program with `freemapper-print --version`. The steps for each system, including the warning about an unsigned program on first start, are in the README, section "Installation". An AI agent can do them for you (chapter 3).
+
+### Updates
+
+A release build updates itself. One command installs the newest release in place:
+
+```sh
+freemapper-print update
+```
+
+It looks up the newest release, says what is new and asks "Install it now? [y/N]". On yes it downloads the program for your system, checks the signature and the checksum and replaces the running program at the same path, so a registration of the MCP server keeps working. Nothing unsigned or unverified is installed. If the signature does not verify, the command ends with an error and changes nothing.
+
+| Switch | What it does |
+|---|---|
+| `--check` | Only checks. Exit code 10 when a newer version exists, 0 when this one is current. |
+| `--yes` | Installs without asking. Needed when the input is not a terminal, for example in a script. |
+| `--version <X.Y.Z>` | Installs this version instead of the newest one, also an older one. |
+| `--rollback` | Goes back to the version the last update replaced. |
+| `--mode notify\|install\|off` | Stores what the daily check does when it finds a newer version (default: `notify`). |
+
+A release that was published before the update existed cannot update itself; install the first one with the update by hand once. If the newest release needs a newer updater than the one you run, `update` says so and names the version to install by hand.
+
+#### The daily check
+
+After `init`, `check`, `export` and `render`, and at the start of `mcp` and `edit`, the program checks once for a newer release, at most once in 24 hours. It runs alongside the command and gets 3 seconds. A slow or unreachable GitHub changes neither the output nor the exit code of your command; the attempt counts as failed and the next one comes a day later. `numbers`, `masks` and `update` do not check. The check does nothing when the environment variable `CI` is set.
+
+What it reports depends on the mode:
+
+- `notify` (the default): one line on standard error, "freemapper-print 1.2.3 is available (you have 1.2.2). Update with: freemapper-print update". `edit` prints it once at its start, and the MCP server hands it to the agent with its first result (chapter 3).
+- `install`: installs the newer version after a command that ended with exit code 0. A `check` that finds notes ends with exit code 1 and so installs nothing. `mcp` and `edit` never install. The new version applies from the next start.
+- `off`: no check and no request.
+
+`freemapper-print update --mode off` writes the setting, and `FREEMAPPER_PRINT_UPDATE=off` (or `notify`, `install`) overrides it for as long as it is set.
+
+#### What is sent
+
+The check requests the update manifest `freemapper-print-update.json` and its signature `freemapper-print-update.json.minisig` from the GitHub releases, and `update` also downloads the program itself. The requests carry the fixed User-Agent `freemapper-print/<version> (+https://github.com/HenryJobst/freemapper-print)`: program, version and repository. They carry no data about you or your project, and the program has no telemetry. Apart from the update, the program makes no network requests.
+
+#### Folders
+
+| What | Where | Override |
+|---|---|---|
+| The setting `[update] mode` | `settings.toml` in `freemapper-print` in the system's configuration folder | `FREEMAPPER_PRINT_CONFIG_DIR` names the folder that holds `settings.toml` |
+| The time and result of the last check | `update-check.json` in `freemapper-print` in the system's cache folder | `FREEMAPPER_PRINT_CACHE_DIR` names the folder |
+
+Deleting `update-check.json` makes the next command check again.
+
+#### Rollback and the folder of the program
+
+An update keeps the replaced version next to the program as `freemapper-print.previous` (Windows: `freemapper-print.previous.exe`). `freemapper-print update --rollback` swaps the two back and prints where the version you left is kept. Another update replaces the file.
+
+The program does not ask for administrator rights. If its folder is not writable, for example `/usr/local/bin` or `C:\Program Files`, `update` names the folder, changes nothing and ends with exit code 1. Unpack the new release there by hand, or move the program to a folder you can write to.
+
+#### Builds from source
+
+A program built from source, and a release built without the signing key, cannot update itself. `update` says so, names the [release page](https://github.com/HenryJobst/freemapper-print/releases/latest) and the way to update a clone (`git pull`, then `cargo build --release --locked`) and ends with exit code 0. The daily check stays silent in such a build. `--mode` works anyway, since it only writes the setting.
 
 ## 3. With an AI agent
 
@@ -53,7 +112,7 @@ put a file `.mcp.json` into the folder you start Claude Code in, for example the
 `command` is the absolute path of the program, wherever you unpacked it (README, section "Installation"). On
 Windows it reads like `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, with double backslashes because
 the file is JSON. `--lang en` picks English messages; without it the system language applies, as on the command
-line. After the next start of Claude Code, `/mcp` shows the server with its eleven tools.
+line. After the next start of Claude Code, `/mcp` shows the server with its thirteen tools.
 
 ### Let the agent set it up
 
@@ -82,6 +141,8 @@ project folder or the file `freemapper-print.toml` in it.
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | the element and `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
+| `check_update` | `update --check` | | | whether a newer version exists, with the version numbers and the release notes |
+| `install_update` | `update --yes` | `confirm` | | `confirm` must be `true`. Installs the newest release and says that the running server keeps the old version until it is restarted |
 
 The inputs are named like the options of the commands (chapters 5, 8 and 11) and the keys of the project file
 (chapters 6 and 7), with underscores: `radius_for` for `--radius-for`, `points` as the text `"x,y;x,y"` as with
@@ -95,6 +156,8 @@ a whole; without `layout` the element is shared by all layouts (`[[shared]]`). A
 path, and the project file stores it relative to itself. `assign_mask` sets the mask of a course even when it has
 one already; without `mask` the course prints without one. `masks_window` and `masks_corridor` with `assign`
 replace no mask.
+
+`check_update` and `install_update` need no `project`. `check_update` says whether a newer version exists. `install_update` installs it only with `confirm` set to `true` and returns "Nothing was installed. Ask the person first, then call install_update with confirm: true once they agree." without it. The first result of a server session carries a note when a newer version exists. The agent passes it on and asks you before it installs. A server keeps running the old version after an install until the assistant restarts it.
 
 The results are JSON. The tools that write return in `messages` the sentences the command prints on the command
 line. Where the command names an option, the server names the tool and the input: "Call check_project to see the
@@ -1483,7 +1546,7 @@ after the sheet in hand.
 
 The editor listens on 127.0.0.1 only, so only programs on your computer reach it. The address contains a random
 token that changes on every start, and the page only accepts changes that carry it and come from its own address.
-Nothing leaves the computer; the program makes no network requests.
+The editor itself sends nothing. The program contacts GitHub only for the update check (chapter 2), at most once a day.
 
 ### Problems
 

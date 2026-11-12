@@ -47,14 +47,16 @@ What it does already:
   of the courses it applies to;
 - `check` warns about controls, mandatory legs, out-of-bounds areas and other course overprint that lie under a
   mask;
-- an MCP server (`freemapper-print mcp`) with eleven tools, through which an AI agent such as Claude Code reads
+- an MCP server (`freemapper-print mcp`) with thirteen tools, through which an AI agent such as Claude Code reads
   and checks a project, enters masks, number positions, layouts and sheet elements, and writes the PDFs;
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
 
 - an editor in the browser (`freemapper-print edit`, from version 0.7.0 on): a sheet preview drawn exactly as in the PDF, dragging elements and control
   numbers, forms for layouts and elements, window and corridor masks, check and PDF export; every change is
-  written to the project file at once, with undo and redo.
+  written to the project file at once, with undo and redo;
+- `freemapper-print update` installs the newest signed release over the program, `--rollback` goes back, and a daily
+  check reports a newer version (comes with the next version; see Installation).
 
 Planned:
 
@@ -157,6 +159,10 @@ freemapper-print is a single program without an installer:
    `.\freemapper-print.exe --version`).
 
 An AI agent that can run commands (Claude Code, Codex) can also do the download, the check and the registration for you: tell it "Read AGENTS.md from github.com/HenryJobst/freemapper-print and set up freemapper-print." Besides the program, the archive holds the READMEs, the licence, the manual and `AGENTS.md`.
+
+### Updates
+
+From the next version on, a release build updates itself: `freemapper-print update` installs the newest release in place after asking, checks its minisign signature first and keeps the old version as `freemapper-print.previous`; `freemapper-print update --rollback` goes back. The daily check, after `init`, `check`, `export` and `render` and at the start of `mcp` and `edit`, tells you in one line when a newer version exists. It asks GitHub for the update manifest and its signature at most once a day, with a User-Agent that names the program, its version and the repository, and sends no data about you or your project. `freemapper-print update --mode off` or `FREEMAPPER_PRINT_UPDATE=off` stops it. A program built from source says how to update it instead. The [manual](docs/manual/en.md#2-installation) has the details.
 
 ## Building from source (for developers)
 
@@ -312,7 +318,7 @@ comments in the project file stay, apart from a few cases the manual lists. The 
 [`mcp-session`](examples/mcp-session/README.en.md) shows a real session: window orienteering from the
 Viktoriapark training, checked and written as a PDF.
 
-For AI agents there is an [AGENTS.md](AGENTS.md), which also ships in every release archive: it tells an agent how to install the program from the release archives and how to use it through MCP or the command line.
+For AI agents there is an [AGENTS.md](AGENTS.md), which also ships in every release archive: it tells an agent how to install and update the program and how to use it through MCP or the command line.
 
 ## Licence and credit
 
