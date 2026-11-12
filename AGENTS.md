@@ -81,9 +81,10 @@ unless the user asks; the release archives are ready to run.
 
 Remember the absolute path of the executable; the MCP registration needs it. Project files stay valid.
 
-To update an installed release build, run `freemapper-print update` instead of unpacking a newer archive: it checks
-the signature, replaces the program at the same path (so the registration keeps working) and keeps the old version
-as `freemapper-print.previous`. Ask the person first, then add `--yes` (without a terminal it refuses to install
+From the release after 0.7.0 on (0.7.0 has no `update` command), you update an installed release build with
+`freemapper-print update` instead of unpacking a newer archive: it checks the signature, replaces the program at the
+same path (so the registration keeps working) and keeps the old version as `freemapper-print.previous` (on Windows
+`freemapper-print.previous.exe`). Until then, unpack the new archive. Ask the person first, then add `--yes` (without a terminal it refuses to install
 otherwise). `update --check` only looks and exits 10 when a newer version exists. `update --rollback` goes back one
 version. A build from source, or a release built without the signing key, cannot update itself; `update` says so
 and names the release page. If the program folder is not writable, `update` names it and changes nothing; then
@@ -120,7 +121,7 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
 | `edit <project>` | The browser editor, for people. `--port <n>`, `--no-browser`. |
-| `update` | Installs the newest signed release over this program. `--check` (exit 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback`, `--mode notify\|install\|off`. |
+| `update` | From the release after 0.7.0 on: installs the newest signed release over this program. `--check` (exit 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback`, `--mode notify\|install\|off`. |
 | `mcp` | The MCP server. |
 
 `<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to
@@ -129,7 +130,9 @@ stderr. Exit codes: 0 on success; 1 when a file cannot be loaded, drawn or writt
 for example an unknown layout, course or control; 10 when `update --check` finds a newer version. `export` exits 0 when every PDF is written, even with notes.
 
 After `init`, `check`, `export` and `render` the program may print one line on stderr that a newer version exists. Pass
-it on to the person in your own words and ask before you run `update --yes`; do not update on your own.
+it on to the person in your own words and ask before you run `update --yes`; do not update on your own. In mode `install` the person has asked for updates
+in advance: after a command that exits 0 the program installs by itself, and the progress and result lines go to
+stdout.
 
 `edit` starts a local server and a page in a browser for a person who wants to see the sheet and move things with
 the mouse. It blocks until the person clicks Done or presses Ctrl+C and needs someone at the browser, so an agent
