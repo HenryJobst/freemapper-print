@@ -20,7 +20,7 @@
 - Environment: `FREEMAPPER_PRINT_UPDATE=off|notify|install`, `FREEMAPPER_PRINT_CONFIG_DIR`, `FREEMAPPER_PRINT_CACHE_DIR`, `FREEMAPPER_DIST=github-release` (`option_env!`), `FREEMAPPER_PRINT_UPDATE_TEST_BASE` (debug + `test-stub` only). Settings `<config_dir>/freemapper-print/settings.toml` `[update] mode` (default `notify`); record `<cache_dir>/freemapper-print/update-check.json`.
 - HTTP: own `ureq` agent, redirects by hand (at most 3, each through `check_url`), `User-Agent: freemapper-print/<version> (+https://github.com/HenryJobst/freemapper-print)`, never the crates.io-only `freemapper-print-dev` agent. No e-mail, name, id or project data in any request, file or test; no telemetry.
 - Key: freemapper's (P1), `assets/update/minisign.pub` a byte copy. Only the user handles secrets; agents never make, read, set or store one. Tests use core's test pair in `tests/keys/`, which no release build accepts.
-- Texts DE+EN in `i18n/{de,en}/freemapper-print.ftl`; `same_ids_in_every_language` passes. Whoever writes user-facing text first reads `/Users/henryprivat/.claude/skills/unslop/SKILL.md` and `/Users/henryprivat/.claude/skills/humanizer/SKILL.md` and applies both. Docs bilingual; nothing private in the repository.
+- Texts DE+EN in `i18n/{de,en}/freemapper-print.ftl`; `same_ids_in_every_language` passes. Whoever writes user-facing text first reads and applies the unslop and humanizer skills. Docs bilingual; nothing private in the repository.
 - Conventional Commits with a scope, English, ending with a blank line and the session's `Co-Authored-By:` and `Claude-Session:` lines.
 
 ## Print-side design calls (ADR 0060)

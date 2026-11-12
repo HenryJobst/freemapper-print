@@ -22,6 +22,7 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
   Without it the release is unsigned and says so, unless an earlier release has a manifest; then `gate` fails.
   `gate` runs in the `release` environment, so it waits for that environment's required reviewer, if it has one.
   Adding required reviewers to the `release` environment therefore makes `gate` wait for approval before the build starts.
+  The `release` job uses the same environment, so with a required reviewer each release needs two approvals.
   Re-dispatching a tag from before this change fails at "Name the release", because that tag has no `.github/scripts/`.
 - **P3 When.** After `init`, `check`, `export`, `render`; at the start of `mcp` and `edit`; not after `numbers`,
   `masks`, `update`. No `--offline`; mode `off` does that.
@@ -33,7 +34,7 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
   with a `message`; the first result may carry a note worded by the `agent-<id>` twins. Amends ADR 0054: 13 tools.
 - **P8 Other builds** (source, or a release built without the secret) say so and name the releases page.
 - **P9 HTTP.** `ureq` =3.4.2 with rustls, as freemapper: about 30 new crates, 1 to 2 MB, `ring` needs a C compiler.
-  Redirects by hand (3 at most, each through core's host rule); User-Agent `freemapper-print/<version>`; no data
+  Redirects by hand (3 at most, each through core's host rule); User-Agent `freemapper-print/<version> (+https://github.com/HenryJobst/freemapper-print)`; no data
   about the person or project, no telemetry.
 - **P10** Folders from `dirs` 7.0.0, clock from `SystemTime`, no `chrono`.
 
@@ -48,5 +49,16 @@ exempts core's own crates, not `flate2`; this exception ends with the next core 
 - The program now contacts GitHub, once a day at most; `AGENTS.md` and the READMEs say so.
 - print and freemapper share one key and one update crate. A broken update reaches `install` users at once;
   rollback limits it. Cost if wrong: a leaked key needs a release of each program.
+
+## Rulings during implementation
+
+- Tasks 1 to 7 ran while the human step H1 (the secret in the environment) and Task 8 waited, as the plan says. Why:
+  they need no secret. Cost if wrong: nothing; the release stays unsigned until the secret is set.
+- Task 1's third fix round (one ADR sentence) got no separate re-review. Why: it was the wording the second
+  reviewer asked for, checked by diffstat. Cost if wrong: one ADR sentence is off.
+- Task 7's fix round (docs) got no separate scoped re-review. Why: the final whole-branch review reads the same
+  docs. Cost if wrong: a doc nit survived to the final fix wave.
+- `flate2` 1.1.11 stays as an exception to ADR 0006; see above. Cost if wrong: one dependency is six days younger
+  than the policy.
 
 Source: user request of 2026-11-12; freemapper ADR 0094 and its spec; core ADR 0026; plan `docs/superpowers/plans/2026-11-12-self-update.md`.

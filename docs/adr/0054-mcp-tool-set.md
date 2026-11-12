@@ -1,7 +1,7 @@
 # 0054. The MCP tool set
 
 Date: 2026-11-11
-Status: Accepted, implements [0004](0004-mcp-over-stdio-as-a-primary-interface.md)
+Status: Accepted, implements [0004](0004-mcp-over-stdio-as-a-primary-interface.md), amended by [0060](0060-self-update-from-signed-releases.md)
 
 ## Context
 
@@ -260,3 +260,5 @@ tests run with `--locked`. Every new Cargo.lock entry has the version freemapper
 
 Source: M5 plan (docs/superpowers/plans/2026-11-11-m5-mcp-server.md), Tasks 1 to 5; freemapper ADR 0005; rmcp 3.6.0
 `service.rs`.
+
+Amended by ADR 0060: the tools `check_update` and `install_update` make 13.
