@@ -14,7 +14,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- Das Handbuch zeigt jetzt Abbildungen, in beiden Sprachen an denselben Stellen: Blätter mit Titelblock, Logo und Passepartout, ein Bahnblatt mit Beschreibungskasten, Abdeckungen für Fenster- und Korridor-OL und der Editor im Browser. Sie entstanden aus den Karten von Remo Madella (MOO Challenge Berlin 2025); Herkunft und Entstehung stehen in `docs/manual/img/README.md`.
+- Das Handbuch zeigt jetzt Abbildungen, in beiden Sprachen an denselben Stellen: Blätter mit Titelblock, Logo und Passepartout, ein Bahnblatt mit Beschreibungskasten, Abdeckungen für Fenster- und Korridor-OL und der Editor im Browser. Sie entstanden aus den Karten von Remo Madella (MOO Challenge Berlin 2025), der bestätigt hat, dass sie als Beispielkarten im öffentlichen Projekt dienen dürfen. Die Bahnen auf den Bahnblättern stammen aus freemapper-courseplan 0.14.1, und die Fenster-Abbildung zeigt die Voreinstellung mit ihrem Abstand. Herkunft und Entstehung stehen in `docs/manual/img/README.md` (Entscheidung 0062).
+- Die README zeigt in beiden Sprachen diese Abbildungen als Beispiele und oben ein Bahnblatt, jedes Bild mit dem Kapitel des Handbuchs verlinkt. Die Beispielprojekte in `examples/` stehen als Textliste da.
 
 ## [0.8.0] - 2026-11-12
 
