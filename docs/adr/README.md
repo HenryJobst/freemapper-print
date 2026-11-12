@@ -85,9 +85,9 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0042](0042-suite-crates-as-git-dependencies.md) | Suite crates as git dependencies | Accepted | 2026-11-09 |
 | [0043](0043-omap-course-and-placement-come-from-freemapper-core.md) | Omap, course and placement come from freemapper-core | Accepted | 2026-11-09 |
 | [0044](0044-the-base-area-of-sprint-maps.md) | The base area of sprint maps | Accepted | 2026-11-09 |
-| [0045](0045-mask-variants.md) | Mask variants | Accepted | 2026-11-10 |
+| [0045](0045-mask-variants.md) | Mask variants | Accepted, amended by [0063](0063-windows-keep-a-gap.md) for generated windows | 2026-11-10 |
 | [0046](0046-checking-masks.md) | Checking masks | Accepted | 2026-11-10 |
-| [0047](0047-generated-masks.md) | Generated masks | Accepted | 2026-11-10 |
+| [0047](0047-generated-masks.md) | Generated masks | Accepted, amended by [0063](0063-windows-keep-a-gap.md) | 2026-11-10 |
 | [0048](0048-white-outs-by-purple-pen-id.md) | White-outs keyed by Purple Pen id | Accepted | 2026-11-10 |
 | [0049](0049-description-symbols-from-core.md) | Description symbols from core | Accepted | 2026-11-10 |
 | [0050](0050-reader-tests-against-the-suite-contract.md) | Reader tests against the suite contract | Accepted | 2026-11-10 |
@@ -103,3 +103,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0060](0060-self-update-from-signed-releases.md) | Self-update from signed releases | Accepted, amends [0054](0054-mcp-tool-set.md); longer than 30 lines on purpose, it records print's ten calls P1 to P10 and the flate2 exception | 2026-11-12 |
 | [0061](0061-one-approval-per-release.md) | One approval per release | Accepted, amends [0060](0060-self-update-from-signed-releases.md) | 2026-11-12 |
 | [0062](0062-manual-figures-from-two-released-maps.md) | Manual figures come from two released maps | Accepted | 2026-11-12 |
+| [0063](0063-windows-keep-a-gap.md) | Windows keep a gap | Accepted, amends [0047](0047-generated-masks.md) and, for generated windows, [0045](0045-mask-variants.md) | 2026-11-12 |

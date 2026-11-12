@@ -1,7 +1,7 @@
 # 0045. Mask variants
 
 Date: 2026-11-10
-Status: Accepted
+Status: Accepted; for windows made by `masks window` amended by [0063](0063-windows-keep-a-gap.md)
 
 ## Context
 

@@ -1,7 +1,7 @@
 # 0047. Generated masks
 
 Date: 2026-11-10
-Status: Accepted
+Status: Accepted, amended by [0063](0063-windows-keep-a-gap.md)
 
 ## Context
 
