@@ -102,3 +102,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0059](0059-editor-follows-the-suite-pages.md) | The editor follows the suite page rules | Accepted, implements [0005](0005-layout-editor-in-a-local-browser-page.md) |
 | [0060](0060-self-update-from-signed-releases.md) | Self-update from signed releases | Accepted, amends [0054](0054-mcp-tool-set.md); longer than 30 lines on purpose, it records print's ten calls P1 to P10 and the flate2 exception | 2026-11-12 |
 | [0061](0061-one-approval-per-release.md) | One approval per release | Accepted, amends [0060](0060-self-update-from-signed-releases.md) | 2026-11-12 |
+| [0062](0062-manual-figures-from-two-released-maps.md) | Manual figures come from two released maps | Accepted | 2026-11-12 |

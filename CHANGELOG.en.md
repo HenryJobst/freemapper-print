@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- The manual now has figures, at the same places in both languages: sheets with title block, logo and passe-partout, a course sheet with its description box, masks for window and corridor orienteering, and the editor in the browser. They are made from the maps of Remo Madella (MOO Challenge Berlin 2025); source and method are in `docs/manual/img/README.md`.
+
 ### Changed
 
 - A release needs one approval instead of two (decision 0061): only the job that signs uses the `release` environment. Every release is built with the updater and signed; without the signing secret it fails before anything is published.
