@@ -180,7 +180,10 @@ fn test_base() -> Option<String> {
 
 /// The source of updates: GitHub, or in the CLI tests the stub server.
 pub fn update_source() -> HttpUpdateSource {
-    // The stub server for the CLI tests follows with the source's requests (Task 2).
+    #[cfg(all(debug_assertions, feature = "test-stub"))]
+    if let Some(base) = test_base() {
+        return HttpUpdateSource::stub(&base);
+    }
     HttpUpdateSource::new()
 }
 
