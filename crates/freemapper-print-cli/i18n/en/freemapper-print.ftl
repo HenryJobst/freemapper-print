@@ -786,7 +786,6 @@ update-decimal-separator = .
 update-ask = Install it now? [y/N]
 update-not-installed = Nothing was installed.
 update-needs-yes = the input is not a terminal, so freemapper-print cannot ask before installing; run freemapper-print update --yes to install without asking
-agent-update-needs-yes = nothing was installed; ask the person first and call install_update with confirm: true once they agree
 update-installing = downloading and checking freemapper-print { $version }
 update-done = freemapper-print updated from { $old } to { $new }. Release notes: { $notes }
 update-mcp-needs-confirm = Nothing was installed. Ask the person first, then call install_update with confirm: true once they agree.

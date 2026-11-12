@@ -786,7 +786,6 @@ update-decimal-separator = ,
 update-ask = Jetzt installieren? [j/N]
 update-not-installed = Es wurde nichts installiert.
 update-needs-yes = Die Eingabe ist kein Terminal, deshalb kann freemapper-print vor der Installation nicht fragen. Mit freemapper-print update --yes wird ohne Rückfrage installiert.
-agent-update-needs-yes = Es wurde nichts installiert; fragen Sie zuerst die Nutzerin oder den Nutzer und rufen Sie install_update nach der Zustimmung mit confirm: true auf.
 update-installing = freemapper-print { $version } wird geladen und geprüft
 update-done = freemapper-print wurde von { $old } auf { $new } aktualisiert. Versionshinweise: { $notes }
 update-mcp-needs-confirm = Es wurde nichts installiert. Fragen Sie zuerst die Person und rufen Sie install_update erst nach ihrer Zustimmung mit confirm: true auf.

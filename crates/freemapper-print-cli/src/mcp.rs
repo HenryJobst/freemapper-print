@@ -51,8 +51,8 @@ of every sheet. init_project starts a project; masks_window, masks_corridor, num
 set_layout, set_element and assign_mask change the project file and keep its comments. Run \
 check_project after a change to see its effect. export_project writes the PDFs. Paths must be \
 absolute because the server does not know your working folder. check_update says whether a newer \
-version exists; install_update installs it, and you call it with confirm true only after the person \
-agreed. When a result has a second block that begins with Note for the person, pass it on to them. \
+version exists and install_update installs it, but call install_update with confirm true only after \
+the person agreed. When a result has a second block that begins with Note for the person, pass it on to them. \
 The messages in the results are German or English; pass lang to choose. \
 Manual and source: https://github.com/HenryJobst/freemapper-print";
 
