@@ -618,7 +618,7 @@ your course-setting program, and `check` and `export` do the rest: one sheet per
 for Purple Pen files, the control descriptions. The example
 [examples/rummelsburg-competition-courses](../../examples/rummelsburg-competition-courses/README.en.md) goes through
 all of it with every command and its output. [examples/gleisdreieck-training](../../examples/gleisdreieck-training/README.en.md)
-is a smaller one, a club training with a single course.
+is a smaller one, a club training with two courses.
 
 ### Where courses come from
 

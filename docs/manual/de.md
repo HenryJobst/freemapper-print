@@ -640,7 +640,7 @@ Datei Ihres Bahnlegungsprogramms, den Rest erledigen `check` und `export`: ein B
 und, bei Purple-Pen-Dateien, der Postenbeschreibung. Das Beispiel
 [examples/rummelsburg-competition-courses](../../examples/rummelsburg-competition-courses/README.md) geht alles mit
 jedem Befehl und seiner Ausgabe durch. [examples/gleisdreieck-training](../../examples/gleisdreieck-training/README.md)
-ist ein kleineres, ein Vereinstraining mit einer einzigen Bahn.
+ist ein kleineres, ein Vereinstraining mit zwei Bahnen.
 
 ### Woher die Bahnen kommen
 
