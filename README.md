@@ -12,10 +12,7 @@ druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
 gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt die fertige Karte aufs Papier.
 
-<a href="docs/manual/de.md#bahnblätter-und-bahnaufdruck"><img src="docs/manual/img/course-sheet.jpg" width="440"
-alt="Das Blatt der Bahn A auf der Karte Gleisdreieck, A4 hochkant in 1:4000: die Bahn in Violett mit acht Posten, oben links der Titelblock, oben rechts die Postenbeschreibung"></a>
-
-*Das Blatt einer Bahn: Bahn A (2,4 km, acht Posten) auf der Karte Gleisdreieck (Remo Madella, MOO Challenge Berlin 2025), A4 in 1:4000, mit Bahnaufdruck, Nummern, Titelblock und Postenbeschreibung. Mehr im [Handbuch](docs/manual/de.md#bahnblätter-und-bahnaufdruck).*
+<p align="center"><a href="examples/README.md"><img src="docs/manual/img/sheet-elements.jpg" alt="Ein A4-Blatt in 1:4000 auf der Karte Gleisdreieck mit Titelblock links oben, Kompass-Logo links unten, Kontrollstrecke rechts unten und der Namensnennung unter dem Rahmen" width="760"></a><br><sub>Ein Blatt auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge Berlin 2025): A4 quer in 1:4000 mit Titelblock, Logo, Kontrollstrecke und Namensnennung. Ein Klick öffnet die <a href="examples/README.md">Beispiele</a>.</sub></p>
 
 Das kann es schon:
 
@@ -74,12 +71,14 @@ Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 
 freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Der Code, den sie gemeinsam brauchen,
 liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer Bibliothek aus kleinen
-Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren.
-freemapper-print nutzt daraus `freemapper-text` (Programmtexte), `freemapper-rules` (Regelprofile),
-`freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap` (Kartenmodell und Kartenleser) und
-`freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der Renderer (`freemapper-render`) liegt seit core v0.9.0
-auch dort, der Seitenaufbau seit v0.13.0. Die Regeln, wie stark Symbole bei einem anderen Druckmaßstab wachsen,
-bleiben in freemapper-print.
+Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren. freemapper-print
+legt alle auf einen Tag fest, jetzt v0.21.1. Es nutzt daraus `freemapper-text` (Programmtexte),
+`freemapper-rules` (Regelprofile), `freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap`
+(Kartenmodell und Kartenleser) und `freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der
+Renderer (`freemapper-render`) liegt seit core v0.9.0 auch dort, der Seitenaufbau seit v0.13.0, der Bahnaufdruck seit
+v0.15.0 und die Druckregeln samt Maßstabstabellen (`freemapper-printrules`, wie stark Symbole bei einem anderen
+Druckmaßstab wachsen) seit v0.16.0. Auch der Editor-Server (`freemapper-web`) und die Selbstaktualisierung
+(`freemapper-update`) kommen aus core.
 
 ## Beispiele
 
@@ -123,19 +122,18 @@ alt="Der Editor im Browser: links der Projektbaum, in der Mitte die Blattvorscha
 gerade im Baum. Jede Änderung steht sofort in der Projektdatei. Mehr im Kapitel
 [Der Editor im Browser](docs/manual/de.md#12-der-editor-im-browser).
 
-Die vollständigen Beispielprojekte mit Projektdatei und PDFs liegen in [`examples/`](examples/README.md), jeweils
-mit Vorschaubild: [`luebeck-scales`](examples/luebeck-scales/README.md),
-[`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.md),
-[`luebeck-competition-courses`](examples/luebeck-competition-courses/README.md),
-[`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.md),
-[`luebeck-training-window`](examples/luebeck-training-window/README.md),
-[`luebeck-training-corridor`](examples/luebeck-training-corridor/README.md) und
-[`mcp-session`](examples/mcp-session/README.md).
+Die vollständigen Beispielprojekte mit Projektdatei, Eingabedateien, PDFs und Vorschaubild liegen in
+[`examples/`](examples/README.md): [`gleisdreieck-scales`](examples/gleisdreieck-scales/README.md),
+[`rummelsburg-competition-layouts`](examples/rummelsburg-competition-layouts/README.md),
+[`rummelsburg-competition-courses`](examples/rummelsburg-competition-courses/README.md),
+[`gleisdreieck-training`](examples/gleisdreieck-training/README.md),
+[`gleisdreieck-training-window`](examples/gleisdreieck-training-window/README.md),
+[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.md) und
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.md).
 
 ## Status
 
-Aktuelle Version ist [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) vom
-12. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Die aktuelle Version ist [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) vom 12. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
@@ -204,7 +202,7 @@ von freemapper-core.
 ### Eine Veranstaltung
 
 ```sh
-freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print init stadtsprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg"
 freemapper-print check stadtsprint
 freemapper-print export stadtsprint
 ```
@@ -220,7 +218,7 @@ beschreibt die Projektdatei Schlüssel für Schlüssel.
 ### Bahnen
 
 ```sh
-freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck" --courses courses.ppen
+freemapper-print init stadtsprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg" --courses courses.ppen
 freemapper-print check stadtsprint
 freemapper-print numbers accept stadtsprint --course A --control 49 --sheet
 freemapper-print export stadtsprint
@@ -264,7 +262,7 @@ beschreibt die Abdeckungen, ihre Grenzen und das White-out aus Purple Pen.
 ### Nur die Karte
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
+freemapper-print render rummelsburg.omap --out rummelsburg-3000-a3.pdf --paper a3 --scale 3000
 ```
 
 Das schreibt die Sprintkarte als PDF auf eine A3-Seite im Maßstab 1:3000, ohne Titel und Kontrollstrecke. Die
@@ -330,8 +328,8 @@ im Ordner, in dem Sie Claude Code starten:
 Server kennt den Arbeitsordner des Agenten nicht. Die Werkzeuge, die schreiben, kommen sich nicht in die Quere,
 und die Kommentare der Projektdatei bleiben bis auf wenige Fälle stehen, die das Handbuch nennt. Bricht der Agent einen langen Export ab, endet
 er nach dem Blatt, an dem er gerade zeichnet. Das [Handbuch](docs/manual/de.md#3-mit-einem-ki-agenten) beschreibt jedes Werkzeug, das Beispiel
-[`mcp-session`](examples/mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus dem Viktoriapark-Training,
-geprüft und als PDF geschrieben.
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus einer
+Trainingsbahn, geprüft und als PDF geschrieben.
 
 Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jedem Release-Archiv liegt: Sie erklärt einem Agenten, wie er das Programm installiert und aktualisiert und über MCP oder die Kommandozeile bedient.
 

@@ -42,7 +42,8 @@ before changing code.
 - Commits: Conventional Commits with a scope (`feat(render): …`, `fix(omap): …`, `docs(adr): …`), English
   subject, small logical units.
 - Release when the user asks: bump `[workspace.package] version`, `cargo update -w`, turn "Unveröffentlicht"/
-  "Unreleased" into `## [x.y.z] - YYYY-MM-DD` in both changelogs, annotated tag `vX.Y.Z`, push the tag;
+  "Unreleased" into `## [x.y.z] - YYYY-MM-DD` in both changelogs, set the version, link and date in the first
+  sentence of the "Status" section of both READMEs, annotated tag `vX.Y.Z`, push the tag;
   `release.yml` builds the archives and takes the notes from CHANGELOG.en.md.
 - Every generated output (PDF metadata, visible credit line, notes) names freemapper-print and its public
   GitHub link.
