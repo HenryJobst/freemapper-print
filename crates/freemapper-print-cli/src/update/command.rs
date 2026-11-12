@@ -145,7 +145,6 @@ fn installed_text(texts: &Texts, app: &App, installed: &Version, notes: &str) ->
 }
 
 /// What a check found, for the MCP tool `check_update` (spec 3.7).
-#[allow(dead_code)] // The MCP tools of Task 5 use it.
 #[derive(Debug)]
 pub struct CheckReport {
     /// The version of the running program.
@@ -157,7 +156,6 @@ pub struct CheckReport {
 }
 
 /// A newer release as the MCP tool reports it.
-#[allow(dead_code)] // The MCP tools of Task 5 use it.
 #[derive(Debug)]
 pub struct AvailableReport {
     pub version: Version,
@@ -172,7 +170,6 @@ pub struct AvailableReport {
 }
 
 /// What the MCP tool `install_update` did.
-#[allow(dead_code)] // The MCP tools of Task 5 use it.
 #[derive(Debug)]
 pub struct InstallReport {
     /// The version now installed; none when this one was current already.
@@ -186,7 +183,6 @@ pub struct InstallReport {
 /// The MCP tool `check_update` (spec 3.7) in a release build: what `update --check` prints, or
 /// the error for the person. A release that needs a manual install is a result, as for
 /// `--check`.
-#[allow(dead_code)] // The MCP tools of Task 5 use it.
 pub fn check_for_mcp(texts: &Texts) -> Result<CheckReport, String> {
     let app = print_app();
     let source = update_source();
@@ -237,7 +233,6 @@ pub fn check_for_mcp(texts: &Texts) -> Result<CheckReport, String> {
 /// The MCP tool `install_update` (spec 3.7) in a release build, once the person agreed: installs
 /// the newest release over the running program, printing nothing. The text for the person, or
 /// the error.
-#[allow(dead_code)] // The MCP tools of Task 5 use it.
 pub fn install_for_mcp(texts: &Texts) -> Result<InstallReport, String> {
     let app = print_app();
     let source = update_source();

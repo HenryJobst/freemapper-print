@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+#[cfg(all(feature = "test-stub", debug_assertions))]
+mod support;
+
 const VIKTORIAPARK: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../examples/berlin-viktoriapark-training"
@@ -110,7 +113,7 @@ fn stdout_carries_only_json_rpc_and_eof_ends_the_server() {
         answer(1)["result"]["serverInfo"]["name"],
         "freemapper-print"
     );
-    assert_eq!(answer(2)["result"]["tools"].as_array().unwrap().len(), 11);
+    assert_eq!(answer(2)["result"]["tools"].as_array().unwrap().len(), 13);
     let check = &answer(3)["result"];
     assert_ne!(check["isError"], true, "{check}");
     let text = check["content"][0]["text"].as_str().unwrap();
@@ -158,19 +161,30 @@ struct Server {
     child: std::process::Child,
     stdin: Option<std::process::ChildStdin>,
     lines: std::sync::mpsc::Receiver<String>,
+    /// The id of the next request made by [`Server::call_all`].
+    next: u64,
 }
 
 impl Server {
     fn start(env: &[(&str, &str)]) -> Server {
         let mut command = Command::new(env!("CARGO_BIN_EXE_freemapper-print"));
         command
-            .args(["mcp", "--lang", "en"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .env_remove("FREEMAPPER_PRINT_UPDATE")
+            .env_remove("FREEMAPPER_PRINT_UPDATE_TEST_BASE");
         for (key, value) in env {
             command.env(key, value);
         }
+        Server::start_command(command)
+    }
+
+    /// `command` with `mcp --lang en` added, without `CI` and the update switches of the environment.
+    fn start_command(mut command: Command) -> Server {
+        command
+            .args(["mcp", "--lang", "en"])
+            .env_remove("CI")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let mut child = command.spawn().expect("start the server");
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let (send, lines) = std::sync::mpsc::channel();
@@ -185,6 +199,7 @@ impl Server {
             stdin: child.stdin.take(),
             child,
             lines,
+            next: 100,
         };
         server.send(json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -216,6 +231,48 @@ impl Server {
                 return message;
             }
         }
+    }
+
+    /// Calls a tool and returns whether it failed and the texts of its content blocks.
+    fn call_all(&mut self, name: &str, arguments: Value) -> (bool, Vec<String>) {
+        self.next += 1;
+        let id = self.next;
+        self.send(json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": name, "arguments": arguments }
+        }));
+        let answer = self.answer(id);
+        let result = &answer["result"];
+        let texts = result["content"]
+            .as_array()
+            .unwrap_or_else(|| panic!("no content: {answer}"))
+            .iter()
+            .map(|block| block["text"].as_str().unwrap().to_string())
+            .collect();
+        (result["isError"] == true, texts)
+    }
+
+    #[cfg(all(feature = "test-stub", debug_assertions))]
+    /// Closes stdin, waits for the end of the server and returns its stderr and the stdout lines not read yet.
+    fn close(mut self) -> (String, Vec<String>) {
+        drop(self.stdin.take());
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self.child.try_wait().unwrap().is_none() {
+            assert!(
+                Instant::now() < deadline,
+                "the server did not end after EOF"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let mut stderr = String::new();
+        self.child
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_string(&mut stderr)
+            .unwrap();
+        let rest: Vec<String> = self.lines.try_iter().collect();
+        (stderr, rest)
     }
 
     fn call_export(&mut self, id: u64, arguments: Value) {
@@ -358,4 +415,420 @@ fn a_full_disk_comes_back_as_a_tool_error_and_leaves_no_file() {
         "{text}"
     );
     assert!(names_in(out.path()).is_empty(), "no PDF, no .part");
+}
+
+fn tools_of(server: &mut Server) -> Vec<Value> {
+    server.send(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }));
+    server.answer(2)["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn tools_list_has_the_two_update_tools() {
+    let mut server = Server::start(&[]);
+    let tools = tools_of(&mut server);
+    let tool = |name: &str| {
+        tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("no tool {name}"))
+    };
+    let check = tool("check_update");
+    assert!(
+        check["inputSchema"]["properties"]["lang"].is_object(),
+        "{check}"
+    );
+    assert!(
+        check["inputSchema"]["properties"]["confirm"].is_null(),
+        "{check}"
+    );
+    let install = tool("install_update");
+    assert_eq!(
+        install["inputSchema"]["properties"]["confirm"]["type"], "boolean",
+        "{install}"
+    );
+    assert!(
+        install["inputSchema"]["properties"]["lang"].is_object(),
+        "{install}"
+    );
+    assert!(
+        install["inputSchema"]["required"]
+            .as_array()
+            .is_none_or(|r| r.is_empty()),
+        "confirm is optional: {install}"
+    );
+    // The tools reject fields they do not know.
+    let (error, texts) = server.call_all("check_update", json!({ "confirm": true }));
+    assert!(error, "{texts:?}");
+}
+
+/// A source build says how to update, in both tools, as `{"message"}` and not as an error.
+#[test]
+fn mcp_update_tools_in_a_source_build_say_how_to_update() {
+    let mut server = Server::start(&[]);
+    for (tool, arguments) in [
+        ("check_update", json!({})),
+        ("install_update", json!({})),
+        ("install_update", json!({ "confirm": true })),
+    ] {
+        let (error, texts) = server.call_all(tool, arguments);
+        assert!(!error, "{tool}: {texts:?}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        let result: Value = serde_json::from_str(&texts[0]).unwrap();
+        assert_eq!(result.as_object().unwrap().len(), 1, "{result}");
+        let message = result["message"].as_str().unwrap();
+        assert!(message.contains("built from source"), "{message}");
+        assert!(
+            message.contains("https://github.com/HenryJobst/freemapper-print/releases/latest")
+                && message.contains("git pull and cargo build --release --locked"),
+            "{message}"
+        );
+    }
+    let (error, texts) = server.call_all("check_update", json!({ "lang": "de" }));
+    assert!(!error, "{texts:?}");
+    assert!(texts[0].contains("aus dem Quellcode gebaut"), "{texts:?}");
+}
+
+#[cfg(all(feature = "test-stub", debug_assertions))]
+mod update {
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    use freemapper_update::{CheckRecord, RecordResult, load_record, save_record};
+    use serde_json::{Value, json};
+
+    use super::support::{MANIFEST_PATH, UpdateStub, copied_program};
+    use super::{Server, VIKTORIAPARK};
+
+    const NOTES: &str = "https://github.com/HenryJobst/freemapper-print/releases/tag/v99.0.0";
+
+    /// `program` as a server talking to `stub`, with settings, record and home inside `dir`, so no test touches
+    /// a shared folder or the home of the person running it.
+    fn checking(program: &Path, stub: &UpdateStub, dir: &Path) -> Command {
+        let mut command = Command::new(program);
+        command
+            .env_remove("FREEMAPPER_PRINT_UPDATE")
+            .env("HOME", dir.join("home"))
+            .env("USERPROFILE", dir.join("home"))
+            .env("FREEMAPPER_PRINT_CONFIG_DIR", dir.join("config"))
+            .env("FREEMAPPER_PRINT_CACHE_DIR", dir.join("cache"))
+            .env("FREEMAPPER_PRINT_UPDATE_TEST_BASE", &stub.base);
+        command
+    }
+
+    fn program() -> &'static Path {
+        Path::new(env!("CARGO_BIN_EXE_freemapper-print"))
+    }
+
+    fn note() -> String {
+        format!(
+            "Note for the person: freemapper-print 99.0.0 is available (this is {}). Ask them before calling install_update.",
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+
+    fn wait_for_record(cache: &Path) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while load_record(&cache.join("update-check.json")).is_none() {
+            assert!(Instant::now() < deadline, "no check record");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// A record of a check made now that found release 99.0.0: a server started with it knows the note at once.
+    fn record_99(cache: &Path) {
+        std::fs::create_dir_all(cache).unwrap();
+        let record = CheckRecord {
+            at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            by: env!("CARGO_PKG_VERSION").parse().unwrap(),
+            result: RecordResult::Available {
+                version: "99.0.0".parse().unwrap(),
+                notes: NOTES.into(),
+            },
+        };
+        save_record(&cache.join("update-check.json"), &record).unwrap();
+    }
+
+    /// A tool that answers without the network.
+    fn cheap_call(server: &mut Server) -> (bool, Vec<String>) {
+        server.call_all("project_info", json!({ "project": VIKTORIAPARK }))
+    }
+
+    fn json_of(text: &str) -> Value {
+        serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}): {text}"))
+    }
+
+    #[test]
+    fn check_update_reports_available_with_stub() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = UpdateStub::with_fixture();
+        let mut command = checking(program(), &stub, dir.path());
+        // Mode `off`: the server does not check by itself, so only the tool asks.
+        command.env("FREEMAPPER_PRINT_UPDATE", "off");
+        let mut server = Server::start_command(command);
+        let (error, texts) = server.call_all("check_update", json!({}));
+        assert!(!error, "{texts:?}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        let result = json_of(&texts[0]);
+        let current = env!("CARGO_PKG_VERSION");
+        assert_eq!(result["current"], current);
+        let available = &result["available"];
+        assert_eq!(available["version"], "99.0.0", "{result}");
+        assert_eq!(available["released"], "2026-11-20", "{result}");
+        assert_eq!(available["notes"], NOTES, "{result}");
+        assert!(available["size_bytes"].as_u64().unwrap() > 0, "{result}");
+        assert_eq!(available["manual"], false, "{result}");
+        let message = result["message"].as_str().unwrap();
+        assert!(
+            message.contains(&format!(
+                "freemapper-print 99.0.0 is available (you have {current})"
+            )),
+            "{message}"
+        );
+        assert_eq!(
+            stub.paths(),
+            [
+                MANIFEST_PATH.to_string(),
+                format!("{MANIFEST_PATH}.minisig")
+            ]
+        );
+        // The tool checks; it neither records nor installs.
+        assert!(!dir.path().join("cache/update-check.json").exists());
+        assert!(!stub.asked_for_an_asset());
+    }
+
+    #[test]
+    fn check_update_answers_in_the_language_of_the_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = UpdateStub::with_fixture();
+        let mut command = checking(program(), &stub, dir.path());
+        command.env("FREEMAPPER_PRINT_UPDATE", "off");
+        let mut server = Server::start_command(command);
+        let (_, texts) = server.call_all("check_update", json!({ "lang": "de" }));
+        let result = json_of(&texts[0]);
+        assert!(
+            result["message"]
+                .as_str()
+                .unwrap()
+                .contains("ist verfügbar"),
+            "{result}"
+        );
+    }
+
+    #[test]
+    fn install_update_needs_confirm_true() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = UpdateStub::with_fixture();
+        let mut command = checking(program(), &stub, dir.path());
+        command.env("FREEMAPPER_PRINT_UPDATE", "off");
+        let mut server = Server::start_command(command);
+        for arguments in [json!({}), json!({ "confirm": false })] {
+            let (error, texts) = server.call_all("install_update", arguments.clone());
+            assert!(error, "{arguments}: {texts:?}");
+            assert_eq!(
+                texts,
+                [
+                    "Nothing was installed. Ask the person first, then call install_update with confirm: true once they agree."
+                ],
+                "{arguments}"
+            );
+        }
+        assert!(stub.paths().is_empty(), "{:?}", stub.paths());
+    }
+
+    #[test]
+    fn first_tool_result_carries_the_note_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let stub = UpdateStub::with_fixture();
+        let mut server = Server::start_command(checking(program(), &stub, dir.path()));
+        wait_for_record(&cache);
+        // The tool's own result first, then the note, and only on the first result that follows the news.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let (error, texts) = cheap_call(&mut server);
+            assert!(!error, "{texts:?}");
+            assert!(texts[0].contains("\"title\""), "{texts:?}");
+            if texts.len() == 2 {
+                assert_eq!(texts[1], note());
+                break;
+            }
+            assert!(Instant::now() < deadline, "no note");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for _ in 0..2 {
+            let (_, texts) = cheap_call(&mut server);
+            assert_eq!(texts.len(), 1, "{texts:?}");
+        }
+        let (stderr, rest) = server.close();
+        assert_eq!((stderr.as_str(), rest.len()), ("", 0), "{rest:?}");
+        assert_eq!(stub.paths().len(), 2);
+
+        // A server started later the same day does not ask again; the record tells it, at once.
+        let mut server = Server::start_command(checking(program(), &stub, dir.path()));
+        let (_, texts) = cheap_call(&mut server);
+        assert_eq!(texts.get(1), Some(&note()), "{texts:?}");
+        let (_, texts) = cheap_call(&mut server);
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        assert_eq!(stub.paths().len(), 2);
+
+        // check_update gives the news itself; no note follows it.
+        let mut server = Server::start_command(checking(program(), &stub, dir.path()));
+        let (error, texts) = server.call_all("check_update", json!({}));
+        assert!(!error, "{texts:?}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        let (_, texts) = cheap_call(&mut server);
+        assert_eq!(texts.len(), 1, "{texts:?}");
+    }
+
+    /// An update tool that fails gives no news, so the note stays for the next result.
+    #[test]
+    fn a_failed_update_tool_keeps_the_note() {
+        let dir = tempfile::tempdir().unwrap();
+        record_99(&dir.path().join("cache"));
+        let stub = UpdateStub::with_fixture();
+        let mut server = Server::start_command(checking(program(), &stub, dir.path()));
+        let (error, texts) = server.call_all("install_update", json!({}));
+        assert!(error, "{texts:?}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        let (_, texts) = cheap_call(&mut server);
+        assert_eq!(texts.get(1), Some(&note()), "{texts:?}");
+        assert!(stub.paths().is_empty(), "{:?}", stub.paths());
+    }
+
+    /// The server asks and notes, but never installs, also in mode `install`.
+    #[test]
+    fn mcp_never_installs_in_install_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let folder = dir.path().join("bin");
+        std::fs::create_dir(&folder).unwrap();
+        let copy = copied_program(&folder);
+        let stub = UpdateStub::with_fixture();
+        let mut command = checking(&copy, &stub, dir.path());
+        command.env("FREEMAPPER_PRINT_UPDATE", "install");
+        let mut server = Server::start_command(command);
+        wait_for_record(&cache);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let (_, texts) = cheap_call(&mut server);
+            if texts.len() == 2 {
+                assert_eq!(texts[1], note());
+                break;
+            }
+            assert!(Instant::now() < deadline, "no note");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let (stderr, rest) = server.close();
+        assert_eq!((stderr.as_str(), rest.len()), ("", 0), "{rest:?}");
+        assert!(!stub.asked_for_an_asset(), "{:?}", stub.paths());
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
+    }
+
+    /// With an update known the server's stdout is still only JSON-RPC, and nothing goes to stderr.
+    #[test]
+    fn stdout_stays_json_rpc_with_an_update_known() {
+        let dir = tempfile::tempdir().unwrap();
+        record_99(&dir.path().join("cache"));
+        let stub = UpdateStub::with_fixture();
+        let mut command = checking(program(), &stub, dir.path());
+        command.env("FREEMAPPER_PRINT_UPDATE", "install");
+        let mut server = Server::start_command(command);
+        let (_, texts) = cheap_call(&mut server);
+        assert_eq!(texts.get(1), Some(&note()), "{texts:?}");
+        let (stderr, rest) = server.close();
+        assert_eq!(stderr, "");
+        for line in rest {
+            let message = json_of(&line);
+            assert_eq!(message["jsonrpc"], "2.0", "{line}");
+        }
+        assert!(stub.paths().is_empty(), "{:?}", stub.paths());
+    }
+
+    /// A release that the self-update cannot install gets a note that says so, with the link.
+    #[test]
+    fn a_release_that_needs_a_manual_install_gets_its_own_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/update");
+        let stub = UpdateStub::serving(
+            std::fs::read(fixtures.join("manifest-99-manual.json")).unwrap(),
+            std::fs::read(fixtures.join("manifest-99-manual.json.minisig")).unwrap(),
+            Vec::new(),
+        );
+        let mut server = Server::start_command(checking(program(), &stub, dir.path()));
+        wait_for_record(&cache);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let note = loop {
+            let (_, texts) = cheap_call(&mut server);
+            if let Some(note) = texts.get(1) {
+                break note.clone();
+            }
+            assert!(Instant::now() < deadline, "no note");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert!(
+            note.starts_with("Note for the person: freemapper-print 99.0.0 is available")
+                && note.contains("install_update cannot install it"),
+            "{note}"
+        );
+        let (_, texts) = server.call_all("check_update", json!({}));
+        let result = json_of(&texts[0]);
+        assert_eq!(result["available"]["manual"], true, "{result}");
+        assert!(result["available"]["released"].is_null(), "{result}");
+        assert!(result["available"]["size_bytes"].is_null(), "{result}");
+    }
+
+    /// The whole install over a copy of the program, through the tool.
+    #[test]
+    #[cfg(unix)]
+    fn install_update_with_confirm_installs_and_asks_for_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("bin");
+        let work = dir.path().join("work");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::create_dir(&work).unwrap();
+        let program = copied_program(&folder);
+        let Some(stub) = super::support::installable_release(&work) else {
+            eprintln!(
+                "SKIPPED install_update_with_confirm_installs_and_asks_for_a_restart: no minisign"
+            );
+            return;
+        };
+        let mut command = checking(&program, &stub, dir.path());
+        command.env("FREEMAPPER_PRINT_UPDATE", "off");
+        let mut server = Server::start_command(command);
+        let (error, texts) = server.call_all("install_update", json!({ "confirm": true }));
+        assert!(!error, "{texts:?}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        let result = json_of(&texts[0]);
+        let current = env!("CARGO_PKG_VERSION");
+        assert_eq!(result["from"], current, "{result}");
+        assert_eq!(result["installed"], "99.0.0", "{result}");
+        assert_eq!(result["notes"], NOTES, "{result}");
+        let message = result["message"].as_str().unwrap();
+        assert!(
+            message.contains(&format!(
+                "freemapper-print updated from {current} to 99.0.0"
+            )),
+            "{message}"
+        );
+        assert!(
+            message.ends_with(
+                "Restart the freemapper-print MCP server now; it still runs the old version."
+            ),
+            "{message}"
+        );
+        let output = Command::new(&program).arg("--version").output().unwrap();
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap().trim(),
+            "freemapper-print 99.0.0"
+        );
+    }
 }
