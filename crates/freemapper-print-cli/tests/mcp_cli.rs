@@ -161,6 +161,11 @@ struct Server {
     child: std::process::Child,
     stdin: Option<std::process::ChildStdin>,
     lines: std::sync::mpsc::Receiver<String>,
+    /// Everything the server wrote on stderr, collected on a thread so the pipe never fills up.
+    #[cfg_attr(not(all(feature = "test-stub", debug_assertions)), allow(dead_code))]
+    stderr: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    #[cfg_attr(not(all(feature = "test-stub", debug_assertions)), allow(dead_code))]
+    stderr_thread: Option<std::thread::JoinHandle<()>>,
     /// The id of the next request made by [`Server::call_all`].
     next: u64,
 }
@@ -195,10 +200,24 @@ impl Server {
                 }
             }
         });
+        let mut stderr_pipe = child.stderr.take().unwrap();
+        let stderr = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let collected = std::sync::Arc::clone(&stderr);
+        let stderr_thread = std::thread::spawn(move || {
+            let mut buffer = [0_u8; 4096];
+            while let Ok(read) = stderr_pipe.read(&mut buffer) {
+                if read == 0 {
+                    break;
+                }
+                collected.lock().unwrap().extend_from_slice(&buffer[..read]);
+            }
+        });
         let mut server = Server {
             stdin: child.stdin.take(),
             child,
             lines,
+            stderr,
+            stderr_thread: Some(stderr_thread),
             next: 100,
         };
         server.send(json!({
@@ -264,13 +283,8 @@ impl Server {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
-        let mut stderr = String::new();
-        self.child
-            .stderr
-            .take()
-            .unwrap()
-            .read_to_string(&mut stderr)
-            .unwrap();
+        self.stderr_thread.take().unwrap().join().unwrap();
+        let stderr = String::from_utf8_lossy(&self.stderr.lock().unwrap()).into_owned();
         let rest: Vec<String> = self.lines.try_iter().collect();
         (stderr, rest)
     }
@@ -830,5 +844,8 @@ mod update {
             String::from_utf8(output.stdout).unwrap().trim(),
             "freemapper-print 99.0.0"
         );
+        let (stderr, rest) = server.close();
+        assert_eq!(stderr, "");
+        assert!(rest.is_empty(), "{rest:?}");
     }
 }

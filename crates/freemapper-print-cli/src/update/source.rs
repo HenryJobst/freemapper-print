@@ -266,7 +266,7 @@ mod tests {
     use std::collections::HashMap;
     use std::io::{BufRead as _, BufReader, Seek as _};
     use std::net::TcpListener;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     const MANIFEST_URL: &str = "https://github.com/HenryJobst/freemapper-print/releases/latest/download/freemapper-print-update.json";
     const MANIFEST_PATH: &str =

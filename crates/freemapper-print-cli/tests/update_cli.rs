@@ -14,9 +14,13 @@ use support::{MANIFEST_PATH, UpdateStub, copied_program};
 const PROGRAM: &str = env!("CARGO_BIN_EXE_freemapper-print");
 
 /// `freemapper-print update` of `program` in English, without the update switches of the environment and
-/// with both folders (settings, record) inside the target folder instead of the home of the user.
+/// with both folders (settings, record) in a folder of this test (the thread's, removed when the test ends)
+/// instead of the home of the user or a folder the tests share.
 fn update_of(program: &std::path::Path) -> Command {
-    let scratch = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("update_cli");
+    thread_local! {
+        static SCRATCH: tempfile::TempDir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    }
+    let scratch = SCRATCH.with(|dir| dir.path().to_path_buf());
     let mut command = Command::new(program);
     command
         .env("FREEMAPPER_LANG", "en")
@@ -170,7 +174,9 @@ fn update_check_with_a_bad_signature_is_an_error() {
 #[cfg(all(feature = "test-stub", debug_assertions))]
 fn update_of_a_release_without_a_manifest_says_so() {
     let stub = UpdateStub::start(Vec::new());
-    let program = std::path::Path::new(PROGRAM);
+    let folder = tempfile::tempdir().unwrap();
+    let program = copied_program(folder.path());
+    let program = program.as_path();
     let no_manifest = "Error: the newest release cannot install itself (it has no update manifest); \
                        download it from https://github.com/HenryJobst/freemapper-print/releases/latest\n";
     for extra in [&["--check"][..], &["--yes"]] {
@@ -258,10 +264,9 @@ fn update_without_an_asset_for_this_platform_names_it() {
         std::fs::read(dir.join("manifest-99-noasset.json.minisig")).unwrap(),
         Vec::new(),
     );
-    let output = update_with(std::path::Path::new(PROGRAM), &stub)
-        .arg("--yes")
-        .output()
-        .unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let program = copied_program(folder.path());
+    let output = update_with(&program, &stub).arg("--yes").output().unwrap();
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let stderr = String::from_utf8(output.stderr).unwrap();
     let platform = freemapper_update::current_platform().unwrap();
@@ -536,18 +541,30 @@ mod daily {
         let dir = tempfile::tempdir().unwrap();
         let project = viktoriapark(dir.path(), "");
         let stub = UpdateStub::with_fixture();
-        checking(Path::new(PROGRAM), &stub, dir.path())
+        let masks = checking(Path::new(PROGRAM), &stub, dir.path())
             .args(["masks", "window"])
             .arg(&project)
             .args(["--course", "Training"])
             .output()
             .unwrap();
-        checking(Path::new(PROGRAM), &stub, dir.path())
+        assert_eq!(masks.status.code(), Some(0), "{masks:?}");
+        let numbers = checking(Path::new(PROGRAM), &stub, dir.path())
             .args(["numbers", "accept"])
             .arg(&project)
-            .args(["--course", "Training", "--control", "31", "--layout-wide"])
+            .args([
+                "--course",
+                "Training",
+                "--control",
+                "34",
+                "--layout-wide",
+                "--direction",
+                "90",
+                "--gap",
+                "2",
+            ])
             .output()
             .unwrap();
+        assert_eq!(numbers.status.code(), Some(0), "{numbers:?}");
         assert!(stub.paths().is_empty(), "{:?}", stub.paths());
         assert_eq!(record(dir.path()), None);
     }
@@ -761,9 +778,13 @@ mod daily {
         let mut stderr = child.stderr.take().unwrap();
         let mut child = Kill(child);
         let mut first = String::new();
-        std::io::BufReader::new(stdout)
-            .read_line(&mut first)
-            .unwrap();
+        let mut stdout = std::io::BufReader::new(stdout);
+        stdout.read_line(&mut first).unwrap();
+        // Keep reading, so that a later line of the editor never meets a closed pipe.
+        let drain = std::thread::spawn(move || {
+            let mut rest = String::new();
+            let _ = stdout.read_to_string(&mut rest);
+        });
         let url = first
             .split_whitespace()
             .find(|word| word.starts_with("http://"))
@@ -784,6 +805,7 @@ mod daily {
         assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
         let status = child.0.wait().unwrap();
         assert_eq!(status.code(), Some(0));
+        drain.join().unwrap();
         let mut text = String::new();
         stderr.read_to_string(&mut text).unwrap();
         assert_eq!(text, notice());
