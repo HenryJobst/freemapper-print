@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- Ein Release braucht eine Freigabe statt zwei (Entscheidung 0061): Nur der Job, der signiert, nutzt die Umgebung `release`. Jedes Release wird mit Updater gebaut und signiert; ohne das Signier-Secret scheitert es, bevor etwas veröffentlicht wird.
+
 ## [0.8.0] - 2026-11-12
 
 ### Hinzugefügt
