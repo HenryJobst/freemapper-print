@@ -26,7 +26,10 @@ The sheets are in German (`event.lang = "de"`), like the other Lübeck examples.
 - Ten round windows with a radius of 15 mm on paper, 60 m on the ground: around the start, the eight controls and
   the finish. The window around control 34 (number 2) has a radius of 20 mm and shows how one control gets more
   map.
-- The windows around control 50 (number 7) and the finish overlap. They merge into one area without a seam.
+- The windows around control 50 (number 7) and the finish overlap. They merge into one area without a seam. The
+  mask was written before `masks window` kept a gap between windows (ADR 0063). Today the two windows would get
+  11.21 mm instead of 15 mm radius and 3 mm between them. The file keeps the overlap, which a mask written by hand
+  may still have.
 - Outside the windows the paper is white. The north lines and the light brown base area of the map are missing
   there too, because they belong to the map.
 - Legs, control circles, numbers, start and finish lie in purple over the white paper as well. The description
@@ -117,6 +120,10 @@ Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
+
+That was the output before ADR 0063. Today the first line ends with "mindestens 3 mm auseinander" (at least 3 mm
+apart), and two lines follow it: "Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand
+bleibt." (control 50 gets 11.21 mm instead of 15 mm to keep the gap) and the same for the finish.
 
 The command appends a table `[[masks]]` with the id `window-Fenster` to the project file, with a comment on how it
 was made. It has one polygon: a rectangle 100 mm outside the map as its outline and ten circles as holes.

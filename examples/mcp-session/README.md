@@ -18,6 +18,10 @@ Sitzung lief wirklich, jede Anfrage und jede Antwort steht in `session.jsonl`.
 
 Das PDF selbst liegt nicht hier; `record_session.py` schreibt es neu (siehe unten).
 
+Die Sitzung entstand, bevor `masks window` einen Abstand zwischen den Fenstern hielt (ADR 0063). Neu aufgezeichnet
+gibt derselbe Aufruf sechs der 13 Fenster einen kleineren Radius: 45 und 58 bekommen 6,88 mm, 39 und 35 7,91 mm,
+56 und 61 11,28 mm. `masks_window` nennt sie dann unter `reduced`, und seine Meldungen bekommen je eine Zeile dafür.
+
 ## Die Sitzung
 
 Das Skript startet den Server mit `freemapper-print --lang de mcp`, so wie Claude Code es nach der `.mcp.json`
