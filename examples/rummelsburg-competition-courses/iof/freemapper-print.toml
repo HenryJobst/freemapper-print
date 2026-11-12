@@ -1,0 +1,72 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Rummelsburg Sprint"
+date = 2027-05-15
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "../rummelsburg.omap"
+courses = "../courses.xml"
+
+[map]
+kind = "sprint"
+# Die Karte nennt in ihrem Informationsblock 2,5 m.
+contour_interval_m = 2.5
+
+# Die Karte hat keine Kartennotizen. Die Fußzeile nennt deshalb von Hand die Karte und ihren Autor.
+[print]
+copyright = """
+Karte: Rummelsburger Bucht, Remo Madella, MOO Challenge Berlin 2025
+"""
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event} · Bahn {course}",
+    "{length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# IOF-XML kennt keine Druckmaßstäbe und keine Beschreibungen, deshalb ein Layout im Kartenmaßstab
+# ohne Beschreibungskasten. Der Kartenausschnitt sitzt wie im Hauptprojekt.
+
+[[layouts]]
+id = "a3-4000"
+paper = "A3"
+orientation = "landscape"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [30.0, -10.0] }
+
+[[assignments]]
+course = "Kurz"
+layout = "a3-4000"
+
+[[assignments]]
+course = "Mittel"
+layout = "a3-4000"
+
+[[assignments]]
+course = "Lang"
+layout = "a3-4000"
+
+[[numbers]]
+control = "36"
+course = "Kurz"
+direction = 111.3
+gap_mm = 2.0
+
+[numbers.base_seen]
+direction = 111.25890911216437
+gap_mm = 1.5011224926930549
