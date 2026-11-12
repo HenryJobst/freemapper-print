@@ -190,7 +190,18 @@ impl Server {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = command.spawn().expect("start the server");
+        // A program copied a moment ago can be "busy" on Linux while a parallel test forks and the child still
+        // holds the copy's write handle; that ends within milliseconds, so wait and try again.
+        let mut tries = 0;
+        let mut child = loop {
+            match command.spawn() {
+                Err(e) if e.raw_os_error() == Some(26) && tries < 100 => {
+                    tries += 1;
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                other => break other.expect("start the server"),
+            }
+        };
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let (send, lines) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
