@@ -538,17 +538,16 @@ pub(super) async fn get_project(State(api): State<Arc<Api>>, headers: HeaderMap)
 }
 
 /// Every `file` that is an absolute path becomes its file name; a path inside the project (`logos/a.svg`) stays,
-/// since the form edits it as the project file has it.
+/// since the form edits it as the project file has it. A path counts as absolute in either spelling, so a project
+/// written on one system does not leak its folders on another.
 fn absolute_files_to_names(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => {
             for (key, v) in map.iter_mut() {
                 match v {
-                    serde_json::Value::String(path)
-                        if key == "file" && std::path::Path::new(path.as_str()).is_absolute() =>
-                    {
-                        if let Some(name) = std::path::Path::new(path.as_str()).file_name() {
-                            *path = name.to_string_lossy().into_owned();
+                    serde_json::Value::String(path) if key == "file" && looks_absolute(path) => {
+                        if let Some(name) = path.rsplit(['/', '\\']).find(|part| !part.is_empty()) {
+                            *path = name.to_owned();
                         }
                     }
                     _ => absolute_files_to_names(v),
@@ -558,6 +557,14 @@ fn absolute_files_to_names(value: &mut serde_json::Value) {
         serde_json::Value::Array(items) => items.iter_mut().for_each(absolute_files_to_names),
         _ => {}
     }
+}
+
+/// A path that starts at a root (`/`, `\`) or a drive (`C:`), whichever system wrote it.
+fn looks_absolute(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    path.starts_with(['/', '\\'])
+        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || std::path::Path::new(path).is_absolute()
 }
 
 /// `GET api/spec`: `{ revision, layouts, shared }`, the layouts and shared elements as the project file has them,
