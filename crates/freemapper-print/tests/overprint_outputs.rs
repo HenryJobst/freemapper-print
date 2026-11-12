@@ -1,6 +1,6 @@
 //! Pages without a course have an empty overprint, so the M2 example exports stay byte for byte as
 //! committed (M3 Task 6, ADR 0034). Course sheets without a mask stay byte for byte as committed too (M4 Task 2,
-//! ADR 0045), and so do the `render` outputs of `examples/luebeck-scales`, which never have a mask.
+//! ADR 0045), and so do the `render` outputs of `tests/fixtures/examples/luebeck-scales`, which never have a mask.
 
 use std::path::PathBuf;
 
@@ -16,7 +16,7 @@ use freemapper_print::sheet::LogoCache;
 #[test]
 fn existing_outputs_unchanged() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/luebeck-competition-layouts");
+        .join("../../tests/fixtures/examples/luebeck-competition-layouts");
     let loaded = project::load(&dir.join(project::FILE_NAME)).unwrap();
     let map = read_map_file(&loaded.map_path()).unwrap();
     let logos = LogoCache::new();
@@ -37,7 +37,7 @@ fn existing_outputs_unchanged() {
 #[test]
 fn no_mask_output_unchanged() {
     // The course examples have no mask and no white-out: every course sheet is the committed PDF.
-    let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/examples");
     let logos = LogoCache::new();
     let mut compared = 0;
     for dir in [
@@ -67,8 +67,9 @@ fn no_mask_output_unchanged() {
 
 #[test]
 fn render_outputs_unchanged() {
-    // The commands of the example's README: `render luebeck.omap --paper a4` and `--paper a3 --scale 3000`, in German.
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/luebeck-scales");
+    // The commands that made the PDFs: `render luebeck.omap --paper a4` and `--paper a3 --scale 3000`, in German.
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/examples/luebeck-scales");
     let path = dir.join("luebeck.omap");
     let map = read_map_file(&path).unwrap();
     let kind = infer_kind(&map, &path).unwrap();

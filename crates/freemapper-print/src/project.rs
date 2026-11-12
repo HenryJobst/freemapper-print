@@ -2218,7 +2218,7 @@ mod tests {
         // Only values other than the default are written, so the committed example writes as before.
         assert_eq!(toml::to_string(&PrintSettings::default()).unwrap(), "");
         let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/luebeck-competition-layouts")
+            .join("../../tests/fixtures/examples/luebeck-competition-layouts")
             .join(FILE_NAME);
         let written = toml::to_string(&load(&example).unwrap().project).unwrap();
         assert!(!written.contains("rule_"), "{written}");
@@ -2775,7 +2775,8 @@ mod tests {
     #[test]
     fn mask_round_trips_in_the_project_file() {
         // The committed examples write as before: no mask keys, and a second save gives the same bytes.
-        let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let examples =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/examples");
         for name in [
             "luebeck-competition-layouts",
             "luebeck-competition-courses",

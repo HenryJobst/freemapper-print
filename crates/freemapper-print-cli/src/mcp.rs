@@ -2031,7 +2031,7 @@ mod tests {
     fn luebeck_copy() -> tempfile::TempDir {
         let from = PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-competition-courses"
+            "/../../tests/fixtures/examples/luebeck-competition-courses"
         ));
         let dir = tempfile::tempdir().unwrap();
         for name in ["luebeck.omap", "freemapper.toml", "courses.ppen"] {
@@ -2226,7 +2226,7 @@ mod tests {
             let (error, text) = client
                 .call(
                     tool,
-                    json!({ "project": "examples/berlin-viktoriapark-training" }),
+                    json!({ "project": "tests/fixtures/examples/berlin-viktoriapark-training" }),
                 )
                 .await;
             assert!(error, "{tool}");
@@ -2809,7 +2809,7 @@ mod tests {
     fn hostile_copy() -> tempfile::TempDir {
         let from = PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-competition-courses"
+            "/../../tests/fixtures/examples/luebeck-competition-courses"
         ));
         let dir = tempfile::tempdir().unwrap();
         for name in ["luebeck.omap", "freemapper.toml"] {

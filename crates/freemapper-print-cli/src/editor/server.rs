@@ -823,7 +823,7 @@ mod tests {
         // A map object and a mask: Fenster of the window example.
         let project = std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-training-window"
+            "/../../tests/fixtures/examples/luebeck-training-window"
         ));
         let run = start_on(project.clone(), true, None);
         let drawn = draw(&project, Some("Fenster"), None).unwrap();

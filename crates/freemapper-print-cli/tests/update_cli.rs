@@ -465,7 +465,7 @@ mod daily {
     /// assignment of the course "Training"). Returns the project file.
     fn viktoriapark(dir: &Path, extra: &str) -> PathBuf {
         let example = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/berlin-viktoriapark-training");
+            .join("../../tests/fixtures/examples/berlin-viktoriapark-training");
         let project = dir.join("project");
         std::fs::create_dir_all(&project).unwrap();
         for name in [

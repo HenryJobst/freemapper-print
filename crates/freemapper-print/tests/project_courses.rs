@@ -141,7 +141,7 @@ fn defaults_are_not_written_and_files_round_trip() {
     assert_eq!(again, p);
     // The committed examples have none of the new keys.
     let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/luebeck-competition-layouts")
+        .join("../../tests/fixtures/examples/luebeck-competition-layouts")
         .join(FILE_NAME);
     let written = toml::to_string(&project::load(&example).unwrap().project).unwrap();
     for key in ["courses", "assignments", "numbers", "course_"] {
@@ -400,7 +400,7 @@ fn course_names_match_exactly() {
 #[test]
 fn the_luebeck_example_courses_load_through_the_course_crate() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/luebeck-competition-courses")
+        .join("../../tests/fixtures/examples/luebeck-competition-courses")
         .join(FILE_NAME);
     let loaded = load_all(&path).unwrap();
     let names: Vec<&str> = loaded
@@ -455,7 +455,7 @@ fn unused_mask_is_noted() {
 /// A project folder with the Lübeck example's map and its `.ppen`, `specials` added to the course file.
 fn ppen_dir(specials: &str, body: &str) -> (tempfile::TempDir, PathBuf) {
     let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/luebeck-competition-courses");
+        .join("../../tests/fixtures/examples/luebeck-competition-courses");
     let dir = tempfile::tempdir().unwrap();
     std::fs::copy(example.join("luebeck.omap"), dir.path().join("m.omap")).unwrap();
     let ppen = std::fs::read_to_string(example.join("courses.ppen")).unwrap();
