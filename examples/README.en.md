@@ -2,23 +2,37 @@
 
 [Deutsch](README.md)
 
-This folder holds finished events built on maps from
-[freemapper's examples](https://github.com/HenryJobst/freemapper/tree/main/examples). Each example has the
-project file, its inputs, the generated PDFs and a preview image. Every kind of event gets one example as soon
-as the program can print it:
+This folder holds seven finished events on two maps by Remo Madella, drawn for the MOO Challenge Berlin 2025:
+"Gleisdreieck" and "Rummelsburger Bucht". Each example has the project file, its inputs, the generated PDFs and a
+preview image. The README of each example explains what the sheet shows and how it was made.
 
-| Example | Shows | From |
+| Example | Shows | Map |
 |---|---|---|
-| [`luebeck-scales`](luebeck-scales/) | the same sprint map at 1:4000 on A4 and 1:3000 on A3: exact scale, symbols grow to 133 % as the standard sets | M1 |
-| [`luebeck-competition-layouts`](luebeck-competition-layouts/) | one competition with two layouts, A4 1:4000 for the older classes, A3 1:3000 for the youngest, with passe-partout, title block, two logos, scale check bar and footer, built with `init`, `check` and `export` alone | M2 |
-| `schoolyard` | a schoolyard map at 1:1000 on A4; waits for a schoolyard map among freemapper's examples (version 0.8.0 has none) | planned |
-| [`luebeck-competition-courses`](luebeck-competition-courses/) | the same competition with three courses from Purple Pen, control descriptions, control numbers (one corrected with `numbers accept`), an out-of-bounds area, a forbidden crossing and a marked route to the finish, plus the same courses as IOF XML 3.0 without descriptions | M3 |
-| [`berlin-viktoriapark-training`](berlin-viktoriapark-training/) | a club training in Berlin's Viktoriapark: one course from Purple Pen on A4 at 1:4000 with control descriptions, on the map from freemapper version 0.8.0 | M3 |
-| [`luebeck-training-window`](luebeck-training-window/) | window orienteering in Lübeck's old town: map only in round windows around start, controls and finish, built with `masks window`, one window larger than the others | M4 |
-| [`luebeck-training-corridor`](luebeck-training-corridor/) | corridor orienteering on the same map: map only in a corridor 12 mm wide along three streets, the line chosen by hand and built with `masks corridor` | M4 |
-| [`mcp-session`](mcp-session/) | a recorded session with the MCP server: an AI agent turns berlin-viktoriapark-training into window orienteering with 12 mm windows, checks the sheet and writes the PDF, in five tool calls | M5 |
+| [`gleisdreieck-scales`](gleisdreieck-scales/) | the same map section at 1:4000 on A4 and 1:3000 on A3: exact scale, symbols grow to 133 % as the standard sets | Gleisdreieck |
+| [`rummelsburg-competition-layouts`](rummelsburg-competition-layouts/) | one competition with two layouts, A4 1:4000 for the older classes, A3 1:3000 for the youngest, with passe-partout, title block, two logos, scale check bar and footer, built with `init`, `check` and `export` alone | Rummelsburger Bucht |
+| [`rummelsburg-competition-courses`](rummelsburg-competition-courses/) | the same competition with three courses (Kurz, Mittel, Lang) from a Purple Pen file, control descriptions, control numbers (one corrected with `numbers accept`), an out-of-bounds area, a forbidden crossing and a marked route to the finish, plus the same courses as IOF XML 3.0 without descriptions | Rummelsburger Bucht |
+| [`gleisdreieck-training`](gleisdreieck-training/) | a club training: two courses on A4 at 1:4000, one sheet each with title block, club logo, scale check bar and control descriptions | Gleisdreieck |
+| [`gleisdreieck-training-window`](gleisdreieck-training-window/) | window orienteering: map only in round windows around start, controls and finish, built with `masks window`, one window larger than the others | Gleisdreieck |
+| [`gleisdreieck-training-corridor`](gleisdreieck-training-corridor/) | corridor orienteering: map only in a corridor 12 mm wide, the line chosen by hand and built with `masks corridor` | Gleisdreieck |
+| [`rummelsburg-mcp-session`](rummelsburg-mcp-session/) | a recorded session with the MCP server: an AI agent turns a training course into window orienteering with 12 mm windows, checks the sheet and writes the PDF, in six tool calls | Rummelsburger Bucht |
 
-All maps come from freemapper 0.8.0 (commit `a2b41b4`). As sprint maps they lie on the light brown base area
-(ADR 0044), and the parks are yellow.
+## Maps and courses
 
-Tour sheets for control placers, team orienteering and a forest map follow later.
+Remo Madella released both maps for the freemapper suite on 12 November 2026 and agreed to their use as example
+maps in this public project. That is a permission for the suite, not an open licence. The `ATTRIBUTION.txt` in each
+example has the wording, in German and English. Whoever wants to use the maps otherwise asks Remo Madella.
+
+The courses are made up, and so are the events, dates and clubs. freemapper-courseplan 0.14.1 made them, and they
+come as a Purple Pen file or as IOF XML. The club logos were drawn for the examples and are CC0.
+
+Each example carries its own copy of the map so that the folder runs on its own. Git stores identical files once.
+The examples weigh about 40 MB together, because every PDF holds the whole map even when `crop = true` cuts the
+frame: 3.6 MB for Gleisdreieck, 1.1 MB for Rummelsburg.
+
+## The old examples
+
+The earlier examples on Lübeck and Berlin maps from freemapper 0.8.0 moved to
+[`tests/fixtures/examples/`](../tests/fixtures/examples/README.md). They are test data, and the tests compare
+their PDFs byte for byte.
+
+Tour sheets for control placers, team orienteering, a schoolyard map and a forest map follow later.
