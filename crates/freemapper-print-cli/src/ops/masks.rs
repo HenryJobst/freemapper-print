@@ -25,6 +25,8 @@ pub struct WindowArgs {
     pub radius_mm: Option<f64>,
     /// `CODE=MM` items: a radius of its own for a control.
     pub radius_for: Vec<String>,
+    /// The smallest gap between two windows (print mm); `None` for the default.
+    pub gap_mm: Option<f64>,
     /// No window around the start.
     pub no_start: bool,
     /// No window around the finish.
@@ -59,11 +61,23 @@ pub struct Assigned {
     pub layout: String,
 }
 
-/// A window of its own radius.
+/// A window asked for with a radius of its own (`--radius-for`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OwnRadius {
     #[serde(serialize_with = "stop")]
     pub stop: StopName,
+    /// The radius asked for (print mm); [`Reduced`] says when the gap made the window smaller.
+    pub radius_mm: f64,
+}
+
+/// A window the gap made smaller than asked (ADR 0063).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Reduced {
+    #[serde(serialize_with = "stop")]
+    pub stop: StopName,
+    /// The radius asked for (print mm).
+    pub requested_mm: f64,
+    /// The radius used (print mm).
     pub radius_mm: f64,
 }
 
@@ -89,8 +103,12 @@ pub struct WindowResult {
     pub windows: Vec<StopName>,
     /// The default radius (print mm).
     pub radius_mm: f64,
-    /// The windows whose radius differs from the default.
+    /// The windows asked for with a radius other than the default, with that radius.
     pub own_radius: Vec<OwnRadius>,
+    /// The smallest gap between two windows (print mm).
+    pub gap_mm: f64,
+    /// The windows the gap made smaller than asked, in course order.
+    pub reduced: Vec<Reduced>,
     /// The print scale of the course's layout, which turns print mm into map mm.
     pub print_scale: u32,
     pub assigned: Option<Assigned>,
@@ -154,6 +172,7 @@ pub fn window(
         finish: !args.no_finish,
         radius_mm: args.radius_mm.unwrap_or(mask_build::DEFAULT_RADIUS_MM),
         per_control,
+        gap_mm: args.gap_mm.unwrap_or(mask_build::DEFAULT_GAP_MM),
         map_mm_per_print_mm: map_mm_per_print_mm(&map, print_scale)?,
     };
     let id = new_mask_id(&loaded, args.id.as_deref(), |taken| {
@@ -199,9 +218,19 @@ pub fn window(
         radius_mm: options.radius_mm,
         own_radius: windows
             .iter()
-            .filter(|w| w.radius_mm != options.radius_mm)
+            .filter(|w| w.requested_mm != options.radius_mm)
             .map(|w| OwnRadius {
                 stop: w.stop.clone(),
+                radius_mm: w.requested_mm,
+            })
+            .collect(),
+        gap_mm: options.gap_mm,
+        reduced: windows
+            .iter()
+            .filter(|w| w.radius_mm < w.requested_mm)
+            .map(|w| Reduced {
+                stop: w.stop.clone(),
+                requested_mm: w.requested_mm,
                 radius_mm: w.radius_mm,
             })
             .collect(),
@@ -451,6 +480,17 @@ mod tests {
         assert_eq!(&codes[1..], ["34", "52", "45"]);
         assert_eq!(result.own_radius.len(), 1);
         assert_eq!(result.own_radius[0].radius_mm, 9.0);
+        // The start and 34 are 30.65 mm apart on paper: their windows of 15 mm shrink to keep 3 mm between them
+        // (ADR 0063). 52 keeps its own 9 mm.
+        assert_eq!(result.gap_mm, mask_build::DEFAULT_GAP_MM);
+        let reduced: Vec<&str> = result.reduced.iter().map(|r| r.stop.code()).collect();
+        assert_eq!(reduced.len(), 2, "{:?}", result.reduced);
+        assert!(matches!(result.reduced[0].stop, StopName::Start(_)));
+        assert_eq!(reduced[1], "34");
+        for r in &result.reduced {
+            assert_eq!(r.requested_mm, 15.0);
+            assert!((r.radius_mm - 13.826).abs() < 0.01, "{r:?}");
+        }
         assert_eq!(result.without_window, Some(StartFinish::Finish));
         assert_eq!(
             result.assigned,
@@ -471,6 +511,58 @@ mod tests {
         assert_eq!(json["windows"][0]["kind"], "start");
         assert_eq!(json["windows"][1]["code"], "34");
         assert_eq!(json["without_window"], "finish");
+        assert_eq!(json["gap_mm"], 3.0);
+        assert_eq!(json["reduced"][0]["stop"]["kind"], "start");
+        assert_eq!(json["reduced"][1]["requested_mm"], 15.0);
+        assert!(json["reduced"][1]["radius_mm"].as_f64().unwrap() < 15.0);
+    }
+
+    #[test]
+    fn a_gap_of_its_own_and_windows_too_close_for_it() {
+        // A gap of 5 mm: the start and 34 keep 5 mm between them.
+        let dir = viktoriapark_copy();
+        let args = WindowArgs {
+            project: dir.path().to_path_buf(),
+            course: "Training".into(),
+            controls: Some("34".into()),
+            gap_mm: Some(5.0),
+            no_finish: true,
+            ..WindowArgs::default()
+        };
+        let result = window(&args, &|_| String::new()).unwrap();
+        assert_eq!(result.gap_mm, 5.0);
+        assert_eq!(result.reduced.len(), 2);
+        assert!((result.reduced[0].radius_mm - (30.652 - 5.0) / 2.0).abs() < 0.01);
+        // 45 and 58 are 16.75 mm apart: 5 mm windows need a gap of 6.7 mm or less, so 7 mm is refused, and the
+        // file stays as it is.
+        let before = std::fs::read_to_string(&result.path).unwrap();
+        let err = window(
+            &WindowArgs {
+                controls: Some("45,58".into()),
+                gap_mm: Some(7.0),
+                no_start: true,
+                id: Some("too-close".into()),
+                ..args.clone()
+            },
+            &|_| String::new(),
+        )
+        .unwrap_err();
+        let OpError::Build {
+            error:
+                mask_build::BuildError::WindowsTooClose {
+                    first,
+                    second,
+                    max_gap_mm,
+                    ..
+                },
+            ..
+        } = &err
+        else {
+            panic!("{err:?}");
+        };
+        assert_eq!((first.code(), second.code()), ("45", "58"));
+        assert_eq!(*max_gap_mm, Some(6.7));
+        assert_eq!(std::fs::read_to_string(&result.path).unwrap(), before);
     }
 
     #[test]

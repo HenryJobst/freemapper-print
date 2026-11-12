@@ -102,6 +102,9 @@ struct WindowIn {
     /// Windows with a radius of their own, each "CODE=MM" such as "35=20".
     #[serde(default)]
     radius_for: Vec<String>,
+    /// Smallest gap between the edges of two windows in mm on paper, from 1 to 100. Windows too close for it get a
+    /// smaller radius. Default: 3.
+    gap: Option<f64>,
     /// No window around the start.
     #[serde(default)]
     no_start: bool,
@@ -1290,9 +1293,11 @@ impl PrintServer {
 
     #[tool(
         description = "Add a mask variant with round windows around the controls of a course, as \
-                       masks window does: on the sheet the map shows only inside the windows. With \
-                       assign the course prints with the new mask. Returns the mask id, the stops \
-                       with a window and the messages of the command."
+                       masks window does: on the sheet the map shows only inside the windows. The \
+                       windows keep a gap between them, and windows too close for it get a smaller \
+                       radius. With assign the course prints with the new mask. Returns the mask id, \
+                       the stops with a window, the windows made smaller and the messages of the \
+                       command."
     )]
     async fn masks_window(
         &self,
@@ -1305,6 +1310,7 @@ impl PrintServer {
             controls,
             radius,
             radius_for,
+            gap,
             no_start,
             no_finish,
             id,
@@ -1319,6 +1325,7 @@ impl PrintServer {
                     controls,
                     radius_mm: radius,
                     radius_for,
+                    gap_mm: gap,
                     no_start,
                     no_finish,
                     id,
@@ -2084,11 +2091,16 @@ mod tests {
                 .unwrap()
                 .to_string()
         };
-        use freemapper_print::mask_build::{DEFAULT_RADIUS_MM, DEFAULT_WIDTH_MM};
+        use freemapper_print::mask_build::{DEFAULT_GAP_MM, DEFAULT_RADIUS_MM, DEFAULT_WIDTH_MM};
         let radius = field("masks_window", "radius");
         assert!(
             radius.ends_with(&format!("Default: {DEFAULT_RADIUS_MM}.")),
             "{radius}"
+        );
+        let gap = field("masks_window", "gap");
+        assert!(
+            gap.ends_with(&format!("Default: {DEFAULT_GAP_MM}.")),
+            "{gap}"
         );
         let width = field("masks_corridor", "width");
         assert!(
@@ -2293,11 +2305,24 @@ mod tests {
         assert_eq!(window["id"], "window-Training", "{window}");
         assert_eq!(window["assigned"]["layout"], "a4-4000");
         assert_eq!(window["windows"][1]["code"], "34");
+        // The start and 34 lie 30.65 mm apart on paper: both windows shrink to keep the gap (ADR 0063).
+        assert_eq!(window["gap_mm"], 3.0, "{window}");
+        assert_eq!(window["reduced"][0]["stop"]["kind"], "start", "{window}");
+        assert_eq!(window["reduced"][1]["stop"]["code"], "34", "{window}");
+        assert_eq!(window["reduced"][1]["requested_mm"], 15.0, "{window}");
+        assert_eq!(window["reduced"].as_array().unwrap().len(), 2, "{window}");
         let messages = window["messages"].as_array().unwrap();
         assert!(
             messages[0].as_str().unwrap().contains("window-Training"),
             "{window}"
         );
+        // One line for each, in the server's language: 13.83 mm (13,83 in German).
+        let reduced_lines = messages
+            .iter()
+            .filter_map(|m| m.as_str())
+            .filter(|m| m.contains(" 13.83 mm ") || m.contains(" 13,83 mm "))
+            .count();
+        assert_eq!(reduced_lines, 2, "{window}");
         let text = file_text(&dir);
         // Everything before stays, comments included: the assignment gets its mask line, the mask follows.
         let without = text.replacen("mask = \"window-Training\"\n", "", 1);
@@ -3138,6 +3163,20 @@ mod tests {
                 )
                 .await;
             assert!(radius_for.contains("radius_for"), "{radius_for}");
+            // 45 and 58 lie 16.75 mm apart: with a gap of 7 mm their windows do not fit, and the message names
+            // the fields to change.
+            let too_close = client
+                .refused(
+                    "masks_window",
+                    json!({ "project": project, "course": "Training", "gap": 7, "lang": lang }),
+                )
+                .await;
+            assert!(
+                too_close.contains("controls")
+                    && too_close.contains("gap")
+                    && too_close.contains("6"),
+                "{too_close}"
+            );
             let no_proposal = client
                 .refused(
                     "numbers_accept",
@@ -3148,6 +3187,7 @@ mod tests {
             for text in messages.iter().copied().chain([
                 taken.as_str(),
                 radius_for.as_str(),
+                too_close.as_str(),
                 no_proposal.as_str(),
             ]) {
                 assert!(!text.contains("--"), "{text}");

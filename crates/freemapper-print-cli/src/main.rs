@@ -193,6 +193,8 @@ struct WindowArgs {
     radius: Option<f64>,
     #[arg(long = "radius-for", value_name = "CODE=MM")]
     radius_for: Vec<String>,
+    #[arg(long, value_name = "MM", allow_negative_numbers = true)]
+    gap: Option<f64>,
     #[arg(long)]
     no_start: bool,
     #[arg(long)]
@@ -843,6 +845,32 @@ fn build_error(texts: &Texts, err: BuildError, course: &str) -> anyhow::Error {
                 "max" => short_decimal(texts, mask_build::MAX_SIZE_MM, 1),
             ),
         ),
+        BuildError::WindowsTooClose {
+            first,
+            second,
+            distance_mm,
+            gap_mm,
+            max_gap_mm,
+        } => {
+            // What to leave out: the start or the finish by its option, a control by the selection.
+            let leave = match (&first, &second) {
+                (StopName::Start(_), StopName::Finish(_)) => "start-finish",
+                (StopName::Start(_), _) => "start",
+                (_, StopName::Finish(_)) => "finish",
+                _ => "controls",
+            };
+            (
+                "error-masks-windows-too-close",
+                args!(
+                    "stops" => stops_phrase(texts, &[first, second], false),
+                    "distance" => short_decimal(texts, distance_mm, 2),
+                    "gap" => short_decimal(texts, gap_mm, 2),
+                    "min" => short_decimal(texts, mask_build::MIN_WINDOW_RADIUS_MM, 1),
+                    "leave" => leave,
+                    "max_gap" => max_gap_mm.map_or_else(|| "none".to_string(), |g| short_decimal(texts, g, 1)),
+                ),
+            )
+        }
         BuildError::BadSelection { text } => {
             ("error-masks-selection", args!("text" => printable(&text)))
         }
@@ -923,6 +951,7 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
             controls: args.controls.clone(),
             radius_mm: args.radius,
             radius_for: args.radius_for.clone(),
+            gap_mm: args.gap,
             no_start: args.no_start,
             no_finish: args.no_finish,
             id: args.id.clone(),
@@ -940,7 +969,10 @@ fn masks_window(texts: &Texts, args: &WindowArgs) -> anyhow::Result<u8> {
 /// The comment written above a window mask.
 fn window_comment(texts: &Texts, r: &ops::masks::WindowResult) -> String {
     let mut comment = texts.get("masks-window-comment", Some(&window_summary(texts, r)));
-    for line in own_radius_lines(texts, r) {
+    for line in own_radius_lines(texts, r)
+        .into_iter()
+        .chain(reduced_lines(texts, r))
+    {
         comment.push('\n');
         comment.push_str(&line);
     }
@@ -953,6 +985,7 @@ fn window_written_lines(texts: &Texts, result: &ops::masks::WindowResult) -> Vec
     summary.set("path", result.path.display().to_string());
     let mut lines = vec![texts.get("masks-window-written", Some(&summary))];
     lines.extend(own_radius_lines(texts, result));
+    lines.extend(reduced_lines(texts, result));
     if let Some(which) = result.without_window {
         let which = match which {
             ops::masks::StartFinish::Both => "both",
@@ -969,7 +1002,7 @@ fn window_written_lines(texts: &Texts, result: &ops::masks::WindowResult) -> Vec
     lines
 }
 
-/// The arguments of the messages about a window mask: id, number of windows, the stops, course, radius and
+/// The arguments of the messages about a window mask: id, number of windows, the stops, course, radius, gap and
 /// print scale.
 fn window_summary<'a>(texts: &Texts, r: &ops::masks::WindowResult) -> FluentArgs<'a> {
     args!(
@@ -978,14 +1011,17 @@ fn window_summary<'a>(texts: &Texts, r: &ops::masks::WindowResult) -> FluentArgs
         "controls" => stops_phrase(texts, &r.windows, true),
         "course" => printable(&r.course),
         "radius" => short_decimal(texts, r.radius_mm, 2),
+        "gap" => short_decimal(texts, r.gap_mm, 2),
         "scale" => r.print_scale.to_string(),
     )
 }
 
-/// One line per window whose radius differs from the default.
+/// One line per window asked for with a radius other than the default. A window the gap made smaller has its
+/// line from [`reduced_lines`] instead.
 fn own_radius_lines(texts: &Texts, r: &ops::masks::WindowResult) -> Vec<String> {
     r.own_radius
         .iter()
+        .filter(|w| !r.reduced.iter().any(|x| x.stop == w.stop))
         .map(|w| {
             texts.get(
                 "masks-window-radius-for",
@@ -993,6 +1029,24 @@ fn own_radius_lines(texts: &Texts, r: &ops::masks::WindowResult) -> Vec<String> 
                     "kind" => stop_kind(&w.stop),
                     "control" => printable(w.stop.code()),
                     "radius" => short_decimal(texts, w.radius_mm, 2),
+                )),
+            )
+        })
+        .collect()
+}
+
+/// One line per window the gap made smaller than asked (ADR 0063).
+fn reduced_lines(texts: &Texts, r: &ops::masks::WindowResult) -> Vec<String> {
+    r.reduced
+        .iter()
+        .map(|w| {
+            texts.get(
+                "masks-window-reduced",
+                Some(&args!(
+                    "kind" => stop_kind(&w.stop),
+                    "control" => printable(w.stop.code()),
+                    "radius" => short_decimal(texts, w.radius_mm, 2),
+                    "requested" => short_decimal(texts, w.requested_mm, 2),
                 )),
             )
         })
@@ -2345,6 +2399,7 @@ fn localised_command(texts: &Texts) -> clap::Command {
                         .mut_arg("radius_for", |a| {
                             a.help(texts.plain("help-masks-radius-for"))
                         })
+                        .mut_arg("gap", |a| a.help(texts.plain("help-masks-gap")))
                         .mut_arg("no_start", |a| a.help(texts.plain("help-masks-no-start")))
                         .mut_arg("no_finish", |a| a.help(texts.plain("help-masks-no-finish")))
                         .mut_arg("id", |a| a.help(texts.plain("help-masks-window-id")))

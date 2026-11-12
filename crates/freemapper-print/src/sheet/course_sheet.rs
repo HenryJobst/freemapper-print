@@ -1856,10 +1856,12 @@ mod tests {
     }
 
     #[test]
-    fn overlapping_windows_unite_in_the_pdf() {
-        // End to end (ADR 0047): a window mask generated for Kurz, whose controls 31 and 32 are moved 20 mm apart,
-        // written to the project file and printed. Windows of 15 mm overlap; the map shows in both and between.
-        use crate::mask_build::{Selection, WindowOptions, map_extent, windows};
+    fn generated_windows_keep_their_gap_in_the_pdf() {
+        // End to end (ADR 0047, ADR 0063): a window mask generated for Kurz, whose controls 31 and 32 are moved 20 mm
+        // apart, written to the project file and printed. Windows of 15 mm would overlap, so both shrink to 8.5 mm and
+        // keep 3 mm between them: the map shows in both and is hidden in the gap. Hand-written holes that overlap
+        // still unite (`overlapping_holes_unite`).
+        use crate::mask_build::{DEFAULT_GAP_MM, Selection, WindowOptions, map_extent, windows};
         let (_dir, project, map, mut courses) = course_project(A4);
         let control = courses
             .event
@@ -1875,6 +1877,7 @@ mod tests {
             finish: false,
             radius_mm: 15.0,
             per_control: Default::default(),
+            gap_mm: DEFAULT_GAP_MM,
             // The layout prints at the map scale.
             map_mm_per_print_mm: 1.0,
         };
@@ -1887,6 +1890,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list.len(), 2);
+        assert!(list.iter().all(|w| w.radius_mm == 8.5), "{list:?}");
         let project =
             crate::project::append_mask(&project.path, &mask, Some(("Kurz", "a4")), "").unwrap();
         let layout = layout_for(&project.project, "Kurz").0;
@@ -1904,18 +1908,24 @@ mod tests {
         };
         let gf = report.print.geometry_factor;
         let at = |x: i32, y: i32| on_page(&page, gf, MapCoord::new(x, y));
-        // Each centre, the overlap between them, and 14 mm out from each.
+        // Each centre, and 8 mm out from each, away from the other and towards it.
         for p in [
             (20_000, 30_000),
             (40_000, 30_000),
-            (30_000, 30_000),
-            (6_100, 30_000),
-            (53_900, 30_000),
+            (12_000, 30_000),
+            (48_000, 30_000),
+            (28_000, 30_000),
+            (32_000, 30_000),
         ] {
             assert!(visible(clip, at(p.0, p.1)), "{p:?}");
         }
-        // Beside both windows, and the start, which has no window by default, are under the mask.
+        // The gap from 28.5 to 31.5 mm, beside both windows, 9 mm out from 31, and the start, which has no window
+        // by default, are under the mask.
         for p in [
+            (30_000, 30_000),
+            (28_800, 30_000),
+            (31_200, 30_000),
+            (11_000, 30_000),
             (30_000, 50_000),
             (30_000, 10_000),
             (4_000, 30_000),
