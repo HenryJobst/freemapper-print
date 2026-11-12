@@ -401,14 +401,15 @@ error-load-changed-project = the project { $path } does not load with the new co
 # ---- masks window, masks corridor (M4 Task 4) ----
 masks-about = Add masks for window and corridor orienteering to the project file.
 masks-window-about = Add a mask for window orienteering: the map shows only in a circle around each control of a course.
-masks-window-after-content = The radius is print mm on the sheet, at the print scale of the layout the course prints on, so a window looks the same at every scale. The mask stores it in map mm, though. After changing the print scale, delete the mask and run the command again. Without --controls every control of the course gets a window. --controls takes control codes separated by commas (31,32,35), or two control numbers joined by a dash (3-6) for the controls numbered 3 to 6 on the sheet; start and finish are not counted. The start and the finish always get a window, unless --no-start or --no-finish leaves it out. Windows that overlap merge into one. The new [[masks]] table goes to the end of the file as text, with a comment that says how it was made; with --assign the course's assignment gets the mask, or a new assignment follows the table. Everything before stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
-masks-after-exit-codes = Exit codes: 0 when the mask is written, 1 when the project, its map or its course file cannot be loaded or written, or the changed file does not load (the old content is put back), 2 when the command line is wrong: an unknown course or control, a value out of range, a mask id the file has already, a course that has another mask, or a corridor that turns too sharply for its width.
+masks-window-after-content = The radius is print mm on the sheet, at the print scale of the layout the course prints on, so a window looks the same at every scale. The mask stores it in map mm, though. After changing the print scale, delete the mask and run the command again. Without --controls every control of the course gets a window. --controls takes control codes separated by commas (31,32,35), or two control numbers joined by a dash (3-6) for the controls numbered 3 to 6 on the sheet; start and finish are not counted. The start and the finish always get a window, unless --no-start or --no-finish leaves it out. The windows do not overlap: at least the gap of --gap stays free between two of them. Two windows too close for that both get smaller, each in proportion to the radius it was asked for, and the command names them. No window shrinks below 5 mm radius; if the gap needs that, the command names the two controls and writes nothing. The new [[masks]] table goes to the end of the file as text, with a comment that says how it was made; with --assign the course's assignment gets the mask, or a new assignment follows the table. Everything before stays as it is, comments included. The program then loads the file again; if that fails, it puts the old content back.
+masks-after-exit-codes = Exit codes: 0 when the mask is written, 1 when the project, its map or its course file cannot be loaded or written, or the changed file does not load (the old content is put back), 2 when the command line is wrong: an unknown course or control, a value out of range, a mask id the file has already, a course that has another mask, two windows too close for the gap, or a corridor that turns too sharply for its width.
 masks-corridor-about = Add a mask for corridor orienteering: the map shows only in a corridor along a polyline you give. No rule says where a corridor goes, so the program does not draw one by itself.
 masks-corridor-after-content = The points are map mm with y pointing up, as OOM's status bar shows them, the same as centre_map_mm and the points under [[masks]]. The width is print mm on the sheet: at the print scale of the course's layout with --course, otherwise at the print scale all layouts share. The mask stores it in map mm, though. After changing the print scale, delete the mask and run the command again. The corridor runs half the width to each side of the polyline. Its ends are cut square, and turns up to 120° keep a pointed corner while sharper ones are cut off. The program refuses a corridor that turns back on itself, has a segment too short for the turn at its end, or comes back across itself; simplify the polyline there or reduce the width. The new [[masks]] table goes to the end of the file as text, as for masks window.
 help-masks-window-course = Name of the course, as in the course file. Its controls get the windows, and its layout gives the print scale.
 help-masks-controls = Which controls get a window: codes separated by commas (31,32,35) or control numbers as a range (3-6). Default: every control. The start and the finish get their window either way.
 help-masks-radius = Radius of every window in print mm, from 1 to 100. Default: 15.
 help-masks-radius-for = Radius for one control, CODE=MM, such as 35=20; the start usually has the code STA1, the finish FIN1. Can be given more than once.
+help-masks-gap = Smallest gap between the edges of two windows in print mm, from 1 to 100. Default: 3. Windows too close for it get a smaller radius.
 help-masks-no-start = The start gets no window.
 help-masks-no-finish = The finish gets no window.
 help-masks-window-id = Id of the new mask. Default: window-<course>, with a number added when that is taken.
@@ -426,10 +427,19 @@ error-masks-course-has-mask = course "{ $course }" prints with the mask "{ $mask
 error-masks-assignment-inline = the assignment of course "{ $course }" is not written as a table [[assignments]] of its own, so the program cannot add the mask to it. Add mask = "{ $id }" to it by hand. The project file was left unchanged.
 error-masks-assignments-inline = the assignments are not written as tables [[assignments]] in the file, so the program cannot add one for course "{ $course }". Add an assignment with mask = "{ $id }" by hand. The project file was left unchanged.
 error-masks-radius-for = --radius-for takes CODE=MM, such as 35=20, and "{ $text }" is not written that way
-error-masks-size = { $value } mm is outside { $min } to { $max } mm; radius and width are print mm on the sheet
+error-masks-size = { $value } mm is outside { $min } to { $max } mm; radius, width and gap are print mm on the sheet
 error-masks-selection = --controls takes control codes separated by commas (31,32,35) or a range of control numbers (3-6), and "{ $text }" is neither
 error-masks-range = course "{ $course }" has the control numbers 1 to { $count }, so the range { $from }-{ $to } does not fit
 error-masks-radius-unselected = control { $control } gets no window, so --radius-for cannot set its radius
+error-masks-windows-too-close = { $stops } are { $distance } mm apart on paper, too close for two windows of at least { $min } mm radius with { $gap } mm between them. { $leave ->
+        [start] Leave out the start with --no-start, or the control by listing the others with --controls
+        [finish] Leave out the finish with --no-finish, or the control by listing the others with --controls
+        [start-finish] Leave out the start with --no-start or the finish with --no-finish
+       *[controls] Leave out one of them by listing the others with --controls
+    }{ $max_gap ->
+        [none] .
+       *[other] , or give --gap { $max_gap } or less.
+    }
 error-masks-no-controls = course "{ $course }" has no control to put a window around
 error-masks-no-position = control { $control } has no position on the map
 error-masks-too-many-points = the mask would have more than { $max } points. Use fewer windows or a smaller radius.
@@ -451,7 +461,7 @@ stop-controls = { $count ->
     }
 stop-start-code = start ({ $code })
 stop-finish-code = finish ({ $code })
-masks-window-comment = Windows of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }", made by masks window.
+masks-window-comment = Windows of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }", at least { $gap } mm apart, made by masks window.
 masks-window-radius-for = { $kind ->
         [start] The start has
         [finish] The finish has
@@ -460,7 +470,12 @@ masks-window-radius-for = { $kind ->
 masks-window-written = Added the mask "{ $id }" to { $path }: { $count ->
         [one] one window
        *[other] { $count } windows
-    } of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }".
+    } of { $radius } mm radius on paper at 1:{ $scale } around { $controls } of course "{ $course }", at least { $gap } mm apart.
+masks-window-reduced = { $kind ->
+        [start] The start has
+        [finish] The finish has
+       *[control] Control { $control } has
+    } a window of { $radius } mm radius instead of { $requested } mm, to keep the gap.
 masks-no-start-finish = { $which ->
         [start] The start has no window, so check names it. Without --no-start it gets one.
         [finish] The finish has no window, so check names it. Without --no-finish it gets one.
@@ -533,6 +548,15 @@ agent-error-masks-course-has-mask = course "{ $course }" prints with the mask "{
 agent-error-masks-radius-for = each entry of radius_for is CODE=MM, such as 35=20, and "{ $text }" is not written that way
 agent-error-masks-selection = controls takes control codes separated by commas (31,32,35) or a range of control numbers (3-6), and "{ $text }" is neither
 agent-error-masks-radius-unselected = control { $control } gets no window, so radius_for cannot set its radius
+agent-error-masks-windows-too-close = { $stops } are { $distance } mm apart on paper, too close for two windows of at least { $min } mm radius with { $gap } mm between them. { $leave ->
+        [start] Leave out the start with no_start, or the control by listing the others in controls
+        [finish] Leave out the finish with no_finish, or the control by listing the others in controls
+        [start-finish] Leave out the start with no_start or the finish with no_finish
+       *[controls] Leave out one of them by listing the others in controls
+    }{ $max_gap ->
+        [none] .
+       *[other] , or set gap to { $max_gap } or less.
+    }
 agent-error-masks-points = points takes points as x,y;x,y;… in map mm with y up, decimals with a point, and "{ $text }" is not such a list
 agent-error-masks-scales = the layouts print at different scales ({ $scales }), and the width is print mm. Give course, so that the width follows the layout of that course.
 agent-masks-no-start-finish = { $which ->
@@ -712,6 +736,7 @@ editor-mask-controls = Controls
 editor-mask-controls-hint = Codes such as 31,32 or places such as 2-5. Click a number on the sheet to add or remove its control. Empty means every control.
 editor-mask-radius = Radius (mm on paper)
 editor-mask-radius-for = Own radius, such as 35=20
+editor-mask-gap = Gap between windows (mm on paper)
 editor-mask-no-start = No window at the start
 editor-mask-no-finish = No window at the finish
 editor-mask-id = Id of the mask (optional)

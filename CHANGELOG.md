@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Die Fenster von `masks window` überlappen nicht mehr (Entscheidung 0063). Zwischen zwei Fenstern bleiben mindestens 3 mm auf dem Papier frei, einstellbar mit `--gap` (MCP: `gap`, im Editor ein eigenes Feld). Liegen zwei Posten dafür zu nah, werden beide Fenster im Verhältnis ihres Radius kleiner, und der Befehl nennt sie. Kleiner als 5 mm wird kein Fenster; bräuchte der Abstand das, schreibt der Befehl nichts und sagt, was man weglassen kann. Abdeckungen, die von Hand in der Projektdatei stehen, bleiben, wie sie sind.
 - Ein Release braucht eine Freigabe statt zwei (Entscheidung 0061): Nur der Job, der signiert, nutzt die Umgebung `release`. Jedes Release wird mit Updater gebaut und signiert; ohne das Signier-Secret scheitert es, bevor etwas veröffentlicht wird.
 
 ### Hinzugefügt

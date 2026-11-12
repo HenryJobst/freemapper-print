@@ -134,7 +134,7 @@ project folder or the file `freemapper-print.toml` in it.
 | `check_project` | `check` | `project` | | the notes of each sheet with `kind`, `severity` (`info`, `warning`, `error`), `course` and `message`; `needs_attention` is true when `check` would end with exit code 1 |
 | `list_courses` | | `project` | | the courses of the course file with number of controls, layout and masks |
 | `init_project` | `init` | `folder`, `map` | `title`, `kind`, `courses` | the layouts written, where the map kind came from, and the messages of `init` |
-| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
+| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | the mask id and the messages |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` or `layout_wide`) | `direction` and `gap`, only together | the correction written and the message |
 | `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | the layout as the file now holds it, and `change` |
@@ -215,6 +215,9 @@ PDF into the folder pdf."
    windows around start, controls and finish, and gives it to the course.
 4. `check_project` again reports info notes only: no control lies under the mask.
 5. `export_project` writes `Training.pdf` (170,397 bytes) and reminds you to print at actual size.
+
+The session was recorded before windows kept a gap (ADR 0063). Today `masks_window` writes the same 13
+windows, but six of them smaller, such as those around controls 45 and 58 with 6.88 mm radius each.
 
 ## 5. Setting up an event
 
@@ -1236,7 +1239,8 @@ leaves two square windows open in it.
   ring is the outline, every further ring a hole, that is a window. You need not repeat the first point at the end.
   Whether a ring runs clockwise or counter-clockwise does not matter.
 - What lies in the outline and in none of its holes is masked. Outside every outline and in every hole the sheet
-  shows the map. Holes may overlap; they then merge into one window.
+  shows the map. Holes may overlap; they then merge into one window. That holds for masks you write yourself;
+  `masks window` keeps its windows apart, see below.
 - The points are millimetres on the map at map scale with the y axis up, exactly as OOM shows them in its status
   bar when the coordinate display is set to map coordinates. That is the same rule as for `centre_map_mm`
   (chapter 6). The `.omap` file stores y pointing down. Points copied from there give a mirrored mask, and `check`
@@ -1260,6 +1264,7 @@ freemapper-print masks window stadtsprint --course A --radius 15 --assign
 | `--controls <LIST\|RANGE>` | which controls get a window: codes separated by commas (`31,32,35`) or the control numbers on the sheet as a range (`3-6`). The range does not count the start and the finish. Default: every control. The start and the finish get their window either way. |
 | `--radius <MM>` | radius of every window, 1 to 100 mm. Default: 15. |
 | `--radius-for <CODE=MM>` | a radius of its own for one control, such as `35=20`. The start usually has the code `STA1`, the finish `FIN1`. Can be given more than once, only for controls that get a window. |
+| `--gap <MM>` | smallest gap between the edges of two windows, 1 to 100 mm. Default: 3. |
 | `--no-start` | the start gets no window |
 | `--no-finish` | the finish gets no window |
 | `--id <ID>` | id of the new mask. Default: `window-<course>`, with a number added (`-2`, `-3` …) when that is taken. |
@@ -1274,22 +1279,37 @@ table names the scale the mask was made for.
 
 The start and the finish get a window too, so that runners can orient themselves at the start. `--no-start` and
 `--no-finish` leave them out; the command then says so, and `check` names them as lying under the mask. A window
-is a polygon with
-at least 48 corners that strays at most 0.05 mm from the circle. Overlapping windows merge. The outline is a
-rectangle 100 mm outside the map, so no part of the map shows past it.
+is a polygon with at least 48 corners that strays at most 0.05 mm from the circle. The outline is a rectangle 100 mm
+outside the map, so no part of the map shows past it.
+
+The windows do not overlap. At least the `--gap` stays free between the edges of two windows, in millimetres on
+paper like the radius. By default that is 3 mm, 12 m of ground at 1:4000. Where two controls are too close for it,
+both windows get smaller until exactly the gap is left. Each gives way in proportion to the radius it was asked
+for, a radius from `--radius-for` too, and the start and the finish count like any other window. When a window has
+several neighbours that are too close, the tightest pair comes first, and the others share the room that is left.
+The command prints one line for each window it made smaller, and the comment above the table repeats them.
+
+No window gets smaller than 5 mm radius, or the control circle would no longer fit inside. If the gap would need
+that, the command writes nothing, names the two controls and their distance on paper, and ends with exit code 2.
+Then leave one of them out with `--controls`, `--no-start` or `--no-finish`, or give a smaller `--gap`; the message
+names the largest one that fits. A mask you write by hand is not checked for the gap, and its windows may overlap.
 
 The output from luebeck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“, mindestens 3 mm auseinander.
 Posten 34 hat ein Fenster mit 20 mm Radius.
+Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
+Das Ziel hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
 
 In English the first line reads "Added the mask "window-Fenster" to ./freemapper-print.toml: 10 windows of 15 mm
 radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 and 37 and the finish of course
-"Fenster"."
+"Fenster", at least 3 mm apart.", and the line for control 50 "Control 50 has a window of 11.21 mm radius instead of
+15 mm, to keep the gap." Control 50 and the finish are 25.4 mm apart. The mask in the example project was written
+before windows kept a gap, and there the two windows still overlap.
 
 ![An A4 sheet where the map shows only in round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
 
@@ -1428,7 +1448,9 @@ These messages end `masks window` and `masks corridor` with exit code 2, and the
 - "the assignment of course … is not written as a table [[assignments]] of its own …": add `mask = "…"` by hand.
   "the assignments are not written as tables [[assignments]] …" comes for a course without an assignment when the
   file writes its assignments as `assignments = [...]`: add the assignment with `mask = "…"` by hand.
-- "… mm is outside 1 to 100 mm …": radius and width are print mm.
+- "… mm is outside 1 to 100 mm …": radius, width and gap are print mm.
+- "… are … mm apart on paper, too close for two windows …": leave one of the two controls out, or give a smaller
+  `--gap`, at most the value the message names.
 - "--controls takes control codes separated by commas …" and "course … has the control numbers 1 to …": check the
   selection.
 - "control … gets no window, so --radius-for cannot set its radius": add the control to `--controls`, or leave
@@ -1526,8 +1548,9 @@ folder.
 
 **Window mask.** Masks menu, Window mask. Click the number of a control on the sheet to add or remove its
 control, or type codes (`31,32`) or places (`2-5`) into the field. Empty means every control. Then radius,
-own radii (`35=20`), "No window at the start", "No window at the finish", an id, and "Print the course with this
-mask". "Add the window mask" writes it, like `masks window`. Radii are in millimetres on paper. A window mask
+own radii (`35=20`), the gap between windows, "No window at the start", "No window at the finish", an id, and
+"Print the course with this mask". "Add the window mask" writes it, like `masks window`. Radii and gap are in
+millimetres on paper. A window mask
 needs a course file.
 
 ![The editor after adding a window mask: the preview shows the map only in round windows, the mask fenster-a is in the tree and its properties are on the right](img/editor-window-mask.png)

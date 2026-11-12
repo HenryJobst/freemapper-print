@@ -135,7 +135,7 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `check_project` | `check` | `project` | | die Hinweise jedes Blatts mit `kind`, `severity` (`info`, `warning`, `error`), `course` und `message`; `needs_attention` ist wahr, wenn `check` mit Exit-Code 1 enden würde |
 | `list_courses` | | `project` | | die Bahnen der Bahndatei mit Postenzahl, Layout und Abdeckungen |
 | `init_project` | `init` | `folder`, `map` | `title`, `kind`, `courses` | die geschriebenen Layouts, woher die Kartenart stammt, und die Meldungen von `init` |
-| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
+| `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | die ID der Abdeckung und die Meldungen |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` oder `layout_wide`) | `direction` und `gap`, nur zusammen | die eingetragene Korrektur und die Meldung |
 | `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
@@ -221,6 +221,9 @@ Bitte an den Agenten lautet sinngemäß: „Mach aus dem Training im Viktoriapar
    13 Fenstern um Start, Posten und Ziel und gibt sie der Bahn.
 4. `check_project` meldet wieder nur Hinweise zur Information: Kein Posten liegt unter der Abdeckung.
 5. `export_project` schreibt `Training.pdf` (170 397 Byte) und erinnert daran, in Originalgröße zu drucken.
+
+Die Sitzung entstand, bevor die Fenster einen Abstand hielten (ADR 0063). Heute schreibt `masks_window`
+dieselben 13 Fenster, sechs davon aber kleiner, etwa um die Posten 45 und 58 mit je 6,88 mm Radius.
 ## 5. Eine Veranstaltung anlegen
 
 Zu jeder Veranstaltung gehört ein Ordner mit einer Projektdatei, `freemapper-print.toml`. Darin stehen die
@@ -1281,7 +1284,8 @@ Karte und lässt darin zwei eckige Fenster offen.
   Punkten `[x, y]`. Der erste Ring ist der Umriss, jeder weitere ein Loch, also ein Fenster. Den ersten Punkt am
   Ende zu wiederholen ist nicht nötig. Ob ein Ring im oder gegen den Uhrzeigersinn läuft, ist gleich.
 - Abgedeckt ist, was im Umriss liegt und in keinem seiner Löcher. Außerhalb jedes Umrisses und in jedem Loch zeigt
-  das Blatt die Karte. Löcher dürfen sich überlappen, sie verschmelzen dann zu einem Fenster.
+  das Blatt die Karte. Löcher dürfen sich überlappen, sie verschmelzen dann zu einem Fenster. Das gilt für
+  Abdeckungen, die Sie selbst schreiben; `masks window` hält seine Fenster auseinander, siehe unten.
 - Die Punkte sind Millimeter auf der Karte im Kartenmaßstab mit der y-Achse nach oben, genau so, wie OOM sie in
   der Statusleiste anzeigt, wenn die Koordinatenanzeige auf Kartenkoordinaten steht. Das ist dieselbe Regel wie
   bei `centre_map_mm` (Kapitel 6). Die `.omap`-Datei speichert y nach unten. Wer Punkte von dort kopiert, bekommt
@@ -1307,6 +1311,7 @@ freemapper-print masks window stadtsprint --course A --radius 15 --assign
 | `--controls <LISTE\|BEREICH>` | welche Posten ein Fenster bekommen: Codes mit Kommas dazwischen (`31,32,35`) oder die Postennummern auf dem Blatt als Bereich (`3-6`). Im Bereich zählen Start und Ziel nicht mit. Ohne Angabe jeder Posten. Start und Ziel bekommen ihr Fenster in jedem Fall. |
 | `--radius <MM>` | Radius jedes Fensters, 1 bis 100 mm. Ohne Angabe 15. |
 | `--radius-for <CODE=MM>` | eigener Radius für einen Posten, etwa `35=20`. Der Start hat meist den Code `STA1`, das Ziel `FIN1`. Darf mehrmals stehen, nur für Posten, die ein Fenster bekommen. |
+| `--gap <MM>` | kleinster Abstand zwischen den Rändern zweier Fenster, 1 bis 100 mm. Ohne Angabe 3. |
 | `--no-start` | der Start bekommt kein Fenster |
 | `--no-finish` | das Ziel bekommt kein Fenster |
 | `--id <ID>` | ID der neuen Abdeckung. Ohne Angabe `window-<Bahn>`, mit angehängter Nummer (`-2`, `-3` …), wenn es die schon gibt. |
@@ -1322,18 +1327,36 @@ entstand.
 
 Auch Start und Ziel bekommen ein Fenster, damit sich die Läufer am Start orientieren können. `--no-start` und
 `--no-finish` lassen sie weg; dann sagt der Befehl das, und `check` meldet sie unter der Abdeckung. Ein Fenster ist
-ein Vieleck mit
-mindestens 48 Ecken, das höchstens 0,05 mm vom Kreis abweicht. Überlappende Fenster verschmelzen. Der Umriss ist ein
-Rechteck 100 mm außerhalb der Karte, sodass kein Teil der Karte daran vorbeischaut.
+ein Vieleck mit mindestens 48 Ecken, das höchstens 0,05 mm vom Kreis abweicht. Der Umriss ist ein Rechteck 100 mm
+außerhalb der Karte, sodass kein Teil der Karte daran vorbeischaut.
+
+Die Fenster überlappen nicht. Zwischen den Rändern zweier Fenster bleibt mindestens der Abstand von `--gap` frei,
+in Millimetern auf dem Papier wie der Radius. Ohne Angabe sind es 3 mm, bei 1:4000 also 12 m im Gelände. Liegen zwei
+Posten dafür zu nah, werden beide Fenster kleiner, bis genau dieser Abstand bleibt. Jedes gibt im Verhältnis seines
+gewünschten Radius nach, auch ein Fenster mit eigenem Radius aus `--radius-for`, und Start und Ziel zählen wie jedes
+andere Fenster. Hat ein Fenster mehrere Nachbarn, die zu nah liegen, kommt das engste Paar zuerst dran; die anderen
+teilen sich den Platz, der dann bleibt. Für jedes verkleinerte Fenster schreibt der Befehl eine Zeile, und der
+Kommentar über der Tabelle wiederholt sie.
+
+Kleiner als 5 mm Radius wird kein Fenster, sonst passt der Postenkreis nicht mehr hinein. Bräuchte der Abstand das,
+schreibt der Befehl nichts, nennt die beiden Posten und ihren Abstand auf dem Papier und endet mit Exit-Code 2.
+Lassen Sie dann einen der beiden weg, mit `--controls`, `--no-start` oder `--no-finish`, oder geben Sie einen
+kleineren `--gap` an; die Meldung nennt den größten, der noch passt. Eine Abdeckung, die Sie von Hand schreiben,
+prüft das Programm nicht auf den Abstand. Dort dürfen Fenster überlappen.
 
 Die Ausgabe aus luebeck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“.
+Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“, mindestens 3 mm auseinander.
 Posten 34 hat ein Fenster mit 20 mm Radius.
+Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
+Das Ziel hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
+
+Posten 50 und das Ziel liegen 25,4 mm auseinander. Die Abdeckung im Beispielprojekt entstand, bevor die Fenster
+einen Abstand hielten, und dort überlappen die beiden Fenster noch.
 
 ![A4-Blatt, auf dem die Karte nur in runden Fenstern um Start, Posten und Ziel zu sehen ist, dazwischen weißes Papier mit den violetten Strecken](img/mask-window.jpg)
 
@@ -1481,7 +1504,9 @@ Diese Meldungen beenden `masks window` und `masks corridor` mit Exit-Code 2, die
   `mask = "…"` von Hand ein. „die Zuordnungen stehen nicht als Tabellen [[assignments]] in der Datei …“ kommt für
   eine Bahn ohne Zuordnung, wenn die Datei ihre Zuordnungen als `assignments = [...]` schreibt: Tragen Sie die
   Zuordnung mit `mask = "…"` von Hand ein.
-- „… mm liegt außerhalb von 1 bis 100 mm …“: Radius und Breite sind Druck-mm.
+- „… mm liegt außerhalb von 1 bis 100 mm …“: Radius, Breite und Abstand sind Druck-mm.
+- „… liegen auf dem Papier nur … mm auseinander, zu nah für zwei Fenster …“: Lassen Sie einen der beiden Posten weg,
+  oder geben Sie einen kleineren `--gap` an, höchstens den Wert, den die Meldung nennt.
 - „--controls nimmt Postencodes mit Kommas dazwischen …“ und „die Bahn … hat die Postennummern 1 bis …“: Prüfen Sie
   die Auswahl.
 - „Posten … bekommt kein Fenster, deshalb kann --radius-for seinen Radius nicht setzen“: Nehmen Sie den Posten in
@@ -1587,9 +1612,9 @@ Projektdatei und muss im Projektordner liegen.
 
 **Fenstermaske.** Menü „Masken“, „Fenstermaske“. Klicken Sie im Blatt die Nummer eines Postens an, um ihn
 aufzunehmen oder zu entfernen, oder tippen Sie Codes (`31,32`) oder Plätze (`2-5`) ins Feld. Leer heißt alle
-Posten. Dazu kommen Radius, eigene Radien (`35=20`), „Kein Fenster am Start“, „Kein Fenster am Ziel“, eine Kennung
-und „Bahn mit dieser Maske drucken“. „Fenstermaske anlegen“ schreibt sie, wie `masks window`. Die Radien sind in
-Millimetern auf dem Papier. Eine Fenstermaske braucht eine Bahndatei.
+Posten. Dazu kommen Radius, eigene Radien (`35=20`), der Abstand zwischen den Fenstern, „Kein Fenster am Start“,
+„Kein Fenster am Ziel“, eine Kennung und „Bahn mit dieser Maske drucken“. „Fenstermaske anlegen“ schreibt sie, wie
+`masks window`. Radien und Abstand sind in Millimetern auf dem Papier. Eine Fenstermaske braucht eine Bahndatei.
 
 ![Editor nach dem Anlegen einer Fenstermaske: Die Vorschau zeigt die Karte nur in runden Fenstern, im Baum steht die Abdeckung fenster-a, rechts ihre Eigenschaften](img/editor-window-mask.png)
 

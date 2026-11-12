@@ -117,7 +117,7 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 | `init <folder> --map <file>` | Creates the project file. `--title`, `--kind sprint\|schoolyard\|forest`, `--courses <.ppen or .xml>`. |
 | `check <project>` | Draws every layout or course without writing a file and lists the notes. |
 | `export <project>` | One PDF per layout, or per course with a course file. `--layout <id>`, `--course <name>` (repeatable), `--single-file`, `--out-dir <dir>` (default: `out` next to the project file, created if missing). |
-| `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--no-start`, `--no-finish`, `--id`, `--assign`. |
+| `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--gap`, `--no-start`, `--no-finish`, `--id`, `--assign`. Windows never overlap: `--gap` mm on paper (default 3) stay between two, and windows too close for that get a smaller radius, down to 5 mm. |
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
 | `edit <project>` | The browser editor, for people. `--port <n>`, `--no-browser`. |
@@ -198,7 +198,7 @@ the `more_*` fields count the rest.
 | `check_project` | none | Draws every sheet in memory and returns the notes (`kind`, `severity` `info`/`warning`/`error`, `course`, `message`) and `needs_attention`. |
 | `list_courses` | none | The courses in file order with number of controls, layout and masks. |
 | `init_project` | `folder`, `map`; optional `courses`, `kind` (`sprint`, `schoolyard`, `forest`), `title` | Writes a new `freemapper-print.toml`. Refuses a folder that has one. With a course file: one layout per print scale and an assignment per course. |
-| `masks_window` | `course`; optional `controls`, `radius`, `radius_for`, `no_start`, `no_finish`, `id`, `assign` | Round windows around the controls of a course. `controls`: codes `"31,32"` or places `"2-5"`. `radius` in mm on paper (1 to 100, default 15), `radius_for`: `["35=20"]`. |
+| `masks_window` | `course`; optional `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | Round windows around the controls of a course. `controls`: codes `"31,32"` or places `"2-5"`. `radius` in mm on paper (1 to 100, default 15), `radius_for`: `["35=20"]`. `gap` in mm on paper between the edges of two windows (1 to 100, default 3); `reduced` in the result lists the windows that got smaller to keep it. Two controls too close even for 5 mm windows are refused with a message that says what to leave out. |
 | `masks_corridor` | `points` (`"x,y;x,y;…"`, map mm, y up, at least 2); optional `width` (mm on paper, 1 to 100, default 10), `course`, `id`, `assign` | A corridor along a line. `course` gives the print scale for the width; `assign` needs it. |
 | `assign_mask` | `course`; optional `mask`, `layout` | Sets the mask a course prints with (a `[[masks]]` id or `whiteout-<n>`); without `mask` the course prints without one. |
 | `numbers_accept` | `course`, `control`, `scope` (`sheet` or `layout_wide`); optional `direction` (degrees, 0 = east, counter-clockwise) with `gap` (mm on paper, above 0 up to 10) | Fixes where a control number is printed. Without `direction` and `gap` it takes the proposal of `check_project`. |
@@ -252,7 +252,8 @@ Rules:
 - Look at the PDF before printing, and read the notes of `check_project`: a number that crowds a leg, a control
   under a mask, a map that cuts off at the frame.
 - Colour printing is best; the base area of sprint maps and the purple overprint rely on it.
-- For window and corridor orienteering, say which controls got a window and how large it is on paper.
+- For window and corridor orienteering, say which controls got a window and how large it is on paper, and which
+  windows came out smaller to keep the gap.
 
 ## Troubleshooting
 

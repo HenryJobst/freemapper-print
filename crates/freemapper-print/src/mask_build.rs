@@ -5,6 +5,9 @@
 //! Radius and width are print millimetres on the sheet, like a gap: a window of 15 mm looks the same at every print
 //! scale. The caller passes how many map millimetres one print millimetre is (print scale over map scale). Points
 //! are map millimetres with y up, as in a `[[masks]]` table (ADR 0045).
+//!
+//! Generated windows never overlap: between two of them stays at least the window gap, and windows too close for it
+//! shrink (ADR 0063).
 
 use std::collections::{BTreeMap, HashSet};
 use std::f64::consts::PI;
@@ -18,7 +21,17 @@ use crate::omap::{MapCoord, MapDocument};
 pub const DEFAULT_RADIUS_MM: f64 = 15.0;
 /// Corridor width when none is given (print mm): 40 m of ground at 1:4000, a street with its edges.
 pub const DEFAULT_WIDTH_MM: f64 = 10.0;
-/// Smallest radius or width (print mm).
+/// Gap between two windows when none is given (print mm), from edge to edge: 12 m of ground at 1:4000.
+pub const DEFAULT_GAP_MM: f64 = 3.0;
+/// Smallest radius (print mm) the gap shrinks a window to: the window must still hold the control circle. A window
+/// asked for smaller keeps its radius.
+pub const MIN_WINDOW_RADIUS_MM: f64 = 5.0;
+/// Rounds over all pairs of windows before the gap is given up as not kept. One round is enough, since a pair that
+/// keeps its gap keeps it while radii only shrink; the cap guards against a mistake in that reasoning.
+const MAX_GAP_ROUNDS: usize = 8;
+/// What a pair may lack of its gap (print mm) and still count as keeping it: floating-point noise.
+const GAP_SLACK_MM: f64 = 1e-6;
+/// Smallest radius, width or gap (print mm).
 pub const MIN_SIZE_MM: f64 = 1.0;
 /// Largest radius or width (print mm): 200 mm across is most of an A4 sheet.
 pub const MAX_SIZE_MM: f64 = 100.0;
@@ -42,8 +55,18 @@ pub type Extent = [f64; 4];
 /// Why a mask could not be built. The CLI says it in the user's language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildError {
-    /// A radius or width outside [`MIN_SIZE_MM`]..=[`MAX_SIZE_MM`] or not a finite number.
+    /// A radius, width or gap outside [`MIN_SIZE_MM`]..=[`MAX_SIZE_MM`] or not a finite number.
     SizeOutOfRange { value: f64 },
+    /// Two windows, in course order, too close for the gap even at their smallest radius ([`MIN_WINDOW_RADIUS_MM`],
+    /// or the radius asked for when that is smaller). `distance_mm` is the distance of their centres in print mm;
+    /// `max_gap_mm` the largest gap, to 0.1 mm and at least [`MIN_SIZE_MM`], at which every window would fit.
+    WindowsTooClose {
+        first: StopName,
+        second: StopName,
+        distance_mm: f64,
+        gap_mm: f64,
+        max_gap_mm: Option<f64>,
+    },
     /// `--controls` is neither a list of codes nor a range `FROM-TO`.
     BadSelection { text: String },
     /// A code that is no stop of the course; `known` lists the stops in course order, each code once.
@@ -86,6 +109,19 @@ impl std::fmt::Display for BuildError {
             Self::SizeOutOfRange { value } => {
                 write!(f, "{value} mm is outside {MIN_SIZE_MM} to {MAX_SIZE_MM} mm")
             }
+            Self::WindowsTooClose {
+                first,
+                second,
+                distance_mm,
+                gap_mm,
+                ..
+            } => write!(
+                f,
+                "{} and {} are {distance_mm} mm apart, too close for two windows of {MIN_WINDOW_RADIUS_MM} mm \
+                 radius with a gap of {gap_mm} mm",
+                first.code(),
+                second.code()
+            ),
             Self::BadSelection { text } => write!(
                 f,
                 "`{text}` is neither a list of control codes nor a range of control numbers"
@@ -192,6 +228,8 @@ pub struct WindowOptions {
     pub radius_mm: f64,
     /// Radii (print mm) of single controls by code, in place of `radius_mm`.
     pub per_control: BTreeMap<String, f64>,
+    /// The smallest gap between two windows, edge to edge (print mm).
+    pub gap_mm: f64,
     /// Map mm per print mm: the print scale over the map scale.
     pub map_mm_per_print_mm: f64,
 }
@@ -203,8 +241,10 @@ pub struct Window {
     pub stop: StopName,
     /// The centre of the control, map mm, y up.
     pub centre: [f64; 2],
-    /// Print mm.
+    /// The radius used (print mm): `requested_mm`, or less where the gap needs it.
     pub radius_mm: f64,
+    /// The radius asked for (print mm): `radius_mm` of the options or the control's own.
+    pub requested_mm: f64,
     pub vertices: usize,
 }
 
@@ -332,7 +372,8 @@ fn selected(
 
 /// The window mask `id` for `course`: one circular hole around each selected control, centred on it, with the
 /// radius of `options` in print mm, in one rectangular outline that covers `extent` (the map) and the windows with
-/// [`OUTLINE_MARGIN_MM`]. Windows may overlap; the clip unites them (ADR 0045). Points are rounded to 0.001 mm.
+/// [`OUTLINE_MARGIN_MM`]. No two windows come closer than `options.gap_mm`; windows too close for it shrink (see
+/// [`keep_gap`]). Points are rounded to 0.001 mm.
 pub fn windows(
     id: &str,
     course: &Course<MapCoord>,
@@ -341,6 +382,7 @@ pub fn windows(
     extent: Option<Extent>,
 ) -> Result<(Mask, Vec<Window>), BuildError> {
     size_in_range(options.radius_mm)?;
+    size_in_range(options.gap_mm)?;
     for r in options.per_control.values() {
         size_in_range(*r)?;
     }
@@ -352,15 +394,31 @@ pub fn windows(
     {
         return Err(BuildError::RadiusForUnselected { code: code.clone() });
     }
+    // Every window has at least MIN_WINDOW_VERTICES points: this bounds the pairs `keep_gap` looks at.
+    if 4 + chosen.len() * MIN_WINDOW_VERTICES > mask::MAX_TOTAL_POINTS {
+        return Err(BuildError::TooManyPoints);
+    }
+    let requested: Vec<f64> = chosen
+        .iter()
+        .map(|(stop, _)| {
+            options
+                .per_control
+                .get(stop.code())
+                .copied()
+                .unwrap_or(options.radius_mm)
+        })
+        .collect();
+    let radii = keep_gap(
+        &chosen,
+        &requested,
+        options.gap_mm,
+        options.map_mm_per_print_mm,
+    )?;
     let mut holes = Vec::new();
     let mut list = Vec::new();
     let mut points = 4;
-    for (stop, centre) in chosen {
-        let radius_mm = options
-            .per_control
-            .get(stop.code())
-            .copied()
-            .unwrap_or(options.radius_mm);
+    for (((stop, centre), radius_mm), requested_mm) in chosen.into_iter().zip(radii).zip(requested)
+    {
         let n = window_vertices(radius_mm);
         points += n;
         if points > mask::MAX_TOTAL_POINTS {
@@ -382,6 +440,7 @@ pub fn windows(
             stop,
             centre,
             radius_mm,
+            requested_mm,
             vertices: n,
         });
     }
@@ -394,6 +453,101 @@ pub fn windows(
     };
     checked(&mask)?;
     Ok((mask, list))
+}
+
+/// The radii (print mm) of windows around `chosen` (centres in map mm) asked for with `requested`, so that every two
+/// keep `gap_mm` between their edges on paper (ADR 0063). A pair too close for what was asked shrinks until it keeps
+/// exactly the gap: in proportion to the radii asked for, as long as neither radius goes below its floor
+/// ([`MIN_WINDOW_RADIUS_MM`], or the radius asked for when that is smaller) or above what an earlier pair left it.
+/// The pairs with the least room for what they asked come first, so the course order matters only between pairs
+/// with the same room.
+/// Radii only shrink, rounded down to 0.001 mm, so a pair keeps the gap and at most 0.001 mm more. A pair too close
+/// even at both floors fails the build; of several, the one with the least room is named.
+fn keep_gap(
+    chosen: &[(StopName, [f64; 2])],
+    requested: &[f64],
+    gap_mm: f64,
+    map_mm_per_print_mm: f64,
+) -> Result<Vec<f64>, BuildError> {
+    let floor: Vec<f64> = requested
+        .iter()
+        .map(|r| r.min(MIN_WINDOW_RADIUS_MM))
+        .collect();
+    let distance = |i: usize, j: usize| {
+        let (a, b) = (chosen[i].1, chosen[j].1);
+        (a[0] - b[0]).hypot(a[1] - b[1]) / map_mm_per_print_mm
+    };
+    let too_close = |i: usize, j: usize, distance: f64, spare: f64| BuildError::WindowsTooClose {
+        first: chosen[i].0.clone(),
+        second: chosen[j].0.clone(),
+        distance_mm: distance,
+        gap_mm,
+        // The gap at which this pair, the one with the least room, and so every pair fits at its floors.
+        max_gap_mm: Some(((gap_mm + spare) * 10.0).floor() / 10.0).filter(|g| *g >= MIN_SIZE_MM),
+    };
+    // The pairs too close for what was asked: indices and the room for both radii (print mm). A pair that keeps
+    // the gap keeps it, since radii only shrink.
+    let mut tight: Vec<(usize, usize, f64)> = Vec::new();
+    // The pair with the least room below its floors: indices, distance, and the room left over (negative).
+    let mut worst: Option<(usize, usize, f64, f64)> = None;
+    for i in 0..chosen.len() {
+        for j in i + 1..chosen.len() {
+            let d = distance(i, j);
+            let room = d - gap_mm;
+            if requested[i] + requested[j] <= room + GAP_SLACK_MM {
+                continue;
+            }
+            let spare = room - floor[i] - floor[j];
+            if spare < 0.0 && worst.is_none_or(|w| spare < w.3) {
+                worst = Some((i, j, d, spare));
+            }
+            tight.push((i, j, room));
+        }
+    }
+    if let Some((i, j, d, spare)) = worst {
+        return Err(too_close(i, j, d, spare));
+    }
+    // Least room for what was asked first; a stable sort keeps the course order among equals.
+    let share = |&(i, j, room): &(usize, usize, f64)| room / (requested[i] + requested[j]);
+    tight.sort_by(|a, b| share(a).total_cmp(&share(b)));
+    let mut radii = requested.to_vec();
+    let violates = |radii: &[f64], &(i, j, room): &(usize, usize, f64)| {
+        radii[i] + radii[j] > room + GAP_SLACK_MM
+    };
+    for _ in 0..MAX_GAP_ROUNDS {
+        let mut changed = false;
+        for pair in &tight {
+            if !violates(&radii, pair) {
+                continue;
+            }
+            let &(i, j, room) = pair;
+            // Within its floor and its present radius, and leaving the other within its own.
+            let low = floor[i].max(room - radii[j]);
+            let high = radii[i].min(room - floor[j]);
+            let wanted = room * requested[i] / (requested[i] + requested[j]);
+            let a = shrunk(radii[i], wanted.max(low).min(high));
+            let b = shrunk(radii[j], room - a);
+            changed |= a != radii[i] || b != radii[j];
+            radii[i] = a;
+            radii[j] = b;
+        }
+        if !changed {
+            break;
+        }
+    }
+    match tight.iter().find(|pair| violates(&radii, pair)) {
+        Some(&(i, j, room)) => Err(too_close(i, j, room + gap_mm, room - floor[i] - floor[j])),
+        None => Ok(radii),
+    }
+}
+
+/// `target` rounded down to 0.001 mm when it is below `current`, else `current`: a radius only shrinks. Noise just
+/// below a step of 0.001 mm counts as the step.
+fn shrunk(current: f64, target: f64) -> f64 {
+    if target >= current {
+        return current;
+    }
+    ((target * ROUND + 1e-6).floor() / ROUND).min(current)
 }
 
 /// A rectangle around `extent` and every point of `rings`, [`OUTLINE_MARGIN_MM`] away from both.
@@ -683,6 +837,7 @@ mod tests {
             finish: false,
             radius_mm,
             per_control: BTreeMap::new(),
+            gap_mm: DEFAULT_GAP_MM,
             map_mm_per_print_mm: k,
         }
     }
@@ -763,9 +918,21 @@ mod tests {
             assert_eq!(w.radius_mm, want);
             assert!((dist(hole[0], w.centre) - want).abs() <= 0.001);
         }
-        // Windows of 25 and 30 mm around 33 and 34, 50 mm apart, overlap, which is allowed.
+        // Windows of 25 and 30 mm around 33 and 34, 50 mm apart, would overlap (ADR 0063): both shrink in proportion
+        // to what was asked, to 47 mm together, and keep what they were asked for.
         o.per_control.insert("34".into(), 30.0);
-        assert!(build(&o).is_ok());
+        let (_, list) = build(&o).unwrap();
+        let w33 = &list[2];
+        let w34 = &list[3];
+        assert_eq!((w33.requested_mm, w34.requested_mm), (25.0, 30.0));
+        assert!(
+            (w33.radius_mm - 47.0 * 25.0 / 55.0).abs() <= 0.001,
+            "{w33:?}"
+        );
+        assert!(
+            (w34.radius_mm - 47.0 * 30.0 / 55.0).abs() <= 0.001,
+            "{w34:?}"
+        );
         // A radius for a control without a window, or out of range, is refused.
         let mut o = options(Selection::Codes(vec!["31".into()]), 15.0, 1.0);
         o.per_control.insert("32".into(), 20.0);
@@ -883,6 +1050,254 @@ mod tests {
         o.finish = true;
         let (_, list) = windows("w", &e.courses[0], &e, &o, None).unwrap();
         assert_eq!(codes(&list), ["S", "F"]);
+    }
+
+    /// Controls `31`, `32` … at `xs` on the x axis (map mm), course A over them in this order.
+    fn on_a_line(xs: &[f64]) -> FittedEvent {
+        let codes: Vec<String> = (0..xs.len()).map(|i| (31 + i).to_string()).collect();
+        let controls: Vec<(&str, ControlKind, f64, f64)> = codes
+            .iter()
+            .zip(xs)
+            .map(|(c, &x)| (c.as_str(), ControlKind::Control, x, 0.0))
+            .collect();
+        let stops: Vec<&str> = codes.iter().map(String::as_str).collect();
+        event(&controls, &stops)
+    }
+
+    fn build_on(e: &FittedEvent, o: &WindowOptions) -> Result<(Mask, Vec<Window>), BuildError> {
+        windows("w", &e.courses[0], e, o, None)
+    }
+
+    /// The gap between the circles of two windows in print mm.
+    fn gap_between(a: &Window, b: &Window, k: f64) -> f64 {
+        dist(a.centre, b.centre) / k - a.radius_mm - b.radius_mm
+    }
+
+    /// `gap` is `want` or at most 0.001 mm more, the rounding of a radius; floating-point noise below counts.
+    fn assert_gap(gap: f64, want: f64) {
+        assert!(
+            gap >= want - 1e-9 && gap < want + 0.001,
+            "{gap} against {want}"
+        );
+    }
+
+    /// The smallest distance between the vertices of two holes, in print mm.
+    fn closest_vertices(a: &[[f64; 2]], b: &[[f64; 2]], k: f64) -> f64 {
+        a.iter()
+            .flat_map(|&p| b.iter().map(move |&q| dist(p, q)))
+            .fold(f64::INFINITY, f64::min)
+            / k
+    }
+
+    #[test]
+    fn far_windows_keep_their_radius() {
+        // 50 mm apart: 15 + 15 + 3 fits, nothing changes.
+        let (_, list) = build(&options(Selection::All, 15.0, 1.0)).unwrap();
+        for w in &list {
+            assert_eq!((w.requested_mm, w.radius_mm), (15.0, 15.0), "{w:?}");
+        }
+        for pair in list.windows(2) {
+            assert!(gap_between(&pair[0], &pair[1], 1.0) >= DEFAULT_GAP_MM);
+        }
+    }
+
+    #[test]
+    fn close_windows_shrink_in_proportion_and_keep_the_gap_exactly() {
+        // 20 map mm apart at 1:3000 on a 1:4000 map: 26.667 print mm. Two windows of 15 mm shrink to the same
+        // radius, so that 3 mm stay between them on paper.
+        let e = on_a_line(&[0.0, 20.0]);
+        let k = 0.75;
+        let (mask, list) = build_on(&e, &options(Selection::All, 15.0, k)).unwrap();
+        let want = (20.0 / k - DEFAULT_GAP_MM) / 2.0;
+        for (hole, w) in mask.polygons[0].holes.iter().zip(&list) {
+            assert_eq!(w.requested_mm, 15.0);
+            assert!((w.radius_mm - want).abs() <= 0.001, "{w:?}");
+            // The hole follows the radius used, in map mm.
+            for &p in hole {
+                assert!(
+                    (dist(p, w.centre) - w.radius_mm * k).abs() <= 0.001,
+                    "{p:?}"
+                );
+            }
+        }
+        let gap = gap_between(&list[0], &list[1], k);
+        assert_gap(gap, DEFAULT_GAP_MM);
+        // The polygons lie inside their circles, so their vertices keep the gap too, give or take the rounding of
+        // the points to 0.001 map mm.
+        let holes = &mask.polygons[0].holes;
+        assert!(closest_vertices(&holes[0], &holes[1], k) >= DEFAULT_GAP_MM - 0.002);
+        // A gap of its own: 5 mm.
+        let mut o = options(Selection::All, 15.0, 1.0);
+        o.gap_mm = 5.0;
+        let (_, list) = build_on(&e, &o).unwrap();
+        assert!((list[0].radius_mm - 7.5).abs() <= 0.001, "{list:?}");
+        let gap = gap_between(&list[0], &list[1], 1.0);
+        assert_gap(gap, 5.0);
+    }
+
+    #[test]
+    fn a_radius_of_its_own_shrinks_in_proportion_too() {
+        // 20 mm and 10 mm asked for, 20 mm apart: 17 mm to share, two thirds and one third. A radius from
+        // `per_control` is a request like the default.
+        let e = on_a_line(&[0.0, 20.0]);
+        let mut o = options(Selection::All, 10.0, 1.0);
+        o.per_control.insert("31".into(), 20.0);
+        let (_, list) = build_on(&e, &o).unwrap();
+        assert_eq!((list[0].requested_mm, list[1].requested_mm), (20.0, 10.0));
+        assert!(
+            (list[0].radius_mm - 17.0 * 2.0 / 3.0).abs() <= 0.001,
+            "{list:?}"
+        );
+        assert!((list[1].radius_mm - 17.0 / 3.0).abs() <= 0.001, "{list:?}");
+        let gap = gap_between(&list[0], &list[1], 1.0);
+        assert_gap(gap, DEFAULT_GAP_MM);
+        // A window asked smaller than the floor is not made smaller; the other one gives way down to the floor.
+        let e = on_a_line(&[0.0, 12.0]);
+        let mut o = options(Selection::All, 15.0, 1.0);
+        o.per_control.insert("31".into(), 4.0);
+        let (_, list) = build_on(&e, &o).unwrap();
+        assert_eq!(list[0].radius_mm, 4.0);
+        assert!(
+            (list[1].radius_mm - MIN_WINDOW_RADIUS_MM).abs() <= 0.001,
+            "{list:?}"
+        );
+    }
+
+    #[test]
+    fn a_chain_of_three_shrinks_the_tightest_pair_first() {
+        // 31 and 32 are 20 mm apart, 32 and 33 25 mm. The closer pair shrinks to 8.5 mm each; 33 then takes what
+        // is left beside 32, 13.5 mm, and both gaps are 3 mm.
+        let e = on_a_line(&[0.0, 20.0, 45.0]);
+        let (_, list) = build_on(&e, &options(Selection::All, 15.0, 1.0)).unwrap();
+        let radii: Vec<f64> = list.iter().map(|w| w.radius_mm).collect();
+        for (got, want) in radii.iter().zip([8.5, 8.5, 13.5]) {
+            assert!((got - want).abs() <= 0.001, "{radii:?}");
+        }
+        for pair in list.windows(2) {
+            let gap = gap_between(&pair[0], &pair[1], 1.0);
+            assert_gap(gap, DEFAULT_GAP_MM);
+        }
+        assert!(gap_between(&list[0], &list[2], 1.0) > DEFAULT_GAP_MM);
+        // The same controls in another course order get the same windows.
+        let mut reversed = e.clone();
+        reversed.courses[0].stops.reverse();
+        let (_, back) = build_on(&reversed, &options(Selection::All, 15.0, 1.0)).unwrap();
+        for w in &list {
+            let twin = back.iter().find(|b| b.stop == w.stop).unwrap();
+            assert_eq!(twin.radius_mm, w.radius_mm, "{w:?}");
+        }
+    }
+
+    #[test]
+    fn windows_too_close_for_the_floor_are_refused() {
+        // 12 mm apart: two windows of 5 mm and a gap of 3 mm need 13 mm. A gap of 2 mm would fit.
+        let e = on_a_line(&[0.0, 12.0]);
+        let err = build_on(&e, &options(Selection::All, 15.0, 1.0)).unwrap_err();
+        assert_eq!(
+            err,
+            BuildError::WindowsTooClose {
+                first: StopName::Control("31".into()),
+                second: StopName::Control("32".into()),
+                distance_mm: 12.0,
+                gap_mm: DEFAULT_GAP_MM,
+                max_gap_mm: Some(2.0),
+            }
+        );
+        assert!(err.to_string().contains("12 mm apart"), "{err}");
+        // With that gap the windows are 5 mm each.
+        let mut o = options(Selection::All, 15.0, 1.0);
+        o.gap_mm = 2.0;
+        let (_, list) = build_on(&e, &o).unwrap();
+        assert!(
+            list.iter().all(|w| (w.radius_mm - 5.0).abs() <= 0.001),
+            "{list:?}"
+        );
+        // 8 mm apart no gap from 1 mm up helps. The closest pair is named, in course order, in print mm.
+        let e = on_a_line(&[0.0, 30.0, 6.0, 100.0]);
+        let err = build_on(&e, &options(Selection::All, 15.0, 0.75)).unwrap_err();
+        assert_eq!(
+            err,
+            BuildError::WindowsTooClose {
+                first: StopName::Control("31".into()),
+                second: StopName::Control("33".into()),
+                distance_mm: 8.0,
+                gap_mm: DEFAULT_GAP_MM,
+                max_gap_mm: None,
+            }
+        );
+    }
+
+    #[test]
+    fn the_gap_takes_the_range_of_a_radius() {
+        for gap in [0.5, 101.0, f64::NAN, f64::INFINITY] {
+            let mut o = options(Selection::All, 15.0, 1.0);
+            o.gap_mm = gap;
+            assert!(
+                matches!(build(&o), Err(BuildError::SizeOutOfRange { .. })),
+                "{gap}"
+            );
+        }
+        // Both ends of the range: 300 mm apart even 100 mm of gap leave the windows as asked.
+        let e = on_a_line(&[0.0, 300.0]);
+        for gap in [MIN_SIZE_MM, MAX_SIZE_MM] {
+            let mut o = options(Selection::All, 15.0, 1.0);
+            o.gap_mm = gap;
+            let (_, list) = build_on(&e, &o).unwrap();
+            assert!(list.iter().all(|w| w.radius_mm == 15.0), "{gap}");
+        }
+    }
+
+    #[test]
+    fn the_vertex_count_follows_the_radius_used() {
+        // Asked for 100 mm, 43 mm apart: 20 mm each, and the vertices of a 20 mm window.
+        let e = on_a_line(&[0.0, 43.0]);
+        let (mask, list) = build_on(&e, &options(Selection::All, 100.0, 1.0)).unwrap();
+        assert!(window_vertices(100.0) > window_vertices(20.0));
+        for (hole, w) in mask.polygons[0].holes.iter().zip(&list) {
+            assert!((w.radius_mm - 20.0).abs() <= 0.001, "{w:?}");
+            assert_eq!(w.vertices, window_vertices(w.radius_mm));
+            assert_eq!(hole.len(), w.vertices);
+        }
+    }
+
+    #[test]
+    fn start_and_finish_windows_keep_the_gap() {
+        // The start 20 mm from 31, the finish far away: the start's window shrinks with the one of 31.
+        let e = event(
+            &[
+                ("S", ControlKind::Start, 0.0, 0.0),
+                ("31", ControlKind::Control, 20.0, 0.0),
+                ("F", ControlKind::Finish, 200.0, 0.0),
+            ],
+            &["S", "31", "F"],
+        );
+        let mut o = options(Selection::All, 15.0, 1.0);
+        o.start = true;
+        o.finish = true;
+        let (_, list) = build_on(&e, &o).unwrap();
+        assert_eq!(list[0].stop, StopName::Start("S".into()));
+        assert!((list[0].radius_mm - 8.5).abs() <= 0.001, "{list:?}");
+        assert!((list[1].radius_mm - 8.5).abs() <= 0.001, "{list:?}");
+        assert_eq!(list[2].radius_mm, 15.0);
+        // Too close, the start is named by its kind.
+        let e = event(
+            &[
+                ("S", ControlKind::Start, 0.0, 0.0),
+                ("31", ControlKind::Control, 9.0, 0.0),
+            ],
+            &["S", "31"],
+        );
+        let err = build_on(&e, &o).unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                BuildError::WindowsTooClose {
+                    first: StopName::Start(_),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
     }
 
     #[test]

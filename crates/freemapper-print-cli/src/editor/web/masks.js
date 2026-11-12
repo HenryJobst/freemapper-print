@@ -81,13 +81,15 @@ function windowForm(host) {
   const radius = row(t("editor-mask-radius"), numberInput(""));
   radius.input.placeholder = "15";
   const radiusFor = row(t("editor-mask-radius-for"), make("input", { type: "text", autocomplete: "off" }));
+  const gap = row(t("editor-mask-gap"), numberInput(""));
+  gap.input.placeholder = "3";
   const noStart = row(t("editor-mask-no-start"), make("input", { type: "checkbox" }));
   const noFinish = row(t("editor-mask-no-finish"), make("input", { type: "checkbox" }));
   const id = row(t("editor-mask-id"), make("input", { type: "text", autocomplete: "off" }));
   const assign = row(t("editor-mask-assign"), make("input", { type: "checkbox", checked: true }));
   assignDefault(host, course, assign);
   controls.input.addEventListener("input", redraw);
-  const fields = [radius];
+  const fields = [radius, gap];
   const form = make("form", { class: "props-form", novalidate: true }, [
     make("h3", { text: t("editor-mask-window-heading") }),
     hint(),
@@ -96,6 +98,7 @@ function windowForm(host) {
     controlsHint,
     radius.row,
     radiusFor.row,
+    gap.row,
     noStart.row,
     noFinish.row,
     id.row,
@@ -115,6 +118,9 @@ function windowForm(host) {
     if (mm !== null) body.radius = mm;
     const own = radiusFor.input.value.split(",").map((item) => item.trim()).filter(Boolean);
     if (own.length) body.radius_for = own;
+    const gapMm = read(gap.input);
+    if (gapMm !== null && !Number.isFinite(gapMm)) return fail(gap, t("editor-form-number-error"));
+    if (gapMm !== null) body.gap = gapMm;
     if (noStart.input.checked) body.no_start = true;
     if (noFinish.input.checked) body.no_finish = true;
     if (id.input.value.trim()) body.id = id.input.value.trim();

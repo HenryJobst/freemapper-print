@@ -1335,7 +1335,7 @@ mod tests {
         let by_page = crate::ops::testing::viktoriapark_copy();
         let by_op = crate::ops::testing::viktoriapark_copy();
         let run = start_on(by_page.path().to_path_buf(), true, Some("en"));
-        let body = r#"{"course":"Training","controls":"34,35","radius":12.5,"radius_for":["35=20"],"no_start":true,"id":"w1","assign":true}"#;
+        let body = r#"{"course":"Training","controls":"34,35","radius":12.5,"radius_for":["35=20"],"gap":4,"no_start":true,"id":"w1","assign":true}"#;
         op(&run, "mask_window", body);
         crate::ops::masks::window(
             &crate::ops::masks::WindowArgs {
@@ -1344,6 +1344,7 @@ mod tests {
                 controls: Some("34,35".into()),
                 radius_mm: Some(12.5),
                 radius_for: vec!["35=20".into()],
+                gap_mm: Some(4.0),
                 no_start: true,
                 no_finish: false,
                 id: Some("w1".into()),
@@ -1355,6 +1356,7 @@ mod tests {
         let text = project_text(by_page.path());
         assert_eq!(text, project_text(by_op.path()));
         assert!(text.contains("id = \"w1\""), "{text}");
+        assert!(text.contains("at least 4 mm apart"), "{text}");
         // The same id again is refused with the sentence of the op, and the file stays as it is.
         let sentence = refused_with(&run, "mask_window", r#"{"course":"Training","id":"w1"}"#);
         assert!(sentence.contains("\"w1\" already"), "{sentence}");
@@ -1440,6 +1442,7 @@ mod tests {
                 finish: false,
                 radius_mm: 10.0,
                 per_control: Default::default(),
+                gap_mm: freemapper_print::mask_build::DEFAULT_GAP_MM,
                 map_mm_per_print_mm: 1.0,
             },
             None,
@@ -1639,6 +1642,15 @@ mod tests {
             (
                 "mask_window",
                 r#"{"course":"Training","radius":101}"#.to_owned(),
+            ),
+            // A gap out of range, and one that leaves 45 and 58 too close.
+            (
+                "mask_window",
+                r#"{"course":"Training","gap":0.5}"#.to_owned(),
+            ),
+            (
+                "mask_window",
+                r#"{"course":"Training","gap":12}"#.to_owned(),
             ),
             // Dropped on its own circle: the gap would be zero or negative.
             (

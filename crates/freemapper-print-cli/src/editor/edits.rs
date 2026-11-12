@@ -300,6 +300,8 @@ struct WindowBody {
     radius: Option<f64>,
     #[serde(default)]
     radius_for: Vec<String>,
+    /// Print mm between two windows.
+    gap: Option<f64>,
     #[serde(default)]
     no_start: bool,
     #[serde(default)]
@@ -324,6 +326,7 @@ fn mask_window(
                 controls: a.controls,
                 radius_mm: a.radius,
                 radius_for: a.radius_for,
+                gap_mm: a.gap,
                 no_start: a.no_start,
                 no_finish: a.no_finish,
                 id: a.id,

@@ -24,7 +24,10 @@ Postenbeschreibung, Titel und Fußzeile druckt das Programm überall.
 - Zehn runde Fenster mit 15 mm Radius auf dem Papier, das sind 60 m im Gelände: um den Start, die acht Posten
   und das Ziel. Das Fenster um Posten 34 (Nummer 2) hat 20 mm Radius und zeigt, wie ein einzelner Posten mehr
   Karte bekommt.
-- Die Fenster um Posten 50 (Nummer 7) und das Ziel überlappen. Sie verschmelzen zu einer Fläche ohne Naht.
+- Die Fenster um Posten 50 (Nummer 7) und das Ziel überlappen. Sie verschmelzen zu einer Fläche ohne Naht. Die
+  Abdeckung entstand, bevor `masks window` einen Abstand zwischen den Fenstern hielt (ADR 0063). Heute bekämen die
+  beiden Fenster 11,21 mm statt 15 mm Radius und 3 mm Abstand. Die Datei behält die Überlappung, wie sie eine
+  Abdeckung von Hand weiter haben darf.
 - Außerhalb der Fenster ist das Papier weiß. Die Nordlinien und die hellbraune Grundfläche der Karte fehlen dort
   ebenfalls, denn sie gehören zur Karte.
 - Strecken, Postenkreise, Nummern, Start und Ziel liegen in Violett auch über dem weißen Papier. Der
@@ -116,6 +119,10 @@ Posten 34 hat ein Fenster mit 20 mm Radius.
 Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
+
+So lautete die Ausgabe vor ADR 0063. Heute endet die erste Zeile mit „mindestens 3 mm auseinander“, und zwei
+Zeilen kommen hinzu: „Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.“ und
+dieselbe für das Ziel.
 
 Der Befehl hängt eine Tabelle `[[masks]]` mit der ID `window-Fenster` an die Projektdatei, mit einem Kommentar, wie
 sie entstand. Sie hat ein Polygon: ein Rechteck 100 mm außerhalb der Karte als Umriss und zehn Kreise als Löcher.

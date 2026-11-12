@@ -18,6 +18,10 @@ really ran, and every request and answer is in `session.jsonl`.
 
 The PDF itself is not stored here; `record_session.py` writes it again (see below).
 
+The session was recorded before `masks window` kept a gap between windows (ADR 0063). Recorded again, the same
+call gives six of the 13 windows a smaller radius: 45 and 58 get 6.88 mm, 39 and 35 7.91 mm, 56 and 61 11.28 mm.
+`masks_window` then lists them under `reduced`, and its messages get one line for each.
+
 ## The session
 
 The script starts the server with `freemapper-print --lang de mcp`, as Claude Code does with the `.mcp.json` from

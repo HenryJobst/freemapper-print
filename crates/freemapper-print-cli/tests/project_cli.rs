@@ -1814,11 +1814,18 @@ fn masks_window_appends_and_keeps_comments() {
     );
     assert_ne!(expected, old);
     assert!(new.starts_with(&expected), "{new}");
+    // The comment names the gap and the windows it made smaller (ADR 0063): 45 and 58 lie 16.75 mm apart, so the
+    // 20 mm asked for 45 and the 15 mm of 58 shrink in proportion, and the line about 45's own radius gives way.
     assert!(
         new.contains("# Windows of 15 mm radius on paper at 1:4000 around ")
+            && new.contains("at least 3 mm")
             && new.contains(
-                "made by masks window.\n# Control 45 has a window of 20 mm radius.\n[[masks]]\n"
-            ),
+                "# Control 45 has a window of 7.86 mm radius instead of 20 mm, to keep the gap.\n"
+            )
+            && new.contains(
+                "# The finish has a window of 13.31 mm radius instead of 15 mm, to keep the gap.\n[[masks]]\n"
+            )
+            && !new.contains("Control 45 has a window of 20 mm radius."),
         "{new}"
     );
     let loaded = project::load(&path).unwrap();
@@ -1831,9 +1838,14 @@ fn masks_window_appends_and_keeps_comments() {
         err.contains("Added the mask \"window-Training\"")
             && err.contains(
                 "13 windows of 15 mm radius on paper at 1:4000 around the start, controls 34, 52, 45, 58, 36, 56, \
-                 61, 43, 39, 35 and 49 and the finish of course \"Training\"."
+                 61, 43, 39, 35 and 49 and the finish of course \"Training\", at least 3 mm apart."
             )
-            && err.contains("Control 45 has a window of 20 mm radius.")
+            && err.contains(
+                "Control 45 has a window of 7.86 mm radius instead of 20 mm, to keep the gap.\n\
+                 Control 58 has a window of 5.89 mm radius instead of 15 mm, to keep the gap."
+            )
+            && err.contains("The start has a window of 13.83 mm radius instead of 15 mm")
+            && !err.contains("Control 45 has a window of 20 mm radius.")
             && !err.contains("no window")
             && err.contains("Course \"Training\" prints with it now, on layout a4-4000.")
             && err.contains("Run check"),
@@ -1873,7 +1885,8 @@ fn masks_window_appends_and_keeps_comments() {
     assert!(
         err.contains("Abdeckung „fenster“ in")
             && err.contains("2 Fenster mit 12,5 mm Radius auf dem Papier bei 1:4000")
-            && err.contains("um die Posten 34 und 52 der Bahn „Training“.")
+            && err.contains("um die Posten 34 und 52 der Bahn „Training“, mindestens 3 mm auseinander.")
+            && !err.contains("statt")
             && err.contains(
                 "Start und Ziel haben kein Fenster, deshalb nennt check sie. Ohne --no-start und --no-finish \
                  bekommen sie eins."
@@ -1884,6 +1897,89 @@ fn masks_window_appends_and_keeps_comments() {
     let loaded = project::load(&path).unwrap();
     assert_eq!(loaded.project.masks[0].polygons[0].holes.len(), 2);
     assert_eq!(loaded.project.assignments[0].mask, None);
+}
+
+#[test]
+fn masks_window_keeps_a_gap_or_names_the_controls_too_close() {
+    // Eng: 31 and 32 are 5.83 mm apart. Two windows of 5 mm with 3 mm between them need 13 mm, and no gap from
+    // 1 mm up helps, so the message only says what to leave out (ADR 0063). Nothing is written.
+    let (_ws, path, old) = numbers_workspace();
+    let p = path.to_str().unwrap();
+    for (lang, text) in [
+        (
+            "en",
+            "controls 31 and 32 are 5.83 mm apart on paper, too close for two windows of at least 5 mm radius with \
+             3 mm between them. Leave out one of them by listing the others with --controls.",
+        ),
+        (
+            "de",
+            "die Posten 31 und 32 liegen auf dem Papier nur 5,83 mm auseinander, zu nah für zwei Fenster mit \
+             mindestens 5 mm Radius und 3 mm Abstand dazwischen. Lassen Sie einen der beiden weg, indem Sie mit \
+             --controls nur die anderen nennen.",
+        ),
+    ] {
+        let o = run(lang, &["masks", "window", p, "--course", "Eng"]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(err.contains(text), "{lang}: {err}");
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    // Viktoriapark: 45 and 58 are 16.75 mm apart, so a gap of 7 mm is too much and 6.7 mm the most that fits.
+    let (_dir, path) = viktoriapark_with("");
+    let p = path.to_str().unwrap();
+    let old = std::fs::read_to_string(&path).unwrap();
+    for (lang, text) in [
+        (
+            "en",
+            "Leave out one of them by listing the others with --controls, or give --gap 6.7 or less.",
+        ),
+        (
+            "de",
+            "nur die anderen nennen, oder geben Sie --gap 6,7 oder weniger an.",
+        ),
+    ] {
+        let o = run(
+            lang,
+            &["masks", "window", p, "--course", "Training", "--gap", "7"],
+        );
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{err}");
+        assert!(
+            err.contains(text) && err.contains("45") && err.contains("58"),
+            "{lang}: {err}"
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), old);
+    // A gap of 5 mm: the start and 34, 30.65 mm apart, get 12.83 mm each.
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Training",
+            "--controls",
+            "34",
+            "--no-finish",
+            "--gap",
+            "5",
+        ],
+    );
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains(
+            "2 windows of 15 mm radius on paper at 1:4000 around the start and control 34"
+        ) && err.contains("at least 5 mm apart.")
+            && err.contains(
+                "The start has a window of 12.83 mm radius instead of 15 mm, to keep the gap.\n\
+                 Control 34 has a window of 12.83 mm radius instead of 15 mm, to keep the gap."
+            ),
+        "{err}"
+    );
+    let new = std::fs::read_to_string(&path).unwrap();
+    assert!(new.contains("at least 5 mm"), "{new}");
 }
 
 #[test]
@@ -1952,7 +2048,18 @@ fn masks_corridor_appends_and_assigns() {
 fn masks_refuses_a_duplicate_id() {
     let (_ws, path, _) = numbers_workspace();
     let p = path.to_str().unwrap();
-    let args = ["masks", "window", p, "--course", "Eng", "--id", "m"];
+    // 31 and 32 lie 5.8 mm apart, too close for two windows (ADR 0063): each command gives 31 alone a window.
+    let args = [
+        "masks",
+        "window",
+        p,
+        "--course",
+        "Eng",
+        "--controls",
+        "31",
+        "--id",
+        "m",
+    ];
     assert_eq!(run("en", &args).status.code(), Some(0));
     let done = std::fs::read_to_string(&path).unwrap();
     for (lang, hint) in [
@@ -1971,9 +2078,10 @@ fn masks_refuses_a_duplicate_id() {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), done);
     }
     // Without --id the default is made unique.
-    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    let args = ["masks", "window", p, "--course", "Eng", "--controls", "31"];
+    let o = run("en", &args);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
-    let o = run("en", &["masks", "window", p, "--course", "Eng"]);
+    let o = run("en", &args);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     let ids: Vec<String> = project::load(&path)
         .unwrap()
@@ -1989,7 +2097,20 @@ fn masks_refuses_a_duplicate_id() {
 fn masks_refuses_a_second_mask_for_a_course() {
     let (_ws, path, _) = numbers_workspace();
     let p = path.to_str().unwrap();
-    let o = run("en", &["masks", "window", p, "--course", "Eng", "--assign"]);
+    // 31 alone: 31 and 32 are too close for two windows.
+    let o = run(
+        "en",
+        &[
+            "masks",
+            "window",
+            p,
+            "--course",
+            "Eng",
+            "--controls",
+            "31",
+            "--assign",
+        ],
+    );
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     let done = std::fs::read_to_string(&path).unwrap();
     for (lang, hint) in [
@@ -2013,7 +2134,7 @@ fn masks_refuses_a_second_mask_for_a_course() {
 fn masks_usage_errors_in_both_languages() {
     let (_ws, path, old) = numbers_workspace();
     let p = path.to_str().unwrap();
-    let cases: [(&[&str], &str, &str); 7] = [
+    let cases: [(&[&str], &str, &str); 8] = [
         (
             &["masks", "corridor", p, "--points", "0,0;100,0;90,8"],
             "turns too sharply at 100, 0",
@@ -2039,6 +2160,11 @@ fn masks_usage_errors_in_both_languages() {
             &["masks", "window", p, "--course", "Eng", "--radius", "0.5"],
             "0.5 mm is outside 1 to 100 mm",
             "0,5 mm liegt außerhalb von 1 bis 100 mm",
+        ),
+        (
+            &["masks", "window", p, "--course", "Eng", "--gap", "101"],
+            "101 mm is outside 1 to 100 mm; radius, width and gap are print mm",
+            "101 mm liegt außerhalb von 1 bis 100 mm; Radius, Breite und Abstand sind Druck-mm",
         ),
         (
             &["masks", "window", p, "--course", "Eng", "--controls", "2-5"],
@@ -2096,6 +2222,8 @@ fn masks_usage_errors_in_both_languages() {
     assert!(
         out.contains("Druck-mm")
             && out.contains("--no-start")
+            && out.contains("--gap")
+            && out.contains("Die Fenster überlappen nicht")
             && out.contains("löschen Sie die Abdeckung und rufen Sie den Befehl noch einmal auf"),
         "{out}"
     );
@@ -2121,7 +2249,20 @@ fn masks_refuse_a_new_assignment_next_to_inline_assignments() {
         ("en", "cannot add one for course \"Eng\""),
         ("de", "für die Bahn „Eng“ keine neue anhängen"),
     ] {
-        let o = run(lang, &["masks", "window", p, "--course", "Eng", "--assign"]);
+        // 31 alone: 31 and 32 are too close for two windows.
+        let o = run(
+            lang,
+            &[
+                "masks",
+                "window",
+                p,
+                "--course",
+                "Eng",
+                "--controls",
+                "31",
+                "--assign",
+            ],
+        );
         let err = stderr(&o);
         assert_eq!(o.status.code(), Some(2), "{err}");
         assert!(err.contains(hint), "{lang}: {err}");
@@ -2135,9 +2276,18 @@ fn masks_restore_the_file_when_it_no_longer_loads() {
     // An inline `masks` array makes the appended table a duplicate key.
     let broken = format!("masks = []\n{old}");
     std::fs::write(&path, &broken).unwrap();
+    // 31 alone: 31 and 32 are too close for two windows.
     let o = run(
         "en",
-        &["masks", "window", path.to_str().unwrap(), "--course", "Eng"],
+        &[
+            "masks",
+            "window",
+            path.to_str().unwrap(),
+            "--course",
+            "Eng",
+            "--controls",
+            "31",
+        ],
     );
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{err}");
