@@ -205,19 +205,25 @@ changes in the file with its own means, or you do. `check_project` then shows wh
 
 ### An example
 
-The example [examples/mcp-session](../../examples/mcp-session/README.en.md) records a real session. The request to
-the agent is roughly: "Turn the training in Viktoriapark into window orienteering with 12 mm windows and put the
-PDF into the folder pdf."
+The example [examples/rummelsburg-mcp-session](../../examples/rummelsburg-mcp-session/README.en.md) records a real
+session. The request to the agent is roughly: "Turn it into window orienteering with 12 mm windows and put the PDF
+into the folder out." The map and course T (8 controls, 2.0 km) are already in the folder.
 
-1. `project_info` shows one course "Training" with 11 controls on the layout `a4-4000`, with no mask yet.
-2. `check_project` reports info notes only; `needs_attention` is false.
-3. `masks_window` with `course` "Training", `radius` 12 and `assign` writes the mask `window-Training` with 13
-   windows around start, controls and finish, and gives it to the course.
-4. `check_project` again reports info notes only: no control lies under the mask.
-5. `export_project` writes `Training.pdf` (170,397 bytes) and reminds you to print at actual size.
+1. `init_project` creates the project from the map and the course file, with `kind` "sprint". The result reports
+   one layout `a4-4000` with course "T", and `fits` is false: no sheet shows the whole map.
+2. `check_project` reports three warnings, and `needs_attention` is true. On the A4 sheet the title block covers
+   the start, the number of control 31 covers the line symbol 520.1 of the map, and every sheet carries the note
+   that the font Arimo replaces Calibri.
+3. `set_layout` switches the layout to A3. The layout id `a4-4000` stays, because `set_layout` renames nothing.
+4. `masks_window` with `course` "T", `radius` 12 and `assign` writes the mask `window-T` with ten windows around
+   start, controls 31 to 38 and finish, and gives it to the course. No window gets smaller, because no two points
+   of the course lie closer than 134 m.
+5. `check_project` no longer reports the title block. The font and the number of control 31 remain, so
+   `needs_attention` stays true. The agent exports anyway.
+6. `export_project` writes `T.pdf` (1,091,820 bytes, A3 landscape, 1:4000) and reminds you to print at actual
+   size.
 
-The session was recorded before windows kept a gap (ADR 0063). Today `masks_window` writes the same 13
-windows, but six of them smaller, such as those around controls 45 and 58 with 6.88 mm radius each.
+The session ran with a build after version 0.8.0 that already keeps the gap between windows (ADR 0063).
 
 ## 5. Setting up an event
 
@@ -231,13 +237,13 @@ The work takes three commands:
 2. You edit the file in a text editor and run `check` until the sheets look as they should.
 3. `export` writes one PDF per layout, or one per course when the project has a course file.
 
-The example [examples/luebeck-competition-layouts](../../examples/luebeck-competition-layouts/README.en.md)
+The example [examples/rummelsburg-competition-layouts](../../examples/rummelsburg-competition-layouts/README.en.md)
 shows the whole way with every command and its output.
 
 ### Creating the project file: `init`
 
 ```sh
-freemapper-print init citysprint --map maps/luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print init citysprint --map maps/rummelsburg.omap --title "Stadtsprint Rummelsburg"
 ```
 
 This creates the folder `citysprint` if it does not exist yet, and `freemapper-print.toml` in it. `init` never
@@ -255,9 +261,9 @@ The new file holds:
 - a title block with `{event}` and `1:{print_scale} · {contour_interval}` at the top left of the map frame and a
   scale check bar at the bottom right;
 - one layout at the scale of the map. `init` tries A4 with an 8 mm passe-partout, then A4 with a wider one (in
-  2 mm steps up to 24 mm), then A3, and takes the first sheet `check` has nothing to report about. For the
-  Lübeck sprint map that is A3 with 14 mm. If no sheet fits, the file keeps A4 with 8 mm, and `init` starts its
-  message with "Warning:" and prints what `check` will report.
+  2 mm steps up to 24 mm), then A3, and takes the first sheet `check` has nothing to report about. The map
+  "Rummelsburger Bucht" is a strip that fits no A4 or A3 sheet. If no sheet fits, the file keeps A4 with 8 mm, and
+  `init` starts its message with "Warning:" and prints what `check` will report.
 
 `init` sets the sheet language, used for the date, the decimal separator and the credit line on the sheet, to
 the program language. It is stored in `event.lang`.
@@ -273,13 +279,13 @@ to the project file.
 format = 1
 
 [event]
-title = "Stadtsprint Lübeck"
+title = "Stadtsprint Rummelsburg"
 date = 2027-05-15                  # optional, for {date}
 organiser = "OL-Verein Musterstadt" # optional, for {organiser}
 lang = "de"                        # sheet language: de or en, default de
 
 [sources]
-map = "luebeck.omap"
+map = "rummelsburg.omap"
 
 [map]
 kind = "sprint"                    # sprint, schoolyard or forest
@@ -287,8 +293,7 @@ contour_interval_m = 2.0           # contour interval in metres, for {contour_in
 
 [print]
 copyright = """
-© OpenStreetMap contributors, ODbL
-© GeoBasis-DE/LVermGeo SH/CC BY 4.0 (Quelle verändert)
+Karte: Rummelsburger Bucht, Remo Madella, MOO Challenge Berlin 2025
 """                                # optional, replaces the sources from the map
 
 [[shared]]                         # shared sheet elements, chapter 7
@@ -611,8 +616,8 @@ says so. The credit line is drawn after everything else on the sheet, so no elem
 A course sheet is a layout with the course drawn on the map in purple. The project file links to the file from
 your course-setting program, and `check` and `export` do the rest: one sheet per course, with control numbers and,
 for Purple Pen files, the control descriptions. The example
-[examples/luebeck-competition-courses](../../examples/luebeck-competition-courses/README.en.md) goes through all of
-it with every command and its output. [examples/berlin-viktoriapark-training](../../examples/berlin-viktoriapark-training/README.en.md)
+[examples/rummelsburg-competition-courses](../../examples/rummelsburg-competition-courses/README.en.md) goes through
+all of it with every command and its output. [examples/gleisdreieck-training](../../examples/gleisdreieck-training/README.en.md)
 is a smaller one, a club training with a single course.
 
 ### Where courses come from
@@ -649,7 +654,7 @@ In the project file, `[sources]` gets the key `courses`:
 
 ```toml
 [sources]
-map = "luebeck.omap"
+map = "rummelsburg.omap"
 courses = "courses.ppen"
 ```
 
@@ -907,7 +912,7 @@ A project without a course file exports exactly as in chapter 5.
 ### Starting from a course file: `init --courses`
 
 ```sh
-freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck" --courses courses.ppen
+freemapper-print init citysprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg" --courses courses.ppen
 ```
 
 `init` reads and fits the course file first. A file that does not fit the map stops `init` before it writes
@@ -945,7 +950,7 @@ For an event, `export` writes the PDFs (chapter 5). For a quick print of the bar
 there is `render`:
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
+freemapper-print render rummelsburg.omap --out rummelsburg-4000-a4.pdf --paper a4
 ```
 
 Without `--scale` the program prints at the scale of the map. `--scale 3000` prints at 1:3000. Choose A4 or A3
@@ -1027,9 +1032,9 @@ such as two building corners or the ends of a straight stretch of street. For 10
 | 1:3000 | 33.3 mm |
 
 If the value is off, the printer has scaled. Check the print dialog. The examples
-[examples/luebeck-scales](../../examples/luebeck-scales/README.en.md) and
-[examples/luebeck-competition-layouts](../../examples/luebeck-competition-layouts/README.en.md) hold the same
-map at 1:4000 on A4 and at 1:3000 on A3.
+[examples/gleisdreieck-scales](../../examples/gleisdreieck-scales/README.en.md) and
+[examples/rummelsburg-competition-layouts](../../examples/rummelsburg-competition-layouts/README.en.md) each show
+one map at 1:4000 on A4 and at 1:3000 on A3.
 
 ### Notes about printing the map
 
@@ -1208,9 +1213,9 @@ elements, the frame line and the footer. The program always prints the legs betw
 need the direction, and leaving the line out gains the training nothing.
 
 Two examples go through everything with each command:
-[examples/luebeck-training-window](../../examples/luebeck-training-window/README.en.md) for window orienteering
-and [examples/luebeck-training-corridor](../../examples/luebeck-training-corridor/README.en.md) for corridor
-orienteering.
+[examples/gleisdreieck-training-window](../../examples/gleisdreieck-training-window/README.en.md) for window
+orienteering and [examples/gleisdreieck-training-corridor](../../examples/gleisdreieck-training-corridor/README.en.md)
+for corridor orienteering.
 
 ### The mask in the project file
 
@@ -1231,7 +1236,7 @@ polygons = [
 ]
 ```
 
-On the sheet of course „Fenster“ from luebeck-training-window this mask hides the eastern half of the map and
+On the sheet of a course „Fenster“ this mask hides the eastern half of the map and
 leaves two square windows open in it.
 
 - `id` names the mask: 1 to 64 characters, no control characters, used once in the file.
@@ -1294,22 +1299,25 @@ that, the command writes nothing, names the two controls and their distance on p
 Then leave one of them out with `--controls`, `--no-start` or `--no-finish`, or give a smaller `--gap`; the message
 names the largest one that fits. A mask you write by hand is not checked for the gap, and its windows may overlap.
 
-The output from luebeck-training-window:
+The output from gleisdreieck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“, mindestens 3 mm auseinander.
+Abdeckung „window-A“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 31, 32, 33, 34, 35, 36, 37 und 38 und das Ziel der Bahn „A“, mindestens 3 mm auseinander.
 Posten 34 hat ein Fenster mit 20 mm Radius.
-Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
-Das Ziel hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
-Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
+Die Bahn „A“ wird jetzt damit gedruckt, auf Layout a4-a.
 Mit check sehen Sie das Ergebnis.
 ```
 
-In English the first line reads "Added the mask "window-Fenster" to ./freemapper-print.toml: 10 windows of 15 mm
-radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 and 37 and the finish of course
-"Fenster", at least 3 mm apart.", and the line for control 50 "Control 50 has a window of 11.21 mm radius instead of
-15 mm, to keep the gap." Control 50 and the finish are 25.4 mm apart. The mask in the example project was written
-before windows kept a gap, and there the two windows still overlap.
+In English the first line reads "Added the mask "window-A" to ./freemapper-print.toml: 10 windows of 15 mm radius
+on paper at 1:4000 around the start, controls 31, 32, 33, 34, 35, 36, 37 and 38 and the finish of course "A", at
+least 3 mm apart." Here every window keeps its radius, because the controls lie far enough apart. With `--radius 30`
+instead of the default, a line for each window made smaller would join them, shortened:
+
+```
+Control 31 has a window of 25.25 mm radius instead of 30 mm, to keep the gap.
+Control 34 has a window of 19.73 mm radius instead of 30 mm, to keep the gap.
+The finish has a window of 19.73 mm radius instead of 30 mm, to keep the gap.
+```
 
 ![An A4 portrait sheet where the map shows only in ten separate round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
 
@@ -1427,7 +1435,7 @@ For masks you write by hand, the program checks on loading:
 | A hole lies wholly inside the outline of its polygon and does not touch it. | A hole outside the outline uncovers nothing, and what was meant stays unclear. |
 | The outlines of one mask do not overlap, touch or lie inside one another. | The map would show again where they overlap. For two areas that touch, draw one outline around both. |
 | Every number is finite and lies between −2 000 000 and 2 000 000 mm. | That is the reach of an OOM map. |
-| At most 64 masks per file, 256 polygons per mask, 4096 points per ring, 100 000 points in the whole file, 100 million steps for all checks together. | The limits protect against broken or hostile files. A window from `masks window` has about 50 points, the ten windows of luebeck-training-window about 500 together. |
+| At most 64 masks per file, 256 polygons per mask, 4096 points per ring, 100 000 points in the whole file, 100 million steps for all checks together. | The limits protect against broken or hostile files. A window from `masks window` has about 50 points, the ten windows of gleisdreieck-training-window about 500 together. |
 | The project file has at most 16 MB. | The masks of a file within the other limits take about 4 MB at most. A larger file would need gigabytes of memory to read before those limits could refuse it. |
 
 A broken rule stops `check` and `export`. The message is in English and names file, line, column and the field,

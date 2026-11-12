@@ -211,19 +211,26 @@ Datei noch stimmt.
 
 ### Ein Beispiel
 
-Das Beispiel [examples/mcp-session](../../examples/mcp-session/README.md) zeichnet eine echte Sitzung auf. Die
-Bitte an den Agenten lautet sinngemäß: „Mach aus dem Training im Viktoriapark einen Fenster-OL mit Fenstern von
-12 mm und leg das PDF in den Ordner pdf.“
+Das Beispiel [examples/rummelsburg-mcp-session](../../examples/rummelsburg-mcp-session/README.md) zeichnet eine
+echte Sitzung auf. Die Bitte an den Agenten lautet sinngemäß: „Mach daraus einen Fenster-OL mit Fenstern von 12 mm
+und leg das PDF in den Ordner out.“ Karte und Bahn T (8 Posten, 2,0 km) liegen schon im Ordner.
 
-1. `project_info` zeigt eine Bahn „Training“ mit 11 Posten auf dem Layout `a4-4000`, noch ohne Abdeckung.
-2. `check_project` meldet nur Hinweise zur Information, `needs_attention` ist falsch.
-3. `masks_window` mit `course` „Training“, `radius` 12 und `assign` schreibt die Abdeckung `window-Training` mit
-   13 Fenstern um Start, Posten und Ziel und gibt sie der Bahn.
-4. `check_project` meldet wieder nur Hinweise zur Information: Kein Posten liegt unter der Abdeckung.
-5. `export_project` schreibt `Training.pdf` (170 397 Byte) und erinnert daran, in Originalgröße zu drucken.
+1. `init_project` legt das Projekt aus Karte und Bahndatei an, mit `kind` „sprint“. Das Ergebnis meldet ein Layout
+   `a4-4000` mit der Bahn „T“, und `fits` ist falsch: Kein Blatt zeigt die ganze Karte.
+2. `check_project` meldet drei Warnungen, `needs_attention` ist wahr. Auf dem A4-Blatt überdeckt der Titelblock den
+   Start, die Nummer von Posten 31 überdeckt das Liniensymbol 520.1 der Karte, und auf jedem Blatt steht der
+   Hinweis, dass die Schrift Arimo Calibri ersetzt.
+3. `set_layout` stellt das Layout auf A3 um. Der Layoutname `a4-4000` bleibt, denn `set_layout` benennt nichts um.
+4. `masks_window` mit `course` „T“, `radius` 12 und `assign` schreibt die Abdeckung `window-T` mit zehn Fenstern um
+   Start, die Posten 31 bis 38 und Ziel und gibt sie der Bahn. Kein Fenster wird kleiner, denn keine zwei Punkte der
+   Bahn liegen näher als 134 m.
+5. `check_project` meldet die Warnung zum Titelblock nicht mehr. Es bleiben die Schrift und die Nummer von Posten 31,
+   deshalb ist `needs_attention` weiter wahr. Der Agent exportiert trotzdem.
+6. `export_project` schreibt `T.pdf` (1 091 820 Byte, A3 quer, 1:4000) und erinnert daran, in Originalgröße zu
+   drucken.
 
-Die Sitzung entstand, bevor die Fenster einen Abstand hielten (ADR 0063). Heute schreibt `masks_window`
-dieselben 13 Fenster, sechs davon aber kleiner, etwa um die Posten 45 und 58 mit je 6,88 mm Radius.
+Die Sitzung lief mit einem Stand nach Version 0.8.0, der den Abstand zwischen Fenstern schon hält (ADR 0063).
+
 ## 5. Eine Veranstaltung anlegen
 
 Zu jeder Veranstaltung gehört ein Ordner mit einer Projektdatei, `freemapper-print.toml`. Darin stehen die
@@ -237,13 +244,13 @@ Der Ablauf hat drei Befehle:
    sollen.
 3. `export` schreibt je Layout ein PDF, bei einem Projekt mit Bahndatei je Bahn eines.
 
-Das Beispiel [examples/luebeck-competition-layouts](../../examples/luebeck-competition-layouts/README.md) zeigt
-den ganzen Weg mit allen Befehlen und Ausgaben.
+Das Beispiel [examples/rummelsburg-competition-layouts](../../examples/rummelsburg-competition-layouts/README.md)
+zeigt den ganzen Weg mit allen Befehlen und Ausgaben.
 
 ### Die Projektdatei anlegen: `init`
 
 ```sh
-freemapper-print init stadtsprint --map karten/luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print init stadtsprint --map karten/rummelsburg.omap --title "Stadtsprint Rummelsburg"
 ```
 
 Das legt den Ordner `stadtsprint` an, falls es ihn noch nicht gibt, und darin `freemapper-print.toml`. Eine
@@ -263,8 +270,8 @@ Die neue Datei enthält:
   und eine Kontrollstrecke unten rechts;
 - ein Layout im Maßstab der Karte. `init` probiert A4 mit 8 mm Passepartout, dann A4 mit breiterem
   Passepartout (in Schritten von 2 mm bis 24 mm), dann A3 und nimmt das erste Blatt, auf dem `check` nichts zu
-  melden hat. Für die Lübecker Sprintkarte ist das A3 mit 14 mm. Passt keines, bleibt die Datei bei A4 mit
-  8 mm; `init` beginnt seine Meldung dann mit „Warnung:“ und zeigt, was `check` melden wird.
+  melden hat. Die Karte Rummelsburger Bucht ist ein Streifen, der auf kein A4- oder A3-Blatt passt. Passt keines, bleibt
+  die Datei bei A4 mit 8 mm; `init` beginnt seine Meldung dann mit „Warnung:“ und zeigt, was `check` melden wird.
 
 Die Blattsprache, also die Sprache von Datum, Dezimalzeichen und Namensnennung auf dem Blatt, setzt `init` auf
 die Programmsprache. Sie steht in `event.lang`.
@@ -280,13 +287,13 @@ Spalte des Werts. Pfade gelten relativ zur Projektdatei.
 format = 1
 
 [event]
-title = "Stadtsprint Lübeck"
+title = "Stadtsprint Rummelsburg"
 date = 2027-05-15                  # optional, für {date}
 organiser = "OL-Verein Musterstadt" # optional, für {organiser}
 lang = "de"                        # Blattsprache: de oder en, Standard de
 
 [sources]
-map = "luebeck.omap"
+map = "rummelsburg.omap"
 
 [map]
 kind = "sprint"                    # sprint, schoolyard oder forest
@@ -294,8 +301,7 @@ contour_interval_m = 2.0           # Äquidistanz in Metern, für {contour_inter
 
 [print]
 copyright = """
-© OpenStreetMap contributors, ODbL
-© GeoBasis-DE/LVermGeo SH/CC BY 4.0 (Quelle verändert)
+Karte: Rummelsburger Bucht, Remo Madella, MOO Challenge Berlin 2025
 """                                # optional, ersetzt die Quellen aus der Karte
 
 [[shared]]                         # gemeinsame Blattelemente, Kapitel 7
@@ -632,8 +638,8 @@ Element kann sie verdecken.
 Ein Bahnblatt ist ein Layout, auf dem die Bahn in Violett über der Karte liegt. Die Projektdatei verweist auf die
 Datei Ihres Bahnlegungsprogramms, den Rest erledigen `check` und `export`: ein Blatt je Bahn, mit Postennummern
 und, bei Purple-Pen-Dateien, der Postenbeschreibung. Das Beispiel
-[examples/luebeck-competition-courses](../../examples/luebeck-competition-courses/README.md) geht alles mit jedem
-Befehl und seiner Ausgabe durch. [examples/berlin-viktoriapark-training](../../examples/berlin-viktoriapark-training/README.md)
+[examples/rummelsburg-competition-courses](../../examples/rummelsburg-competition-courses/README.md) geht alles mit
+jedem Befehl und seiner Ausgabe durch. [examples/gleisdreieck-training](../../examples/gleisdreieck-training/README.md)
 ist ein kleineres, ein Vereinstraining mit einer einzigen Bahn.
 
 ### Woher die Bahnen kommen
@@ -671,7 +677,7 @@ In der Projektdatei bekommt `[sources]` den Schlüssel `courses`:
 
 ```toml
 [sources]
-map = "luebeck.omap"
+map = "rummelsburg.omap"
 courses = "courses.ppen"
 ```
 
@@ -946,7 +952,7 @@ Ein Projekt ohne Bahndatei exportiert genau wie in Kapitel 5.
 ### Mit einer Bahndatei beginnen: `init --courses`
 
 ```sh
-freemapper-print init stadtsprint --map luebeck.omap --title "Stadtsprint Lübeck" --courses courses.ppen
+freemapper-print init stadtsprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg" --courses courses.ppen
 ```
 
 `init` liest die Bahndatei zuerst und passt sie an die Karte an. Eine Datei, die nicht zur Karte passt, stoppt
@@ -985,7 +991,7 @@ Für eine Veranstaltung schreibt `export` die PDFs (Kapitel 5). Für einen schne
 ohne Projektdatei gibt es `render`:
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-4000-a4.pdf --paper a4
+freemapper-print render rummelsburg.omap --out rummelsburg-4000-a4.pdf --paper a4
 ```
 
 Ohne `--scale` druckt das Programm im Maßstab der Karte. `--scale 3000` druckt in 1:3000. Zum Drucken wählen Sie A4
@@ -1069,9 +1075,9 @@ zwei Punkten, deren Abstand Sie kennen, etwa zwei Gebäudeecken oder den Enden e
 | 1:3000 | 33,3 mm |
 
 Weicht das Maß ab, hat der Drucker skaliert. Prüfen Sie dann den Druckdialog. Die Beispiele
-[examples/luebeck-scales](../../examples/luebeck-scales/README.md) und
-[examples/luebeck-competition-layouts](../../examples/luebeck-competition-layouts/README.md) enthalten dieselbe
-Karte in 1:4000 auf A4 und 1:3000 auf A3.
+[examples/gleisdreieck-scales](../../examples/gleisdreieck-scales/README.md) und
+[examples/rummelsburg-competition-layouts](../../examples/rummelsburg-competition-layouts/README.md) zeigen je eine
+Karte in 1:4000 auf A4 und in 1:3000 auf A3.
 
 ### Hinweise zum Druck der Karte
 
@@ -1254,8 +1260,8 @@ Kontrollstrecke, andere Blattelemente, die Rahmenlinie und die Fußzeile. Auch d
 druckt das Programm immer, denn die Läufer brauchen die Richtung, und ohne die Linie gewinnt das Training nichts.
 
 Zwei Beispiele gehen alles mit jedem Befehl durch:
-[examples/luebeck-training-window](../../examples/luebeck-training-window/README.md) für Fenster-OL und
-[examples/luebeck-training-corridor](../../examples/luebeck-training-corridor/README.md) für Korridor-OL.
+[examples/gleisdreieck-training-window](../../examples/gleisdreieck-training-window/README.md) für Fenster-OL und
+[examples/gleisdreieck-training-corridor](../../examples/gleisdreieck-training-corridor/README.md) für Korridor-OL.
 
 ### Die Abdeckung in der Projektdatei
 
@@ -1276,7 +1282,7 @@ polygons = [
 ]
 ```
 
-Diese Abdeckung verbirgt auf dem Blatt der Bahn „Fenster“ aus luebeck-training-window die östliche Hälfte der
+Diese Abdeckung verbirgt auf dem Blatt einer Bahn „Fenster“ die östliche Hälfte der
 Karte und lässt darin zwei eckige Fenster offen.
 
 - `id` ist der Name der Abdeckung: 1 bis 64 Zeichen, keine Steuerzeichen, in der Datei nur einmal.
@@ -1344,19 +1350,24 @@ Lassen Sie dann einen der beiden weg, mit `--controls`, `--no-start` oder `--no-
 kleineren `--gap` an; die Meldung nennt den größten, der noch passt. Eine Abdeckung, die Sie von Hand schreiben,
 prüft das Programm nicht auf den Abstand. Dort dürfen Fenster überlappen.
 
-Die Ausgabe aus luebeck-training-window:
+Die Ausgabe aus gleisdreieck-training-window:
 
 ```
-Abdeckung „window-Fenster“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 43, 34, 41, 42, 38, 35, 50 und 37 und das Ziel der Bahn „Fenster“, mindestens 3 mm auseinander.
+Abdeckung „window-A“ in ./freemapper-print.toml eingetragen: 10 Fenster mit 15 mm Radius auf dem Papier bei 1:4000 um den Start, die Posten 31, 32, 33, 34, 35, 36, 37 und 38 und das Ziel der Bahn „A“, mindestens 3 mm auseinander.
 Posten 34 hat ein Fenster mit 20 mm Radius.
-Posten 50 hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
-Das Ziel hat ein Fenster mit 11,21 mm Radius statt 15 mm, damit der Abstand bleibt.
-Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
+Die Bahn „A“ wird jetzt damit gedruckt, auf Layout a4-a.
 Mit check sehen Sie das Ergebnis.
 ```
 
-Posten 50 und das Ziel liegen 25,4 mm auseinander. Die Abdeckung im Beispielprojekt entstand, bevor die Fenster
-einen Abstand hielten, und dort überlappen die beiden Fenster noch.
+Hier bleibt jedes Fenster bei seinem Radius, denn die Posten liegen weit genug auseinander. Mit `--radius 30` statt
+der Voreinstellung kämen für die verkleinerten Fenster Zeilen wie diese dazu, gekürzt:
+
+```
+Der Start hat ein Fenster mit 25,25 mm Radius statt 30 mm, damit der Abstand bleibt.
+Posten 31 hat ein Fenster mit 25,25 mm Radius statt 30 mm, damit der Abstand bleibt.
+Posten 34 hat ein Fenster mit 19,73 mm Radius statt 30 mm, damit der Abstand bleibt.
+Das Ziel hat ein Fenster mit 19,73 mm Radius statt 30 mm, damit der Abstand bleibt.
+```
 
 ![A4-Blatt hochkant, auf dem die Karte nur in zehn getrennten runden Fenstern um Start, Posten und Ziel zu sehen ist, dazwischen weißes Papier mit den violetten Strecken](img/mask-window.jpg)
 
@@ -1481,7 +1492,7 @@ Für Abdeckungen, die Sie von Hand schreiben, prüft das Programm beim Laden:
 | Ein Loch liegt ganz im Umriss seines Polygons und berührt ihn nicht. | Ein Loch außerhalb des Umrisses deckt nichts auf; was gemeint war, bleibt offen. |
 | Die Umrisse einer Abdeckung überlappen sich nicht, berühren sich nicht und liegen nicht ineinander. | In einer Überlappung würde die Karte wieder sichtbar. Für zwei Flächen, die sich berühren, zeichnen Sie einen Umriss um beide. |
 | Jede Zahl ist endlich und liegt zwischen −2 000 000 und 2 000 000 mm. | Das ist die Reichweite einer OOM-Karte. |
-| Höchstens 64 Abdeckungen je Datei, 256 Polygone je Abdeckung, 4096 Punkte je Ring, 100 000 Punkte in der ganzen Datei, 100 Millionen Rechenschritte für alle Prüfungen zusammen. | Die Grenzen schützen vor kaputten oder feindlichen Dateien. Ein Fenster aus `masks window` hat etwa 50 Punkte, die zehn Fenster aus luebeck-training-window zusammen etwa 500. |
+| Höchstens 64 Abdeckungen je Datei, 256 Polygone je Abdeckung, 4096 Punkte je Ring, 100 000 Punkte in der ganzen Datei, 100 Millionen Rechenschritte für alle Prüfungen zusammen. | Die Grenzen schützen vor kaputten oder feindlichen Dateien. Ein Fenster aus `masks window` hat etwa 50 Punkte, die zehn Fenster aus gleisdreieck-training-window zusammen etwa 500. |
 | Die Projektdatei ist höchstens 16 MB groß. | Die Abdeckungen einer Datei innerhalb der übrigen Grenzen brauchen höchstens etwa 4 MB. Eine größere Datei würde beim Lesen Gigabytes an Speicher belegen, bevor diese Grenzen sie ablehnen könnten. |
 
 Eine verletzte Regel hält `check` und `export` an. Die Meldung ist vorerst englisch und nennt Datei, Zeile, Spalte
