@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- A release needs one approval instead of two (decision 0061): only the job that signs uses the `release` environment. Every release is built with the updater and signed; without the signing secret it fails before anything is published.
+
 ## [0.8.0] - 2026-11-12
 
 ### Added
