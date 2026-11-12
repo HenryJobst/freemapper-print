@@ -1,0 +1,88 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Rummelsburg Sprint"
+date = 2027-05-15
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "rummelsburg.omap"
+
+[map]
+kind = "sprint"
+# Die Karte nennt in ihrem Informationsblock 2,5 m.
+contour_interval_m = 2.5
+
+# Die Karte hat keine Kartennotizen. Die Fußzeile nennt deshalb von Hand die Karte und ihren Autor.
+[print]
+copyright = """
+Karte: Rummelsburger Bucht, Remo Madella, MOO Challenge Berlin 2025
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event}",
+    "{date} · {organiser}",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "club_logo"
+kind = "logo"
+file = "logos/ol-verein-musterstadt.svg"
+width_mm = 35.0
+anchor = { to = "map_frame", corner = "bottom_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "sponsor_logo"
+kind = "logo"
+file = "logos/beispiel-sponsor.png"
+width_mm = 32.0
+anchor = { to = "map_frame", corner = "bottom_left", offset_mm = [41.0, 2.0] }
+
+# Ältere Klassen: A4 im Maßstab der Karte. Die Karte ist größer als der Kartenausschnitt und wird
+# mit Absicht beschnitten (crop): check nennt den Überstand nur als Hinweis. centre_map_mm legt
+# den Ausschnitt fest, in Millimetern auf der Karte, y nach oben.
+
+[[layouts]]
+id = "a4-4000"
+paper = "A4"
+orientation = "landscape"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [25.0, 12.0] }
+
+[[layouts.elements]]
+id = "classes"
+kind = "text"
+lines = ["Ältere Klassen: D/H 14 und älter"]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 16.5] }
+
+# Jüngste Klassen: A3 in 1:3000, Symbole auf 133 % (ISSprOM 2019-2, 3.1). Derselbe Kartenpunkt in
+# der Mitte, damit beide Blätter dieselbe Gegend zeigen.
+
+[[layouts]]
+id = "a3-3000"
+paper = "A3"
+orientation = "landscape"
+print_scale = 3000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [25.0, 12.0] }
+
+[[layouts.elements]]
+id = "classes"
+kind = "text"
+lines = ["Jüngste Klassen: D/H 10 und D/H 12"]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 16.5] }
