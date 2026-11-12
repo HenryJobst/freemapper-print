@@ -3,6 +3,9 @@
 
 mod ops;
 mod text;
+// The self-update; its command and the daily check follow (ADR 0060).
+#[allow(dead_code)]
+mod update;
 
 use std::path::{Path, PathBuf};
 
