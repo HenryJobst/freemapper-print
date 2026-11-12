@@ -1,4 +1,4 @@
-//! A stub of the GitHub release hosts for the update tests of `tests/cli.rs` and `tests/mcp.rs`.
+//! A stub of the GitHub release hosts for the update tests of `tests/update_cli.rs`.
 //! They need a build with the `test-stub` feature (`cargo test -p freemapper-print-cli --features
 //! test-stub`): only there does the program take `FREEMAPPER_PRINT_UPDATE_TEST_BASE`, count as a release
 //! build and send its requests for the GitHub hosts to this stub on 127.0.0.1.
