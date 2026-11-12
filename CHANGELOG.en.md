@@ -13,6 +13,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- Windows from `masks window` no longer overlap (decision 0063). At least 3 mm on paper stay free between two windows, set with `--gap` (MCP: `gap`, a field of its own in the editor). Where two controls are too close for that, both windows shrink in proportion to their radius, and the command names them. No window gets smaller than 5 mm; if the gap would need that, the command writes nothing and says what to leave out. Masks written by hand in the project file stay as they are.
 - A release needs one approval instead of two (decision 0061): only the job that signs uses the `release` environment. Every release is built with the updater and signed; without the signing secret it fails before anything is published.
 
 ## [0.8.0] - 2026-11-12
