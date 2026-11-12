@@ -1,24 +1,72 @@
 name: Release
 
 # A tag "v<version>" (matching the version in Cargo.toml) builds freemapper-print for every platform and
-# publishes a GitHub release with the archives and their SHA-256 checksums.
+# publishes a GitHub release with the archives and their SHA-256 checksums. With the signing secret in the
+# release environment it adds the bare executables as .gz and the signed update manifest
+# freemapper-print-update.json (ADR 0060); without it the release ships without the updater, as before.
+#
+# A dispatch with dry_run builds, packages and signs the same from the dispatching branch, named
+# v<version> after Cargo.toml, and keeps the result as a workflow artifact for 3 days. It publishes
+# nothing.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build and release, e.g. v0.1.0"
-        required: true
+        description: "Existing tag to (re)build and release, e.g. v0.1.0. Ignored in a dry run, which is named after Cargo.toml."
+        required: false
+      dry_run:
+        description: "Dry run: build and sign the dispatching branch, keep it as a workflow artifact, publish nothing"
+        type: boolean
+        default: false
 
+# Only the release job writes (it publishes); see its permissions.
 permissions:
-  contents: write
+  contents: read
 
 env:
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # What is built: the tag, or in a dry run the dispatching commit.
+  REF: ${{ inputs.dry_run && github.sha || github.event.inputs.tag || github.ref_name }}
 
 jobs:
+  # Tells the build whether this release is signed, before anything is compiled: a program built with
+  # the updater whose release has no manifest would tell every user "no manifest".
+  gate:
+    runs-on: ubuntu-latest
+    # The environment that holds the signing secrets; protection rules on it apply here too.
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      updater: ${{ steps.gate.outputs.updater }}
+    steps:
+      - name: Is the signing key available
+        id: gate
+        # Only whether the secret is set is looked at; its value is never printed.
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MINISIGN_SECRET_KEY" ]; then
+            echo "updater=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Once a published release has a manifest, a release without one would break the
+          # latest-download link of `freemapper-print update`. A dry run publishes nothing.
+          names=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .assets[].name')
+          if printf '%s\n' "$names" | grep -qxF freemapper-print-update.json && [ "$DRY_RUN" != true ]; then
+            echo "::error::The release environment has no MINISIGN_SECRET_KEY, but a published release has freemapper-print-update.json. A release without a manifest would break the latest-download link."
+            exit 1
+          fi
+          echo "updater=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::The release environment has no MINISIGN_SECRET_KEY; this release ships without the updater (ADR 0060)."
+
   build:
+    needs: gate
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +89,8 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash
@@ -48,20 +98,24 @@ jobs:
       # Actions pinned to commits; the comment names the release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
+          persist-credentials: false
       # The toolchain comes from rust-toolchain.toml; the target is added to it.
       - run: rustup target add ${{ matrix.target }}
-      - name: Check that the tag matches the version
-        run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          if [ "v$version" != "$TAG" ]; then
-            echo "Tag $TAG does not match version $version in Cargo.toml" >&2
-            exit 1
-          fi
+      # Sets TAG and checks it against Cargo.toml, in a dry run too.
+      - name: Name the release
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: .github/scripts/release-tag.sh
       - name: Install musl tools
         if: contains(matrix.target, 'musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build
+        # A release build of this repository that may update itself, only if the release is signed
+        # (gate). Only this step sets it; empty means a build without the updater.
+        env:
+          FREEMAPPER_DIST: ${{ needs.gate.outputs.updater == 'true' && 'github-release' || '' }}
         run: cargo build --release --locked -p freemapper-print-cli --target ${{ matrix.target }}
       - name: Smoke test
         if: ${{ !matrix.cross }}
@@ -93,29 +147,169 @@ jobs:
           else
             shasum -a 256 "$archive" > "$archive.sha256"
           fi
+      - name: Package the bare executable
+        # For `freemapper-print update`, and its SHA-256 for the update manifest.
+        if: ${{ needs.gate.outputs.updater == 'true' }}
+        run: |
+          sha256() {
+            if command -v sha256sum > /dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi
+          }
+          dir="freemapper-print-$TAG-${{ matrix.name }}"
+          exe=""
+          if [ "${{ runner.os }}" = "Windows" ]; then exe=".exe"; fi
+          gzip -9 -n -c "$dir/freemapper-print$exe" > "$dir.gz"
+          sha256 "$dir/freemapper-print$exe" > "$dir.exe.sha256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.name }}
           path: |
             freemapper-print-*.tar.gz
             freemapper-print-*.zip
+            freemapper-print-*.gz
             freemapper-print-*.sha256
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [gate, build]
     runs-on: ubuntu-latest
+    # Holds the signing secrets; protection rules on this environment guard them.
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.name.outputs.tag }}
+      # The previous release with an update manifest, for update-smoke; empty if there is none.
+      previous: ${{ steps.previous.outputs.tag }}
+      # "true" if this release is the latest one after publishing.
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
+          persist-credentials: false
+      - name: Name the release
+        id: name
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: .github/scripts/release-tag.sh
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
-      - name: Publish the release
+      - name: Install minisign
+        if: ${{ needs.gate.outputs.updater == 'true' }}
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      # Its signed manifest gives min_self_update_from (see update-manifest.sh).
+      - name: Find the previous release with an update manifest
+        id: previous
+        if: ${{ needs.gate.outputs.updater == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          # The highest published release below this version.
+          previous=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+              --limit 100 --json tagName --jq '.[].tagName' \
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+            | while read -r tag; do
+                lower=$(printf '%s\n' "$tag" "v$version" | sort -V | head -n 1)
+                if [ "$tag" != "v$version" ] && [ "$lower" = "$tag" ]; then echo "$tag"; fi
+              done \
+            | sort -V | tail -n 1)
+          assets=""
+          if [ -n "$previous" ]; then
+            assets=$(gh release view "$previous" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          fi
+          if printf '%s\n' "$assets" | grep -qxF freemapper-print-update.json; then
+            if ! printf '%s\n' "$assets" | grep -qxF freemapper-print-update.json.minisig; then
+              echo "::error::$previous has freemapper-print-update.json but no signature; min_self_update_from cannot be trusted."
+              exit 1
+            fi
+            gh release download "$previous" -R "$GITHUB_REPOSITORY" -D previous \
+              -p freemapper-print-update.json -p freemapper-print-update.json.minisig
+            # Each key line of the key file on its own, so a manifest signed with an older key that is
+            # still listed (key rotation) verifies too.
+            verified=false
+            while read -r key; do
+              if minisign -V -q -P "$key" -m previous/freemapper-print-update.json \
+                  -x previous/freemapper-print-update.json.minisig; then
+                verified=true
+                break
+              fi
+            done < <(grep -Ev '^(untrusted comment:|#|[[:space:]]*$)' assets/update/minisign.pub)
+            if [ "$verified" != true ]; then
+              echo "::error::The manifest of $previous does not verify with assets/update/minisign.pub; not using its min_self_update_from."
+              exit 1
+            fi
+            echo "tag=$previous" >> "$GITHUB_OUTPUT"
+            echo "Previous release with a verified update manifest: $previous"
+          else
+            echo "No previous release with an update manifest: this is the first release with the updater."
+          fi
+      - name: Write the update manifest
+        if: ${{ needs.gate.outputs.updater == 'true' }}
+        run: |
+          set -euo pipefail
+          if [ -f previous/freemapper-print-update.json ]; then
+            .github/scripts/update-manifest.sh dist previous/freemapper-print-update.json > freemapper-print-update.json
+          else
+            .github/scripts/update-manifest.sh dist > freemapper-print-update.json
+          fi
+          cat freemapper-print-update.json
+          # The executables' checksums are in the manifest now; they are not release assets.
+          mkdir exe-sha256
+          mv dist/*.exe.sha256 exe-sha256/
+      - name: Sign the update manifest
+        if: ${{ needs.gate.outputs.updater == 'true' }}
+        # The secrets reach the shell only as environment variables. The key file lives only in
+        # this step and is removed when it ends, also when it fails.
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "The secret MINISIGN_SECRET_KEY is not set; no release without a signed manifest." >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/minisign.key"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key")
+          printf '%s\n' "$MINISIGN_PASSWORD" \
+            | minisign -S -s "$key" -m freemapper-print-update.json -t "freemapper-print-update.json $TAG"
+      - name: Verify the signature with the public key in the program
+        if: ${{ needs.gate.outputs.updater == 'true' }}
+        run: |
+          set -euo pipefail
+          # -p takes the first key of the file. With two keys (rotation) loop over the key lines
+          # with `minisign -V -P <line>` instead, as the previous-release step does.
+          minisign -V -p assets/update/minisign.pub -m freemapper-print-update.json
+          # freemapper-print accepts only prehashed signatures: algorithm "ED", whose base64 starts with
+          # "RU". The legacy "Ed" ("RW", minisign -l) would be refused by every installed program.
+          case "$(sed -n 2p freemapper-print-update.json.minisig)" in
+            RU*) ;;
+            *)
+              echo "The signature is not prehashed; freemapper-print would refuse it." >&2
+              exit 1
+              ;;
+          esac
+          mv freemapper-print-update.json freemapper-print-update.json.minisig dist/
+          ls -l dist
+      - name: Keep the dry run as a workflow artifact
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dry-run-${{ steps.name.outputs.tag }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
+      - name: Publish the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATER: ${{ needs.gate.outputs.updater }}
         run: |
           ls -l dist
           # The release body starts with this version's section of CHANGELOG.en.md.
@@ -137,6 +331,9 @@ jobs:
           - macOS Apple Silicon (M1 and newer): freemapper-print-$TAG-macos-arm64.tar.gz
           - macOS Intel: freemapper-print-$TAG-macos-x86_64.tar.gz
           - Linux: freemapper-print-$TAG-linux-x86_64.tar.gz (ARM: linux-arm64)"
+          if [ "$UPDATER" = true ]; then
+            install_text="$install_text"$'\n\n'"The .gz files and freemapper-print-update.json with its signature are for \`freemapper-print update\`."
+          fi
           { cat changelog-section.md; echo; echo "$install_text"; } > release-notes.md
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
@@ -144,3 +341,85 @@ jobs:
             gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" \
               --title "freemapper-print $TAG" --notes-file release-notes.md --generate-notes
           fi
+      - name: Check that this release is the latest
+        id: latest
+        if: ${{ !inputs.dry_run && needs.gate.outputs.updater == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          if [ "$latest" = "$TAG" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG is not the latest release ($latest is); update-smoke is skipped."
+          fi
+
+  # The previous release updates itself to this one and rolls back. Skipped in a dry run, without the
+  # updater, for the first release with the updater (its predecessor has no manifest and no updater)
+  # and when this release is not the latest, which `update` would not offer.
+  update-smoke:
+    needs: [gate, release]
+    if: ${{ !inputs.dry_run && needs.gate.outputs.updater == 'true' && needs.release.outputs.previous != '' && needs.release.outputs.latest == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: macos-arm64
+          - os: windows-latest
+            platform: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      PREVIOUS: ${{ needs.release.outputs.previous }}
+    steps:
+      - name: Download the previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            windows-*) archive="freemapper-print-$PREVIOUS-${{ matrix.platform }}.zip" ;;
+            *) archive="freemapper-print-$PREVIOUS-${{ matrix.platform }}.tar.gz" ;;
+          esac
+          gh release download "$PREVIOUS" -R "$GITHUB_REPOSITORY" -p "$archive"
+          case "$archive" in
+            *.zip) 7z x "$archive" > /dev/null ;;
+            *) tar -xzf "$archive" ;;
+          esac
+      - name: Update it to this release and roll back
+        env:
+          # The update settings of the test, away from the runner's own folders.
+          FREEMAPPER_PRINT_CONFIG_DIR: ${{ runner.temp }}/freemapper-print-config
+          FREEMAPPER_PRINT_CACHE_DIR: ${{ runner.temp }}/freemapper-print-cache
+        run: |
+          set -euo pipefail
+          exe="freemapper-print-$PREVIOUS-${{ matrix.platform }}/freemapper-print"
+          if [ "${{ runner.os }}" = "Windows" ]; then exe="$exe.exe"; fi
+          version() { "$exe" --version | tr -d '\r'; }
+          expect() {
+            if [ "$(version)" != "freemapper-print $1" ]; then
+              echo "Expected freemapper-print $1, got: $(version)" >&2
+              exit 1
+            fi
+          }
+          expect "${PREVIOUS#v}"
+          # The new release can take a moment to become the latest one on the download servers. A
+          # failed attempt is retried; the version check after the loop decides.
+          for attempt in 1 2 3 4 5; do
+            "$exe" update --yes || true
+            if [ "$(version)" = "freemapper-print ${TAG#v}" ]; then break; fi
+            echo "Attempt $attempt did not install ${TAG#v} yet; waiting."
+            sleep 30
+          done
+          expect "${TAG#v}"
+          "$exe" update --rollback
+          expect "${PREVIOUS#v}"
