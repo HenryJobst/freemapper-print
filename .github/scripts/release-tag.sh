@@ -13,7 +13,7 @@ set -euo pipefail
 
 cargo_toml=${CARGO_TOML:-Cargo.toml}
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$cargo_toml" | head -n 1)
-if ! printf '%s\n' "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+if ! grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' <<< "$version"; then
   echo "release-tag.sh: no x.y.z version in $cargo_toml: '$version'" >&2
   exit 1
 fi

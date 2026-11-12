@@ -58,7 +58,7 @@ jobs:
           # latest-download link of `freemapper-print update`. A dry run publishes nothing.
           names=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.draft == false and .prerelease == false) | .assets[].name')
-          if printf '%s\n' "$names" | grep -qxF freemapper-print-update.json && [ "$DRY_RUN" != true ]; then
+          if grep -qxF freemapper-print-update.json <<< "$names" && [ "$DRY_RUN" != true ]; then
             echo "::error::The release environment has no MINISIGN_SECRET_KEY, but a published release has freemapper-print-update.json. A release without a manifest would break the latest-download link."
             exit 1
           fi
@@ -222,8 +222,8 @@ jobs:
           if [ -n "$previous" ]; then
             assets=$(gh release view "$previous" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
           fi
-          if printf '%s\n' "$assets" | grep -qxF freemapper-print-update.json; then
-            if ! printf '%s\n' "$assets" | grep -qxF freemapper-print-update.json.minisig; then
+          if grep -qxF freemapper-print-update.json <<< "$assets"; then
+            if ! grep -qxF freemapper-print-update.json.minisig <<< "$assets"; then
               echo "::error::$previous has freemapper-print-update.json but no signature; min_self_update_from cannot be trusted."
               exit 1
             fi

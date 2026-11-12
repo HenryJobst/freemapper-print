@@ -21,6 +21,8 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
 - **P2 Release gating.** freemapper's workflow plus a job `gate` that checks only whether the signing secret is set.
   Without it the release is unsigned and says so, unless an earlier release has a manifest; then `gate` fails.
   `gate` runs in the `release` environment, so it waits for that environment's required reviewer, if it has one.
+  Adding required reviewers to the `release` environment therefore makes `gate` wait for approval before the build starts.
+  Re-dispatching a tag from before this change fails at "Name the release", because that tag has no `.github/scripts/`.
 - **P3 When.** After `init`, `check`, `export`, `render`; at the start of `mcp` and `edit`; not after `numbers`,
   `masks`, `update`. No `--offline`; mode `off` does that.
 - **P4 Editor.** One stderr line at the start of `edit`, no page banner (no new endpoint, script or CSP change).

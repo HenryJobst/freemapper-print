@@ -40,7 +40,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 cargo_toml=${CARGO_TOML:-$root/Cargo.toml}
 
 is_version() {
-  printf '%s\n' "$1" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+  grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' <<< "$1"
 }
 
 # Whether version $1 <= version $2 (both x.y.z).
@@ -64,12 +64,12 @@ sha256() {
 }
 
 is_hash() {
-  printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{64}$'
+  grep -Eq '^[0-9a-f]{64}$' <<< "$1"
 }
 
-printf '%s\n' "$tag" | grep -Eq '^[A-Za-z0-9._-]+$' || fail "TAG is empty or has unexpected characters: '$tag'"
-printf '%s\n' "$repo" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || fail "unexpected GITHUB_REPOSITORY '$repo'"
-printf '%s\n' "$released" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || fail "RELEASED is not YYYY-MM-DD: '$released'"
+grep -Eq '^[A-Za-z0-9._-]+$' <<< "$tag" || fail "TAG is empty or has unexpected characters: '$tag'"
+grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' <<< "$repo" || fail "unexpected GITHUB_REPOSITORY '$repo'"
+grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' <<< "$released" || fail "RELEASED is not YYYY-MM-DD: '$released'"
 [ -d "$dist" ] || fail "no folder $dist"
 [ -f "$cargo_toml" ] || fail "no file $cargo_toml"
 
