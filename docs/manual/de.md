@@ -47,7 +47,7 @@ Er sucht das neueste Release, sagt, was neu ist, und fragt „Jetzt installieren
 | `--rollback` | Kehrt zur Version zurück, die die letzte Aktualisierung ersetzt hat. |
 | `--mode notify\|install\|off` | Legt fest, was die tägliche Prüfung tut, wenn sie eine neuere Version findet (Standard: `notify`). |
 
-Ein Release, das vor dem Update erschien, kann sich nicht selbst aktualisieren; das erste mit Update installieren Sie einmal von Hand. Braucht das neueste Release eine neuere Aktualisierung, als Ihre Version hat, sagt `update` das und nennt die Version, die Sie von Hand installieren.
+Ein Release, das vor dem Update erschien, kann sich nicht selbst aktualisieren; das erste mit Update installieren Sie einmal von Hand. Verlangt das neueste Release eine neuere Version der Aktualisierungsfunktion, als Ihre hat, sagt `update` das und nennt die Version, die Sie von Hand installieren.
 
 #### Die tägliche Prüfung
 
@@ -63,7 +63,7 @@ Was sie meldet, hängt vom Modus ab:
 
 #### Was gesendet wird
 
-Die Prüfung fragt das Aktualisierungsmanifest `freemapper-print-update.json` und seine Signatur `freemapper-print-update.json.minisig` bei den GitHub-Releases ab, und `update` lädt zusätzlich das Programm selbst. Die Anfragen tragen den festen User-Agent `freemapper-print/<Version> (+https://github.com/HenryJobst/freemapper-print)`: Programm, Version und Repository. Sie enthalten keine Daten über Sie oder Ihr Projekt, und das Programm hat keine Telemetrie. Außer für die Aktualisierung stellt das Programm keine Netzwerkanfragen.
+Die Prüfung fragt das Aktualisierungsmanifest `freemapper-print-update.json` und seine Signatur `freemapper-print-update.json.minisig` bei den GitHub-Releases ab, und `update` lädt zusätzlich das Programm selbst. Die Anfragen tragen den festen User-Agent `freemapper-print/<Version> (+https://github.com/HenryJobst/freemapper-print)`: Programm, Version und Repository. Sie enthalten keine Daten über Sie oder Ihr Projekt, und das Programm hat keine Telemetrie. Außer für die Prüfung und `update` stellt das Programm keine Netzwerkanfragen.
 
 #### Ordner
 
@@ -143,7 +143,7 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
 | `check_update` | `update --check` | | | ob es eine neuere Version gibt, mit den Versionsnummern und den Versionshinweisen |
-| `install_update` | `update --yes` | `confirm` | | `confirm` muss `true` sein. Installiert das neueste Release und sagt, dass der laufende Server die alte Version behält, bis er neu gestartet wird |
+| `install_update` | `update --yes` | | `confirm` | Installiert nur mit `confirm` auf `true`; ohne gibt das Werkzeug einen Fehler zurück. Installiert das neueste Release und sagt, dass der laufende Server die alte Version behält, bis er neu gestartet wird |
 
 Die Eingaben heißen wie die Optionen der Befehle (Kapitel 5, 8 und 11) und die Schlüssel der Projektdatei
 (Kapitel 6 und 7), nur mit Unterstrich: `radius_for` statt `--radius-for`, `points` als Text `"x,y;x,y"` wie bei
@@ -1609,7 +1609,7 @@ das gerade entsteht.
 
 Der Editor hört nur auf 127.0.0.1, erreichbar sind also nur Programme auf Ihrem Rechner. Die Adresse enthält ein
 zufälliges Kennzeichen, das bei jedem Start neu ist, und die Seite nimmt nur Änderungen an, die es tragen und von
-ihrer eigenen Adresse kommen. Der Editor selbst sendet nichts. Das Programm wendet sich nur für die Update-Prüfung an GitHub (Kapitel 2), höchstens einmal am Tag.
+ihrer eigenen Adresse kommen. Der Editor selbst sendet nichts. Das Programm wendet sich nur für die Update-Prüfung und für `update` selbst an GitHub (Kapitel 2), die Prüfung höchstens einmal am Tag.
 
 ### Probleme
 

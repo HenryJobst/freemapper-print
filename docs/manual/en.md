@@ -63,7 +63,7 @@ What it reports depends on the mode:
 
 #### What is sent
 
-The check requests the update manifest `freemapper-print-update.json` and its signature `freemapper-print-update.json.minisig` from the GitHub releases, and `update` also downloads the program itself. The requests carry the fixed User-Agent `freemapper-print/<version> (+https://github.com/HenryJobst/freemapper-print)`: program, version and repository. They carry no data about you or your project, and the program has no telemetry. Apart from the update, the program makes no network requests.
+The check requests the update manifest `freemapper-print-update.json` and its signature `freemapper-print-update.json.minisig` from the GitHub releases, and `update` also downloads the program itself. The requests carry the fixed User-Agent `freemapper-print/<version> (+https://github.com/HenryJobst/freemapper-print)`: program, version and repository. They carry no data about you or your project, and the program has no telemetry. Apart from the check and `update`, the program makes no network requests.
 
 #### Folders
 
@@ -142,7 +142,7 @@ project folder or the file `freemapper-print.toml` in it.
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
 | `check_update` | `update --check` | | | whether a newer version exists, with the version numbers and the release notes |
-| `install_update` | `update --yes` | `confirm` | | `confirm` must be `true`. Installs the newest release and says that the running server keeps the old version until it is restarted |
+| `install_update` | `update --yes` | | `confirm` | Installs only with `confirm` set to `true`; without it the tool returns an error. Installs the newest release and says that the running server keeps the old version until it is restarted |
 
 The inputs are named like the options of the commands (chapters 5, 8 and 11) and the keys of the project file
 (chapters 6 and 7), with underscores: `radius_for` for `--radius-for`, `points` as the text `"x,y;x,y"` as with
@@ -1546,7 +1546,7 @@ after the sheet in hand.
 
 The editor listens on 127.0.0.1 only, so only programs on your computer reach it. The address contains a random
 token that changes on every start, and the page only accepts changes that carry it and come from its own address.
-The editor itself sends nothing. The program contacts GitHub only for the update check (chapter 2), at most once a day.
+The editor itself sends nothing. The program contacts GitHub only for the update check and for `update` itself (chapter 2), the check at most once a day.
 
 ### Problems
 

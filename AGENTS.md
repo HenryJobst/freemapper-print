@@ -90,9 +90,10 @@ and names the release page. If the program folder is not writable, `update` name
 unpack the new archive there by hand, and point the registration at a new path only if it changed.
 
 Do not add the user's e-mail address, name or other personal data to any request, file name, project title or
-setting. The program contacts GitHub only for the update check, at most once a day. That request names the program,
-its version and the repository, and sends no data about the person or the project. `freemapper-print update --mode
-off` or `FREEMAPPER_PRINT_UPDATE=off` stops it. Apart from that the program makes no network requests.
+setting. The program contacts GitHub only for the update check and for `update` itself, which downloads the new
+program. The check runs at most once a day. Its request names the program, its version and the repository, and
+sends no data about the person or the project. `freemapper-print update --mode off` or
+`FREEMAPPER_PRINT_UPDATE=off` stops the check. Apart from that the program makes no network requests.
 
 ## Use it from the command line (preferred)
 
@@ -201,7 +202,7 @@ the `more_*` fields count the rest.
 | `set_layout` | `id`; optional `paper` (`A4`, `A3`), `page_mm` (`[width, height]` in portrait, 10 to 5080 mm each, instead of `paper`; `null` goes back), `orientation` (`auto`, `portrait`, `landscape`), `print_scale`, `margin_mm`, `border_mm`, `centre_map_mm`, `north_lines` (`auto`, `never`), `crop`, `hide_parts`, `hide_shared` | Adds a layout or changes the one with this id; keys left out keep their value. |
 | `set_element` | `id`, `kind`, `anchor`; optional `layout`, `lines`, `size_pt`, `file`, `width_mm`, `cell_mm`, `box_white` | Adds or replaces a sheet element. `kind`: `title_block`, `text`, `logo`, `scale_check_bar`, `credit_line`, `copyright_line`, `control_descriptions`. Without `layout` it is shared by all layouts. `anchor`: `to` (`page` or `map_frame`), `corner`, `offset_mm`. |
 | `check_update` | none | Whether a newer version exists, with the version numbers, the release date and the release notes. |
-| `install_update` | `confirm` | Installs the newest release over this program. Without `confirm: true` it installs nothing. The running server keeps the old version until the assistant restarts it; tell the person to restart it. |
+| `install_update` | optional `confirm` | Installs the newest release over this program. Without `confirm: true` it returns an error and installs nothing. The running server keeps the old version until the assistant restarts it; tell the person to restart it. |
 | `export_project` | `out_dir`; optional `courses`, `layouts`, `single_file` | Writes the PDFs into `out_dir`, which must exist. Replaces PDFs of the same name. Returns files with size, notes and the reminder to print at actual size. |
 
 ### Workflow

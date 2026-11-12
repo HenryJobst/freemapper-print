@@ -53,7 +53,6 @@ Das kann es schon:
   liest, prüft, Abdeckungen, Postennummern, Layouts und Blattelemente einträgt und die PDFs schreibt;
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
-
 - einen Editor im Browser (`freemapper-print edit`, ab Version 0.7.0): Blattvorschau, genau so gezeichnet wie im PDF, Elemente und Postennummern
   ziehen, Layouts und Elemente in Formularen ändern, Fenster- und Korridormasken anlegen, prüfen und PDFs
   schreiben; jede Änderung steht sofort in der Projektdatei, mit Rückgängig und Wiederholen;
@@ -166,7 +165,7 @@ Ein KI-Agent, der Befehle ausführen kann (Claude Code, Codex), übernimmt Herun
 
 ### Aktualisieren
 
-Ab der nächsten Version aktualisiert sich ein Release-Build selbst: `freemapper-print update` installiert nach Rückfrage das neueste Release an Ort und Stelle, prüft vorher dessen minisign-Signatur und hebt die alte Version als `freemapper-print.previous` auf; `freemapper-print update --rollback` kehrt zurück. Die tägliche Prüfung nach `init`, `check`, `export` und `render` sowie beim Start von `mcp` und `edit` meldet in einer Zeile, wenn es eine neuere Version gibt. Sie fragt höchstens einmal am Tag bei GitHub das Aktualisierungsmanifest und dessen Signatur ab, mit einem User-Agent, der Programm, Version und Repository nennt, und sendet keine Daten über Sie oder Ihr Projekt. `freemapper-print update --mode off` oder `FREEMAPPER_PRINT_UPDATE=off` schaltet sie ab. Ein selbst gebautes Programm sagt stattdessen, wie man es aktualisiert. Das [Handbuch](docs/manual/de.md#2-installation) erklärt alles genauer.
+Ab der nächsten Version aktualisiert sich ein Release-Build selbst: `freemapper-print update` installiert nach Rückfrage das neueste Release an Ort und Stelle, prüft vorher dessen minisign-Signatur und hebt die alte Version als `freemapper-print.previous` auf; `freemapper-print update --rollback` kehrt zurück. Die tägliche Prüfung nach `init`, `check`, `export` und `render` sowie beim Start von `mcp` und `edit` meldet in einer Zeile, wenn es eine neuere Version gibt. Die Prüfung fragt höchstens einmal am Tag bei GitHub das Aktualisierungsmanifest und dessen Signatur ab, mit einem User-Agent, der Programm, Version und Repository nennt, und sendet keine Daten über Sie oder Ihr Projekt. `freemapper-print update --mode off` oder `FREEMAPPER_PRINT_UPDATE=off` schaltet sie ab. Ein selbst gebautes Programm sagt stattdessen, wie man es aktualisiert. Kapitel 2 des [Handbuchs](docs/manual/de.md#2-installation) nennt die Schalter und Ordner.
 
 ## Selbst bauen (für Entwickler)
 
@@ -326,8 +325,6 @@ und die Kommentare der Projektdatei bleiben bis auf wenige Fälle stehen, die da
 er nach dem Blatt, an dem er gerade zeichnet. Das [Handbuch](docs/manual/de.md#3-mit-einem-ki-agenten) beschreibt jedes Werkzeug, das Beispiel
 [`mcp-session`](examples/mcp-session/README.md) zeigt eine echte Sitzung: Fenster-OL aus dem Viktoriapark-Training,
 geprüft und als PDF geschrieben.
-
-Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jedem Release-Archiv liegt: Sie erklärt einem Agenten, wie er das Programm installiert und aktualisiert und über MCP oder die Kommandozeile bedient.
 
 Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jedem Release-Archiv liegt: Sie erklärt einem Agenten, wie er das Programm installiert und aktualisiert und über MCP oder die Kommandozeile bedient.
 
