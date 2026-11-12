@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
 ### Added
 
 - `freemapper-print update` installs the newest release over the running program after asking (decision 0060). It checks the minisign signature of the release manifest and the SHA-256 of the program first and installs nothing that does not verify. Switches: `--check` (exit code 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback` and `--mode notify|install|off`. The replaced version stays next to the program as `freemapper-print.previous`.

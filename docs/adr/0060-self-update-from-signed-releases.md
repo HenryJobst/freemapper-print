@@ -60,5 +60,10 @@ exempts core's own crates, not `flate2`; this exception ends with the next core 
   docs. Cost if wrong: a doc nit survived to the final fix wave.
 - `flate2` 1.1.11 stays as an exception to ADR 0006; see above. Cost if wrong: one dependency is six days younger
   than the policy.
+- Signed dry run (Task 8): run 43226024081 of `release.yml` on `main` on 2026-11-12 built the five platforms,
+  packaged five archives and five `.gz` files and signed the manifest; `minisign -V -p assets/update/minisign.pub`
+  verified it with the prehashed algorithm. The first run (43223515852) failed because the environment secret was
+  not a complete key file. The environment `release` allows the tag rule `v*` and the branch `main`; the branch
+  rule exists for the dry run. Cost if wrong: a workflow on `main` that names the environment could reach the secrets.
 
 Source: user request of 2026-11-12; freemapper ADR 0094 and its spec; core ADR 0026; plan `docs/superpowers/plans/2026-11-12-self-update.md`.

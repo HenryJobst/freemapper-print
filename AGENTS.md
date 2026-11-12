@@ -31,7 +31,7 @@ freemapper-print is one executable without an installer and without dependencies
 unless the user asks; the release archives are ready to run.
 
 1. Find the newest version: `https://api.github.com/repos/HenryJobst/freemapper-print/releases/latest` returns
-   JSON with `tag_name`, for example `v0.7.0`. The release page is
+   JSON with `tag_name`, for example `v0.8.0`. The release page is
    <https://github.com/HenryJobst/freemapper-print/releases/latest>.
 2. Pick the archive for the system. The name is `freemapper-print-<tag>-<platform>` plus the extension:
 
@@ -48,7 +48,7 @@ unless the user asks; the release archives are ready to run.
 3. Download, check and unpack. macOS and Linux, for example in `~/Applications` or `~/opt`:
 
    ```sh
-   tag=v0.7.0; platform=macos-arm64
+   tag=v0.8.0; platform=macos-arm64
    base="https://github.com/HenryJobst/freemapper-print/releases/download/$tag"
    curl -fLO "$base/freemapper-print-$tag-$platform.tar.gz"
    curl -fLO "$base/freemapper-print-$tag-$platform.tar.gz.sha256"
@@ -59,7 +59,7 @@ unless the user asks; the release archives are ready to run.
    Windows (PowerShell):
 
    ```powershell
-   $tag = "v0.7.0"; $name = "freemapper-print-$tag-windows-x86_64.zip"
+   $tag = "v0.8.0"; $name = "freemapper-print-$tag-windows-x86_64.zip"
    $base = "https://github.com/HenryJobst/freemapper-print/releases/download/$tag"
    Invoke-WebRequest "$base/$name" -OutFile $name
    Invoke-WebRequest "$base/$name.sha256" -OutFile "$name.sha256"
@@ -81,7 +81,7 @@ unless the user asks; the release archives are ready to run.
 
 Remember the absolute path of the executable; the MCP registration needs it. Project files stay valid.
 
-From the release after 0.7.0 on (0.7.0 has no `update` command), you update an installed release build with
+From 0.8.0 on (0.7.0 and earlier have no `update` command), you update an installed release build with
 `freemapper-print update` instead of unpacking a newer archive: it checks the signature, replaces the program at the
 same path (so the registration keeps working) and keeps the old version as `freemapper-print.previous` (on Windows
 `freemapper-print.previous.exe`). Until then, unpack the new archive. Ask the person first, then add `--yes` (without a terminal it refuses to install
@@ -121,7 +121,7 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
 | `edit <project>` | The browser editor, for people. `--port <n>`, `--no-browser`. |
-| `update` | From the release after 0.7.0 on: installs the newest signed release over this program. `--check` (exit 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback`, `--mode notify\|install\|off`. |
+| `update` | From 0.8.0 on: installs the newest signed release over this program. `--check` (exit 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback`, `--mode notify\|install\|off`. |
 | `mcp` | The MCP server. |
 
 `<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to

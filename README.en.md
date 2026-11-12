@@ -55,7 +55,7 @@ What it does already:
   numbers, forms for layouts and elements, window and corridor masks, check and PDF export; every change is
   written to the project file at once, with undo and redo;
 - `freemapper-print update` installs the newest signed release over the program, `--rollback` goes back, and a daily
-  check reports a newer version (comes with the next version; see Installation).
+  check reports a newer version (from version 0.8.0 on; see Installation).
 
 Planned:
 
@@ -129,7 +129,7 @@ on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows t
 
 ## Status
 
-The current version is [v0.7.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.7.0) of
+The current version is [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) of
 12 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
@@ -161,7 +161,7 @@ An AI agent that can run commands (Claude Code, Codex) can also do the download,
 
 ### Updates
 
-From the next version on, a release build updates itself: `freemapper-print update` installs the newest release in place after asking, checks its minisign signature first and keeps the old version as `freemapper-print.previous`; `freemapper-print update --rollback` goes back. The daily check, after `init`, `check`, `export` and `render` and at the start of `mcp` and `edit`, tells you in one line when a newer version exists. The check asks GitHub for the update manifest and its signature at most once a day, with a User-Agent that names the program, its version and the repository, and sends no data about you or your project. `freemapper-print update --mode off` or `FREEMAPPER_PRINT_UPDATE=off` stops it. A program built from source says how to update it instead. Chapter 2 of the [manual](docs/manual/en.md#2-installation) lists the switches and folders.
+From version 0.8.0 on, a release build updates itself: `freemapper-print update` installs the newest release in place after asking, checks its minisign signature first and keeps the old version as `freemapper-print.previous`; `freemapper-print update --rollback` goes back. The daily check, after `init`, `check`, `export` and `render` and at the start of `mcp` and `edit`, tells you in one line when a newer version exists. The check asks GitHub for the update manifest and its signature at most once a day, with a User-Agent that names the program, its version and the repository, and sends no data about you or your project. `freemapper-print update --mode off` or `FREEMAPPER_PRINT_UPDATE=off` stops it. A program built from source says how to update it instead. Chapter 2 of the [manual](docs/manual/en.md#2-installation) lists the switches and folders.
 
 ## Building from source (for developers)
 
