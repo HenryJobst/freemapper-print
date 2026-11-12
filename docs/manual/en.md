@@ -729,9 +729,9 @@ bad file never produces a sheet. The exit code is 1.
 
 ### Course sheets and the overprint
 
-![An A4 sheet with the map, the purple course A with eight controls and numbers, the title block at the top left and the description box at the top right](img/course-sheet.jpg)
+![An A4 portrait sheet with the map, the purple course A with eight controls and numbers, the title block at the top left and the description box at the top right](img/course-sheet.jpg)
 
-*The sheet of course "A" at 1:4000 with overprint, numbers, title block and description box (the course is made up for this manual). Map: Remo Madella, MOO Challenge Berlin 2025.*
+*The sheet of course "A" (2.4 km, eight controls) at 1:4000 with overprint, numbers, title block and description box. The course was made with freemapper-courseplan 0.14.1. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 With a course file, `export` writes one PDF per course instead of one per layout (see "Export" below). A course
 sheet is the layout the course is assigned to, with these changes:
@@ -784,9 +784,9 @@ climb, the start, one row per control with number, code and the symbols for the 
 routes and map exchanges with their length, and the finish. The secondary title of a course from Purple Pen gets
 its own row, and a map flip the row 15.6. A score course lists its controls by code, the way Purple Pen does.
 
-![A table with the title, course A with 1.4 km, the start, eight rows with number, code and symbol, and the finish row](img/description-box.png)
+![A table with the title, course A with 2.4 km, the start, eight rows with number, code and symbol, and the finish row](img/description-box.png)
 
-*The description box of course "A" with title, length, start, eight controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
+*The description box of course "A" with title, length (2.4 km), start, eight controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 The box has a white background and is drawn in Arimo. A cell is 6 mm by default. `cell_mm` sets it from 4 to 10 mm.
 The box keeps its size at every print scale, as an element on paper should. If a 1:3000 sheet needs more room for
@@ -845,9 +845,9 @@ When the program places a number itself, it follows four rules. The user rules o
    outer bisector, between the two legs on their outer side.
 4. If the preferred place is blocked, the free place that deviates least from it wins.
 
-![A detail of the sheet with controls 3, 4 and 5, their circles, the purple legs between them and the numbers beside them](img/course-detail.jpg)
+![A detail of the sheet with controls 4, 5 and 6, their circles, the purple legs between them and the numbers beside them](img/course-detail.jpg)
 
-*Controls 3 to 5 of course "A" with circle, leg and number. Map: Remo Madella, MOO Challenge Berlin 2025.*
+*Controls 4 to 6 of course "A" with circle, leg and number. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 The program never moves a number on its own. It prints where the level puts it, and `check` scores every number
 against the overprint, the sheet elements, the edge of the map frame and the map's own symbols. If a number lies
@@ -1311,9 +1311,9 @@ radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 
 15 mm, to keep the gap." Control 50 and the finish are 25.4 mm apart. The mask in the example project was written
 before windows kept a gap, and there the two windows still overlap.
 
-![An A4 sheet where the map shows only in round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
+![An A4 portrait sheet where the map shows only in ten separate round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
 
-*Course "A" with a mask for window orienteering (`masks window --radius 14 --assign`): the map shows only in the windows around start, controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
+*Course "A" with a mask for window orienteering (`masks window --course A --assign`, defaults otherwise): ten windows of 15 mm radius on paper around start, controls and finish. None touches another, and white paper lies between them. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### A corridor along a line: `masks corridor`
 
@@ -1349,9 +1349,9 @@ command does not write a branch or a second corridor for the same course. For th
 an `--id` for each piece, then copy the second ring (the hole) of one piece into the polygon of the other. Holes
 may overlap. Delete the table you no longer need.
 
-![A sheet with a narrow, bent strip of map that runs through all five controls, white paper elsewhere and the description box at the bottom right](img/mask-corridor.jpg)
+![A landscape sheet with a narrow strip of map that runs along the legs through all five controls and crosses itself, white paper elsewhere and the description box at the top right](img/mask-corridor.jpg)
 
-*Course "B" with a corridor mask (`masks corridor --width 12`) on a sheet of 210 mm × 150 mm (`page_mm`). Map: Remo Madella, MOO Challenge Berlin 2025.*
+*Course "B" with a corridor mask (`masks corridor --width 12`) on a sheet of 190 mm × 160 mm (`page_mm`). Legs 1 to 2 and 4 to 5 of the course cross, so the corridor was made in two pieces and merged, as described above. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### What both commands write
 
@@ -1553,9 +1553,9 @@ own radii (`35=20`), the gap between windows, "No window at the start", "No wind
 millimetres on paper. A window mask
 needs a course file.
 
-![The editor after adding a window mask: the preview shows the map only in round windows, the mask fenster-a is in the tree and its properties are on the right](img/editor-window-mask.png)
+![The editor after adding a window mask: the preview shows the map only in round windows, the mask window-A is in the tree and its properties are on the right](img/editor-window-mask.png)
 
-*The editor after "Add the window mask" ("Fenstermaske anlegen" in the German interface): the preview shows the windows, and the mask "fenster-a" is in the tree. Map: Remo Madella, MOO Challenge Berlin 2025.*
+*The editor after "Add the window mask" ("Fenstermaske anlegen" in the German interface): the preview shows the windows, and the mask "window-A" is in the tree. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 **Corridor mask.** Masks menu, Corridor mask. Click the points of the line on the sheet and double-click the
 last one; the form says how many points are drawn. Instead you can type the route into "Points typed as x,y;x,y in

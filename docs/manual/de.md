@@ -755,9 +755,9 @@ eine schlechte Datei nie ein Blatt erzeugt. Der Exit-Code ist 1.
 
 ### Bahnblätter und Bahnaufdruck
 
-![A4-Blatt mit der Karte, der violetten Bahn A mit acht Posten und Nummern, dem Titelblock oben links und dem Beschreibungskasten oben rechts](img/course-sheet.jpg)
+![A4-Blatt hochkant mit der Karte, der violetten Bahn A mit acht Posten und Nummern, dem Titelblock oben links und dem Beschreibungskasten oben rechts](img/course-sheet.jpg)
 
-*Das Blatt der Bahn „A“ in 1:4000 mit Bahnaufdruck, Nummern, Titelblock und Beschreibungskasten (die Bahn ist für dieses Handbuch erfunden). Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Das Blatt der Bahn „A“ (2,4 km, acht Posten) in 1:4000 mit Bahnaufdruck, Nummern, Titelblock und Beschreibungskasten. Die Bahn ist mit freemapper-courseplan 0.14.1 gemacht. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Mit einer Bahndatei schreibt `export` ein PDF je Bahn statt je Layout (siehe „Export“ unten). Ein Bahnblatt ist
 das Layout, dem die Bahn zugeordnet ist, mit diesen Änderungen:
@@ -814,9 +814,9 @@ Pflichtstrecken und Kartenwechsel mit ihrer Länge und das Ziel. Der zweite Tite
 bekommt eine eigene Zeile, ein Kartenwechsel („map flip“) die Zeile 15.6. Eine Bahn mit Wertung (Score-Lauf) führt ihre Posten
 nach Code auf, wie Purple Pen es tut.
 
-![Tabelle mit Titel, Bahn A mit 1,4 km, Start, acht Zeilen mit Nummer, Code und Symbol und der Zielzeile](img/description-box.png)
+![Tabelle mit Titel, Bahn A mit 2,4 km, Start, acht Zeilen mit Nummer, Code und Symbol und der Zielzeile](img/description-box.png)
 
-*Der Beschreibungskasten der Bahn „A“ mit Titel, Länge, Start, acht Posten und Ziel. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Der Beschreibungskasten der Bahn „A“ mit Titel, Länge (2,4 km), Start, acht Posten und Ziel. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Der Kasten hat weißen Hintergrund und ist in Arimo gesetzt. Ein Kästchen ist standardmäßig 6 mm groß, `cell_mm`
 setzt 4 bis 10 mm. Der Kasten behält seine Größe bei jedem Druckmaßstab, wie es ein Element auf dem Papier tun
@@ -881,9 +881,9 @@ Platziert das Programm eine Nummer selbst, folgt es vier Regeln, die aus den Reg
    Nummer auf der äußeren Winkelhalbierenden, zwischen den beiden Strecken auf ihrer Außenseite.
 4. Ist der bevorzugte Platz belegt, gewinnt der freie Platz, der am wenigsten davon abweicht.
 
-![Ausschnitt des Blatts mit den Posten 3, 4 und 5, ihren Kreisen, den violetten Strecken dazwischen und den Nummern daneben](img/course-detail.jpg)
+![Ausschnitt des Blatts mit den Posten 4, 5 und 6, ihren Kreisen, den violetten Strecken dazwischen und den Nummern daneben](img/course-detail.jpg)
 
-*Die Posten 3 bis 5 der Bahn „A“ mit Kreis, Strecke und Nummer. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Die Posten 4 bis 6 der Bahn „A“ mit Kreis, Strecke und Nummer. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Das Programm verschiebt eine Nummer nie von selbst. Es druckt sie dort, wo ihre Ebene sie hinsetzt, und `check`
 bewertet jede Nummer gegen den Bahnaufdruck, die Blattelemente, den Rand des Kartenausschnitts und die Symbole der
@@ -1358,9 +1358,9 @@ Mit check sehen Sie das Ergebnis.
 Posten 50 und das Ziel liegen 25,4 mm auseinander. Die Abdeckung im Beispielprojekt entstand, bevor die Fenster
 einen Abstand hielten, und dort überlappen die beiden Fenster noch.
 
-![A4-Blatt, auf dem die Karte nur in runden Fenstern um Start, Posten und Ziel zu sehen ist, dazwischen weißes Papier mit den violetten Strecken](img/mask-window.jpg)
+![A4-Blatt hochkant, auf dem die Karte nur in zehn getrennten runden Fenstern um Start, Posten und Ziel zu sehen ist, dazwischen weißes Papier mit den violetten Strecken](img/mask-window.jpg)
 
-*Die Bahn „A“ mit Abdeckung für Fenster-OL (`masks window --radius 14 --assign`): Die Karte ist nur in den Fenstern um Start, Posten und Ziel zu sehen. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Die Bahn „A“ mit Abdeckung für Fenster-OL (`masks window --course A --assign`, sonst nur Voreinstellungen): zehn Fenster mit 15 mm Radius auf dem Papier um Start, Posten und Ziel. Keins berührt ein anderes. Zwischen ihnen bleibt weißes Papier. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### Ein Korridor entlang einer Linie: `masks corridor`
 
@@ -1398,9 +1398,9 @@ ihn dafür ohne `--assign` mit `--id` für jedes Stück auf und kopieren Sie dan
 einen Stücks in das Polygon des anderen. Löcher dürfen sich überlappen. Die Tabelle, die Sie dann nicht mehr
 brauchen, löschen Sie.
 
-![Blatt mit einem schmalen, geknickten Streifen Karte, der durch alle fünf Posten führt, sonst weißes Papier; unten rechts der Beschreibungskasten](img/mask-corridor.jpg)
+![Querformatiges Blatt mit einem schmalen Streifen Karte, der entlang der Strecken durch alle fünf Posten führt und sich selbst kreuzt, sonst weißes Papier; oben rechts der Beschreibungskasten](img/mask-corridor.jpg)
 
-*Die Bahn „B“ mit Korridor-Abdeckung (`masks corridor --width 12`) auf einem Blatt von 210 mm × 150 mm (`page_mm`). Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Die Bahn „B“ mit Korridor-Abdeckung (`masks corridor --width 12`) auf einem Blatt von 190 mm × 160 mm (`page_mm`). Die Strecken 1–2 und 4–5 der Bahn kreuzen sich, deshalb ist der Korridor in zwei Stücken gemacht und zusammengeführt, wie oben beschrieben. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### Was beide Befehle in die Datei schreiben
 
@@ -1616,9 +1616,9 @@ Posten. Dazu kommen Radius, eigene Radien (`35=20`), der Abstand zwischen den Fe
 „Kein Fenster am Ziel“, eine Kennung und „Bahn mit dieser Maske drucken“. „Fenstermaske anlegen“ schreibt sie, wie
 `masks window`. Radien und Abstand sind in Millimetern auf dem Papier. Eine Fenstermaske braucht eine Bahndatei.
 
-![Editor nach dem Anlegen einer Fenstermaske: Die Vorschau zeigt die Karte nur in runden Fenstern, im Baum steht die Abdeckung fenster-a, rechts ihre Eigenschaften](img/editor-window-mask.png)
+![Editor nach dem Anlegen einer Fenstermaske: Die Vorschau zeigt die Karte nur in runden Fenstern, im Baum steht die Abdeckung window-A, rechts ihre Eigenschaften](img/editor-window-mask.png)
 
-*Der Editor nach „Fenstermaske anlegen“: Die Vorschau zeigt die Fenster, die Abdeckung „fenster-a“ steht im Baum. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+*Der Editor nach „Fenstermaske anlegen“: Die Vorschau zeigt die Fenster, die Abdeckung „window-A“ steht im Baum. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 **Korridormaske.** Menü „Masken“, „Korridormaske“. Klicken Sie die Punkte der Linie im Blatt an und den letzten
 doppelt; das Formular nennt die Zahl der gezeichneten Punkte. Statt zu zeichnen, tippen Sie die Strecke ins Feld
