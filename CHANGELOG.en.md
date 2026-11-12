@@ -7,6 +7,17 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- `freemapper-print update` installs the newest release over the running program after asking (decision 0060). It checks the minisign signature of the release manifest and the SHA-256 of the program first and installs nothing that does not verify. Switches: `--check` (exit code 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback` and `--mode notify|install|off`. The replaced version stays next to the program as `freemapper-print.previous`.
+- A daily check, at most once in 24 hours and with a limit of 3 seconds, runs after `init`, `check`, `export` and `render` and at the start of `mcp` and `edit`. In mode `notify` (the default) it prints one line on stderr when a newer version exists. In mode `install` it installs the version after a command that ended with exit code 0, never in `mcp` or `edit`. `update --mode off` or `FREEMAPPER_PRINT_UPDATE=off` stops the check.
+- The check requests only the update manifest and its signature from the GitHub releases, with a User-Agent that names the program, its version and the repository, and sends no data about the person or the project. The setting lives in `settings.toml` in the configuration folder and the record of the last check in `update-check.json` in the cache folder; `FREEMAPPER_PRINT_CONFIG_DIR` and `FREEMAPPER_PRINT_CACHE_DIR` name other folders.
+- The MCP server has two more tools, `check_update` and `install_update` (the latter installs only with `confirm: true`), and puts a note on its first result when a newer version exists. A program built from source, or by a release built without the signing key, says so and names the releases page.
+
+### Changed
+
+- The MCP server has thirteen tools instead of eleven. The release workflow signs an update manifest with the key freemapper uses, and publishes the programs as single gzip files next to the archives; without the signing secret a release is built as before and its programs say they cannot update themselves.
+
 ### Fixed
 
 - The editor shortens a logo path to its file name whichever system wrote it (`/home/…` on Windows as well as `C:\…`), so the page never shows the folders of another system.

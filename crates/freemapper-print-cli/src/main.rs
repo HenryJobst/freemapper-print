@@ -47,6 +47,50 @@ enum Commands {
     Masks(MasksArgs),
     Edit(editor::EditArgs),
     Mcp,
+    Update(UpdateArgs),
+}
+
+impl Commands {
+    /// Whether the daily update check runs after this command (ADR 0060, P3): the commands a
+    /// person looks at the result of. Mask and number edits come in series and `check` follows
+    /// them; `mcp` and `edit` tell at their start instead; `update` is the check itself.
+    fn update_check(&self) -> bool {
+        matches!(
+            self,
+            Commands::Init(_) | Commands::Check(_) | Commands::Export(_) | Commands::Render(_)
+        )
+    }
+}
+
+#[derive(Args)]
+struct UpdateArgs {
+    #[arg(long, conflicts_with_all = ["yes", "rollback"])]
+    check: bool,
+    #[arg(long)]
+    yes: bool,
+    #[arg(long, value_name = "X.Y.Z")]
+    version: Option<freemapper_update::Version>,
+    #[arg(long, conflicts_with = "version")]
+    rollback: bool,
+    #[arg(long, value_enum, conflicts_with_all = ["check", "yes", "version", "rollback"])]
+    mode: Option<UpdateModeArg>,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum UpdateModeArg {
+    Notify,
+    Install,
+    Off,
+}
+
+impl From<UpdateModeArg> for freemapper_update::Mode {
+    fn from(mode: UpdateModeArg) -> Self {
+        match mode {
+            UpdateModeArg::Notify => Self::Notify,
+            UpdateModeArg::Install => Self::Install,
+            UpdateModeArg::Off => Self::Off,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -247,6 +291,8 @@ macro_rules! args {
 // After `args!`, which it uses.
 mod editor;
 mod mcp;
+// The self-update (ADR 0060); after `args!`, which its command uses.
+mod update;
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
@@ -2331,6 +2377,14 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 .mut_arg("port", |a| a.help(texts.plain("help-edit-port")))
                 .mut_arg("no_browser", |a| a.help(texts.plain("edit-no-browser")))
         })
+        .mut_subcommand("update", |c| {
+            c.about(texts.plain("update-about"))
+                .mut_arg("check", |a| a.help(texts.plain("help-update-check")))
+                .mut_arg("yes", |a| a.help(texts.plain("help-update-yes")))
+                .mut_arg("version", |a| a.help(texts.plain("help-update-version")))
+                .mut_arg("rollback", |a| a.help(texts.plain("help-update-rollback")))
+                .mut_arg("mode", |a| a.help(texts.plain("help-update-mode")))
+        })
         .mut_subcommand("mcp", |c| {
             c.about(texts.plain("mcp-about")).after_long_help(format!(
                 "{}\n\n{}",
@@ -2367,6 +2421,16 @@ fn main() -> std::process::ExitCode {
     let texts = Texts::new(&lang);
     let matches = localised_command(&texts).get_matches_from(args);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    // The MCP server's stdout is the protocol, and a stale file may be an older server still
+    // running; it is left alone.
+    if !matches!(cli.command, Commands::Mcp) {
+        update::background::remove_stale_files();
+    }
+    let daily = cli
+        .command
+        .update_check()
+        .then(update::background::CheckContext::of_process)
+        .and_then(|ctx| update::background::start_background_check(&ctx));
     let result = match cli.command {
         Commands::Render(args) => render(&texts, &args),
         Commands::Init(args) => init(&texts, &args),
@@ -2381,13 +2445,32 @@ fn main() -> std::process::ExitCode {
         },
         Commands::Edit(mut args) => {
             args.lang = fixed_lang;
+            // One line on stderr at the start, no page banner (ADR 0060, P4).
+            update::background::check_for_server(
+                &update::background::CheckContext::of_process(),
+                texts.clone(),
+                |note| eprintln!("{note}"),
+            );
             editor::run(&args, &texts)
                 .map(|()| 0)
                 .map_err(|err| op_error(&texts, err))
         }
         Commands::Mcp => mcp::run(&texts),
+        Commands::Update(args) => update::command::run(
+            &texts,
+            update::command::Request {
+                check: args.check,
+                yes: args.yes,
+                version: args.version,
+                rollback: args.rollback,
+                mode: args.mode.map(Into::into),
+            },
+        ),
     };
-    match result {
+    // Only a command that ended with exit code 0 counts as a success: mode `install` waits for the
+    // next clean run (ADR 0060, P5).
+    let command_ok = matches!(result, Ok(0));
+    let code = match result {
         Ok(code) => std::process::ExitCode::from(code),
         Err(err) => {
             // Errors can quote map content, so they get the same escaping as the notes.
@@ -2403,7 +2486,12 @@ fn main() -> std::process::ExitCode {
             };
             std::process::ExitCode::from(code)
         }
+    };
+    // After the command's own output, its error included.
+    if let Some(report) = daily.and_then(|daily| daily.finish(&texts, command_ok)) {
+        report.print();
     }
+    code
 }
 
 #[cfg(test)]

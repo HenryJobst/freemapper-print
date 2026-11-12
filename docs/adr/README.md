@@ -94,9 +94,10 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0051](0051-render-comes-from-freemapper-core.md) | The renderer comes from freemapper-core | Accepted, amends [0014](0014-renderer-copied-from-freemapper.md) | 2026-11-10 |
 | [0052](0052-an-unknown-map-kind-counts-as-absent.md) | An unknown map kind in freemapper.toml counts as absent | Accepted, amends [0050](0050-reader-tests-against-the-suite-contract.md) | 2026-11-10 |
 | [0053](0053-page-builder-comes-from-freemapper-core.md) | The page builder comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) | 2026-11-11 |
-| [0054](0054-mcp-tool-set.md) | The MCP tool set | Accepted, implements [0004](0004-mcp-over-stdio-as-a-primary-interface.md) | 2026-11-11 |
+| [0054](0054-mcp-tool-set.md) | The MCP tool set | Accepted, implements [0004](0004-mcp-over-stdio-as-a-primary-interface.md), amended by [0060](0060-self-update-from-signed-releases.md) | 2026-11-11 |
 | [0055](0055-course-overprint-comes-from-freemapper-core.md) | The course overprint comes from freemapper-core | Accepted, amends [0051](0051-render-comes-from-freemapper-core.md) |
 | [0056](0056-print-rules-come-from-freemapper-core.md) | The print rules come from freemapper-core | Accepted, amends [0031](0031-print-rules-as-data-profiles.md) and [0018](0018-symbols-scale-as-the-iof-standards-set.md) |
 | [0057](0057-map-kind-and-sidecar-from-the-contract.md) | The map kind and the sidecar reader come from the contract | Accepted, amends [0056](0056-print-rules-come-from-freemapper-core.md) and [0052](0052-an-unknown-map-kind-counts-as-absent.md) |
 | [0058](0058-free-page-size-in-layouts.md) | A layout can set a free page size | Accepted |
 | [0059](0059-editor-follows-the-suite-pages.md) | The editor follows the suite page rules | Accepted, implements [0005](0005-layout-editor-in-a-local-browser-page.md) |
+| [0060](0060-self-update-from-signed-releases.md) | Self-update from signed releases | Accepted, amends [0054](0054-mcp-tool-set.md); longer than 30 lines on purpose, it records print's ten calls P1 to P10 and the flate2 exception | 2026-11-12 |

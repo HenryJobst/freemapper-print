@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "app": "freemapper-print",
+  "version": "99.0.0",
+  "released": "2026-11-20",
+  "notes": "https://github.com/HenryJobst/freemapper-print/releases/tag/v99.0.0",
+  "min_self_update_from": "0.1.0",
+  "assets": {}
+}

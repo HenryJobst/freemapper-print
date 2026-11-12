@@ -480,3 +480,13 @@ fn help_follows_the_language() {
         "{top}"
     );
 }
+
+#[test]
+fn version_prints_the_contract_line() {
+    let expected = format!("freemapper-print {}\n", env!("CARGO_PKG_VERSION"));
+    for args in [&["--version"][..], &["--lang", "de", "--version"][..]] {
+        let out = run(args);
+        assert!(out.status.success(), "{args:?}");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), expected, "{args:?}");
+    }
+}

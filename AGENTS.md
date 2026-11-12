@@ -79,11 +79,22 @@ unless the user asks; the release archives are ready to run.
      `Expand-Archive` avoids it; otherwise the user confirms with *More info* > *Run anyway*.
 5. Check: `<folder>/freemapper-print --version` prints `freemapper-print <version>`.
 
-Remember the absolute path of the executable; the MCP registration needs it. Updating means unpacking a newer
-archive and pointing the registration at the new path. Project files stay valid.
+Remember the absolute path of the executable; the MCP registration needs it. Project files stay valid.
+
+From the release after 0.7.0 on (0.7.0 has no `update` command), you update an installed release build with
+`freemapper-print update` instead of unpacking a newer archive: it checks the signature, replaces the program at the
+same path (so the registration keeps working) and keeps the old version as `freemapper-print.previous` (on Windows
+`freemapper-print.previous.exe`). Until then, unpack the new archive. Ask the person first, then add `--yes` (without a terminal it refuses to install
+otherwise). `update --check` only looks and exits 10 when a newer version exists. `update --rollback` goes back one
+version. A build from source, or a release built without the signing key, cannot update itself; `update` says so
+and names the release page. If the program folder is not writable, `update` names it and changes nothing; then
+unpack the new archive there by hand, and point the registration at a new path only if it changed.
 
 Do not add the user's e-mail address, name or other personal data to any request, file name, project title or
-setting. The program makes no network requests.
+setting. The program contacts GitHub only for the update check and for `update` itself, which downloads the new
+program. The check runs at most once a day. Its request names the program, its version and the repository, and
+sends no data about the person or the project. `freemapper-print update --mode off` or
+`FREEMAPPER_PRINT_UPDATE=off` stops the check. Apart from that the program makes no network requests.
 
 ## Use it from the command line (preferred)
 
@@ -110,12 +121,18 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |
 | `edit <project>` | The browser editor, for people. `--port <n>`, `--no-browser`. |
+| `update` | From the release after 0.7.0 on: installs the newest signed release over this program. `--check` (exit 10 when a newer version exists), `--yes`, `--version <X.Y.Z>`, `--rollback`, `--mode notify\|install\|off`. |
 | `mcp` | The MCP server. |
 
 `<project>` is `freemapper-print.toml` or the folder that holds it. Results and notes go to stdout; errors go to
 stderr. Exit codes: 0 on success; 1 when a file cannot be loaded, drawn or written, when `check` finds notes
 (notes marked Info do not count) or when `init` finds an existing project file; 2 when the command line is wrong,
-for example an unknown layout, course or control. `export` exits 0 when every PDF is written, even with notes.
+for example an unknown layout, course or control; 10 when `update --check` finds a newer version. `export` exits 0 when every PDF is written, even with notes.
+
+After `init`, `check`, `export` and `render` the program may print one line on stderr that a newer version exists. Pass
+it on to the person in your own words and ask before you run `update --yes`; do not update on your own. In mode `install` the person has asked for updates
+in advance: after a command that exits 0 the program installs by itself, and the progress and result lines go to
+stdout.
 
 `edit` starts a local server and a page in a browser for a person who wants to see the sheet and move things with
 the mouse. It blocks until the person clicks Done or presses Ctrl+C and needs someone at the browser, so an agent
@@ -172,7 +189,7 @@ args = ["mcp"]
 ### Tools
 
 Every tool takes `project`, the absolute path of `freemapper-print.toml` or of the folder that holds it (except
-`init_project`, which takes `folder`). All tools also take the optional `lang`. Lists are capped at 200 entries;
+`init_project`, which takes `folder`, and `check_update` and `install_update`, which take neither). All tools also take the optional `lang`. Lists are capped at 200 entries;
 the `more_*` fields count the rest.
 
 | Tool | Parameters (besides `project`, `lang`) | What it does |
@@ -187,6 +204,8 @@ the `more_*` fields count the rest.
 | `numbers_accept` | `course`, `control`, `scope` (`sheet` or `layout_wide`); optional `direction` (degrees, 0 = east, counter-clockwise) with `gap` (mm on paper, above 0 up to 10) | Fixes where a control number is printed. Without `direction` and `gap` it takes the proposal of `check_project`. |
 | `set_layout` | `id`; optional `paper` (`A4`, `A3`), `page_mm` (`[width, height]` in portrait, 10 to 5080 mm each, instead of `paper`; `null` goes back), `orientation` (`auto`, `portrait`, `landscape`), `print_scale`, `margin_mm`, `border_mm`, `centre_map_mm`, `north_lines` (`auto`, `never`), `crop`, `hide_parts`, `hide_shared` | Adds a layout or changes the one with this id; keys left out keep their value. |
 | `set_element` | `id`, `kind`, `anchor`; optional `layout`, `lines`, `size_pt`, `file`, `width_mm`, `cell_mm`, `box_white` | Adds or replaces a sheet element. `kind`: `title_block`, `text`, `logo`, `scale_check_bar`, `credit_line`, `copyright_line`, `control_descriptions`. Without `layout` it is shared by all layouts. `anchor`: `to` (`page` or `map_frame`), `corner`, `offset_mm`. |
+| `check_update` | none | Whether a newer version exists, with the version numbers, the release date and the release notes. |
+| `install_update` | optional `confirm` | Installs the newest release over this program. Without `confirm: true` it returns an error and installs nothing. The running server keeps the old version until the assistant restarts it; tell the person to restart it. |
 | `export_project` | `out_dir`; optional `courses`, `layouts`, `single_file` | Writes the PDFs into `out_dir`, which must exist. Replaces PDFs of the same name. Returns files with size, notes and the reminder to print at actual size. |
 
 ### Workflow
@@ -204,6 +223,10 @@ The same steps as over the command line, with the tools:
 
 Rules:
 
+- The first tool result of a session may carry a note that a newer version exists. Pass it on to the person and ask
+  before you call `install_update` with `confirm: true`; never set `confirm` without their yes. A release the update
+  cannot install, or one whose signature does not verify, comes with a note that says so; do not install it some
+  other way.
 - Paths must be absolute. A relative path is refused with a message that says so.
 - Writes are serialised in one server. A project file that is a link is not changed; give the path of the file
   the link points to. Comments the file already had stay, except in a few cases the manual lists.
@@ -245,6 +268,15 @@ Rules:
   another `id` or edit the project file.
 - "the project file has a correction for control … already": `numbers_accept` only adds. Edit the file to change.
 - macOS "cannot be opened" or "killed": remove the quarantine flag (install step 4).
+- "This freemapper-print was built from source, or by a release without signed updates": `update` cannot install
+  anything here. Tell the person to get the newest release from the releases page or to `git pull` and
+  `cargo build --release --locked`.
+- "cannot write to the program folder …": the program sits where the person has no write access. Unpack the new
+  archive there by hand with the right permissions, or move the program to a folder they can write to.
+- "the release could not be verified … nothing was installed": the signature did not verify. Tell the person and
+  do not install that release another way.
+- "the input is not a terminal, so freemapper-print cannot ask before installing": ask the person, then run
+  `update --yes`.
 
 ## Suite
 

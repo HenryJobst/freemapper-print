@@ -2,14 +2,14 @@
 
 [English](en.md) · [README](../../README.md)
 
-Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 3 und 5 bis 12. Am Ende soll es
+Dieses Handbuch wächst mit dem Programm. Geschrieben sind die Kapitel 2, 3 und 5 bis 12. Am Ende soll es
 Schritt für Schritt von der fertigen OOM-Karte und der Purple-Pen-Datei zu den gedruckten Kartenblättern führen,
 auch ohne Erfahrung mit der Kommandozeile.
 
 Kapitel:
 
 1. Was freemapper-print macht
-2. Installation
+2. [Installation](#2-installation)
 3. [Mit einem KI-Agenten](#3-mit-einem-ki-agenten)
 4. Ohne Agenten: Editor und Kommandozeile
 5. [Eine Veranstaltung anlegen](#5-eine-veranstaltung-anlegen)
@@ -24,6 +24,65 @@ Kapitel:
 Das Programm spricht Deutsch oder Englisch. Es nimmt die Sprache aus `--lang de` oder `--lang en`, sonst aus
 den Umgebungsvariablen `FREEMAPPER_LANG`, `LC_ALL`, `LC_MESSAGES` und `LANG`. Die Meldungen in diesem Handbuch
 sind die deutschen.
+
+## 2. Installation
+
+Laden Sie das Archiv für Ihr System von der [Release-Seite](https://github.com/HenryJobst/freemapper-print/releases/latest) herunter, entpacken Sie es und prüfen Sie das Programm mit `freemapper-print --version`. Die Schritte für jedes System, auch die Warnung vor einem nicht signierten Programm beim ersten Start, stehen im README im Abschnitt „Installation“. Ein KI-Agent kann sie für Sie übernehmen (Kapitel 3).
+
+### Aktualisierungen
+
+Ein Release-Build aktualisiert sich selbst. Ein Befehl installiert das neueste Release an Ort und Stelle:
+
+```sh
+freemapper-print update
+```
+
+Er sucht das neueste Release, sagt, was neu ist, und fragt „Jetzt installieren? [j/N]“. Bei „ja“ lädt er das Programm für Ihr System, prüft Signatur und Prüfsumme und ersetzt das laufende Programm am selben Pfad. Die Anmeldung des MCP-Servers bleibt also gültig. Nichts Unsigniertes oder Ungeprüftes wird installiert. Stimmt die Signatur nicht, endet der Befehl mit einem Fehler und ändert nichts.
+
+| Schalter | Wirkung |
+|---|---|
+| `--check` | Prüft nur. Exit-Code 10, wenn es eine neuere Version gibt, 0, wenn diese aktuell ist. |
+| `--yes` | Installiert ohne Rückfrage. Nötig, wenn die Eingabe kein Terminal ist, etwa in einem Skript. |
+| `--version <X.Y.Z>` | Installiert diese Version statt der neuesten, auch eine ältere. |
+| `--rollback` | Kehrt zur Version zurück, die die letzte Aktualisierung ersetzt hat. |
+| `--mode notify\|install\|off` | Legt fest, was die tägliche Prüfung tut, wenn sie eine neuere Version findet (Standard: `notify`). |
+
+Ein Release, das vor dem Update erschien, kann sich nicht selbst aktualisieren; das erste mit Update installieren Sie einmal von Hand. Verlangt das neueste Release eine neuere Version der Aktualisierungsfunktion, als Ihre hat, sagt `update` das und nennt die Version, die Sie von Hand installieren.
+
+#### Die tägliche Prüfung
+
+Nach `init`, `check`, `export` und `render` sowie beim Start von `mcp` und `edit` fragt das Programm einmal nach einem neueren Release, höchstens einmal in 24 Stunden. Die Prüfung läuft neben dem Befehl und bekommt 3 Sekunden. Ein langsames oder nicht erreichbares GitHub ändert weder die Ausgabe noch den Exit-Code Ihres Befehls; der Versuch gilt als gescheitert, der nächste kommt einen Tag später. `numbers`, `masks` und `update` prüfen nicht. Ist die Umgebungsvariable `CI` gesetzt, tut die Prüfung nichts.
+
+Was sie meldet, hängt vom Modus ab:
+
+- `notify` (Standard): eine Zeile auf der Standardfehlerausgabe, „freemapper-print 1.2.3 ist verfügbar (Sie haben 1.2.2). Aktualisieren mit: freemapper-print update“. `edit` gibt sie einmal beim Start aus, und der MCP-Server gibt sie mit seinem ersten Ergebnis an den Agenten weiter (Kapitel 3).
+- `install`: installiert die neuere Version nach einem Befehl, der mit Exit-Code 0 endete. Ein `check`, der Hinweise findet, endet mit Exit-Code 1 und installiert deshalb nichts. `mcp` und `edit` installieren nie. Die neue Version gilt ab dem nächsten Start.
+- `off`: keine Prüfung und keine Anfrage.
+
+`freemapper-print update --mode off` schreibt die Einstellung, und `FREEMAPPER_PRINT_UPDATE=off` (oder `notify`, `install`) überschreibt sie, solange die Variable gesetzt ist.
+
+#### Was gesendet wird
+
+Die Prüfung fragt das Aktualisierungsmanifest `freemapper-print-update.json` und seine Signatur `freemapper-print-update.json.minisig` bei den GitHub-Releases ab, und `update` lädt zusätzlich das Programm selbst. Die Anfragen tragen den festen User-Agent `freemapper-print/<Version> (+https://github.com/HenryJobst/freemapper-print)`: Programm, Version und Repository. Sie enthalten keine Daten über Sie oder Ihr Projekt, und das Programm hat keine Telemetrie. Außer für die Prüfung und `update` stellt das Programm keine Netzwerkanfragen.
+
+#### Ordner
+
+| Was | Wo | Überschreiben |
+|---|---|---|
+| Die Einstellung `[update] mode` | `settings.toml` in `freemapper-print` im Konfigurationsordner des Systems | `FREEMAPPER_PRINT_CONFIG_DIR` nennt den Ordner, der `settings.toml` enthält |
+| Zeit und Ergebnis der letzten Prüfung | `update-check.json` in `freemapper-print` im Zwischenspeicher des Systems | `FREEMAPPER_PRINT_CACHE_DIR` nennt den Ordner |
+
+Löschen Sie `update-check.json`, prüft der nächste Befehl wieder.
+
+#### Zurückkehren und der Ordner des Programms
+
+Eine Aktualisierung hebt die ersetzte Version neben dem Programm als `freemapper-print.previous` auf (Windows: `freemapper-print.previous.exe`). `freemapper-print update --rollback` tauscht beide zurück und nennt, wo die verlassene Version liegt. Eine weitere Aktualisierung ersetzt die Datei.
+
+Das Programm verlangt keine Administratorrechte. Ist sein Ordner nicht beschreibbar, etwa `/usr/local/bin` oder `C:\Program Files`, nennt `update` den Ordner, ändert nichts und endet mit Exit-Code 1. Entpacken Sie das neue Release dann von Hand dorthin, oder legen Sie das Programm in einen Ordner, den Sie beschreiben dürfen.
+
+#### Selbst gebaute Programme
+
+Ein aus dem Quellcode gebautes Programm und ein Release, das ohne den Signierschlüssel gebaut wurde, können sich nicht selbst aktualisieren. `update` sagt das, nennt die [Release-Seite](https://github.com/HenryJobst/freemapper-print/releases/latest) und den Weg für einen Klon (`git pull`, dann `cargo build --release --locked`) und endet mit Exit-Code 0. Die tägliche Prüfung bleibt in so einem Build still. `--mode` funktioniert trotzdem, denn es schreibt nur die Einstellung.
 
 ## 3. Mit einem KI-Agenten
 
@@ -54,7 +113,7 @@ starten, zum Beispiel den Ordner mit Ihren Veranstaltungen:
 Bei `command` steht der absolute Pfad zum Programm, dort, wohin Sie es entpackt haben (README, Abschnitt „Installation“). Unter Windows
 lautet er etwa `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, mit doppelten Backslashes, weil die
 Datei JSON ist. `--lang de` wählt deutsche Meldungen; ohne die Option gilt die Sprache des Systems wie bei der
-Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen elf Werkzeugen.
+Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen dreizehn Werkzeugen.
 
 ### Einrichten lassen
 
@@ -83,6 +142,8 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | das Element und `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
 | `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
+| `check_update` | `update --check` | | | ob es eine neuere Version gibt, mit den Versionsnummern und den Versionshinweisen |
+| `install_update` | `update --yes` | | `confirm` | Installiert nur mit `confirm` auf `true`; ohne gibt das Werkzeug einen Fehler zurück. Installiert das neueste Release und sagt, dass der laufende Server die alte Version behält, bis er neu gestartet wird |
 
 Die Eingaben heißen wie die Optionen der Befehle (Kapitel 5, 8 und 11) und die Schlüssel der Projektdatei
 (Kapitel 6 und 7), nur mit Unterstrich: `radius_for` statt `--radius-for`, `points` als Text `"x,y;x,y"` wie bei
@@ -96,6 +157,8 @@ mit derselben ID ganz; ohne `layout` gilt es für alle Layouts (`[[shared]]`). E
 absolutem Pfad, die Projektdatei speichert ihn relativ zu sich. `assign_mask` setzt die Abdeckung einer Bahn,
 auch wenn sie schon eine hat; ohne `mask` druckt die Bahn ohne Abdeckung. `masks_window` und `masks_corridor`
 mit `assign` ersetzen dagegen keine Abdeckung.
+
+`check_update` und `install_update` brauchen kein `project`. `check_update` sagt, ob es eine neuere Version gibt. `install_update` installiert sie nur mit `confirm` auf `true`; ohne liefert es „Es wurde nichts installiert. Fragen Sie zuerst die Person und rufen Sie install_update erst nach ihrer Zustimmung mit confirm: true auf.“ Das erste Ergebnis einer Server-Sitzung trägt einen Hinweis, wenn es eine neuere Version gibt. Der Agent gibt ihn weiter und fragt Sie, bevor er installiert. Ein Server läuft nach einer Installation mit der alten Version weiter, bis der Assistent ihn neu startet.
 
 Die Ergebnisse sind JSON. Die Werkzeuge, die schreiben, geben in `messages` dieselben Sätze zurück, die der
 Befehl in der Kommandozeile ausgibt. Wo der Befehl eine Option nennt, nennt der Server das Werkzeug und die
@@ -1546,7 +1609,7 @@ das gerade entsteht.
 
 Der Editor hört nur auf 127.0.0.1, erreichbar sind also nur Programme auf Ihrem Rechner. Die Adresse enthält ein
 zufälliges Kennzeichen, das bei jedem Start neu ist, und die Seite nimmt nur Änderungen an, die es tragen und von
-ihrer eigenen Adresse kommen. Nichts verlässt den Rechner; das Programm stellt keine Netzwerkanfragen.
+ihrer eigenen Adresse kommen. Der Editor selbst sendet nichts. Das Programm wendet sich nur für die Update-Prüfung und für `update` selbst an GitHub (Kapitel 2), die Prüfung höchstens einmal am Tag.
 
 ### Probleme
 

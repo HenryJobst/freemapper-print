@@ -768,3 +768,49 @@ editor-severity-info = Info
 editor-severity-warning = Warning
 editor-severity-error = Error
 editor-export-relative = The folder { $path } is not a full path. Type it from the root, for example /Users/ann/pdfs or C:\Users\Ann\pdfs.
+
+# ---- update (ADR 0060) ----
+update-about = Install a newer freemapper-print from the GitHub releases, after asking. A build from source says how to update it instead.
+help-update-check = Only check: exit code 10 when a newer version exists, 0 when this one is current.
+help-update-yes = Install without asking; needed when the input is not a terminal.
+help-update-version = Install this version (x.y.z) instead of the newest one, also an older one.
+help-update-rollback = Go back to the version the last update replaced.
+help-update-mode = Store what the daily check does when it finds a newer version (default: notify). Works in every build, because it only writes the setting.
+update-source-build = This freemapper-print was built from source, or by a release without signed updates. Get the newest version from https://github.com/HenryJobst/freemapper-print/releases/latest, or update the source with git pull and cargo build --release --locked.
+update-current = freemapper-print { $version } is up to date.
+update-available = freemapper-print { $new } is available (you have { $old }), released { $released }.
+update-details =
+    Release notes: { $notes }
+    Download: { $size } MB
+update-decimal-separator = .
+update-ask = Install it now? [y/N]
+update-not-installed = Nothing was installed.
+update-needs-yes = the input is not a terminal, so freemapper-print cannot ask before installing; run freemapper-print update --yes to install without asking
+update-installing = downloading and checking freemapper-print { $version }
+update-done = freemapper-print updated from { $old } to { $new }. Release notes: { $notes }
+update-mcp-needs-confirm = Nothing was installed. Ask the person first, then call install_update with confirm: true once they agree.
+agent-update-source-build = This freemapper-print was built from source, or by a release without signed updates, so the update tools cannot install anything. Tell the person to get the newest version from https://github.com/HenryJobst/freemapper-print/releases/latest, or to run git pull and cargo build --release --locked in their clone.
+update-mcp-restart = A running MCP server keeps the old version until the AI assistant restarts it.
+update-mcp-restart-now = Restart the freemapper-print MCP server now; it still runs the old version.
+update-rolled-back = Went back to freemapper-print { $version }. The version you left is kept as { $path }.
+update-not-writable = cannot write to the program folder { $path }, and freemapper-print does not ask for administrator rights. Unpack the new release there by hand, or move freemapper-print to a folder you can write to.
+update-too-old = freemapper-print { $new } cannot be installed by the self-update of { $old }; install { $needed } or newer by hand, see { $notes }
+update-busy = another update or rollback is running in the program folder (lock file { $path }); wait for it to finish and try again
+update-bad-signature = the release could not be verified ({ $error }); nothing was installed
+update-no-manifest = the newest release cannot install itself (it has no update manifest); download it from { $page }
+update-no-manifest-version = release { $version } does not exist or cannot install itself (it has no update manifest); see { $page }
+update-no-asset = the release has no program for this system ({ $platform }); nothing was installed. Look for a fitting build on { $page }.
+update-no-previous = there is no previous version to go back to ({ $path } is missing)
+update-failed = the update failed: { $error }
+update-mode-set = Update mode set to { $mode } in { $path }.
+update-mode-env = FREEMAPPER_PRINT_UPDATE={ $value } overrides this setting while it is set.
+update-mode-failed = could not write { $path }: { $error }
+update-notice = freemapper-print { $new } is available (you have { $old }). Update with: freemapper-print update
+update-applies-next-start = The new version applies from the next start of freemapper-print.
+update-install-failed = Warning: freemapper-print { $new } was not installed: { $error }
+update-note-manual = freemapper-print { $new } is available (you have { $old }), but freemapper-print update cannot install it. Install { $needed } or newer by hand, see { $notes }
+update-note-bad-signature = Warning: the newest freemapper-print release could not be verified ({ $error }). Nothing was installed.
+agent-update-notice = Note for the person: freemapper-print { $new } is available (this is { $old }). Ask them before calling install_update.
+agent-update-note-manual = Note for the person: freemapper-print { $new } is available (this is { $old }), but install_update cannot install it. Install { $needed } or newer by hand, see { $notes }
+agent-update-note-bad-signature = Note for the person: the newest freemapper-print release could not be verified ({ $error }). Nothing was installed. Tell them, and do not install it some other way.
+update-no-config-dir = no configuration folder on this system; set FREEMAPPER_PRINT_CONFIG_DIR

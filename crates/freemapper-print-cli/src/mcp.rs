@@ -5,11 +5,15 @@
 
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use fluent_bundle::FluentArgs;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
-use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
+    ServerCapabilities, ServerConfig,
+};
 use rmcp::service::RequestContext;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router,
@@ -23,6 +27,10 @@ use crate::{op_error, printable};
 use freemapper_print::print::{Orientation, Paper};
 use freemapper_print::project::{self, AnchorTarget, Corner, ElementKind, NorthLines};
 use freemapper_print::scale::MapKind;
+
+use crate::update::background::{CheckContext, check_for_server};
+use crate::update::command::{check_for_mcp, install_for_mcp};
+use crate::update::release_build;
 
 /// The most notes `check_project` and `export_project` return; `more` counts the rest.
 const MAX_NOTES: usize = 200;
@@ -42,7 +50,10 @@ layouts. Start with project_info to see what a project holds, then check_project
 of every sheet. init_project starts a project; masks_window, masks_corridor, numbers_accept, \
 set_layout, set_element and assign_mask change the project file and keep its comments. Run \
 check_project after a change to see its effect. export_project writes the PDFs. Paths must be \
-absolute because the server does not know your working folder. The messages in the results are German or English; pass lang to choose. \
+absolute because the server does not know your working folder. check_update says whether a newer \
+version exists and install_update installs it, but call install_update with confirm true only after \
+the person agreed. When a result has a second block that begins with Note for the person, pass it on to them. \
+The messages in the results are German or English; pass lang to choose. \
 Manual and source: https://github.com/HenryJobst/freemapper-print";
 
 /// The arguments of every read tool.
@@ -810,6 +821,120 @@ fn json(texts: &Texts, value: &impl Serialize) -> Result<String, String> {
         .map_err(|e| texts.get("mcp-error-internal", Some(&args!("error" => e.to_string()))))
 }
 
+/// The arguments of `check_update`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct CheckUpdateArgs {
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// The arguments of `install_update`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct InstallUpdateArgs {
+    /// true once the person agreed to install the newer version; without it nothing is installed.
+    #[serde(default)]
+    confirm: bool,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
+/// The result of `check_update`.
+#[derive(Serialize)]
+struct CheckUpdateOut {
+    current: String,
+    /// The newer release; `None` when this one is current.
+    available: Option<AvailableOut>,
+    message: String,
+}
+
+#[derive(Serialize)]
+struct AvailableOut {
+    version: String,
+    /// The release date; `None` for a release that needs a manual install.
+    released: Option<String>,
+    notes: String,
+    size_bytes: Option<u64>,
+    /// The self-update cannot install this release; the person does it by hand.
+    manual: bool,
+}
+
+/// The result of `install_update`.
+#[derive(Serialize)]
+struct InstallUpdateOut {
+    from: String,
+    /// The version now installed; `None` when this one was current already.
+    installed: Option<String>,
+    notes: Option<String>,
+    message: String,
+}
+
+/// The result of an update tool in a build that cannot update itself.
+#[derive(Serialize)]
+struct MessageOut {
+    message: String,
+}
+
+/// The note about a newer version for the person (spec 3.7): the daily check sets it, and one tool result of the
+/// server process carries it.
+#[derive(Default)]
+enum UpdateNote {
+    /// The check has not found a newer version (yet).
+    #[default]
+    Unknown,
+    Known(String),
+    /// An update tool runs; no result carries the note meanwhile, also not during a long install. What the check
+    /// finds waits here.
+    Held(Option<String>),
+    /// A tool result carried it, or an update tool gave the news itself.
+    Given,
+}
+
+impl UpdateNote {
+    fn know(&mut self, note: String) {
+        match self {
+            UpdateNote::Unknown => *self = UpdateNote::Known(note),
+            UpdateNote::Held(held @ None) => *held = Some(note),
+            _ => {}
+        }
+    }
+
+    /// The note, the first time it is asked for after it became known.
+    fn take(&mut self) -> Option<String> {
+        if !matches!(self, UpdateNote::Known(_)) {
+            return None;
+        }
+        match std::mem::replace(self, UpdateNote::Given) {
+            UpdateNote::Known(note) => Some(note),
+            _ => None,
+        }
+    }
+
+    /// An update tool starts.
+    fn hold(&mut self) {
+        match self {
+            UpdateNote::Unknown => *self = UpdateNote::Held(None),
+            UpdateNote::Known(note) => {
+                let note = std::mem::take(note);
+                *self = UpdateNote::Held(Some(note));
+            }
+            UpdateNote::Held(_) | UpdateNote::Given => {}
+        }
+    }
+
+    /// An update tool ended. Its answer gave the news, unless it failed: then the state is the one before the
+    /// tool, plus what the check found meanwhile.
+    fn release(&mut self, failed: bool) {
+        if !failed {
+            *self = UpdateNote::Given;
+        } else if let UpdateNote::Held(held) = self {
+            let held = held.take();
+            *self = held.map_or(UpdateNote::Unknown, UpdateNote::Known);
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct PrintServer {
     tool_router: ToolRouter<Self>,
@@ -817,9 +942,15 @@ pub struct PrintServer {
     lang: Lang,
     /// Held by every tool that writes, from before it reads the project until it has written.
     writes: Arc<tokio::sync::Mutex<()>>,
+    /// The note about a newer version, set by the daily check and given with one tool result.
+    update_note: Arc<Mutex<UpdateNote>>,
 }
 
 impl PrintServer {
+    fn update_note(&self) -> std::sync::MutexGuard<'_, UpdateNote> {
+        self.update_note.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// The texts for a call: its `lang`, else the server's.
     fn texts(&self, lang: Option<&str>) -> Result<Texts, String> {
         let Some(given) = lang else {
@@ -999,11 +1130,25 @@ fn panic_text(err: tokio::task::JoinError) -> String {
 #[tool_router]
 impl PrintServer {
     pub fn new(lang: Lang) -> Self {
-        Self {
+        let server = Self {
             tool_router: Self::tool_router(),
             lang,
             writes: Arc::default(),
-        }
+            update_note: Arc::default(),
+        };
+        server.start_update_check();
+        server
+    }
+
+    /// Starts the daily check (spec 3.7); what it finds waits for the next tool result. It prints nothing, because
+    /// stdout is the protocol, and it never installs, whatever the mode (ADR 0060, P5).
+    fn start_update_check(&self) {
+        let note = Arc::clone(&self.update_note);
+        check_for_server(
+            &CheckContext::of_process(),
+            Texts::for_agent(&self.lang),
+            move |text| note.lock().unwrap_or_else(|e| e.into_inner()).know(text),
+        );
     }
 
     #[tool(
@@ -1522,10 +1667,123 @@ impl PrintServer {
         })
         .await
     }
+
+    #[tool(
+        description = "Whether a newer freemapper-print release exists: its version, release date, release \
+                       notes link and download size, or that this one is up to date. available is null \
+                       when there is nothing newer; manual is true for a release this program cannot \
+                       install by itself. Installs nothing."
+    )]
+    async fn check_update(
+        &self,
+        Parameters(args): Parameters<CheckUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let texts = match self.texts(args.lang.as_deref()) {
+            Ok(texts) => texts,
+            Err(message) => return failure(message),
+        };
+        if !release_build() {
+            return source_build(&texts);
+        }
+        blocking(texts, |texts| {
+            let report = check_for_mcp(texts)?;
+            json(
+                texts,
+                &CheckUpdateOut {
+                    current: report.current.to_string(),
+                    available: report.available.map(|a| AvailableOut {
+                        version: a.version.to_string(),
+                        released: a.released,
+                        notes: a.notes,
+                        size_bytes: a.size_bytes,
+                        manual: a.manual,
+                    }),
+                    message: report.message,
+                },
+            )
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Install the newest freemapper-print release over this program. Call it only after the \
+                       person agreed, with confirm true; without it nothing is installed. A running server \
+                       keeps the old version until the assistant restarts it. Returns from, installed (null \
+                       when this version is the newest), notes and a message."
+    )]
+    async fn install_update(
+        &self,
+        Parameters(args): Parameters<InstallUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let texts = match self.texts(args.lang.as_deref()) {
+            Ok(texts) => texts,
+            Err(message) => return failure(message),
+        };
+        if !release_build() {
+            return source_build(&texts);
+        }
+        if !args.confirm {
+            return failure(texts.plain("update-mcp-needs-confirm"));
+        }
+        blocking(texts, |texts| {
+            let report = install_for_mcp(texts)?;
+            json(
+                texts,
+                &InstallUpdateOut {
+                    from: crate::update::print_app().current.to_string(),
+                    installed: report.installed.map(|v| v.to_string()),
+                    notes: report.notes,
+                    message: report.message,
+                },
+            )
+        })
+        .await
+    }
+}
+
+/// What the update tools say in a build from source: how to update.
+fn source_build(texts: &Texts) -> Result<CallToolResult, McpError> {
+    let message = texts.plain("update-source-build");
+    match json(texts, &MessageOut { message }) {
+        Ok(json) => text(json),
+        Err(message) => failure(message),
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for PrintServer {
+    /// The router's call, plus the note about a newer version on the one result that carries it.
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let update_tool = matches!(request.name.as_ref(), "check_update" | "install_update");
+        if update_tool {
+            self.update_note().hold();
+        }
+        let response = self
+            .tool_router
+            .call(ToolCallContext::new(self, request, context))
+            .await;
+        if update_tool {
+            let failed = match &response {
+                Ok(CallToolResponse::Complete(result)) => result.is_error == Some(true),
+                Ok(_) => false,
+                Err(_) => true,
+            };
+            self.update_note().release(failed);
+        }
+        let mut response = response?;
+        if !update_tool
+            && let CallToolResponse::Complete(result) = &mut response
+            && let Some(note) = self.update_note().take()
+        {
+            result.content.push(ContentBlock::text(note));
+        }
+        Ok(response)
+    }
+
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(
@@ -1569,6 +1827,47 @@ mod tests {
     use crate::ops::testing::{viktoriapark, viktoriapark_copy};
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, ReadHalf, WriteHalf};
+
+    #[test]
+    fn the_update_note_is_given_once() {
+        let mut note = UpdateNote::default();
+        assert_eq!(note.take(), None);
+        note.know("newer".into());
+        assert_eq!(note.take(), Some("newer".into()));
+        assert_eq!(note.take(), None);
+        // Once given, a later check adds nothing.
+        note.know("again".into());
+        assert_eq!(note.take(), None);
+    }
+
+    #[test]
+    fn an_update_tool_holds_the_note_and_gives_it_back_when_it_fails() {
+        // Known before a failed update tool: known after it.
+        let mut note = UpdateNote::Known("newer".into());
+        note.hold();
+        assert_eq!(note.take(), None);
+        note.release(true);
+        assert_eq!(note.take(), Some("newer".into()));
+        // Unknown before, found while the tool ran, the tool failed: known now.
+        let mut note = UpdateNote::default();
+        note.hold();
+        note.know("found".into());
+        assert_eq!(note.take(), None);
+        note.release(true);
+        assert_eq!(note.take(), Some("found".into()));
+        // Unknown before and after a failed tool: still waiting for the check.
+        let mut note = UpdateNote::default();
+        note.hold();
+        note.release(true);
+        note.know("later".into());
+        assert_eq!(note.take(), Some("later".into()));
+        // An update tool that answered gave the news: no note follows.
+        let mut note = UpdateNote::Known("newer".into());
+        note.hold();
+        note.release(false);
+        note.know("again".into());
+        assert_eq!(note.take(), None);
+    }
 
     /// An MCP client in the same process, over a pipe: the messages an agent sends, line by line.
     struct Client {
@@ -1753,8 +2052,10 @@ mod tests {
             [
                 "assign_mask",
                 "check_project",
+                "check_update",
                 "export_project",
                 "init_project",
+                "install_update",
                 "list_courses",
                 "masks_corridor",
                 "masks_window",
@@ -1772,6 +2073,7 @@ mod tests {
             "set_layout" => json!(["project", "id"]),
             "set_element" => json!(["project", "id", "kind", "anchor"]),
             "export_project" => json!(["project", "out_dir"]),
+            "check_update" | "install_update" => json!([]),
             _ => json!(["project"]),
         };
         // The defaults the schema names are the ones the library applies.
@@ -1801,7 +2103,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .clone();
-            let mut found = schema["required"].as_array().unwrap().clone();
+            let mut found = schema["required"].as_array().cloned().unwrap_or_default();
             wanted.sort_by_key(|v| v.to_string());
             found.sort_by_key(|v| v.to_string());
             assert_eq!(found, wanted, "{tool}");

@@ -7,6 +7,17 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- `freemapper-print update` installiert das neueste Release nach Rückfrage über das laufende Programm (Entscheidung 0060). Es prüft vorher die minisign-Signatur des Aktualisierungsmanifests und die SHA-256-Summe des Programms und installiert nichts, was sich nicht bestätigt. Schalter: `--check` (Exit-Code 10, wenn es eine neuere Version gibt), `--yes`, `--version <X.Y.Z>`, `--rollback` und `--mode notify|install|off`. Die ersetzte Version bleibt neben dem Programm als `freemapper-print.previous`.
+- Eine tägliche Prüfung, höchstens einmal in 24 Stunden und mit einer Grenze von 3 Sekunden, läuft nach `init`, `check`, `export` und `render` sowie beim Start von `mcp` und `edit`. Im Modus `notify` (Standard) gibt sie eine Zeile auf der Standardfehlerausgabe aus, wenn es eine neuere Version gibt. Im Modus `install` installiert sie die Version nach einem Befehl, der mit Exit-Code 0 endete, nie in `mcp` oder `edit`. `update --mode off` oder `FREEMAPPER_PRINT_UPDATE=off` stoppt die Prüfung.
+- Die Prüfung fragt bei den GitHub-Releases nur das Aktualisierungsmanifest und dessen Signatur ab, mit einem User-Agent, der Programm, Version und Repository nennt, und sendet keine Daten über die Person oder das Projekt. Die Einstellung steht in `settings.toml` im Konfigurationsordner, die Aufzeichnung der letzten Prüfung in `update-check.json` im Zwischenspeicher; `FREEMAPPER_PRINT_CONFIG_DIR` und `FREEMAPPER_PRINT_CACHE_DIR` nennen andere Ordner.
+- Der MCP-Server hat zwei Werkzeuge mehr, `check_update` und `install_update` (das installiert nur mit `confirm: true`), und hängt an sein erstes Ergebnis einen Hinweis, wenn es eine neuere Version gibt. Ein aus dem Quellcode gebautes Programm oder eines aus einem Release ohne Signierschlüssel sagt das und nennt die Release-Seite.
+
+### Geändert
+
+- Der MCP-Server hat dreizehn statt elf Werkzeuge. Der Release-Workflow signiert ein Aktualisierungsmanifest mit dem Schlüssel, den auch freemapper nutzt, und veröffentlicht die Programme als einzelne gzip-Dateien neben den Archiven; fehlt das Signiergeheimnis, entsteht ein Release wie bisher, und seine Programme sagen, dass sie sich nicht selbst aktualisieren können.
+
 ### Behoben
 
 - Der Editor kürzt einen Logo-Pfad auf den Dateinamen, egal auf welchem System die Projektdatei entstand (`/home/…` auch unter Windows, `C:\…` auch sonst), damit die Seite keine Ordner eines fremden Systems zeigt.
