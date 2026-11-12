@@ -68,6 +68,7 @@ fn agent_ids() -> &'static std::collections::BTreeSet<String> {
 }
 
 /// The program texts in one language, with English as the fallback.
+#[derive(Clone)]
 pub struct Texts {
     lang: Lang,
     /// Words messages for an AI agent (the MCP server): `agent-<id>` where the catalog has it.

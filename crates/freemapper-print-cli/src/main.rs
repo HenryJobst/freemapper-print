@@ -49,6 +49,18 @@ enum Commands {
     Update(UpdateArgs),
 }
 
+impl Commands {
+    /// Whether the daily update check runs after this command (ADR 0060, P3): the commands a
+    /// person looks at the result of. Mask and number edits come in series and `check` follows
+    /// them; `mcp` and `edit` tell at their start instead; `update` is the check itself.
+    fn update_check(&self) -> bool {
+        matches!(
+            self,
+            Commands::Init(_) | Commands::Check(_) | Commands::Export(_) | Commands::Render(_)
+        )
+    }
+}
+
 #[derive(Args)]
 struct UpdateArgs {
     #[arg(long, conflicts_with_all = ["yes", "rollback"])]
@@ -2408,6 +2420,16 @@ fn main() -> std::process::ExitCode {
     let texts = Texts::new(&lang);
     let matches = localised_command(&texts).get_matches_from(args);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    // The MCP server's stdout is the protocol, and a stale file may be an older server still
+    // running; it is left alone.
+    if !matches!(cli.command, Commands::Mcp) {
+        update::background::remove_stale_files();
+    }
+    let daily = cli
+        .command
+        .update_check()
+        .then(update::background::CheckContext::of_process)
+        .and_then(|ctx| update::background::start_background_check(&ctx));
     let result = match cli.command {
         Commands::Render(args) => render(&texts, &args),
         Commands::Init(args) => init(&texts, &args),
@@ -2422,6 +2444,12 @@ fn main() -> std::process::ExitCode {
         },
         Commands::Edit(mut args) => {
             args.lang = fixed_lang;
+            // One line on stderr at the start, no page banner (ADR 0060, P4).
+            update::background::check_for_server(
+                &update::background::CheckContext::of_process(),
+                texts.clone(),
+                |note| eprintln!("{note}"),
+            );
             editor::run(&args, &texts)
                 .map(|()| 0)
                 .map_err(|err| op_error(&texts, err))
@@ -2438,7 +2466,10 @@ fn main() -> std::process::ExitCode {
             },
         ),
     };
-    match result {
+    // Only a command that ended with exit code 0 counts as a success: mode `install` waits for the
+    // next clean run (ADR 0060, P5).
+    let command_ok = matches!(result, Ok(0));
+    let code = match result {
         Ok(code) => std::process::ExitCode::from(code),
         Err(err) => {
             // Errors can quote map content, so they get the same escaping as the notes.
@@ -2454,7 +2485,12 @@ fn main() -> std::process::ExitCode {
             };
             std::process::ExitCode::from(code)
         }
+    };
+    // After the command's own output, its error included.
+    if let Some(report) = daily.and_then(|daily| daily.finish(&texts, command_ok)) {
+        report.print();
     }
+    code
 }
 
 #[cfg(test)]
