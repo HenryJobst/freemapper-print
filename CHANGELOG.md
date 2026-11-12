@@ -9,13 +9,15 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Die Beispielprojekte in `examples/` sind neu, sieben auf den Karten „Gleisdreieck“ und „Rummelsburger Bucht“ von Remo Madella (MOO Challenge Berlin 2025): Maßstäbe, Layouts, Wettkampfbahnen (auch als IOF-XML), ein Vereinstraining mit zwei Bahnen, Fenster- und Korridor-OL und eine aufgezeichnete MCP-Sitzung. Jedes bringt seine eigene Kopie der Karte, die Bahnen aus freemapper-courseplan 0.14.1, die PDFs und ein Vorschaubild mit. Die früheren Beispiele auf Lübecker und Berliner Karten sind jetzt Testdaten in `tests/fixtures/examples/`. Das Handbuch verweist auf die neuen Beispiele und gibt ihre Ausgaben wieder (Entscheidung 0064).
 - Die Fenster von `masks window` überlappen nicht mehr (Entscheidung 0063). Zwischen zwei Fenstern bleiben mindestens 3 mm auf dem Papier frei, einstellbar mit `--gap` (MCP: `gap`, im Editor ein eigenes Feld). Liegen zwei Posten dafür zu nah, werden beide Fenster im Verhältnis ihres Radius kleiner, und der Befehl nennt sie. Kleiner als 5 mm wird kein Fenster; bräuchte der Abstand das, schreibt der Befehl nichts und sagt, was man weglassen kann. Abdeckungen, die von Hand in der Projektdatei stehen, bleiben, wie sie sind.
 - Ein Release braucht eine Freigabe statt zwei (Entscheidung 0061): Nur der Job, der signiert, nutzt die Umgebung `release`. Jedes Release wird mit Updater gebaut und signiert; ohne das Signier-Secret scheitert es, bevor etwas veröffentlicht wird.
 
 ### Hinzugefügt
 
 - Das Handbuch zeigt jetzt Abbildungen, in beiden Sprachen an denselben Stellen: Blätter mit Titelblock, Logo und Passepartout, ein Bahnblatt mit Beschreibungskasten, Abdeckungen für Fenster- und Korridor-OL und der Editor im Browser. Sie entstanden aus den Karten von Remo Madella (MOO Challenge Berlin 2025), der bestätigt hat, dass sie als Beispielkarten im öffentlichen Projekt dienen dürfen. Die Bahnen auf den Bahnblättern stammen aus freemapper-courseplan 0.14.1, und die Fenster-Abbildung zeigt die Voreinstellung mit ihrem Abstand. Herkunft und Entstehung stehen in `docs/manual/img/README.md` (Entscheidung 0062).
-- Die README zeigt in beiden Sprachen diese Abbildungen als Beispiele und oben ein Bahnblatt, jedes Bild mit dem Kapitel des Handbuchs verlinkt. Die Beispielprojekte in `examples/` stehen als Textliste da.
+- Die README zeigt in beiden Sprachen diese Abbildungen als Beispiele, jedes Bild mit dem Kapitel des Handbuchs verlinkt, und oben ein Blatt, das auf die Beispiele verweist. Der Abschnitt „Status“ beginnt mit der aktuellen Version und ihrem Datum, und der Abschnitt zur Suite nennt die festgelegte Version von freemapper-core.
+- Ein Test (`tests/examples.rs`) lädt jedes Beispielprojekt und prüft, dass Karte, Bahndatei und Logos da sind und dass jede `ATTRIBUTION.txt` den Kartenautor nennt.
 
 ## [0.8.0] - 2026-11-12
 
