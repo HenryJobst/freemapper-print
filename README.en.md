@@ -12,6 +12,11 @@ ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in
 OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on paper.
 
+<a href="docs/manual/en.md#course-sheets-and-the-overprint"><img src="docs/manual/img/course-sheet.jpg" width="440"
+alt="The sheet of course A on the Gleisdreieck map, A4 portrait at 1:4000: the course in purple with eight controls, the title block at the top left and the control descriptions at the top right"></a>
+
+*A course sheet: course A (2.4 km, eight controls) on the Gleisdreieck map (Remo Madella, MOO Challenge Berlin 2025), A4 at 1:4000, with course overprint, numbers, title block and control descriptions. More in the [manual](docs/manual/en.md#course-sheets-and-the-overprint).*
+
 What it does already:
 
 - print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A4, A3 or a page size of your choice, also at a different scale
@@ -41,7 +46,8 @@ What it does already:
   corridor. Course overprint, control description, title and footer stay everywhere, including the legs between
   windows;
 - `masks window` puts round windows around a course's controls, with a radius in millimetres on paper and, if
-  wanted, its own radius per control; `masks corridor` turns a line you give into a corridor of adjustable width.
+  wanted, its own radius per control. The windows never overlap: at least 3 mm of paper stays between two, and
+  where controls lie close together the windows get smaller. `masks corridor` turns a line you give into a corridor of adjustable width.
   There is no automatic corridor, because no rule set says where it runs;
 - masks can also be written by hand into the project file; the program prints Purple Pen's white-out as a mask
   of the courses it applies to;
@@ -75,57 +81,54 @@ print scale stay in freemapper-print.
 
 ## Examples
 
-Finished examples are in [`examples/`](examples/README.en.md). Click a picture to open the example with its PDFs.
+The pictures come from the [manual](docs/manual/en.md) and show two sprint maps by Remo Madella, Gleisdreieck and
+Rummelsburg (MOO Challenge Berlin 2025), used here with his permission. The courses on Gleisdreieck were made with
+freemapper-courseplan 0.14.1; the date and the club on the sheets are made up. A click on a picture opens the
+chapter that explains it.
 
-<a href="examples/luebeck-training-window/README.en.md"><img src="examples/luebeck-training-window/preview.jpg" width="640"
-alt="Window orienteering in Lübeck, A4 at 1:4000: the map only in round windows around start, controls and finish, white paper with the purple legs between them"></a>
+<a href="docs/manual/en.md#windows-around-the-controls-masks-window"><img src="docs/manual/img/mask-window.jpg" width="440"
+alt="Window orienteering on the Gleisdreieck map, A4 portrait at 1:4000: the map only in ten separate round windows around start, controls and finish, white paper with the purple legs between them"></a>
 
-**Window orienteering** ([`luebeck-training-window`](examples/luebeck-training-window/README.en.md)): a training
-course with eight controls in Lübeck's old town, on A4 at 1:4000. The map shows only in windows of 15 mm radius
-around start, controls and finish, one of them larger. `masks window` writes the mask.
+**Window orienteering** (Gleisdreieck, Remo Madella): `masks window --course A --assign` with its defaults puts ten
+windows of 15 mm radius on paper around start, controls and finish. At least 3 mm of white paper stays between two
+windows, and windows get smaller where two controls lie close together; here no pair does. More in the chapter
+[Windows around the controls](docs/manual/en.md#windows-around-the-controls-masks-window).
 
-<a href="examples/mcp-session/README.en.md"><img src="examples/mcp-session/preview.jpg" width="640"
-alt="Window orienteering in Berlin's Viktoriapark, A4 at 1:4000: the map only in round windows around start, controls and finish"></a>
+<a href="docs/manual/en.md#a-corridor-along-a-line-masks-corridor"><img src="docs/manual/img/mask-corridor.jpg" width="640"
+alt="Corridor orienteering on the Gleisdreieck map: a narrow strip of map along the legs through all five controls, white paper elsewhere, the control descriptions at the top right"></a>
 
-**With an AI agent** ([`mcp-session`](examples/mcp-session/README.en.md)): a recorded session over the MCP server.
-An agent turns the Viktoriapark training into window orienteering with 12 mm windows, checks the sheet and writes
-the PDF, in five calls.
+**Corridor orienteering** (Gleisdreieck, Remo Madella): course B with five controls (1.4 km) in a corridor 12 mm
+wide along its legs. Two legs cross, so the corridor is made in two pieces. More in the chapter
+[A corridor along a line](docs/manual/en.md#a-corridor-along-a-line-masks-corridor).
 
-<a href="examples/luebeck-training-corridor/README.en.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
-alt="Corridor orienteering in Lübeck, A4 at 1:4000: the map only in a band along three streets"></a>
+<a href="docs/manual/en.md#how-large-the-symbols-are"><img src="docs/manual/img/scale-comparison.jpg" width="640"
+alt="The same spot on the Gleisdreieck map at 1:4000 on the left and at 1:3000 on the right; symbols and lines are larger on the right"></a>
 
-**Corridor orienteering** ([`luebeck-training-corridor`](examples/luebeck-training-corridor/README.en.md)): a
-short course with seven controls in a corridor 12 mm wide along three streets of the old town. The line was chosen
-by hand, and `masks corridor` turns it into the mask.
+**Two scales** (Gleisdreieck, Remo Madella): the same spot at 1:4000 and at 1:3000, each 80 mm × 60 mm at actual
+size. At 1:3000 every symbol grows to 133 % as ISSprOM requires. More in the chapter
+[How large the symbols are](docs/manual/en.md#how-large-the-symbols-are).
 
-<a href="examples/luebeck-competition-courses/README.en.md"><img src="examples/luebeck-competition-courses/preview.jpg" width="640"
-alt="The sheet of course A of a city sprint in Lübeck, A4 at 1:4000, with the course in purple and the control descriptions at the top right"></a>
+<a href="docs/manual/en.md#creating-the-pdf"><img src="docs/manual/img/render-map.jpg" width="640"
+alt="The whole Rummelsburg map on an A3 landscape page at 1:4000, with the credit line in small type at the bottom left"></a>
 
-**A competition with three courses**
-([`luebeck-competition-courses`](examples/luebeck-competition-courses/README.en.md)): the Lübeck sprint with
-courses A and B on A4 at 1:4000 and course C on A3 at 1:3000, from a Purple Pen file, with control descriptions, an
-out-of-bounds area, a forbidden crossing, a marked route to the finish and one number moved with
-`numbers accept`. The same courses from IOF XML are in the subfolder `iof/`, without descriptions.
+**The map alone** (Rummelsburg, Remo Madella): `render` writes the whole map as a PDF on an A3 page at 1:4000, without
+a project file. More in the chapter [Creating the PDF](docs/manual/en.md#creating-the-pdf).
 
-<a href="examples/berlin-viktoriapark-training/README.en.md"><img src="examples/berlin-viktoriapark-training/preview.jpg" width="640"
-alt="The sheet of a club training course in the Viktoriapark in Berlin, A4 at 1:4000, with control descriptions"></a>
+<a href="docs/manual/en.md#12-the-editor-in-the-browser"><img src="docs/manual/img/editor-window-mask.png" width="640"
+alt="The editor in the browser: the project tree on the left, the sheet preview with the Gleisdreieck map in round windows in the middle, the properties of the mask window-A on the right"></a>
 
-**A club training in Berlin** ([`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.en.md)):
-one course of 1.8 km on freemapper's Viktoriapark map, from a Purple Pen file, on A4 at 1:4000.
+**The editor** (Gleisdreieck, Remo Madella; German interface): the sheet preview is exactly what the PDF will show.
+Here the window mask has just appeared in the tree. Every change is in the project file at once. More in the chapter
+[The editor in the browser](docs/manual/en.md#12-the-editor-in-the-browser).
 
-<a href="examples/luebeck-competition-layouts/README.en.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
-alt="A city sprint in Lübeck on A4 at 1:4000 and on A3 at 1:3000, with title, logos and scale check bar"></a>
-
-**One competition, two layouts**
-([`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.en.md)): a city sprint with an A4
-sheet at 1:4000 for the older classes and an A3 sheet at 1:3000 for the youngest, both with title block, club
-and sponsor logo, scale check bar and footer. Built with `init`, `check` and `export` alone.
-
-<a href="examples/luebeck-scales/README.en.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
-alt="The same sprint map of Lübeck old town at 1:4000 and 1:3000"></a>
-
-**Lübeck at two scales** ([`luebeck-scales`](examples/luebeck-scales/README.en.md)): the same sprint map at 1:4000
-on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows to 133 % as ISSprOM requires.
+The complete example projects with project file and PDFs are in [`examples/`](examples/README.en.md), each with a
+preview image: [`luebeck-scales`](examples/luebeck-scales/README.en.md),
+[`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.en.md),
+[`luebeck-competition-courses`](examples/luebeck-competition-courses/README.en.md),
+[`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.en.md),
+[`luebeck-training-window`](examples/luebeck-training-window/README.en.md),
+[`luebeck-training-corridor`](examples/luebeck-training-corridor/README.en.md) and
+[`mcp-session`](examples/mcp-session/README.en.md).
 
 ## Status
 
@@ -138,6 +141,10 @@ Milestone M5, the MCP server for AI agents, is part of this version. The browser
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).
+
+Since v0.8.0, `main` has changes that are not released yet, among them the gap between windows (windows do not
+overlap and keep 3 mm between them) and the new pictures in the manual. They are listed under "Unreleased" in the
+[changes](CHANGELOG.en.md).
 
 ## Installation
 
@@ -240,7 +247,8 @@ freemapper-print check stadtsprint
 
 `masks window` puts a round window around each control of course A, the start and the finish included, and
 `--assign` prints the course with it. The radius counts in millimetres on paper; `--controls` picks controls, and
-`--radius-for 35=20` gives one control a larger window. `masks corridor` lays a corridor 12 mm wide along the
+`--radius-for 35=20` gives one control a larger window. At least 3 mm of paper stays between two windows (`--gap`);
+where two controls are too close for that, both windows get smaller, and the command names them. `masks corridor` lays a corridor 12 mm wide along the
 points, in map mm with the y axis up, as OOM's status bar shows them. Both append a `[[masks]]` table to the
 project file; everything before it stays unchanged. `check` then reports controls and overprint under the mask.
 The [manual](docs/manual/en.md#11-masks-for-window-and-corridor-orienteering) describes masks, their limits and
