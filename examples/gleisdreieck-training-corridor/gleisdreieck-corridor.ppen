@@ -1,0 +1,62 @@
+﻿<course-scribe-event>
+  <event id="1">
+    <title>Corridor Training Gleisdreieck</title>
+    <map kind="OCAD" scale="4000" ignore-missing-fonts="false">../work/gc/gleisdreieck.omap</map>
+    <standards map="Spr2019" description="2018" />
+    <all-controls print-scale="4000" description-kind="symbols" />
+    <course-appearance />
+    <descriptions lang="en" />
+  </event>
+  <control id="1" kind="start">
+    <location x="108" y="278" />
+  </control>
+  <control id="2" kind="finish">
+    <location x="36" y="-42" />
+    <description box="all" iof-2004-ref="14.3" />
+  </control>
+  <control id="3" kind="normal">
+    <code>31</code>
+    <location x="134.43" y="268.16" />
+    <description box="D" iof-2004-ref="6.2" />
+  </control>
+  <control id="4" kind="normal">
+    <code>32</code>
+    <location x="85.2" y="103.5" />
+    <description box="D" iof-2004-ref="6.1" />
+  </control>
+  <control id="5" kind="normal">
+    <code>33</code>
+    <location x="84.48" y="15.33" />
+    <description box="D" iof-2004-ref="4.9" />
+  </control>
+  <control id="6" kind="normal">
+    <code>34</code>
+    <location x="53.91" y="-20.59" />
+    <description box="D" iof-2004-ref="2.4" />
+  </control>
+  <course id="1" kind="normal" order="1">
+    <name>C</name>
+    <first course-control="1" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course-control id="1" control="1">
+    <next course-control="2" />
+  </course-control>
+  <course-control id="2" control="3">
+    <next course-control="3" />
+    <number-location x="5.2917495" y="-1.967984" />
+  </course-control>
+  <course-control id="3" control="4">
+    <next course-control="4" />
+    <number-location x="-5.2917495" y="0.80030185" />
+  </course-control>
+  <course-control id="4" control="5">
+    <next course-control="5" />
+    <number-location x="-7.791731" y="-2.0150788" />
+  </course-control>
+  <course-control id="5" control="6">
+    <next course-control="6" />
+    <number-location x="-6.6311097" y="5.603722" />
+  </course-control>
+  <course-control id="6" control="2" />
+</course-scribe-event>

@@ -1,0 +1,126 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Korridortraining Gleisdreieck"
+date = 2027-05-15
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "gleisdreieck.omap"
+courses = "gleisdreieck-corridor.ppen"
+
+[map]
+kind = "sprint"
+# Der Informationsblock der Karte nennt 2,5 m. Der Vorschlag von init (2 m) ist geändert.
+contour_interval_m = 2.5
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Die Karte hat keine Kartennotizen, deshalb stehen die Quellen hier.
+[print]
+copyright = """
+Karte: Remo Madella, MOO Challenge Berlin 2025
+Bahn: freemapper-courseplan 0.14.1
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event} · Bahn {course}",
+    "{date} · {length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# Das Vereinszeichen ist für dieses Beispiel gezeichnet (CC0).
+[[shared]]
+id = "club_logo"
+kind = "logo"
+file = "logos/kompass.svg"
+width_mm = 14.0
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+# Eine freie Seite von 170 mm × 380 mm (page_mm) statt A3: Der Korridor ist 320 mm lang und nur 100 mm
+# breit. Gedruckt wird sie auf A3 (297 mm × 420 mm). Der Ausschnitt liegt auf dem Korridor
+# (map_frame.centre_map_mm); crop = true schneidet die Karte mit Absicht dort ab.
+# Die Elemente stehen dort, wo der Korridor nicht ist: Maßstabsbalken oben rechts, Beschreibungskasten
+# unten rechts, Vereinszeichen unten links.
+
+[[layouts]]
+id = "korridor-4000"
+page_mm = [170.0, 380.0]
+orientation = "portrait"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [85.0, 118.0] }
+hide_shared = ["scale_check_bar", "club_logo"]
+
+[[layouts.elements]]
+id = "scale_check_bar_top"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+[[layouts.elements]]
+id = "club_logo_bottom"
+kind = "logo"
+file = "logos/kompass.svg"
+width_mm = 14.0
+anchor = { to = "map_frame", corner = "bottom_left", offset_mm = [2.0, 2.0] }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+[[assignments]]
+mask = "corridor-1"
+course = "C"
+layout = "korridor-4000"
+
+# Korridor 12 mm breit auf dem Papier bei 1:4000, erzeugt mit masks corridor aus diesen Punkten:
+# --points
+# "108,278;120,272;131,267;131,255;127,240;121,225;114,206;107,185;99,163;93,145;89,125;87.5,100;87,60;86,30;82,15;81,-4;70,-11;60,-17;54,-22;46,-31;40,-38;36,-42"
+[[masks]]
+id = "corridor-1"
+polygons = [
+    [
+        [
+            [-239.0, -211.0], [258.0, -211.0], [258.0, 431.0], [-239.0, 431.0],
+        ],
+        [
+            [110.683, 283.367], [122.584, 277.416], [137.0, 270.863], [137.0, 254.214],
+            [132.705, 238.106], [126.602, 222.848], [119.662, 204.014], [112.666, 183.026],
+            [104.666, 161.026], [98.81, 143.457], [94.964, 124.228], [93.498, 99.783],
+            [92.999, 59.863], [91.974, 29.116], [87.959, 14.059], [86.829, -7.402],
+            [73.155, -16.104], [63.485, -21.906], [58.186, -26.322], [50.52, -34.946],
+            [44.406, -42.08], [40.243, -46.243], [31.757, -37.757], [35.594, -33.92],
+            [41.48, -27.054], [49.814, -17.678], [56.515, -12.094], [66.845, -5.896],
+            [75.171, -0.598], [76.041, 15.941], [80.026, 30.884], [81.001, 60.137],
+            [81.502, 100.217], [83.036, 125.772], [87.19, 146.543], [93.334, 164.974],
+            [101.334, 186.974], [108.338, 207.986], [115.398, 227.152], [121.295, 241.894],
+            [125.0, 255.786], [125.0, 263.137], [117.416, 266.584], [105.317, 272.633],
+        ],
+    ],
+]
+
+[[numbers]]
+control = "32"
+course = "C"
+direction = 171.4
+gap_mm = 1.0
+
+[numbers.base_seen]
+direction = 171.40000019215935
+gap_mm = 0.5000000322924061
