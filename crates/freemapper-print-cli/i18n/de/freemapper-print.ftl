@@ -768,3 +768,44 @@ editor-severity-info = Info
 editor-severity-warning = Warnung
 editor-severity-error = Fehler
 editor-export-relative = Der Ordner { $path } ist kein vollständiger Pfad. Tippen Sie ihn von der Wurzel an, zum Beispiel /Users/anna/pdfs oder C:\Users\Anna\pdfs.
+
+# ---- update (ADR 0060) ----
+update-about = Eine neuere freemapper-print-Version aus den GitHub-Releases installieren, nach Rückfrage. Ein aus dem Quellcode gebautes freemapper-print nennt stattdessen den Weg zum Aktualisieren.
+help-update-check = Nur prüfen: Exit-Code 10, wenn es eine neuere Version gibt, 0, wenn diese aktuell ist.
+help-update-yes = Ohne Rückfrage installieren; nötig, wenn die Eingabe kein Terminal ist.
+help-update-version = Diese Version (x.y.z) statt der neuesten installieren, auch eine ältere.
+help-update-rollback = Zur Version zurückkehren, die die letzte Aktualisierung ersetzt hat.
+help-update-mode = Festlegen, was die tägliche Prüfung tut, wenn sie eine neuere Version findet (Standard: notify). Funktioniert in jedem Build, weil nur die Einstellung geschrieben wird.
+update-source-build = Dieses freemapper-print wurde aus dem Quellcode gebaut oder von einem Release ohne signierte Aktualisierungen. Die neueste Version gibt es unter https://github.com/HenryJobst/freemapper-print/releases/latest, oder aktualisieren Sie den Quellcode mit git pull und cargo build --release --locked.
+update-current = freemapper-print { $version } ist aktuell.
+update-available = freemapper-print { $new } ist verfügbar (Sie haben { $old }), erschienen am { $released }.
+update-details =
+    Versionshinweise: { $notes }
+    Download: { $size } MB
+update-decimal-separator = ,
+update-ask = Jetzt installieren? [j/N]
+update-not-installed = Es wurde nichts installiert.
+update-needs-yes = Die Eingabe ist kein Terminal, deshalb kann freemapper-print vor der Installation nicht fragen. Mit freemapper-print update --yes wird ohne Rückfrage installiert.
+agent-update-needs-yes = Es wurde nichts installiert; fragen Sie zuerst die Nutzerin oder den Nutzer und rufen Sie install_update nach der Zustimmung mit confirm: true auf.
+update-installing = freemapper-print { $version } wird geladen und geprüft
+update-done = freemapper-print wurde von { $old } auf { $new } aktualisiert. Versionshinweise: { $notes }
+update-mcp-restart = Ein laufender MCP-Server behält die alte Version, bis der KI-Assistent ihn neu startet.
+update-mcp-restart-now = Starten Sie den freemapper-print-MCP-Server jetzt neu, denn er läuft noch mit der alten Version.
+update-rolled-back = Zurück zu freemapper-print { $version }. Die verlassene Version liegt als { $path } bereit.
+update-not-writable = In den Programmordner { $path } kann nicht geschrieben werden, und freemapper-print fragt nicht nach Administratorrechten. Entpacken Sie die neue Version dort von Hand oder verschieben Sie freemapper-print in einen Ordner, in den Sie schreiben dürfen.
+update-too-old = freemapper-print { $new } lässt sich nicht durch die Selbstaktualisierung von { $old } installieren. Installieren Sie { $needed } oder neuer von Hand, siehe { $notes }
+update-busy = Im Programmordner läuft schon eine Aktualisierung oder ein Zurücksetzen (Sperrdatei { $path }). Warten Sie, bis der Vorgang beendet ist, und versuchen Sie es dann erneut.
+update-bad-signature = Die neue Version ließ sich nicht verifizieren ({ $error }). Es wurde nichts installiert.
+update-check-bad-signature = Die neueste freemapper-print-Version ließ sich nicht verifizieren ({ $error }). Es wurde nichts installiert.
+update-no-manifest = Die neueste Version kann sich nicht selbst installieren (ihr fehlt das Aktualisierungsmanifest). Laden Sie sie von { $page } herunter.
+update-no-manifest-version = Die Version { $version } gibt es nicht, oder sie kann sich nicht selbst installieren (ihr fehlt das Aktualisierungsmanifest); siehe { $page }
+update-no-asset = Die neue Version enthält kein Programm für dieses System ({ $platform }). Es wurde nichts installiert. Passt ein Build für ein anderes System, laden Sie ihn von { $page } herunter.
+update-no-previous = Es gibt keine vorherige Version, zu der zurückgekehrt werden kann ({ $path } fehlt).
+update-failed = Die Aktualisierung ist fehlgeschlagen: { $error }
+update-mode-set = Aktualisierungsmodus { $mode } in { $path } gespeichert.
+update-mode-env = FREEMAPPER_PRINT_UPDATE={ $value } hat Vorrang vor dieser Einstellung, solange die Variable gesetzt ist.
+update-mode-failed = { $path } ließ sich nicht schreiben: { $error }
+update-notice = freemapper-print { $new } ist verfügbar (Sie haben { $old }). Aktualisieren mit: freemapper-print update
+update-applies-next-start = Die neue Version gilt ab dem nächsten Start von freemapper-print.
+update-install-failed = freemapper-print { $new } wurde nicht installiert: { $error }
+update-no-config-dir = Dieses System hat keinen Ordner für Einstellungen; setzen Sie FREEMAPPER_PRINT_CONFIG_DIR.

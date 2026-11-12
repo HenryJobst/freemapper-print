@@ -3,10 +3,6 @@
 
 mod ops;
 mod text;
-// The self-update; its command and the daily check follow (ADR 0060).
-#[allow(dead_code)]
-mod update;
-
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail};
@@ -50,6 +46,38 @@ enum Commands {
     Masks(MasksArgs),
     Edit(editor::EditArgs),
     Mcp,
+    Update(UpdateArgs),
+}
+
+#[derive(Args)]
+struct UpdateArgs {
+    #[arg(long, conflicts_with_all = ["yes", "rollback"])]
+    check: bool,
+    #[arg(long)]
+    yes: bool,
+    #[arg(long, value_name = "X.Y.Z")]
+    version: Option<freemapper_update::Version>,
+    #[arg(long, conflicts_with = "version")]
+    rollback: bool,
+    #[arg(long, value_enum, conflicts_with_all = ["check", "yes", "version", "rollback"])]
+    mode: Option<UpdateModeArg>,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum UpdateModeArg {
+    Notify,
+    Install,
+    Off,
+}
+
+impl From<UpdateModeArg> for freemapper_update::Mode {
+    fn from(mode: UpdateModeArg) -> Self {
+        match mode {
+            UpdateModeArg::Notify => Self::Notify,
+            UpdateModeArg::Install => Self::Install,
+            UpdateModeArg::Off => Self::Off,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -250,6 +278,8 @@ macro_rules! args {
 // After `args!`, which it uses.
 mod editor;
 mod mcp;
+// The self-update (ADR 0060); after `args!`, which its command uses.
+mod update;
 
 fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
     let map = read_map(texts, &args.map)?;
@@ -2334,6 +2364,14 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 .mut_arg("port", |a| a.help(texts.plain("help-edit-port")))
                 .mut_arg("no_browser", |a| a.help(texts.plain("edit-no-browser")))
         })
+        .mut_subcommand("update", |c| {
+            c.about(texts.plain("update-about"))
+                .mut_arg("check", |a| a.help(texts.plain("help-update-check")))
+                .mut_arg("yes", |a| a.help(texts.plain("help-update-yes")))
+                .mut_arg("version", |a| a.help(texts.plain("help-update-version")))
+                .mut_arg("rollback", |a| a.help(texts.plain("help-update-rollback")))
+                .mut_arg("mode", |a| a.help(texts.plain("help-update-mode")))
+        })
         .mut_subcommand("mcp", |c| {
             c.about(texts.plain("mcp-about")).after_long_help(format!(
                 "{}\n\n{}",
@@ -2389,6 +2427,16 @@ fn main() -> std::process::ExitCode {
                 .map_err(|err| op_error(&texts, err))
         }
         Commands::Mcp => mcp::run(&texts),
+        Commands::Update(args) => update::command::run(
+            &texts,
+            update::command::Request {
+                check: args.check,
+                yes: args.yes,
+                version: args.version,
+                rollback: args.rollback,
+                mode: args.mode.map(Into::into),
+            },
+        ),
     };
     match result {
         Ok(code) => std::process::ExitCode::from(code),

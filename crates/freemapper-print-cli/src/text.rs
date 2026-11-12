@@ -456,6 +456,14 @@ mod tests {
             "ids",
             "codes",
             "files",
+            "new",
+            "old",
+            "released",
+            "notes",
+            "size",
+            "version",
+            "mode",
+            "platform",
         ] {
             args.set(name, FluentValue::from("sample"));
         }

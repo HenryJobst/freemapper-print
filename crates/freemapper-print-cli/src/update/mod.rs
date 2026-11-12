@@ -2,6 +2,7 @@
 //! whether this build may update itself, the settings folder, the `update` command and the daily
 //! check after network commands. The pure parts live in `freemapper-update`.
 
+pub mod command;
 mod source;
 
 use std::path::PathBuf;
@@ -208,6 +209,7 @@ fn settings_dir_from(
 
 /// The file of the daily check's record (ADR 0060, P6): `FREEMAPPER_PRINT_CACHE_DIR` if set and not
 /// empty, else the system's cache folder + `freemapper-print`; then `update-check.json`.
+#[allow(dead_code)] // The daily check of Task 4 uses it.
 pub fn record_path() -> Option<PathBuf> {
     record_path_from(
         std::env::var_os("FREEMAPPER_PRINT_CACHE_DIR"),
@@ -215,6 +217,7 @@ pub fn record_path() -> Option<PathBuf> {
     )
 }
 
+#[allow(dead_code)] // Used by `record_path`.
 fn record_path_from(
     overridden: Option<std::ffi::OsString>,
     system: Option<PathBuf>,
