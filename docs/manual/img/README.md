@@ -9,8 +9,8 @@ unreleased window gap, ADR 0063) made from two maps and the browser editor worki
 - Author: Remo Madella, MOO Challenge Berlin 2025.
 - Permission: Remo Madella confirmed by e-mail on 2026-11-12 that the maps may be used as example maps in the
   public freemapper project, inside the suite. The figures need no further permission. The maps carry no licence
-  of their own beyond that, so for any other use ask the author. Only the finished images are in this repository,
-  not the `.omap` files.
+  of their own beyond that, so for any other use ask the author. The `.omap` files are in this repository only as
+  part of the example projects in `examples/` (ADR 0064).
 - Courses: the courses on the sheets (A with 8 controls and 2.38 km, B with 5 controls and 1.40 km, both on the
   Gleisdreieck map) were made with freemapper-courseplan 0.14.1. They carry no date and no organiser; the event
   date 2027-05-08 and the organiser "OL-Verein Musterstadt" come from the print project and are made up.
