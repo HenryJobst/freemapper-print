@@ -9,7 +9,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- The manual now has figures, at the same places in both languages: sheets with title block, logo and passe-partout, a course sheet with its description box, masks for window and corridor orienteering, and the editor in the browser. They are made from the maps of Remo Madella (MOO Challenge Berlin 2025); source and method are in `docs/manual/img/README.md`.
+- The manual now has figures, at the same places in both languages: sheets with title block, logo and passe-partout, a course sheet with its description box, masks for window and corridor orienteering, and the editor in the browser. They are made from the maps of Remo Madella (MOO Challenge Berlin 2025), who confirmed that they may serve as example maps in the public project. The courses on the course sheets come from freemapper-courseplan 0.14.1, and the window figure shows the default windows with their gap. Source and method are in `docs/manual/img/README.md` (decision 0062).
+- The README in both languages shows these figures as its examples and a course sheet at the top, each picture linked to its manual chapter. The example projects in `examples/` are listed as text.
 
 ### Changed
 

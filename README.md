@@ -12,6 +12,11 @@ druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
 gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt die fertige Karte aufs Papier.
 
+<a href="docs/manual/de.md#bahnblätter-und-bahnaufdruck"><img src="docs/manual/img/course-sheet.jpg" width="440"
+alt="Das Blatt der Bahn A auf der Karte Gleisdreieck, A4 hochkant in 1:4000: die Bahn in Violett mit acht Posten, oben links der Titelblock, oben rechts die Postenbeschreibung"></a>
+
+*Das Blatt einer Bahn: Bahn A (2,4 km, acht Posten) auf der Karte Gleisdreieck (Remo Madella, MOO Challenge Berlin 2025), A4 in 1:4000, mit Bahnaufdruck, Nummern, Titelblock und Postenbeschreibung. Mehr im [Handbuch](docs/manual/de.md#bahnblätter-und-bahnaufdruck).*
+
 Das kann es schon:
 
 - eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4, A3 oder einer frei gewählten Seitengröße, auch in
@@ -42,7 +47,8 @@ Das kann es schon:
   Fenster oder einen Korridor. Bahnaufdruck, Postenbeschreibung, Titel und Fußzeile bleiben überall stehen, auch
   die Strecken zwischen den Fenstern;
 - `masks window` legt runde Fenster um die Posten einer Bahn, mit einem Radius in Millimetern auf dem Papier und
-  auf Wunsch einem eigenen Radius je Posten; `masks corridor` macht aus einer Linie, die Sie vorgeben, einen
+  auf Wunsch einem eigenen Radius je Posten. Die Fenster überlappen sich nie: Zwischen zwei Fenstern bleiben
+  mindestens 3 mm Papier, und wo Posten nah beieinander liegen, werden die Fenster kleiner. `masks corridor` macht aus einer Linie, die Sie vorgeben, einen
   Korridor mit einstellbarer Breite. Einen automatischen Korridor gibt es nicht, denn kein Regelwerk sagt, wo er
   verläuft;
 - Abdeckungen auch von Hand in die Projektdatei schreiben; das White-out aus Purple Pen druckt das Programm als
@@ -77,58 +83,54 @@ bleiben in freemapper-print.
 
 ## Beispiele
 
-Fertige Beispiele liegen in [`examples/`](examples/README.md). Ein Klick auf ein Bild öffnet das Beispiel mit
-den PDFs.
+Die Bilder stammen aus dem [Handbuch](docs/manual/de.md) und zeigen zwei Sprintkarten von Remo Madella, Gleisdreieck
+und Rummelsburg (MOO Challenge Berlin 2025), die hier mit seiner Erlaubnis stehen. Die Bahnen auf Gleisdreieck sind
+mit freemapper-courseplan 0.14.1 gemacht, Datum und Verein auf den Blättern sind erfunden. Ein Klick auf ein Bild
+öffnet das Kapitel, das es erklärt.
 
-<a href="examples/luebeck-training-window/README.md"><img src="examples/luebeck-training-window/preview.jpg" width="640"
-alt="Ein Fenster-OL in Lübeck, A4 in 1:4000: die Karte nur in runden Fenstern um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken"></a>
+<a href="docs/manual/de.md#fenster-um-die-posten-masks-window"><img src="docs/manual/img/mask-window.jpg" width="440"
+alt="Fenster-OL auf der Karte Gleisdreieck, A4 hochkant in 1:4000: die Karte nur in zehn getrennten runden Fenstern um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken"></a>
 
-**Fenster-OL** ([`luebeck-training-window`](examples/luebeck-training-window/README.md)): eine Trainingsbahn mit
-acht Posten in der Lübecker Altstadt, auf A4 in 1:4000. Die Karte zeigt sich nur in Fenstern von 15 mm Radius um
-Start, Posten und Ziel, eines davon größer. Die Abdeckung schreibt `masks window`.
+**Fenster-OL** (Gleisdreieck, Remo Madella): `masks window --course A --assign` mit den Voreinstellungen legt zehn
+Fenster von 15 mm Radius auf dem Papier um Start, Posten und Ziel. Zwischen zwei Fenstern bleiben mindestens 3 mm
+weißes Papier; wo zwei Posten nah beieinander liegen, werden die Fenster kleiner. Hier liegt kein Postenpaar so nah.
+Mehr im Kapitel [Fenster um die Posten](docs/manual/de.md#fenster-um-die-posten-masks-window).
 
-<a href="examples/mcp-session/README.md"><img src="examples/mcp-session/preview.jpg" width="640"
-alt="Ein Fenster-OL im Viktoriapark in Berlin, A4 in 1:4000: die Karte nur in runden Fenstern um Start, Posten und Ziel"></a>
+<a href="docs/manual/de.md#ein-korridor-entlang-einer-linie-masks-corridor"><img src="docs/manual/img/mask-corridor.jpg" width="640"
+alt="Korridor-OL auf der Karte Gleisdreieck: ein schmaler Streifen Karte entlang der Strecken durch alle fünf Posten, sonst weißes Papier, oben rechts die Postenbeschreibung"></a>
 
-**Mit einem KI-Agenten** ([`mcp-session`](examples/mcp-session/README.md)): eine aufgezeichnete Sitzung über den
-MCP-Server. Ein Agent macht aus dem Viktoriapark-Training einen Fenster-OL mit Fenstern von 12 mm, prüft das Blatt
-und schreibt das PDF, in fünf Aufrufen.
+**Korridor-OL** (Gleisdreieck, Remo Madella): Bahn B mit fünf Posten (1,4 km) in einem Korridor von 12 mm Breite
+entlang ihrer Strecken. Zwei Strecken kreuzen sich, deshalb entsteht der Korridor aus zwei Stücken. Mehr im Kapitel
+[Ein Korridor entlang einer Linie](docs/manual/de.md#ein-korridor-entlang-einer-linie-masks-corridor).
 
-<a href="examples/luebeck-training-corridor/README.md"><img src="examples/luebeck-training-corridor/preview.jpg" width="640"
-alt="Ein Korridor-OL in Lübeck, A4 in 1:4000: die Karte nur in einem Streifen entlang dreier Straßen"></a>
+<a href="docs/manual/de.md#wie-groß-die-symbole-sind"><img src="docs/manual/img/scale-comparison.jpg" width="640"
+alt="Dieselbe Stelle der Karte Gleisdreieck in 1:4000 links und in 1:3000 rechts; rechts sind Symbole und Linien größer"></a>
 
-**Korridor-OL** ([`luebeck-training-corridor`](examples/luebeck-training-corridor/README.md)): eine kurze Bahn mit
-sieben Posten in einem 12 mm breiten Korridor entlang dreier Straßen der Altstadt. Die Linie ist von Hand gewählt,
-`masks corridor` macht daraus die Abdeckung.
+**Zwei Maßstäbe** (Gleisdreieck, Remo Madella): dieselbe Stelle in 1:4000 und in 1:3000, je 80 mm × 60 mm in
+Originalgröße. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf 133 %. Mehr im Kapitel
+[Wie groß die Symbole sind](docs/manual/de.md#wie-groß-die-symbole-sind).
 
-<a href="examples/luebeck-competition-courses/README.md"><img src="examples/luebeck-competition-courses/preview.jpg" width="640"
-alt="Das Blatt der Bahn A eines Stadtsprints in Lübeck, A4 in 1:4000, mit der Bahn in Violett und der Postenbeschreibung oben rechts"></a>
+<a href="docs/manual/de.md#das-pdf-erzeugen"><img src="docs/manual/img/render-map.jpg" width="640"
+alt="Die ganze Karte Rummelsburg auf einer A3-Seite quer in 1:4000, in der Mitte, mit der Namensnennung in kleiner Schrift unten links"></a>
 
-**Ein Wettkampf mit drei Bahnen** ([`luebeck-competition-courses`](examples/luebeck-competition-courses/README.md)):
-der Lübecker Sprint mit den Bahnen A und B auf A4 in 1:4000 und der Bahn C auf A3 in 1:3000, aus einer
-Purple-Pen-Datei, mit Postenbeschreibung, Sperrgebiet, verbotener Querung, Pflichtstrecke zum Ziel und einer mit
-`numbers accept` versetzten Nummer. Dieselben Bahnen aus IOF-XML liegen im Unterordner `iof/`, ohne Beschreibung.
+**Nur die Karte** (Rummelsburg, Remo Madella): `render` schreibt die ganze Karte als PDF auf eine A3-Seite in 1:4000,
+ohne Projektdatei. Mehr im Kapitel [Das PDF erzeugen](docs/manual/de.md#das-pdf-erzeugen).
 
-<a href="examples/berlin-viktoriapark-training/README.md"><img src="examples/berlin-viktoriapark-training/preview.jpg" width="640"
-alt="Das Blatt einer Trainingsbahn im Viktoriapark in Berlin, A4 in 1:4000, mit Postenbeschreibung"></a>
+<a href="docs/manual/de.md#12-der-editor-im-browser"><img src="docs/manual/img/editor-window-mask.png" width="640"
+alt="Der Editor im Browser: links der Projektbaum, in der Mitte die Blattvorschau mit der Karte Gleisdreieck in runden Fenstern, rechts die Eigenschaften der Abdeckung window-A"></a>
 
-**Ein Vereinstraining in Berlin** ([`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.md)):
-eine Bahn von 1,8 km auf der Viktoriapark-Karte von freemapper, aus einer Purple-Pen-Datei, auf A4 in 1:4000.
+**Der Editor** (Gleisdreieck, Remo Madella): die Blattvorschau ist genau das spätere PDF. Hier steht die Fenstermaske
+gerade im Baum. Jede Änderung steht sofort in der Projektdatei. Mehr im Kapitel
+[Der Editor im Browser](docs/manual/de.md#12-der-editor-im-browser).
 
-<a href="examples/luebeck-competition-layouts/README.md"><img src="examples/luebeck-competition-layouts/preview.jpg" width="640"
-alt="Ein Stadtsprint in Lübeck auf A4 in 1:4000 und auf A3 in 1:3000, mit Titel, Logos und Kontrollstrecke"></a>
-
-**Ein Wettkampf, zwei Layouts** ([`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.md)):
-ein Stadtsprint mit einem A4-Blatt in 1:4000 für die älteren Klassen und einem A3-Blatt in 1:3000 für die
-jüngsten, beide mit Titelblock, Vereins- und Sponsorenlogo, Kontrollstrecke und Fußzeile. Gebaut nur mit
-`init`, `check` und `export`.
-
-<a href="examples/luebeck-scales/README.md"><img src="examples/luebeck-scales/preview.jpg" width="640"
-alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
-
-**Lübeck in zwei Maßstäben** ([`luebeck-scales`](examples/luebeck-scales/README.md)): dieselbe Sprintkarte in
-1:4000 auf A4 und in 1:3000 auf A3, gedruckt mit `render`. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf
-133 %.
+Die vollständigen Beispielprojekte mit Projektdatei und PDFs liegen in [`examples/`](examples/README.md), jeweils
+mit Vorschaubild: [`luebeck-scales`](examples/luebeck-scales/README.md),
+[`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.md),
+[`luebeck-competition-courses`](examples/luebeck-competition-courses/README.md),
+[`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.md),
+[`luebeck-training-window`](examples/luebeck-training-window/README.md),
+[`luebeck-training-corridor`](examples/luebeck-training-corridor/README.md) und
+[`mcp-session`](examples/mcp-session/README.md).
 
 ## Status
 
@@ -141,6 +143,10 @@ dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Ve
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).
+
+Seit v0.8.0 hat `main` Änderungen, die noch nicht veröffentlicht sind, darunter den Abstand zwischen Fenstern
+(Fenster überlappen sich nicht und halten 3 mm Abstand) und die neuen Bilder im Handbuch. Sie stehen in den
+[Änderungen](CHANGELOG.md) unter „Unveröffentlicht“.
 
 ## Installation
 
@@ -248,7 +254,8 @@ freemapper-print check stadtsprint
 
 `masks window` legt um jeden Posten der Bahn A ein rundes Fenster, auch um Start und Ziel, und `--assign` druckt
 die Bahn damit. Der Radius gilt in Millimetern auf dem Papier; `--controls` wählt Posten aus, `--radius-for 35=20`
-gibt einem Posten ein größeres Fenster. `masks corridor` legt einen Korridor von 12 mm Breite entlang der Punkte,
+gibt einem Posten ein größeres Fenster. Zwischen zwei Fenstern bleiben mindestens 3 mm Papier (`--gap`); wo zwei
+Posten dafür zu nah beieinander liegen, werden beide Fenster kleiner, und der Befehl nennt sie. `masks corridor` legt einen Korridor von 12 mm Breite entlang der Punkte,
 in Karten-mm mit der y-Achse nach oben, wie die Statusleiste von OOM sie zeigt. Beide hängen eine Tabelle
 `[[masks]]` an die Projektdatei an; alles davor bleibt unverändert. `check` meldet danach Posten und
 Bahnaufdruck, die unter der Abdeckung liegen. Das [Handbuch](docs/manual/de.md#11-abdeckungen-für-fenster--und-korridor-ol)
