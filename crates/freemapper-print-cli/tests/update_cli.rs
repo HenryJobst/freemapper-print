@@ -483,6 +483,7 @@ mod daily {
     }
 
     /// A mask over the whole map: `check` then has notes and exits 1.
+    #[cfg(unix)]
     const MASK_ALL: &str = "mask = \"all\"\n[[masks]]\nid = \"all\"\npolygons = \
         [[[[-1000000, -1000000], [1000000, -1000000], [1000000, 1000000], [-1000000, 1000000]]]]\n";
 
