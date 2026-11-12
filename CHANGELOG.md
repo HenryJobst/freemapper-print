@@ -6,10 +6,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unveröffentlicht]
+
 ### Behoben
 
 - Der Editor kürzt einen Logo-Pfad auf den Dateinamen, egal auf welchem System die Projektdatei entstand (`/home/…` auch unter Windows, `C:\…` auch sonst), damit die Seite keine Ordner eines fremden Systems zeigt.
-
 
 ## [0.7.0] - 2026-11-12
 

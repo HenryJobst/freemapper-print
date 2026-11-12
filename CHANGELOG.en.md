@@ -6,10 +6,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
 ### Fixed
 
 - The editor shortens a logo path to its file name whichever system wrote it (`/home/…` on Windows as well as `C:\…`), so the page never shows the folders of another system.
-
 
 ## [0.7.0] - 2026-11-12
 
