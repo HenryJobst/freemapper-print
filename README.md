@@ -54,7 +54,7 @@ Das kann es schon:
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
 
-- einen Editor im Browser (`freemapper-print edit`, ab der nächsten Version): Blattvorschau, genau so gezeichnet wie im PDF, Elemente und Postennummern
+- einen Editor im Browser (`freemapper-print edit`, ab Version 0.7.0): Blattvorschau, genau so gezeichnet wie im PDF, Elemente und Postennummern
   ziehen, Layouts und Elemente in Formularen ändern, Fenster- und Korridormasken anlegen, prüfen und PDFs
   schreiben; jede Änderung steht sofort in der Projektdatei, mit Rückgängig und Wiederholen.
 
@@ -132,12 +132,12 @@ alt="Dieselbe Sprintkarte der Lübecker Altstadt in 1:4000 und 1:3000"></a>
 
 ## Status
 
-Aktuelle Version ist [v0.6.2](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.2) vom
-11. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Aktuelle Version ist [v0.7.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.7.0) vom
+12. November 2026 (was sich geändert hat, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
-dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Version dazu. Der Editor im Browser (M6, `freemapper-print edit`) ist fertig und kommt mit der nächsten Version. Die erste Version richtet sich an Vereinstrainings in Stadt und
+dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Version dazu. Der Editor im Browser (M6, `freemapper-print edit`) gehört seit dieser Version dazu. Die erste Version richtet sich an Vereinstrainings in Stadt und
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).

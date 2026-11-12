@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.7.0] - 2026-11-12
+
 ### Hinzugefügt
 
 - `freemapper-print edit`: der Editor im Browser (Entscheidung 0059). Er zeigt das Blatt genau so gezeichnet wie im PDF, lässt Elemente mit der Maus oder den Pfeiltasten verschieben, Postennummern ziehen oder in einem Formular setzen, ändert Layouts und Elemente in Formularen und legt Fenster- und Korridormasken an, auch mit getippter Strecke ohne Maus. Der Editor prüft alle Blätter und schreibt die PDFs in einen Ordner, dessen Pfad Sie eintippen; „Anhalten“ beendet den Export nach dem Blatt, das gerade entsteht.

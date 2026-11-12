@@ -52,7 +52,7 @@ What it does already:
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
 
-- an editor in the browser (`freemapper-print edit`, from the next version on): a sheet preview drawn exactly as in the PDF, dragging elements and control
+- an editor in the browser (`freemapper-print edit`, from version 0.7.0 on): a sheet preview drawn exactly as in the PDF, dragging elements and control
   numbers, forms for layouts and elements, window and corridor masks, check and PDF export; every change is
   written to the project file at once, with undo and redo.
 
@@ -128,12 +128,12 @@ on A4 and at 1:3000 on A3, printed with `render`. At 1:3000 every symbol grows t
 
 ## Status
 
-The current version is [v0.6.2](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.6.2) of
-11 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+The current version is [v0.7.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.7.0) of
+12 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
-Milestone M5, the MCP server for AI agents, is part of this version. The browser editor (M6, `freemapper-print edit`) is finished and comes with the next version.
+Milestone M5, the MCP server for AI agents, is part of this version. The browser editor (M6, `freemapper-print edit`) is part of this version.
 The first version targets club training in towns and parks: sprint maps on A4, printed at home or in a
 copy shop. More in the [design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), the
 [glossary](docs/glossary.md) and the [architecture decisions](docs/adr/README.md).

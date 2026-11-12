@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-12
+
 ### Added
 
 - `freemapper-print edit`: the browser editor (decision 0059). It shows the sheet drawn exactly as in the PDF, lets you move elements with the mouse or the arrow keys and drag control numbers or place them in a form, changes layouts and elements in forms and adds window and corridor masks, also with a typed route and no mouse. The editor checks all sheets and writes the PDFs into a folder whose path you type; Stop ends the export after the sheet in hand.
