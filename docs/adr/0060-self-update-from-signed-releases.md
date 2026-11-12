@@ -35,9 +35,9 @@ mode, nothing unsigned installed. What is ported is described there. Print's own
   about the person or project, no telemetry.
 - **P10** Folders from `dirs` 7.0.0, clock from `SystemTime`, no `chrono`.
 
-New dependencies (`freemapper-update`, `ureq`, `dirs`, `minisign-verify`, `sha2`) have the versions of freemapper's
-Cargo.lock, older than two weeks (ADR 0006), with one exception: `flate2`
-1.1.11 (published 2026-11-06). Core pins `=1.1.11` in `freemapper-update`, so 1.1.10 cannot resolve. ADR 0042
+The new crates are at the versions of freemapper's Cargo.lock and at least two weeks old (ADR 0006): `freemapper-update`
+0.21.1 from core, `ureq` 3.4.2, `dirs` 7.0.0, `minisign-verify` 0.3.0, `sha2` 0.11.1. The exception is `flate2`
+1.1.11 (published 2026-11-06): core pins `=1.1.11` in `freemapper-update`, so 1.1.10 cannot resolve. ADR 0042
 exempts core's own crates, not `flate2`; this exception ends with the next core tag that moves `flate2`.
 
 ## Consequences
