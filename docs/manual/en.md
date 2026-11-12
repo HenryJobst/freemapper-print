@@ -403,6 +403,10 @@ because that would falsify the scale. If the map reaches beyond it, `check` says
 (chapter 9). The frame line is centred on the edge of the map frame: one half covers the cut edge of the map,
 the other lies on the passe-partout.
 
+![An A4 landscape sheet with a wide white passe-partout around the map frame, a title block at the top left and the credit line below the frame](img/sheet-passe-partout.jpg)
+
+*An A4 sheet with a 30 mm passe-partout and `crop = true`: the map ends at the frame line, and the credit line sits below it in the passe-partout. Map: Remo Madella, MOO Challenge Berlin 2025.*
+
 Without `centre_map_mm`, the middle of what is printed lands in the middle of the frame. With
 `centre_map_mm = [x, y]` that map point lands there. The numbers are millimetres on the map at map scale, exactly
 as OOM shows them in its status bar when the coordinate display is set to map coordinates: point at the spot in
@@ -477,6 +481,10 @@ An element hung on the map frame lies on the map and covers it, as intended. An 
 reaches into the map frame gets a note, and so does an element that reaches past the page edge.
 
 Other keys apply only to some kinds. A key on the wrong kind is an error.
+
+![An A4 sheet with a title block at the top left, a round logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame](img/sheet-elements.jpg)
+
+*A layout sheet with title block, logo, scale check bar and credit line (the logo is a mark drawn for this example). Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### Title block and text
 
@@ -718,6 +726,10 @@ bad file never produces a sheet. The exit code is 1.
 
 ### Course sheets and the overprint
 
+![An A4 sheet with the map, the purple course A with eight controls and numbers, the title block at the top left and the description box at the top right](img/course-sheet.jpg)
+
+*The sheet of course "A" at 1:4000 with overprint, numbers, title block and description box (the course is made up for this manual). Map: Remo Madella, MOO Challenge Berlin 2025.*
+
 With a course file, `export` writes one PDF per course instead of one per layout (see "Export" below). A course
 sheet is the layout the course is assigned to, with these changes:
 
@@ -768,6 +780,10 @@ The box is laid out the way Purple Pen lays it out. It shows the event title, th
 climb, the start, one row per control with number, code and the symbols for the columns C to H, the rows for marked
 routes and map exchanges with their length, and the finish. The secondary title of a course from Purple Pen gets
 its own row, and a map flip the row 15.6. A score course lists its controls by code, the way Purple Pen does.
+
+![A table with the title, course A with 1.4 km, the start, eight rows with number, code and symbol, and the finish row](img/description-box.png)
+
+*The description box of course "A" with title, length, start, eight controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 The box has a white background and is drawn in Arimo. A cell is 6 mm by default. `cell_mm` sets it from 4 to 10 mm.
 The box keeps its size at every print scale, as an element on paper should. If a 1:3000 sheet needs more room for
@@ -825,6 +841,10 @@ When the program places a number itself, it follows four rules. The user rules o
 3. If the box behind the control would come within half a line width of the outgoing leg, the number goes on the
    outer bisector, between the two legs on their outer side.
 4. If the preferred place is blocked, the free place that deviates least from it wins.
+
+![A detail of the sheet with controls 3, 4 and 5, their circles, the purple legs between them and the numbers beside them](img/course-detail.jpg)
+
+*Controls 3 to 5 of course "A" with circle, leg and number. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 The program never moves a number on its own. It prints where the level puts it, and `check` scores every number
 against the overprint, the sheet elements, the edge of the map frame and the map's own symbols. If a number lies
@@ -934,6 +954,10 @@ them below the map. If the box covers part of the map, `render` says so; a proje
 puts the footer below the map. First the program writes a line with the paper, the print scale and the factors,
 then come notes and a reminder to print at actual size.
 
+![An A3 landscape page with the whole map of Rummelsburg in the middle and the credit line in small type at the bottom left](img/render-map.jpg)
+
+*Output of `render` for the Rummelsburg map: A3 landscape at 1:4000, the whole map on one page. Map: Remo Madella, MOO Challenge Berlin 2025.*
+
 A course sheet comes from `export` too (chapter 8). It has the same scale rules as a layout sheet. A course sheet
 shows the map in the map frame, with the course overprint in purple over it, the description box and the sheet
 elements. If the course has a mask for window or corridor orienteering (chapter 11), the paper stays white in the
@@ -971,6 +995,10 @@ The specification for the map kind sets the symbol sizes for a base scale: 1:400
 symbol. A sprint map at 1:3000, which the standard recommends for the youngest age groups, has its symbols at
 133 %: a small footpath is 0.36 mm wide instead of 0.27 mm. A forest map grows to 150 % at 1:10000, 200 % at
 1:7500 and 300 % at 1:5000. The map needs correspondingly more paper.
+
+![Two map sections side by side, 1:4000 on the left and 1:3000 on the right; symbols and lines are larger on the right](img/scale-comparison.jpg)
+
+*The same spot on the map at 1:4000 (left) and 1:3000 (right), each 80 mm × 60 mm from an A4 sheet at actual size. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 The standards foresee no print smaller than the base scale. The program prints it anyway, for example a sprint
 map at 1:5000. The symbols then keep their 1:4000 size and only the terrain shrinks. The program warns:
@@ -1263,6 +1291,10 @@ In English the first line reads "Added the mask "window-Fenster" to ./freemapper
 radius on paper at 1:4000 around the start, controls 43, 34, 41, 42, 38, 35, 50 and 37 and the finish of course
 "Fenster"."
 
+![An A4 sheet where the map shows only in round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
+
+*Course "A" with a mask for window orienteering (`masks window --radius 14 --assign`): the map shows only in the windows around start, controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
+
 ### A corridor along a line: `masks corridor`
 
 There is no automatic corridor. No rule book says where a corridor runs; the course setter decides that. You give
@@ -1296,6 +1328,10 @@ The comment above the new table repeats the points as `--points "…"`, so you c
 command does not write a branch or a second corridor for the same course. For that, run it without `--assign` with
 an `--id` for each piece, then copy the second ring (the hole) of one piece into the polygon of the other. Holes
 may overlap. Delete the table you no longer need.
+
+![A sheet with a narrow, bent strip of map that runs through all five controls, white paper elsewhere and the description box at the bottom right](img/mask-corridor.jpg)
+
+*Course "B" with a corridor mask (`masks corridor --width 12`) on a sheet of 210 mm × 150 mm (`page_mm`). Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### What both commands write
 
@@ -1452,6 +1488,10 @@ gone." and offers a Reload button.
   (Zoom in, Zoom out, Fit the page), Export (This sheet as PDF, All sheets as PDFs, All courses as one PDF).
 - **Status bar** (bottom): the last message, the project, the print scale and the page size.
 
+![The editor in the browser: the project tree on the left, the sheet preview in the middle, the form of the title block on the right and the notes below the preview](img/editor-element.jpg)
+
+*The editor with the title block selected: project tree on the left, sheet preview in the middle, form on the right, notes below the preview (German interface). Map: Remo Madella, MOO Challenge Berlin 2025.*
+
 ### Every change is written at once
 
 There is no Save button. Each change you make, a move, a form with Apply, a mask, a number, is written into the
@@ -1489,6 +1529,10 @@ control, or type codes (`31,32`) or places (`2-5`) into the field. Empty means e
 own radii (`35=20`), "No window at the start", "No window at the finish", an id, and "Print the course with this
 mask". "Add the window mask" writes it, like `masks window`. Radii are in millimetres on paper. A window mask
 needs a course file.
+
+![The editor after adding a window mask: the preview shows the map only in round windows, the mask fenster-a is in the tree and its properties are on the right](img/editor-window-mask.png)
+
+*The editor after "Add the window mask" ("Fenstermaske anlegen" in the German interface): the preview shows the windows, and the mask "fenster-a" is in the tree. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
 **Corridor mask.** Masks menu, Corridor mask. Click the points of the line on the sheet and double-click the
 last one; the form says how many points are drawn. Instead you can type the route into "Points typed as x,y;x,y in

@@ -414,6 +414,10 @@ denn das würde den Maßstab verfälschen. Ragt sie hinaus, meldet `check`, um w
 Die Rahmenlinie liegt mittig auf der Kante des Kartenausschnitts: Die eine Hälfte deckt die Schnittkante der
 Karte, die andere liegt auf dem Passepartout.
 
+![A4-Blatt quer mit breitem weißem Passepartout um den Kartenausschnitt, Titelblock oben links, darunter die Namensnennung](img/sheet-passe-partout.jpg)
+
+*Ein A4-Blatt mit 30 mm Passepartout und `crop = true`: Die Karte endet an der Rahmenlinie, die Namensnennung steht darunter im Passepartout. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+
 Ohne `centre_map_mm` liegt die Mitte dessen, was gedruckt wird, in der Mitte des Ausschnitts. Mit
 `centre_map_mm = [x, y]` liegt dort dieser Punkt der Karte. Die Zahlen sind Millimeter auf der Karte im
 Kartenmaßstab, genau so, wie OOM sie in der Statusleiste anzeigt, wenn die Koordinatenanzeige auf
@@ -494,6 +498,10 @@ Ein Element am Kartenausschnitt liegt auf der Karte und deckt sie ab, das ist ge
 das in den Kartenausschnitt ragt, bekommt einen Hinweis. Ebenso ein Element, das über den Blattrand ragt.
 
 Andere Schlüssel gelten nur für bestimmte Arten. Steht einer bei der falschen Art, ist das ein Fehler.
+
+![A4-Blatt mit Titelblock oben links, rundem Logo unten links, Maßstabsleiste unten rechts und der Namensnennung unter dem Rahmen](img/sheet-elements.jpg)
+
+*Ein Layoutblatt mit Titelblock, Logo, Maßstabsleiste und Namensnennung (das Logo ist für dieses Beispiel gezeichnet). Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### Titelblock und Text
 
@@ -744,6 +752,10 @@ eine schlechte Datei nie ein Blatt erzeugt. Der Exit-Code ist 1.
 
 ### Bahnblätter und Bahnaufdruck
 
+![A4-Blatt mit der Karte, der violetten Bahn A mit acht Posten und Nummern, dem Titelblock oben links und dem Beschreibungskasten oben rechts](img/course-sheet.jpg)
+
+*Das Blatt der Bahn „A“ in 1:4000 mit Bahnaufdruck, Nummern, Titelblock und Beschreibungskasten (die Bahn ist für dieses Handbuch erfunden). Karte: Remo Madella, MOO Challenge Berlin 2025.*
+
 Mit einer Bahndatei schreibt `export` ein PDF je Bahn statt je Layout (siehe „Export“ unten). Ein Bahnblatt ist
 das Layout, dem die Bahn zugeordnet ist, mit diesen Änderungen:
 
@@ -798,6 +810,10 @@ und Anstieg, den Start, je Posten eine Zeile mit Nummer, Code und den Symbolen d
 Pflichtstrecken und Kartenwechsel mit ihrer Länge und das Ziel. Der zweite Titel einer Bahn aus Purple Pen
 bekommt eine eigene Zeile, ein Kartenwechsel („map flip“) die Zeile 15.6. Eine Bahn mit Wertung (Score-Lauf) führt ihre Posten
 nach Code auf, wie Purple Pen es tut.
+
+![Tabelle mit Titel, Bahn A mit 1,4 km, Start, acht Zeilen mit Nummer, Code und Symbol und der Zielzeile](img/description-box.png)
+
+*Der Beschreibungskasten der Bahn „A“ mit Titel, Länge, Start, acht Posten und Ziel. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Der Kasten hat weißen Hintergrund und ist in Arimo gesetzt. Ein Kästchen ist standardmäßig 6 mm groß, `cell_mm`
 setzt 4 bis 10 mm. Der Kasten behält seine Größe bei jedem Druckmaßstab, wie es ein Element auf dem Papier tun
@@ -861,6 +877,10 @@ Platziert das Programm eine Nummer selbst, folgt es vier Regeln, die aus den Reg
 3. Käme der Kasten hinter dem Posten näher als eine halbe Linienbreite an die hinausführende Strecke, steht die
    Nummer auf der äußeren Winkelhalbierenden, zwischen den beiden Strecken auf ihrer Außenseite.
 4. Ist der bevorzugte Platz belegt, gewinnt der freie Platz, der am wenigsten davon abweicht.
+
+![Ausschnitt des Blatts mit den Posten 3, 4 und 5, ihren Kreisen, den violetten Strecken dazwischen und den Nummern daneben](img/course-detail.jpg)
+
+*Die Posten 3 bis 5 der Bahn „A“ mit Kreis, Strecke und Nummer. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Das Programm verschiebt eine Nummer nie von selbst. Es druckt sie dort, wo ihre Ebene sie hinsetzt, und `check`
 bewertet jede Nummer gegen den Bahnaufdruck, die Blattelemente, den Rand des Kartenausschnitts und die Symbole der
@@ -974,6 +994,10 @@ Platz. Deckt der Kasten einen Teil der Karte ab, meldet `render` das; ein Projek
 die Fußzeile unter die Karte. Zuerst schreibt das Programm eine Zeile mit Papier, Druckmaßstab und Faktoren, danach
 folgen Hinweise und eine Erinnerung ans Drucken in Originalgröße.
 
+![Eine A3-Seite quer mit der ganzen Karte Rummelsburg in der Mitte und der Namensnennung in kleiner Schrift unten links](img/render-map.jpg)
+
+*Ausgabe von `render` für die Karte Rummelsburg: A3 quer in 1:4000, die ganze Karte auf einer Seite. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+
 Auch ein Bahnblatt kommt aus `export` (Kapitel 8). Für den Maßstab gelten dieselben Regeln wie bei einem
 Layoutblatt. Ein Bahnblatt zeigt die Karte im Kartenausschnitt, darüber den Bahnaufdruck in Violett, den
 Beschreibungskasten und die Blattelemente. Hat die Bahn eine Abdeckung für Fenster- oder Korridor-OL (Kapitel 11),
@@ -1010,6 +1034,10 @@ Die Vorschrift der Kartenart legt die Symbolgrößen für einen Basismaßstab fe
 und jedes Symbol. Eine Sprintkarte in 1:3000, wie sie die Norm für die jüngsten Altersklassen empfiehlt, hat
 Symbole in 133 %: Ein schmaler Fußweg ist dann 0,36 mm statt 0,27 mm breit. Eine Waldkarte wächst in 1:10000
 auf 150 %, in 1:7500 auf 200 % und in 1:5000 auf 300 %. Die Karte braucht dabei entsprechend mehr Papier.
+
+![Zwei Kartenausschnitte nebeneinander, links in 1:4000, rechts in 1:3000; rechts sind Symbole und Linien größer](img/scale-comparison.jpg)
+
+*Dieselbe Stelle der Karte in 1:4000 (links) und 1:3000 (rechts), je 80 mm × 60 mm aus einem A4-Blatt in Originalgröße. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 Kleiner als im Basismaßstab sieht die Norm keinen Druck vor. Das Programm druckt ihn trotzdem, etwa eine
 Sprintkarte in 1:5000. Die Symbole behalten dann ihre Größe aus 1:4000, nur das Gelände schrumpft. Das Programm
@@ -1307,6 +1335,10 @@ Die Bahn „Fenster“ wird jetzt damit gedruckt, auf Layout a4-4000.
 Mit check sehen Sie das Ergebnis.
 ```
 
+![A4-Blatt, auf dem die Karte nur in runden Fenstern um Start, Posten und Ziel zu sehen ist, dazwischen weißes Papier mit den violetten Strecken](img/mask-window.jpg)
+
+*Die Bahn „A“ mit Abdeckung für Fenster-OL (`masks window --radius 14 --assign`): Die Karte ist nur in den Fenstern um Start, Posten und Ziel zu sehen. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+
 ### Ein Korridor entlang einer Linie: `masks corridor`
 
 Einen automatischen Korridor gibt es nicht. Kein Regelwerk legt fest, wo ein Korridor verläuft; das entscheidet
@@ -1342,6 +1374,10 @@ aufrufen können. Eine Abzweigung oder einen zweiten Korridor für dieselbe Bahn
 ihn dafür ohne `--assign` mit `--id` für jedes Stück auf und kopieren Sie danach den zweiten Ring (das Loch) des
 einen Stücks in das Polygon des anderen. Löcher dürfen sich überlappen. Die Tabelle, die Sie dann nicht mehr
 brauchen, löschen Sie.
+
+![Blatt mit einem schmalen, geknickten Streifen Karte, der durch alle fünf Posten führt, sonst weißes Papier; unten rechts der Beschreibungskasten](img/mask-corridor.jpg)
+
+*Die Bahn „B“ mit Korridor-Abdeckung (`masks corridor --width 12`) auf einem Blatt von 210 mm × 150 mm (`page_mm`). Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 ### Was beide Befehle in die Datei schreiben
 
@@ -1509,6 +1545,10 @@ abgebrochen.“ und bietet „Neu laden“ an.
   Blätter als PDFs, Alle Bahnen als ein PDF).
 - **Statuszeile** (unten): die letzte Meldung, das Projekt, der Druckmaßstab und die Seitengröße.
 
+![Fenster des Editors im Browser: links der Projektbaum, in der Mitte die Blattvorschau, rechts das Formular des Titelblocks, unter der Vorschau die Hinweise](img/editor-element.jpg)
+
+*Der Editor mit gewähltem Titelblock: Projektbaum links, Blattvorschau in der Mitte, Formular rechts, Hinweise unter der Vorschau. Karte: Remo Madella, MOO Challenge Berlin 2025.*
+
 ### Jede Änderung steht sofort in der Datei
 
 Es gibt keinen Speichern-Knopf. Jede Änderung, ob Verschieben, Formular mit „Anwenden“, Maske oder Nummer, wird in
@@ -1550,6 +1590,10 @@ aufzunehmen oder zu entfernen, oder tippen Sie Codes (`31,32`) oder Plätze (`2-
 Posten. Dazu kommen Radius, eigene Radien (`35=20`), „Kein Fenster am Start“, „Kein Fenster am Ziel“, eine Kennung
 und „Bahn mit dieser Maske drucken“. „Fenstermaske anlegen“ schreibt sie, wie `masks window`. Die Radien sind in
 Millimetern auf dem Papier. Eine Fenstermaske braucht eine Bahndatei.
+
+![Editor nach dem Anlegen einer Fenstermaske: Die Vorschau zeigt die Karte nur in runden Fenstern, im Baum steht die Abdeckung fenster-a, rechts ihre Eigenschaften](img/editor-window-mask.png)
+
+*Der Editor nach „Fenstermaske anlegen“: Die Vorschau zeigt die Fenster, die Abdeckung „fenster-a“ steht im Baum. Karte: Remo Madella, MOO Challenge Berlin 2025.*
 
 **Korridormaske.** Menü „Masken“, „Korridormaske“. Klicken Sie die Punkte der Linie im Blatt an und den letzten
 doppelt; das Formular nennt die Zahl der gezeichneten Punkte. Statt zu zeichnen, tippen Sie die Strecke ins Feld
