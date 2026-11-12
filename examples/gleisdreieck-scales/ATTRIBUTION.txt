@@ -1,0 +1,23 @@
+Map: Gleisdreieck (gleisdreieck.omap)
+Author: Remo Madella
+Event: MOO Challenge Berlin 2025
+
+Remo Madella released this map on 2026-11-12 for use within the freemapper suite
+(freemapper, freemapper-print, freemapper-courseplan). The project owner passed this on. Asked by e-mail whether the maps may serve as example maps in the public project, he answered on 2026-11-12: "yes of course you can use them - enjoy!"
+
+This is a permission for the suite, not an open licence. The map is not published under a Creative
+Commons or other open licence, and nothing here allows its use outside the freemapper suite. If you want
+to use the map for anything else, ask Remo Madella.
+Created with freemapper-print – https://github.com/HenryJobst/freemapper-print
+
+Karte: Gleisdreieck (gleisdreieck.omap)
+Autor: Remo Madella
+Veranstaltung: MOO Challenge Berlin 2025
+
+Remo Madella hat diese Karte am 12.11.2026 zur Nutzung innerhalb der freemapper-Suite freigegeben
+(freemapper, freemapper-print, freemapper-courseplan). Der Projektinhaber hat das weitergegeben. Auf seine Anfrage per E-Mail, ob die Karten als Beispielkarten im öffentlichen Projekt dienen dürfen, antwortete er am 12.11.2026: "yes of course you can use them - enjoy!"
+
+Das ist eine Erlaubnis für die Suite, keine offene Lizenz. Die Karte steht nicht unter einer
+Creative-Commons- oder anderen offenen Lizenz, und nichts hier erlaubt ihre Nutzung außerhalb der
+freemapper-Suite. Wer sie anders nutzen will, fragt Remo Madella.
+Erstellt mit freemapper-print – https://github.com/HenryJobst/freemapper-print
