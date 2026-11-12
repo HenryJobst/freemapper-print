@@ -3,7 +3,7 @@
 [English version](README.en.md) · [Handbuch](docs/manual/de.md) · [Glossar](docs/glossary.md) · [Änderungen](CHANGELOG.md)
 
 <!-- claude-cost:start -->
-[![KI-Aufwand (Claude API): 739 $](https://img.shields.io/badge/KI--Aufwand%20%28Claude%20API%29-739%20%24-8A2BE2)](docs/ai-cost/history.csv)
+[![KI-Aufwand (Claude API): 747 $](https://img.shields.io/badge/KI--Aufwand%20%28Claude%20API%29-747%20%24-8A2BE2)](docs/ai-cost/history.csv)
 <!-- claude-cost:end -->
 [Was die Zahl bedeutet](docs/ai-cost/README.md)
 
