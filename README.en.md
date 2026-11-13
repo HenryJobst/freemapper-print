@@ -131,7 +131,7 @@ The complete example projects with project file, inputs, PDFs and a preview imag
 
 ## Status
 
-The current version is [v0.9.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.9.0) of 13 November 2026 (see the [changes](CHANGELOG.en.md) for what is new). It prints a finished OOM map at the exact scale
+The current version is [v0.10.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.10.0) of 13 November 2026 (see the [changes](CHANGELOG.en.md) for what is new). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.

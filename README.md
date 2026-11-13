@@ -133,7 +133,7 @@ Die vollständigen Beispielprojekte mit Projektdatei, Eingabedateien, PDFs und V
 
 ## Status
 
-Die aktuelle Version ist [v0.9.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.9.0) vom 13. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Die aktuelle Version ist [v0.10.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.10.0) vom 13. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
