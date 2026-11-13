@@ -1633,8 +1633,8 @@ fn numbers_accept_layout_wide_takes_a_proposal_free_everywhere() {
 /// The Viktoriapark example in a temp dir: its project, map and `.ppen`, with `extra` appended to the project
 /// file (which ends in the assignment of the course "Training").
 fn viktoriapark_with(extra: &str) -> (tempfile::TempDir, PathBuf) {
-    let example =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/berlin-viktoriapark-training");
+    let example = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/examples/berlin-viktoriapark-training");
     let dir = tempfile::tempdir().unwrap();
     for name in [
         FILE_NAME,

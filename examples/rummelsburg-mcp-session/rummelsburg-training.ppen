@@ -1,0 +1,103 @@
+﻿<course-scribe-event>
+  <event id="1">
+    <title>Training Rummelsburg</title>
+    <map kind="OCAD" scale="4000" ignore-missing-fonts="false">../work/rt/rummelsburg.omap</map>
+    <standards map="Spr2019" description="2018" />
+    <all-controls print-scale="4000" description-kind="symbols" />
+    <course-appearance />
+    <descriptions lang="en" />
+  </event>
+  <control id="1" kind="start">
+    <location x="-108" y="84" />
+  </control>
+  <control id="2" kind="finish">
+    <location x="-42" y="64" />
+    <description box="all" iof-2004-ref="14.3" />
+  </control>
+  <control id="3" kind="normal">
+    <code>31</code>
+    <location x="-77.22" y="66.83" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5W" />
+  </control>
+  <control id="4" kind="normal">
+    <code>32</code>
+    <location x="-83.31" y="32.12" />
+    <description box="D" iof-2004-ref="6.1" />
+  </control>
+  <control id="5" kind="normal">
+    <code>33</code>
+    <location x="9" y="6.85" />
+    <description box="D" iof-2004-ref="6.1" />
+  </control>
+  <control id="6" kind="normal">
+    <code>34</code>
+    <location x="4.36" y="-46.64" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5S" />
+  </control>
+  <control id="7" kind="normal">
+    <code>35</code>
+    <location x="61.36" y="-83.65" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5E" />
+  </control>
+  <control id="8" kind="normal">
+    <code>36</code>
+    <location x="82.25" y="-54.39" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5N" />
+  </control>
+  <control id="9" kind="normal">
+    <code>37</code>
+    <location x="47.3" y="-22.17" />
+    <description box="D" iof-2004-ref="5.11" />
+    <description box="G" iof-2004-ref="11.5N" />
+  </control>
+  <control id="10" kind="normal">
+    <code>38</code>
+    <location x="42.31" y="11.51" />
+    <description box="D" iof-2004-ref="4.9" />
+  </control>
+  <course id="1" kind="normal" order="1">
+    <name>T</name>
+    <first course-control="1" />
+    <options print-scale="4000" description-kind="symbols" />
+  </course>
+  <course-control id="1" control="1">
+    <next course-control="2" />
+  </course-control>
+  <course-control id="2" control="3">
+    <next course-control="3" />
+    <number-location x="3.996961" y="7.15172" />
+  </course-control>
+  <course-control id="3" control="4">
+    <next course-control="4" />
+    <number-location x="-3.6512847" y="-7.830205" />
+  </course-control>
+  <course-control id="4" control="5">
+    <next course-control="5" />
+    <number-location x="8.259759" y="4.711283" />
+  </course-control>
+  <course-control id="5" control="6">
+    <next course-control="6" />
+    <number-location x="-3.0969539" y="-8.508811" />
+  </course-control>
+  <course-control id="6" control="7">
+    <next course-control="7" />
+    <number-location x="5.059515" y="-3.2856872" />
+  </course-control>
+  <course-control id="7" control="8">
+    <next course-control="8" />
+    <number-location x="-8.205754" y="3.068006" />
+  </course-control>
+  <course-control id="8" control="9">
+    <next course-control="9" />
+    <number-location x="5.085189" y="3.214723" />
+  </course-control>
+  <course-control id="9" control="10">
+    <next course-control="10" />
+    <number-location x="-0.8380111" y="5.675" />
+  </course-control>
+  <course-control id="10" control="2" />
+</course-scribe-event>

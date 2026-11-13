@@ -1,0 +1,109 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Vereinstraining Gleisdreieck"
+date = 2027-05-08
+organiser = "OL-Verein Musterstadt"
+lang = "de"
+
+[sources]
+map = "gleisdreieck.omap"
+courses = "gleisdreieck-training.ppen"
+
+[map]
+kind = "sprint"
+# Der Informationsblock der Karte nennt 2,5 m. Der Vorschlag von init (2 m) ist geändert.
+contour_interval_m = 2.5
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Die Karte hat keine Kartennotizen, deshalb stehen die Quellen hier.
+[print]
+copyright = """
+Karte: Remo Madella, MOO Challenge Berlin 2025
+Bahnen: freemapper-courseplan 0.14.1
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event} · Bahn {course}",
+    "{date} · {length_km} km · {controls} Posten",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# Das Vereinszeichen ist für dieses Beispiel gezeichnet (CC0).
+[[shared]]
+id = "club_logo"
+kind = "logo"
+file = "logos/kompass.svg"
+width_mm = 14.0
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+# A4 im Maßstab der Karte, ein Layout je Bahn, beide im Hochformat. Ein Bahnblatt schneidet die Karte
+# mit Absicht auf die Bahn zu (crop). map_frame.centre_map_mm legt den Ausschnitt fest. Bei Bahn A endet
+# er unter dem Informationsblock der Karte am oberen Rand, bei Bahn B über dem am unteren Rand. So ragen
+# Logos und Maßstabsangabe der Karte nicht ins Blatt.
+
+[[layouts]]
+id = "a4-a"
+paper = "A4"
+orientation = "portrait"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [26.4, 135.0] }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "bottom_left", offset_mm = [2.0, 2.0] }
+
+[[layouts]]
+id = "a4-b"
+paper = "A4"
+orientation = "portrait"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [20.0, 89.2] }
+hide_shared = ["scale_check_bar"]
+
+# Eigener Maßstabsbalken, bündig am unteren Rand: Seine weiße Fläche deckt den Rest des Logos im
+# Informationsblock der Karte ab, der am unteren Rand noch 1 mm hineinragt.
+[[layouts.elements]]
+id = "scale_check_bar_b"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 0.0] }
+
+[[layouts.elements]]
+id = "descriptions"
+kind = "control_descriptions"
+anchor = { to = "map_frame", corner = "bottom_left", offset_mm = [2.0, 2.0] }
+
+[[assignments]]
+course = "A"
+layout = "a4-a"
+
+[[assignments]]
+course = "B"
+layout = "a4-b"
+
+[[numbers]]
+control = "43"
+course = "B"
+direction = 299.5
+gap_mm = 5.0
+
+[numbers.base_seen]
+direction = 299.50000239159846
+gap_mm = 4.499999738986393

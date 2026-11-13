@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CourseData xmlns="http://www.orienteering.org/datastandard/3.0" iofVersion="3.0" createTime="2026-11-12T20:23:11Z" creator="freemapper-courseplan">
+  <Event>
+    <Name>Competition Rummelsburg</Name>
+  </Event>
+  <RaceCourseData>
+    <Map>
+      <Scale>4000</Scale>
+      <MapPositionTopLeft x="0" y="0" unit="mm"/>
+      <MapPositionBottomRight x="0" y="0" unit="mm"/>
+    </Map>
+    <Control type="Start">
+      <Id>S1</Id>
+      <Position lat="52.497951" lng="13.480715"/>
+      <MapPosition x="-35" y="-36" unit="mm"/>
+    </Control>
+    <Control type="Finish">
+      <Id>F1</Id>
+      <Position lat="52.498976" lng="13.480451"/>
+      <MapPosition x="-42" y="-64" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>31</Id>
+      <Position lat="52.495005" lng="13.482901"/>
+      <MapPosition x="9.25" y="42.34" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>32</Id>
+      <Position lat="52.495398" lng="13.484650"/>
+      <MapPosition x="37.85" y="28.79" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>33</Id>
+      <Position lat="52.496643" lng="13.484056"/>
+      <MapPosition x="24.73" y="-4.8" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>34</Id>
+      <Position lat="52.499015" lng="13.478791"/>
+      <MapPosition x="-70.16" y="-62.59" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>35</Id>
+      <Position lat="52.497966" lng="13.477861"/>
+      <MapPosition x="-83.31" y="-32.12" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>36</Id>
+      <Position lat="52.497041" lng="13.479744"/>
+      <MapPosition x="-49.18" y="-9.33" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>37</Id>
+      <Position lat="52.493813" lng="13.483410"/>
+      <MapPosition x="20.81" y="74.6" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>38</Id>
+      <Position lat="52.493359" lng="13.485742"/>
+      <MapPosition x="61.36" y="83.65" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>39</Id>
+      <Position lat="52.494513" lng="13.486872"/>
+      <MapPosition x="77.62" y="49.98" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>40</Id>
+      <Position lat="52.496486" lng="13.485915"/>
+      <MapPosition x="56.55" y="-3.27" unit="mm"/>
+    </Control>
+    <Control type="Control">
+      <Id>41</Id>
+      <Position lat="52.497832" lng="13.482926"/>
+      <MapPosition x="2.69" y="-36.04" unit="mm"/>
+    </Control>
+    <Course>
+      <Name>Kurz</Name>
+      <Length>1152.01</Length>
+      <CourseControl type="Start">
+        <Control>S1</Control>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>41</Control>
+        <MapText>1</MapText>
+        <MapTextPosition x="8.79" y="-0.02" unit="mm"/>
+        <LegLength>150.76</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>40</Control>
+        <MapText>2</MapText>
+        <MapTextPosition x="6.38" y="6.68" unit="mm"/>
+        <LegLength>252.18</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>32</Control>
+        <MapText>3</MapText>
+        <MapTextPosition x="3.07" y="5.38" unit="mm"/>
+        <LegLength>148.46</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>36</Control>
+        <MapText>4</MapText>
+        <MapTextPosition x="-2.56" y="-6.58" unit="mm"/>
+        <LegLength>380.05</LegLength>
+      </CourseControl>
+      <CourseControl type="Finish">
+        <Control>F1</Control>
+        <LegLength>220.56</LegLength>
+      </CourseControl>
+    </Course>
+    <Course>
+      <Name>Mittel</Name>
+      <Length>1893.3</Length>
+      <CourseControl type="Start">
+        <Control>S1</Control>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>34</Control>
+        <MapText>1</MapText>
+        <MapTextPosition x="6.43" y="-5.01" unit="mm"/>
+        <LegLength>176.33</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>35</Control>
+        <MapText>2</MapText>
+        <MapTextPosition x="-3.61" y="8.37" unit="mm"/>
+        <LegLength>132.75</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>36</Control>
+        <MapText>3</MapText>
+        <MapTextPosition x="5.18" y="-5.75" unit="mm"/>
+        <LegLength>164.16</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>37</Control>
+        <MapText>4</MapText>
+        <MapTextPosition x="6.24" y="7.49" unit="mm"/>
+        <LegLength>437.13</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>38</Control>
+        <MapText>5</MapText>
+        <MapTextPosition x="5.22" y="2.73" unit="mm"/>
+        <LegLength>166.19</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>39</Control>
+        <MapText>6</MapText>
+        <MapTextPosition x="-7.29" y="-1.39" unit="mm"/>
+        <LegLength>149.56</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>41</Control>
+        <MapText>7</MapText>
+        <MapTextPosition x="4.06" y="-4.75" unit="mm"/>
+        <LegLength>456.31</LegLength>
+      </CourseControl>
+      <CourseControl type="Finish">
+        <Control>F1</Control>
+        <LegLength>210.86</LegLength>
+      </CourseControl>
+    </Course>
+    <Course>
+      <Name>Lang</Name>
+      <Length>2820.94</Length>
+      <CourseControl type="Start">
+        <Control>S1</Control>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>31</Control>
+        <MapText>1</MapText>
+        <MapTextPosition x="0.08" y="-9.17" unit="mm"/>
+        <LegLength>359.89</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>32</Control>
+        <MapText>2</MapText>
+        <MapTextPosition x="7.75" y="2.76" unit="mm"/>
+        <LegLength>126.59</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>33</Control>
+        <MapText>3</MapText>
+        <MapTextPosition x="-3.66" y="-9.4" unit="mm"/>
+        <LegLength>144.25</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>34</Control>
+        <MapText>4</MapText>
+        <MapTextPosition x="7.39" y="-7.06" unit="mm"/>
+        <LegLength>444.41</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>35</Control>
+        <MapText>5</MapText>
+        <MapTextPosition x="-3.61" y="8.37" unit="mm"/>
+        <LegLength>132.75</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>36</Control>
+        <MapText>6</MapText>
+        <MapTextPosition x="5.18" y="-5.75" unit="mm"/>
+        <LegLength>164.16</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>37</Control>
+        <MapText>7</MapText>
+        <MapTextPosition x="6.24" y="7.49" unit="mm"/>
+        <LegLength>437.13</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>38</Control>
+        <MapText>8</MapText>
+        <MapTextPosition x="5.22" y="2.73" unit="mm"/>
+        <LegLength>166.19</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>39</Control>
+        <MapText>9</MapText>
+        <MapTextPosition x="-7.29" y="-1.39" unit="mm"/>
+        <LegLength>149.56</LegLength>
+      </CourseControl>
+      <CourseControl type="Control">
+        <Control>40</Control>
+        <MapText>10</MapText>
+        <MapTextPosition x="-2.64" y="-6.68" unit="mm"/>
+        <LegLength>229.07</LegLength>
+      </CourseControl>
+      <CourseControl type="Finish">
+        <Control>F1</Control>
+        <LegLength>466.94</LegLength>
+      </CourseControl>
+    </Course>
+  </RaceCourseData>
+</CourseData>

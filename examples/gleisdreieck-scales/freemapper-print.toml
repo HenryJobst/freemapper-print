@@ -1,0 +1,58 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Maßstäbe Gleisdreieck"
+lang = "de"
+
+[sources]
+map = "gleisdreieck.omap"
+
+[map]
+kind = "sprint"
+# Der Informationsblock der Karte nennt 2,5 m. Der Vorschlag von init (2 m) ist geändert.
+contour_interval_m = 2.5
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt,
+# wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder
+# credit_line verschiebt sie.
+# Die Karte hat keine Kartennotizen, deshalb stehen die Quellen hier.
+[print]
+copyright = """
+Karte: Remo Madella, MOO Challenge Berlin 2025
+"""
+
+# Gemeinsame Elemente: auf jedem Blatt, in Millimetern auf dem Papier, unabhängig vom Druckmaßstab.
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event}",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# Zwei Layouts mit demselben Kartenmittelpunkt (map_frame.centre_map_mm): A4 in 1:4000 und A3 in 1:3000.
+# Die Karte ist größer als beide Blätter; crop = true kennzeichnet den Schnitt als gewollt.
+
+[[layouts]]
+id = "a4-4000"
+paper = "A4"
+orientation = "portrait"
+print_scale = 4000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [10.0, 120.0] }
+
+[[layouts]]
+id = "a3-3000"
+paper = "A3"
+orientation = "portrait"
+print_scale = 3000
+map_frame = { margin_mm = 10.0, crop = true, centre_map_mm = [10.0, 120.0] }

@@ -2517,7 +2517,7 @@ mod tests {
     #[test]
     fn a_masked_course_names_one_mask_id_per_map_clip() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/luebeck-training-window");
+            .join("../../tests/fixtures/examples/luebeck-training-window");
         let loaded = crate::project::load(&dir.join("freemapper-print.toml")).unwrap();
         let map = crate::omap::read::read_map_file(&loaded.map_path()).unwrap();
         let courses = crate::courses::load_courses(&loaded, &map)

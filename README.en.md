@@ -12,10 +12,7 @@ ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in
 OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on paper.
 
-<a href="docs/manual/en.md#course-sheets-and-the-overprint"><img src="docs/manual/img/course-sheet.jpg" width="440"
-alt="The sheet of course A on the Gleisdreieck map, A4 portrait at 1:4000: the course in purple with eight controls, the title block at the top left and the control descriptions at the top right"></a>
-
-*A course sheet: course A (2.4 km, eight controls) on the Gleisdreieck map (Remo Madella, MOO Challenge Berlin 2025), A4 at 1:4000, with course overprint, numbers, title block and control descriptions. More in the [manual](docs/manual/en.md#course-sheets-and-the-overprint).*
+<p align="center"><a href="examples/README.en.md"><img src="docs/manual/img/sheet-elements.jpg" alt="An A4 sheet at 1:4000 on the Gleisdreieck map with a title block at the top left, a compass logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame" width="760"></a><br><sub>A sheet on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 2025): A4 landscape at 1:4000 with title block, logo, scale check bar and credit line. Click to open the <a href="examples/README.en.md">examples</a>.</sub></p>
 
 What it does already:
 
@@ -73,11 +70,13 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 
 freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
-takes in a fixed version instead of copying it. freemapper-print uses `freemapper-text` (program texts),
-`freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing), `freemapper-omap` (map model and reader)
-and `freemapper-course` (courses, course files and where control numbers go) from it. The renderer (`freemapper-render`) lives
-there too since core v0.9.0, and the page builder since v0.13.0. The rules for how much symbols grow at another
-print scale stay in freemapper-print.
+takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.22.0. It uses
+`freemapper-text` (program texts), `freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing),
+`freemapper-omap` (map model and reader) and `freemapper-course` (courses, course files and where control numbers
+go) from it. The renderer (`freemapper-render`) lives there too since core v0.9.0, the page builder since v0.13.0,
+the course overprint since v0.15.0, and the print rules and scale tables (`freemapper-printrules`, how much symbols
+grow at another print scale) since v0.16.0. The editor server (`freemapper-web`) and the self-update
+(`freemapper-update`) come from core as well.
 
 ## Examples
 
@@ -121,19 +120,18 @@ alt="The editor in the browser: the project tree on the left, the sheet preview 
 Here the window mask has just appeared in the tree. Every change is in the project file at once. More in the chapter
 [The editor in the browser](docs/manual/en.md#12-the-editor-in-the-browser).
 
-The complete example projects with project file and PDFs are in [`examples/`](examples/README.en.md), each with a
-preview image: [`luebeck-scales`](examples/luebeck-scales/README.en.md),
-[`luebeck-competition-layouts`](examples/luebeck-competition-layouts/README.en.md),
-[`luebeck-competition-courses`](examples/luebeck-competition-courses/README.en.md),
-[`berlin-viktoriapark-training`](examples/berlin-viktoriapark-training/README.en.md),
-[`luebeck-training-window`](examples/luebeck-training-window/README.en.md),
-[`luebeck-training-corridor`](examples/luebeck-training-corridor/README.en.md) and
-[`mcp-session`](examples/mcp-session/README.en.md).
+The complete example projects with project file, inputs, PDFs and a preview image are in
+[`examples/`](examples/README.en.md): [`gleisdreieck-scales`](examples/gleisdreieck-scales/README.en.md),
+[`rummelsburg-competition-layouts`](examples/rummelsburg-competition-layouts/README.en.md),
+[`rummelsburg-competition-courses`](examples/rummelsburg-competition-courses/README.en.md),
+[`gleisdreieck-training`](examples/gleisdreieck-training/README.en.md),
+[`gleisdreieck-training-window`](examples/gleisdreieck-training-window/README.en.md),
+[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.en.md) and
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.en.md).
 
 ## Status
 
-The current version is [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) of
-12 November 2026 (see the [changes](CHANGELOG.en.md)). It prints a finished OOM map at the exact scale
+The current version is [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) of 12 November 2026 (see the [changes](CHANGELOG.en.md) for what is new). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
@@ -200,7 +198,7 @@ This entry is for development only. `main` never carries a `[patch]`. The freema
 ### An event
 
 ```sh
-freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck"
+freemapper-print init citysprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg"
 freemapper-print check citysprint
 freemapper-print export citysprint
 ```
@@ -215,7 +213,7 @@ The [manual](docs/manual/en.md#5-setting-up-an-event) describes the project file
 ### Courses
 
 ```sh
-freemapper-print init citysprint --map luebeck.omap --title "Stadtsprint Lübeck" --courses courses.ppen
+freemapper-print init citysprint --map rummelsburg.omap --title "Stadtsprint Rummelsburg" --courses courses.ppen
 freemapper-print check citysprint
 freemapper-print numbers accept citysprint --course A --control 49 --sheet
 freemapper-print export citysprint
@@ -257,7 +255,7 @@ Purple Pen's white-out.
 ### The map alone
 
 ```sh
-freemapper-print render luebeck.omap --out luebeck-3000-a3.pdf --paper a3 --scale 3000
+freemapper-print render rummelsburg.omap --out rummelsburg-3000-a3.pdf --paper a3 --scale 3000
 ```
 
 This writes the sprint map as a PDF on an A3 page at 1:3000, without title or scale check bar. The main options:
@@ -322,8 +320,8 @@ folder you start Claude Code in is enough:
 server does not know the agent's working folder. The tools that write do not get in each other's way, and the
 comments in the project file stay, apart from a few cases the manual lists. The agent can cancel a long export; it stops after the sheet in hand. The
 [manual](docs/manual/en.md#3-with-an-ai-agent) describes every tool, and the example
-[`mcp-session`](examples/mcp-session/README.en.md) shows a real session: window orienteering from the
-Viktoriapark training, checked and written as a PDF.
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.en.md) shows a real session: window
+orienteering from a training course, checked and written as a PDF.
 
 For AI agents there is an [AGENTS.md](AGENTS.md), which also ships in every release archive: it tells an agent how to install and update the program and how to use it through MCP or the command line.
 

@@ -163,7 +163,7 @@ pub(crate) mod testing {
     pub fn viktoriapark() -> PathBuf {
         PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/berlin-viktoriapark-training"
+            "/../../tests/fixtures/examples/berlin-viktoriapark-training"
         ))
     }
 
@@ -171,7 +171,7 @@ pub(crate) mod testing {
     pub fn luebeck() -> PathBuf {
         PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-competition-layouts"
+            "/../../tests/fixtures/examples/luebeck-competition-layouts"
         ))
     }
 

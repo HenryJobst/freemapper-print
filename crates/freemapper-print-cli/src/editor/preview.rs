@@ -335,7 +335,7 @@ mod tests {
     fn luebeck() -> std::path::PathBuf {
         std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-competition-layouts"
+            "/../../tests/fixtures/examples/luebeck-competition-layouts"
         ))
     }
 
@@ -469,7 +469,7 @@ mod tests {
     fn a_click_where_a_mask_hides_the_map_picks_the_mask() {
         let project = std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/luebeck-training-window"
+            "/../../tests/fixtures/examples/luebeck-training-window"
         ));
         let drawn = draw(&project, Some("Fenster"), None).unwrap();
         assert_eq!(drawn.report.mask_ids, ["window-Fenster"]);

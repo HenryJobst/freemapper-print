@@ -11,7 +11,7 @@ mod support;
 
 const VIKTORIAPARK: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../examples/berlin-viktoriapark-training"
+    "/../../tests/fixtures/examples/berlin-viktoriapark-training"
 );
 
 #[test]
@@ -153,7 +153,7 @@ fn mcp_help_follows_the_language() {
 
 const LUEBECK: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../examples/luebeck-competition-courses"
+    "/../../tests/fixtures/examples/luebeck-competition-courses"
 );
 
 /// A server on stdio with the answers on stdout read line by line on a thread.
