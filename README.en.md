@@ -3,7 +3,7 @@
 [Deutsche Version](README.md) · [User manual](docs/manual/en.md) · [Glossary](docs/glossary.md) · [Changes](CHANGELOG.en.md)
 
 <!-- claude-cost:start -->
-[![AI effort (Claude API): $820](https://img.shields.io/badge/AI%20effort%20%28Claude%20API%29-%24820-8A2BE2)](docs/ai-cost/history.csv)
+[![AI effort (Claude API): $824](https://img.shields.io/badge/AI%20effort%20%28Claude%20API%29-%24824-8A2BE2)](docs/ai-cost/history.csv)
 <!-- claude-cost:end -->
 [What the number means](docs/ai-cost/README.md#english)
 
