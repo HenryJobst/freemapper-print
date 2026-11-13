@@ -16,7 +16,7 @@ footer everywhere. The course is made up for the example, and so are the event a
 | `gleisdreieck.omap` | the map (OOM, 1:4000), unchanged |
 | `logos/kompass.svg` | the club logo, a compass mark drawn for this example (CC0) |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
-| `out/C.pdf` | the sheet of course C, 170 mm × 380 mm, 1:4000 (2.1 MB) |
+| `out/C.pdf` | the sheet of course C, 170 mm × 380 mm, 1:4000 (0.4 MB) |
 | `preview.jpg` | the same sheet as an image |
 
 The sheets are in German (`event.lang = "de"`).

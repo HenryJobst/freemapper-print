@@ -17,7 +17,7 @@ creates the project itself, and the folder of this example is the result.
 | `rummelsburg.omap` | the map "Rummelsburger Bucht" (OOM, 1:4000), input of the session |
 | `rummelsburg-training.ppen` | course T as a Purple Pen file from freemapper-courseplan 0.14.1, input of the session |
 | `freemapper-print.toml` | the project file as the session left it |
-| `out/T.pdf` | the PDF of the session, A3 landscape, 1:4000, 1.1 MB |
+| `out/T.pdf` | the PDF of the session, A3 landscape, 1:4000, 0.2 MB |
 | `preview.jpg` | the PDF as an image |
 | `ATTRIBUTION.txt` | author and permission for the map, origin of the course |
 

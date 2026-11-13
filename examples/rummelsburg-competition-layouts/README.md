@@ -14,8 +14,8 @@ links die Fußzeile. Bahnen gibt es hier noch nicht, sie folgen im Beispiel
 | `freemapper-print.toml` | die Projektdatei |
 | `rummelsburg.omap` | die Karte „Rummelsburger Bucht“ (OOM, 1:4000) |
 | `logos/` | zwei erfundene Logos, siehe [logos/README.md](logos/README.md) |
-| `out/a4-4000.pdf` | Blatt für die älteren Klassen, A4 quer, 1:4000, 1,1 MB |
-| `out/a3-3000.pdf` | Blatt für die jüngsten Klassen, A3 quer, 1:3000, 1,1 MB |
+| `out/a4-4000.pdf` | Blatt für die älteren Klassen, A4 quer, 1:4000, 0,2 MB |
+| `out/a3-3000.pdf` | Blatt für die jüngsten Klassen, A3 quer, 1:3000, 0,2 MB |
 | `preview.jpg` | beide Blätter nebeneinander |
 | `ATTRIBUTION.txt` | Autor und Nutzungserlaubnis der Karte |
 
