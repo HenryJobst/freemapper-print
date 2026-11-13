@@ -256,8 +256,10 @@ The new file holds:
 - the map kind. It comes from `--kind`, else from the `freemapper.toml` next to the map, else from the symbol
   set and the scale of the map, and `init` says which. If none of these gives one, the program stops and asks
   for `--kind sprint`, `--kind schoolyard` or `--kind forest`;
-- a proposed contour interval: 2 m for sprint maps, 5 m for forest maps, none for schoolyard maps. A comment
-  in the file marks the value. Look up the map's contour interval and correct it;
+- a contour interval. If the `freemapper.toml` next to the map names one (freemapper writes it when the interval differs
+  from the standard of the map kind), `init` takes that. Otherwise it proposes one: 2 m for sprint maps, 5 m for forest
+  maps, none for schoolyard maps. A comment in the file says which of the two it is. Look up the map's contour
+  interval and correct it;
 - a title block with `{event}` and `1:{print_scale} · {contour_interval}` at the top left of the map frame and a
   scale check bar at the bottom right;
 - one layout at the scale of the map. `init` tries A4 with an 8 mm passe-partout, then A4 with a wider one (in

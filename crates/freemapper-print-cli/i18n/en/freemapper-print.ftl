@@ -112,6 +112,7 @@ reminder-actual-size = Print at actual size: 100 %, with "fit to page" switched 
 init-written = Wrote { $path } with one layout, { $layout }: { $paper }, passe-partout { $margin } mm, print scale 1:{ $scale }, for { $kind } maps.
 init-no-fit = Warning: no A4 or A3 sheet shows the map at 1:{ $scale } without notes or errors, so the project keeps A4. check reports this:
 init-contour-hint = The project proposes a contour interval of { $value } m, common for { $kind } maps. Look it up on the map and confirm it, or change map.contour_interval_m.
+init-contour-sidecar-hint = The contour interval of { $value } m comes from the freemapper.toml next to the map, where freemapper wrote the interval it computed the contours with. If it is wrong, change map.contour_interval_m.
 init-no-contour-hint = Schoolyard maps get no proposed contour interval. If the map has contours, set map.contour_interval_m; until then check reports it as missing.
 init-next = Run freemapper-print check { $path } next.
 init-kind-flag = Map kind: { $kind } maps, as --kind says.
@@ -121,6 +122,7 @@ init-fitting = Looking for an A4 or A3 sheet that shows the map at 1:{ $scale } 
 init-next-with-notes = Run freemapper-print check { $path } next. It lists the notes above until the layout changes.
 # Comments in the new project file.
 init-comment-contour = Proposed for { $kind } maps. Confirm it against the map.
+init-comment-contour-sidecar = From the freemapper.toml next to the map: the interval the contours were computed with.
 init-comment-no-contour = No contour interval is proposed for schoolyard maps. If the map has contours, add contour_interval_m with the interval in metres.
 init-comment-footer = The copyright and credit lines go in the footer at the bottom left, below the map frame if the passe-partout is wide enough, else inside it. A copyright_line or credit_line element moves them.
 check-summary = Layout { $layout }: { $paper } { $orientation }, print scale 1:{ $print_scale }, map scale 1:{ $map_scale }, geometry factor { $geometry }, symbol factor { $symbol }.

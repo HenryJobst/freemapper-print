@@ -112,6 +112,7 @@ reminder-actual-size = In Originalgröße drucken: 100 % („Tatsächliche Grö�
 init-written = { $path } geschrieben, mit einem Layout { $layout }: { $paper }, Passepartout { $margin } mm, Druckmaßstab 1:{ $scale }, für { $kind }.
 init-no-fit = Warnung: Weder auf A4 noch auf A3 zeigt ein Blatt die Karte im Maßstab 1:{ $scale } ohne Hinweise oder Fehler, deshalb bleibt das Projekt bei A4. check meldet Folgendes:
 init-contour-hint = Das Projekt schlägt eine Äquidistanz von { $value } m vor, üblich für { $kind }. Sehen Sie auf der Karte nach und bestätigen Sie den Wert oder ändern Sie map.contour_interval_m.
+init-contour-sidecar-hint = Die Äquidistanz von { $value } m steht in der freemapper.toml neben der Karte; freemapper hat dort eingetragen, womit es die Höhenlinien gerechnet hat. Stimmt sie nicht, ändern Sie map.contour_interval_m.
 init-no-contour-hint = Für Schulhofkarten schlägt das Projekt keine Äquidistanz vor. Hat die Karte Höhenlinien, tragen Sie map.contour_interval_m ein; bis dahin meldet check sie als fehlend.
 init-next = Als Nächstes freemapper-print check { $path } aufrufen.
 init-kind-flag = Kartenart: { $kind }, wie mit --kind angegeben.
@@ -121,6 +122,7 @@ init-fitting = Suche ein A4- oder A3-Blatt, das die Karte in 1:{ $scale } zeigt 
 init-next-with-notes = Als Nächstes freemapper-print check { $path } aufrufen. Es meldet die Hinweise oben, bis das Layout geändert ist.
 # Kommentare in der neuen Projektdatei.
 init-comment-contour = Vorschlag für { $kind }. An der Karte prüfen und bestätigen.
+init-comment-contour-sidecar = Aus der freemapper.toml neben der Karte: die Äquidistanz, mit der die Höhenlinien gerechnet wurden.
 init-comment-no-contour = Für Schulhofkarten gibt es keinen Vorschlag. Hat die Karte Höhenlinien, contour_interval_m mit der Äquidistanz in Metern ergänzen.
 init-comment-footer = Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt, wenn das Passepartout breit genug ist, sonst im Kartenausschnitt. Ein Element copyright_line oder credit_line verschiebt sie.
 check-summary = Layout { $layout }: { $paper } { $orientation }, Druckmaßstab 1:{ $print_scale }, Kartenmaßstab 1:{ $map_scale }, Geometriefaktor { $geometry }, Symbolfaktor { $symbol }.

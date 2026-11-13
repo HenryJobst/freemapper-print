@@ -26,6 +26,13 @@ pub fn read_sidecar_title(map_path: &Path) -> Result<Option<String>, SidecarErro
     Ok(Sidecar::next_to(map_path)?.and_then(|s| s.title().map(str::to_owned)))
 }
 
+/// The contour interval in metres from `freemapper.toml` next to `map_path` (its `[contours] interval_m`):
+/// `Ok(None)` without the file or the key, which means the standard interval of the kind applies, an
+/// error when the file exists but cannot be read or parsed.
+pub fn read_sidecar_contour_interval(map_path: &Path) -> Result<Option<f64>, SidecarError> {
+    Ok(Sidecar::next_to(map_path)?.and_then(|s| s.contour_interval_m()))
+}
+
 /// Infers the map kind: `freemapper.toml` next to the map wins; otherwise the symbol set name and
 /// scale decide. A `freemapper.toml` that cannot be used counts as missing; [`read_sidecar`] tells
 /// why.
