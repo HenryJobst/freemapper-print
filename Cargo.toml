@@ -12,22 +12,22 @@ rust-version = "1.88"
 [workspace.dependencies]
 freemapper-print = { path = "crates/freemapper-print" }
 # The suite's own crates are exempt from the two-week rule (ADR 0006).
-freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-omap = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-printrules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-render = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-course = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
-freemapper-web = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
+freemapper-text = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-rules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-fs = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-omap = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-printrules = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-render = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-course = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
+freemapper-web = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
 # The self-update: manifest, signature check, version order and the swap; no network (ADR 0060).
-freemapper-update = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0" }
+freemapper-update = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0" }
 # The suite contract with its fixtures; tests only (ADR 0050).
-freemapper-contract = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.24.0", default-features = false }
+freemapper-contract = { git = "https://github.com/HenryJobst/freemapper-core", tag = "v0.25.0", default-features = false }
 anyhow = "1.0.104"
 # The settings and cache folders of the self-update (ADR 0060).
 dirs = "7.0.0"
-# The versions freemapper-web uses (freemapper-core v0.24.0); move them together with the core tag.
+# The versions freemapper-web uses (freemapper-core v0.25.0); move them together with the core tag.
 axum = { version = "=0.8.9", default-features = false }
 rust-embed = { version = "=8.13.0", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
