@@ -17,7 +17,7 @@ steht in `session.jsonl`. Der Agent legt das Projekt selbst an, und der Ordner d
 | `rummelsburg.omap` | die Karte „Rummelsburger Bucht“ (OOM, 1:4000), Eingabe der Sitzung |
 | `rummelsburg-training.ppen` | die Bahn T als Purple-Pen-Datei von freemapper-courseplan 0.14.1, Eingabe der Sitzung |
 | `freemapper-print.toml` | die Projektdatei, wie die Sitzung sie hinterlassen hat |
-| `out/T.pdf` | das PDF der Sitzung, A3 quer, 1:4000, 1,1 MB |
+| `out/T.pdf` | das PDF der Sitzung, A3 quer, 1:4000, 0,2 MB |
 | `preview.jpg` | das PDF als Bild |
 | `ATTRIBUTION.txt` | Autor und Nutzungserlaubnis der Karte, Herkunft der Bahn |
 

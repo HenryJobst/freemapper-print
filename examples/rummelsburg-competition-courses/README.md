@@ -17,7 +17,7 @@ Diese Blätter haben keine Postenbeschreibung, weil das Format keine kennt.
 | `courses.xml` | dieselben Bahnen als IOF-XML 3.0 `CourseData` |
 | `rummelsburg.omap` | die Karte „Rummelsburger Bucht“ (OOM, 1:4000) |
 | `ATTRIBUTION.txt` | Autor und Nutzungserlaubnis der Karte, Herkunft der Bahnen |
-| `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | die Blätter der drei Bahnen aus `courses.ppen`, je 1,1 MB |
+| `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | die Blätter der drei Bahnen aus `courses.ppen`, je 0,2 MB |
 | `iof/freemapper-print.toml` | die Projektdatei für `courses.xml`, sie liest die Karte aus dem Ordner darüber |
 | `iof/out/Kurz.pdf`, `iof/out/Mittel.pdf`, `iof/out/Lang.pdf` | dieselben Bahnen aus `courses.xml` |
 | `preview.jpg` | das Blatt der Bahn Lang |

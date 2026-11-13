@@ -17,7 +17,7 @@ the same courses as IOF XML 3.0. Those sheets have no control descriptions, beca
 | `courses.xml` | the same courses as IOF XML 3.0 `CourseData` |
 | `rummelsburg.omap` | the map "Rummelsburger Bucht" (OOM, 1:4000) |
 | `ATTRIBUTION.txt` | author and permission for the map, origin of the courses |
-| `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | the sheets of the three courses from `courses.ppen`, 1.1 MB each |
+| `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | the sheets of the three courses from `courses.ppen`, 0.2 MB each |
 | `iof/freemapper-print.toml` | the project file for `courses.xml`; it reads the map from the folder above |
 | `iof/out/Kurz.pdf`, `iof/out/Mittel.pdf`, `iof/out/Lang.pdf` | the same courses from `courses.xml` |
 | `preview.jpg` | the sheet of course Lang |

@@ -14,8 +14,8 @@ bottom left. There are no courses here yet; they follow in
 | `freemapper-print.toml` | the project file |
 | `rummelsburg.omap` | the map "Rummelsburger Bucht" (OOM, 1:4000) |
 | `logos/` | two made-up logos, see [logos/README.en.md](logos/README.en.md) |
-| `out/a4-4000.pdf` | sheet for the older classes, A4 landscape, 1:4000, 1.1 MB |
-| `out/a3-3000.pdf` | sheet for the youngest classes, A3 landscape, 1:3000, 1.1 MB |
+| `out/a4-4000.pdf` | sheet for the older classes, A4 landscape, 1:4000, 0.2 MB |
+| `out/a3-3000.pdf` | sheet for the youngest classes, A3 landscape, 1:3000, 0.2 MB |
 | `preview.jpg` | both sheets side by side |
 | `ATTRIBUTION.txt` | author and permission for the map |
 

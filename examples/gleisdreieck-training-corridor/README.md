@@ -16,7 +16,7 @@ druckt das Programm überall. Die Bahn ist für das Beispiel erfunden, ebenso di
 | `gleisdreieck.omap` | die Karte (OOM, 1:4000), unverändert |
 | `logos/kompass.svg` | das Vereinszeichen, ein Kompasszeichen, für dieses Beispiel gezeichnet (CC0) |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
-| `out/C.pdf` | das Blatt der Bahn C, 170 mm × 380 mm, 1:4000 (2,1 MB) |
+| `out/C.pdf` | das Blatt der Bahn C, 170 mm × 380 mm, 1:4000 (0,4 MB) |
 | `preview.jpg` | dasselbe Blatt als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`).

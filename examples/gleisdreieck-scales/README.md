@@ -13,8 +13,8 @@ Veranstaltungsdaten sind für das Beispiel erfunden.
 | `freemapper-print.toml` | die Projektdatei mit den beiden Layouts `a4-4000` und `a3-3000` |
 | `gleisdreieck.omap` | die Karte (OOM, 1:4000), unverändert |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
-| `out/a4-4000.pdf` | Druck in 1:4000 auf A4 hoch (2,9 MB) |
-| `out/a3-3000.pdf` | Druck in 1:3000 auf A3 hoch (3,2 MB) |
+| `out/a4-4000.pdf` | Druck in 1:4000 auf A4 hoch (0,5 MB) |
+| `out/a3-3000.pdf` | Druck in 1:3000 auf A3 hoch (0,7 MB) |
 | `preview.jpg` | beide Seiten nebeneinander, mit grauem Seitenrahmen |
 
 ## Was das Beispiel zeigt
