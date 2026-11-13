@@ -17,7 +17,7 @@ example, and so are the event and the club.
 | `gleisdreieck.omap` | the map (OOM, 1:4000), unchanged |
 | `logos/kompass.svg` | the club logo, a compass mark drawn for this example (CC0) |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
-| `out/A.pdf` | the sheet of course A, A4 portrait, 1:4000 (3.7 MB) |
+| `out/A.pdf` | the sheet of course A, A4 portrait, 1:4000 (2.5 MB) |
 | `preview.jpg` | the same sheet as an image |
 
 The sheets are in German (`event.lang = "de"`). The project is a copy of

@@ -17,7 +17,7 @@ Die Bahn ist für das Beispiel erfunden, ebenso die Veranstaltung und der Verein
 | `gleisdreieck.omap` | die Karte (OOM, 1:4000), unverändert |
 | `logos/kompass.svg` | das Vereinszeichen, ein Kompasszeichen, für dieses Beispiel gezeichnet (CC0) |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
-| `out/A.pdf` | das Blatt der Bahn A, A4 hoch, 1:4000 (3,7 MB) |
+| `out/A.pdf` | das Blatt der Bahn A, A4 hoch, 1:4000 (2,5 MB) |
 | `preview.jpg` | dasselbe Blatt als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`). Das Projekt ist eine Kopie von

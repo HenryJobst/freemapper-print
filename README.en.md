@@ -70,7 +70,7 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 
 freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
-takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.21.1. It uses
+takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.22.0. It uses
 `freemapper-text` (program texts), `freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing),
 `freemapper-omap` (map model and reader) and `freemapper-course` (courses, course files and where control numbers
 go) from it. The renderer (`freemapper-render`) lives there too since core v0.9.0, the page builder since v0.13.0,

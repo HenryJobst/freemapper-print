@@ -18,8 +18,8 @@ Die Vorschau zeigt das Blatt A. Das Blatt B ist `out/B.pdf`.
 | `gleisdreieck.omap` | die Karte (OOM, 1:4000), unverändert |
 | `logos/kompass.svg` | das Vereinszeichen, ein Kompasszeichen, für dieses Beispiel gezeichnet (CC0) |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
-| `out/A.pdf` | Blatt der Bahn A, A4 hoch, 1:4000 (3,7 MB) |
-| `out/B.pdf` | Blatt der Bahn B, A4 hoch, 1:4000 (3,6 MB) |
+| `out/A.pdf` | Blatt der Bahn A, A4 hoch, 1:4000 (2,6 MB) |
+| `out/B.pdf` | Blatt der Bahn B, A4 hoch, 1:4000 (3,0 MB) |
 | `preview.jpg` | das Blatt A als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`).

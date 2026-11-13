@@ -26,8 +26,9 @@ The courses are made up, and so are the events, dates and clubs. freemapper-cour
 come as a Purple Pen file or as IOF XML. The club logos were drawn for the examples and are CC0.
 
 Each example carries its own copy of the map so that the folder runs on its own. Git stores identical files once.
-The examples weigh about 40 MB together, because every PDF holds the whole map even when `crop = true` cuts the
-frame: 3.6 MB for Gleisdreieck, 1.1 MB for Rummelsburg.
+The examples weigh about 35 MB together. A PDF of the Gleisdreieck map is 2.1 to 3.2 MB, one of the Rummelsburg map
+1.1 MB. Since freemapper-core v0.22.0 a PDF leaves out what the frame cannot show, so a sheet with `crop = true`
+holds only the visible part of the map.
 
 ## The old examples
 

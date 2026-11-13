@@ -18,8 +18,8 @@ The preview shows sheet A. Sheet B is `out/B.pdf`.
 | `gleisdreieck.omap` | the map (OOM, 1:4000), unchanged |
 | `logos/kompass.svg` | the club logo, a compass mark drawn for this example (CC0) |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
-| `out/A.pdf` | sheet of course A, A4 portrait, 1:4000 (3.7 MB) |
-| `out/B.pdf` | sheet of course B, A4 portrait, 1:4000 (3.6 MB) |
+| `out/A.pdf` | sheet of course A, A4 portrait, 1:4000 (2.6 MB) |
+| `out/B.pdf` | sheet of course B, A4 portrait, 1:4000 (3.0 MB) |
 | `preview.jpg` | sheet A as an image |
 
 The sheets are in German (`event.lang = "de"`).

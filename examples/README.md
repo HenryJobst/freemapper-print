@@ -29,8 +29,9 @@ gemacht und liegen als Purple-Pen-Datei oder als IOF-XML bei. Die Vereinszeichen
 und stehen unter CC0.
 
 Jedes Beispiel bringt seine Karte mit, damit der Ordner für sich läuft. Git speichert gleiche Dateien nur einmal.
-Die Beispiele wiegen zusammen etwa 40 MB, denn jedes PDF enthält die ganze Karte, auch wenn `crop = true` den
-Rahmen abschneidet: 3,6 MB bei Gleisdreieck, 1,1 MB bei Rummelsburg.
+Die Beispiele wiegen zusammen etwa 35 MB. Ein PDF der Karte Gleisdreieck hat 2,1 bis 3,2 MB, eines der Karte
+Rummelsburg 1,1 MB. Seit freemapper-core v0.22.0 lässt ein PDF weg, was der Rahmen nicht zeigen kann. Ein Blatt mit
+`crop = true` enthält also nur den sichtbaren Teil der Karte.
 
 ## Die alten Beispiele
 

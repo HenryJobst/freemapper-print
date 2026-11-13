@@ -13,8 +13,8 @@ example.
 | `freemapper-print.toml` | the project file with the two layouts `a4-4000` and `a3-3000` |
 | `gleisdreieck.omap` | the map (OOM, 1:4000), unchanged |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
-| `out/a4-4000.pdf` | print at 1:4000 on A4 portrait (3.6 MB) |
-| `out/a3-3000.pdf` | print at 1:3000 on A3 portrait (3.7 MB) |
+| `out/a4-4000.pdf` | print at 1:4000 on A4 portrait (2.9 MB) |
+| `out/a3-3000.pdf` | print at 1:3000 on A3 portrait (3.2 MB) |
 | `preview.jpg` | both pages side by side, with a grey page frame |
 
 ## What the example shows

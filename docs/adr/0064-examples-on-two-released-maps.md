@@ -27,9 +27,12 @@ the same day that the maps may serve as example maps in the public project (ADR 
 
 ## Consequences
 
-- The examples weigh about 40 MB. A PDF of the Gleisdreieck map is 3.6 MB, of the Rummelsburg map 1.1 MB, because
-  the PDF carries the whole map even when `crop = true` cuts the frame. That is a renderer matter and not solved
-  here. Release archives do not carry `examples/`.
+- The examples weigh about 35 MB. A PDF of the Gleisdreieck map is 2.1 to 3.2 MB, of the Rummelsburg map 1.1 MB.
+  Before freemapper-core v0.22.0 every PDF carried the whole map even when `crop = true` cut the frame: the
+  Gleisdreieck PDFs were 3.6 to 3.7 MB and the examples about 40 MB. Since v0.22.0 the PDF drops what the frame
+  cannot show (core ADR 0031), and the sheets look the same at 150 dpi. What remains is the visible map, about
+  570 000 curve points per sheet. Writing the curves as Bezier segments would shrink the files further and is not
+  done. Release archives do not carry `examples/`.
 - The `.omap` files are in the repository now. ADR 0062 kept them out because no figure needed them; the examples do.
 - The sheets show the program of 0.8.0 with the window gap of ADR 0063. A change in the output means new PDFs and,
   where a README quotes them, new numbers.
