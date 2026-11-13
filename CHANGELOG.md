@@ -7,6 +7,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Geändert
+
+- `init` übernimmt die Äquidistanz aus der `freemapper.toml` neben der Karte, wenn sie dort steht (`[contours] interval_m`; freemapper schreibt sie, wenn die Äquidistanz von der Standardäquidistanz der Kartenart abweicht; Kernvertrag v0.25.0, Entscheidung 0065). Ohne sie bleibt der Vorschlag für die Kartenart. Der Kommentar in der Projektdatei und der Hinweis nach `init` sagen, woher der Wert kommt.
+- Der Kern-Pin steigt auf freemapper-core v0.25.0.
+
 ## [0.9.0] - 2026-11-13
 
 ### Geändert

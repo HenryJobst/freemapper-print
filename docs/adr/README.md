@@ -105,3 +105,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0062](0062-manual-figures-from-two-released-maps.md) | Manual figures come from two released maps | Accepted, amended by [0064](0064-examples-on-two-released-maps.md) | 2026-11-12 |
 | [0063](0063-windows-keep-a-gap.md) | Windows keep a gap | Accepted, amends [0047](0047-generated-masks.md) and, for generated windows, [0045](0045-mask-variants.md) | 2026-11-12 |
 | [0064](0064-examples-on-two-released-maps.md) | Examples on two released maps | Accepted, amends [0062](0062-manual-figures-from-two-released-maps.md) | 2026-11-12 |
+| [0065](0065-contour-interval-from-the-sidecar.md) | The contour interval comes from the sidecar when it has one | Accepted | 2026-11-13 |

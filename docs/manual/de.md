@@ -263,9 +263,10 @@ Die neue Datei enthält:
 - die Kartenart. Sie kommt aus `--kind`, sonst aus der `freemapper.toml` neben der Karte, sonst aus dem
   Symbolsatz und dem Maßstab der Karte, und `init` sagt, woher. Findet das Programm keine, bricht es ab und
   fragt nach `--kind sprint`, `--kind schoolyard` oder `--kind forest`;
-- einen Vorschlag für die Äquidistanz: 2 m für Sprintkarten, 5 m für Waldkarten, keinen für Schulhofkarten.
-  Ein Kommentar in der Datei markiert den Wert. Sehen Sie auf der Karte nach, welche Äquidistanz sie hat, und
-  korrigieren Sie ihn;
+- eine Äquidistanz. Nennt die `freemapper.toml` neben der Karte eine (freemapper schreibt sie, wenn sie von der
+  Standardäquidistanz der Kartenart abweicht), übernimmt `init` sie. Sonst schlägt es eine vor: 2 m für
+  Sprintkarten, 5 m für Waldkarten, keine für Schulhofkarten. Ein Kommentar in der Datei sagt, welcher der beiden
+  Fälle es ist. Sehen Sie auf der Karte nach, welche Äquidistanz sie hat, und korrigieren Sie sie;
 - einen Titelblock mit `{event}` und `1:{print_scale} · {contour_interval}` oben links im Kartenausschnitt
   und eine Kontrollstrecke unten rechts;
 - ein Layout im Maßstab der Karte. `init` probiert A4 mit 8 mm Passepartout, dann A4 mit breiterem

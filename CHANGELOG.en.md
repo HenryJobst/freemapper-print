@@ -7,6 +7,11 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Changed
+
+- `init` takes the contour interval from the `freemapper.toml` next to the map when it names one (`[contours] interval_m`, which freemapper writes when the interval differs from the standard of the map kind; core contract v0.25.0, decision 0065). Without it, the proposal for the kind stays. The comment in the project file and the hint after `init` say where the value comes from.
+- The core pin moves to freemapper-core v0.25.0.
+
 ## [0.9.0] - 2026-11-13
 
 ### Added
