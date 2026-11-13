@@ -1256,7 +1256,9 @@ impl PrintServer {
                     courses,
                     sheet_lang: crate::sheet_lang(texts),
                 },
-                &|kind, contour| crate::init_comments(texts, kind, contour),
+                &|kind, contour, from_sidecar| {
+                    crate::init_comments(texts, kind, contour, from_sidecar)
+                },
                 &mut |progress| {
                     // Progress while the layouts are fitted is for a terminal.
                     if !matches!(progress, ops::init::InitProgress::Fitting { .. }) {

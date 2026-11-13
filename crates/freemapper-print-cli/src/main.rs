@@ -613,9 +613,15 @@ fn sidecar_note_line(texts: &Texts, error: &str) -> String {
 
 /// The comments `init` writes into the new project file for the map kind and the contour interval the starter
 /// proposes.
-fn init_comments(texts: &Texts, kind: MapKind, contour: Option<f64>) -> ops::init::FileComments {
+fn init_comments(
+    texts: &Texts,
+    kind: MapKind,
+    contour: Option<f64>,
+    from_sidecar: bool,
+) -> ops::init::FileComments {
     ops::init::FileComments {
         contour: match contour {
+            Some(_) if from_sidecar => texts.plain("init-comment-contour-sidecar"),
             Some(_) => texts.get(
                 "init-comment-contour",
                 Some(&args!("kind" => texts.plain(kind_word_id(kind)))),
@@ -668,7 +674,7 @@ fn init(texts: &Texts, args: &InitArgs) -> anyhow::Result<u8> {
             courses: args.courses.clone(),
             sheet_lang: sheet_lang(texts),
         },
-        &|kind, contour| init_comments(texts, kind, contour),
+        &|kind, contour, from_sidecar| init_comments(texts, kind, contour, from_sidecar),
         &mut |progress| eprintln!("{}", init_progress_line(texts, &progress)),
     )
     .map_err(|e| op_error(texts, e))?;
@@ -709,6 +715,10 @@ fn init_written_lines(texts: &Texts, result: &ops::init::InitResult) -> Vec<Stri
         Some(courses) => lines.extend(course_init_lines(texts, result, courses, &path, &kind_word)),
     }
     lines.push(match result.contour_interval_m {
+        Some(value) if result.contour_from_sidecar => texts.get(
+            "init-contour-sidecar-hint",
+            Some(&args!("value" => metres(texts, value))),
+        ),
         Some(value) => texts.get(
             "init-contour-hint",
             Some(&args!("value" => metres(texts, value), "kind" => kind_word)),

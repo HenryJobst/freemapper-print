@@ -106,6 +106,8 @@ pub struct InitResult {
     pub course_file: Option<InitCourses>,
     /// The contour interval the starter proposes for the map kind; `None` when it proposes none.
     pub contour_interval_m: Option<f64>,
+    /// Whether `contour_interval_m` comes from the map's `freemapper.toml` and not from the proposal for the kind.
+    pub contour_from_sidecar: bool,
     /// Without a course file, when the layout does not fit: what `check` says about its sheet.
     pub check: Option<SheetCheck>,
 }
@@ -166,7 +168,7 @@ pub fn detect_kind(
 /// and the contour interval the starter proposes. Nothing is written when an error comes before the file.
 pub fn init(
     args: &InitArgs,
-    comments: &dyn Fn(MapKind, Option<f64>) -> FileComments,
+    comments: &dyn Fn(MapKind, Option<f64>, bool) -> FileComments,
     progress: &mut dyn FnMut(InitProgress<'_>),
 ) -> Result<InitResult, OpError> {
     if let Some(title) = &args.title
@@ -279,11 +281,20 @@ pub fn init(
             }
         }
     }
+    // A contour interval in the map's `freemapper.toml` (the contract's `[contours] interval_m`) was computed
+    // for this map and beats the proposal for the kind; an unusable file counts as missing.
+    let sidecar_contour = freemapper_print::scale::read_sidecar_contour_interval(&map_path)
+        .ok()
+        .flatten();
+    if sidecar_contour.is_some() {
+        new.map.contour_interval_m = sidecar_contour;
+    }
+    let contour_from_sidecar = sidecar_contour.is_some();
     let contour = new.map.contour_interval_m;
     let FileComments {
         contour: contour_comment,
         footer: footer_comment,
-    } = comments(kind, contour);
+    } = comments(kind, contour, contour_from_sidecar);
     let key_comments = [
         KeyComment {
             table: "map",
@@ -355,6 +366,7 @@ pub fn init(
         assignments: new.assignments.len(),
         course_file,
         contour_interval_m: contour,
+        contour_from_sidecar,
         check,
     })
 }
@@ -437,11 +449,34 @@ mod tests {
         }
     }
 
-    fn comments(kind: MapKind, contour: Option<f64>) -> FileComments {
+    fn comments(kind: MapKind, contour: Option<f64>, from_sidecar: bool) -> FileComments {
         FileComments {
-            contour: format!("{kind:?} {contour:?}"),
+            contour: format!("{kind:?} {contour:?} {from_sidecar}"),
             footer: "footer".into(),
         }
+    }
+
+    #[test]
+    fn a_contour_interval_in_the_sidecar_beats_the_proposal() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = viktoriapark();
+        std::fs::copy(
+            src.join("berlin-viktoriapark.omap"),
+            dir.path().join("map.omap"),
+        )
+        .unwrap();
+        let mut sidecar = std::fs::read_to_string(src.join("freemapper.toml")).unwrap();
+        sidecar.push_str("\n[contours]\ninterval_m = 2.5\n");
+        std::fs::write(dir.path().join("freemapper.toml"), sidecar).unwrap();
+        let folder = dir.path().join("new");
+        let mut input = args(&folder, None);
+        input.map = dir.path().join("map.omap");
+        let result = init(&input, &comments, &mut |_| {}).unwrap();
+        assert_eq!(result.contour_interval_m, Some(2.5));
+        assert!(result.contour_from_sidecar);
+        let text = std::fs::read_to_string(&result.path).unwrap();
+        assert!(text.contains("# Sprint Some(2.5) true\n"), "{text}");
+        assert!(text.contains("contour_interval_m = 2.5"), "{text}");
     }
 
     #[test]
@@ -477,7 +512,8 @@ mod tests {
         assert_eq!(result.contour_interval_m, Some(2.0));
         assert!(result.check.is_none());
         let text = std::fs::read_to_string(&result.path).unwrap();
-        assert!(text.contains("# Sprint Some(2.0)\n"), "{text}");
+        assert!(text.contains("# Sprint Some(2.0) false\n"), "{text}");
+        assert!(!result.contour_from_sidecar);
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["kind_source"], "sidecar");
         assert_eq!(json["layouts"][0]["courses"][0], "Training");
