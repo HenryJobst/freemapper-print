@@ -7,12 +7,12 @@
 <!-- claude-cost:end -->
 [What the number means](docs/ai-cost/README.md#english)
 
+<p align="center"><a href="examples/README.en.md"><img src="docs/manual/img/sheet-elements.jpg" alt="An A4 sheet at 1:4000 on the Gleisdreieck map with a title block at the top left, a compass logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame" width="760"></a><br><sub>A sheet on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 2025): A4 landscape at 1:4000 with title block, logo, scale check bar and credit line. Click to open the <a href="examples/README.en.md">examples</a>.</sub></p>
+
 freemapper-print turns a finished orienteering map and the courses from a course-setting program into
 ready-to-print sheets, one sheet per course. It is the counterpart to
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper produces the starter map, the mapper draws in
 OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on paper.
-
-<p align="center"><a href="examples/README.en.md"><img src="docs/manual/img/sheet-elements.jpg" alt="An A4 sheet at 1:4000 on the Gleisdreieck map with a title block at the top left, a compass logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame" width="760"></a><br><sub>A sheet on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 2025): A4 landscape at 1:4000 with title block, logo, scale check bar and credit line. Click to open the <a href="examples/README.en.md">examples</a>.</sub></p>
 
 What it does already:
 

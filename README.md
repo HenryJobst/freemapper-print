@@ -7,12 +7,12 @@
 <!-- claude-cost:end -->
 [Was die Zahl bedeutet](docs/ai-cost/README.md)
 
+<p align="center"><a href="examples/README.md"><img src="docs/manual/img/sheet-elements.jpg" alt="Ein A4-Blatt in 1:4000 auf der Karte Gleisdreieck mit Titelblock links oben, Kompass-Logo links unten, Kontrollstrecke rechts unten und der Namensnennung unter dem Rahmen" width="760"></a><br><sub>Ein Blatt auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge Berlin 2025): A4 quer in 1:4000 mit Titelblock, Logo, Kontrollstrecke und Namensnennung. Ein Klick öffnet die <a href="examples/README.md">Beispiele</a>.</sub></p>
+
 freemapper-print macht aus einer fertigen OL-Karte und den Bahnen aus einem Bahnlegungsprogramm die
 druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
 [freemapper](https://github.com/HenryJobst/freemapper): freemapper liefert den Ausgangsstand der Karte,
 gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt die fertige Karte aufs Papier.
-
-<p align="center"><a href="examples/README.md"><img src="docs/manual/img/sheet-elements.jpg" alt="Ein A4-Blatt in 1:4000 auf der Karte Gleisdreieck mit Titelblock links oben, Kompass-Logo links unten, Kontrollstrecke rechts unten und der Namensnennung unter dem Rahmen" width="760"></a><br><sub>Ein Blatt auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge Berlin 2025): A4 quer in 1:4000 mit Titelblock, Logo, Kontrollstrecke und Namensnennung. Ein Klick öffnet die <a href="examples/README.md">Beispiele</a>.</sub></p>
 
 Das kann es schon:
 
