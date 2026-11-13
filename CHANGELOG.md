@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.9.0] - 2026-11-13
+
 ### Geändert
 
 - Der Kern-Pin steht auf freemapper-core v0.24.0. Ein PDF lässt weg, was der Kartenausschnitt nicht zeigen kann (Kern-Entscheidung 0031), und das PDF eines beschnittenen Blatts wird dadurch kleiner: um 15 bis 42 Prozent bei den Beispielen auf Gleisdreieck, deren Karte viel größer ist als der Ausschnitt, und um höchstens 1 Prozent, wo die Karte fast hineinpasst. Die Ausgabe bleibt bei 150 dpi Pixel für Pixel gleich, nur die Bytes ändern sich. Seit v0.24.0 schreibt ein PDF seine Pfade außerdem kompakt: Koordinaten auf 3 Nachkommastellen gerundet, kleine Formen relativ zu ihrem ersten Punkt (Kern-Entscheidung 0032; die Anpassung an Béziers wurde gemessen und verworfen, sie sparte nur 8 Prozent mehr bei fünffacher Pixelabweichung). Die Beispielblätter werden dadurch um etwa 80 Prozent kleiner, von 25,8 auf 5,4 MB. Die Referenz-PDFs der Tests und die Beispiel-PDFs wurden neu geschrieben, erstere weil die Tests sie Byte für Byte vergleichen.

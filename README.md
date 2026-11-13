@@ -133,7 +133,7 @@ Die vollständigen Beispielprojekte mit Projektdatei, Eingabedateien, PDFs und V
 
 ## Status
 
-Die aktuelle Version ist [v0.8.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.8.0) vom 12. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Die aktuelle Version ist [v0.9.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.9.0) vom 13. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
@@ -141,10 +141,6 @@ dazu. Der Meilenstein M5, der MCP-Server für KI-Agenten, gehört seit dieser Ve
 Park: Sprintkarten auf A4, gedruckt am eigenen Drucker oder im Copyshop. Mehr steht im
 [Design](docs/superpowers/specs/2026-11-08-freemapper-print-design.md), im [Glossar](docs/glossary.md) und in den
 [Architekturentscheidungen](docs/adr/README.md).
-
-Seit v0.8.0 hat `main` Änderungen, die noch nicht veröffentlicht sind, darunter den Abstand zwischen Fenstern
-(Fenster überlappen sich nicht und halten 3 mm Abstand) und die neuen Bilder im Handbuch. Sie stehen in den
-[Änderungen](CHANGELOG.md) unter „Unveröffentlicht“.
 
 ## Installation
 
