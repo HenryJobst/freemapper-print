@@ -12,6 +12,7 @@ pub use crate::mask::{Mask, MaskPolygon};
 use crate::print::{Orientation, Paper};
 use crate::rules::RuleSet;
 use crate::scale::MapKind;
+pub use toml::value::Date;
 
 mod edit;
 pub use edit::{Change, set_assignment, set_element, set_layout};
@@ -111,6 +112,15 @@ pub enum SheetLang {
     #[default]
     De,
     En,
+}
+
+/// An event date as a course file writes it (`YYYY-MM-DD`); `None` for anything else, including a date with a time.
+pub fn parse_event_date(text: &str) -> Option<toml::value::Date> {
+    let stamp: toml::value::Datetime = text.trim().parse().ok()?;
+    match (stamp.date, stamp.time, stamp.offset) {
+        (Some(date), None, None) => Some(date),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

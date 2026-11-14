@@ -1214,6 +1214,31 @@ fn init_with_iof_xml_makes_one_layout_without_description_box() {
 }
 
 #[test]
+fn init_takes_the_event_date_and_organiser_from_the_iof_xml() {
+    let ws = Workspace::new(LUEBECK);
+    let xml = ws.event().join("c.xml");
+    let text = std::fs::read_to_string(LUEBECK_COURSES).unwrap().replace(
+        "</Event>",
+        "<StartTime><Date>2027-05-15</Date></StartTime><Organiser><Name>OC Beispiel</Name></Organiser></Event>",
+    );
+    std::fs::write(&xml, text).unwrap();
+    let o = run_owned("en", &init_args(&ws, xml.to_str().unwrap()));
+    assert!(o.status.success(), "{}", stderr(&o));
+    let p = project::load(&ws.project_file()).unwrap().project;
+    let date = p.event.date.expect("the date comes from the course file");
+    assert_eq!((date.year, date.month, date.day), (2027, 5, 15));
+    assert_eq!(p.event.organiser.as_deref(), Some("OC Beispiel"));
+    // A course file without both leaves them unset.
+    let ws = Workspace::new(LUEBECK);
+    let xml = ws.event().join("c.xml");
+    std::fs::copy(LUEBECK_COURSES, &xml).unwrap();
+    let o = run_owned("en", &init_args(&ws, xml.to_str().unwrap()));
+    assert!(o.status.success(), "{}", stderr(&o));
+    let p = project::load(&ws.project_file()).unwrap().project;
+    assert_eq!((p.event.date, p.event.organiser), (None, None));
+}
+
+#[test]
 fn init_with_a_course_file_that_does_not_fit_writes_nothing() {
     let ws = Workspace::new(LUEBECK);
     let xml = ws.event().join("c.xml");
