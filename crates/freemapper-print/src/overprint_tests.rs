@@ -77,6 +77,8 @@ fn event(controls: Vec<Control<MapCoord>>, specials: Vec<Special<MapCoord>>) -> 
             event_name: None,
             map_scale: None,
             item_scaling: None,
+            event_date: None,
+            organiser: None,
         },
         notes: Vec::new(),
     }

@@ -811,6 +811,8 @@ mod tests {
                 event_name: None,
                 map_scale: Some(4000),
                 item_scaling: None,
+                event_date: None,
+                organiser: None,
             },
             notes: vec![],
         }

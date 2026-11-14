@@ -7,6 +7,14 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- `init --courses` takes the event date and the organiser from an IOF XML course file (`Event/StartTime/Date`, `Event/Organiser/Name`, as freemapper-courseplan 0.17.0 writes them) into `[event]`, so `{date}` and `{organiser}` need no second entry (ADR 0066). A date that is not a plain `YYYY-MM-DD` is left out.
+
+### Changed
+
+- freemapper-core goes from v0.25.0 to v0.27.0 (ADR 0034 there). Print output stays the same.
+
 ## [0.10.0] - 2026-11-13
 
 ### Changed

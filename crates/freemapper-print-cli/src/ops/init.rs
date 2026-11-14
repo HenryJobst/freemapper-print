@@ -127,6 +127,10 @@ struct CoursePlan {
     courses: Vec<(String, u32)>,
     /// The file is IOF XML: no print scales, no descriptions.
     iof: bool,
+    /// The event date the file names, if it parses as `YYYY-MM-DD`.
+    date: Option<project::Date>,
+    /// The organiser the file names.
+    organiser: Option<String>,
 }
 
 impl CoursePlan {
@@ -261,6 +265,9 @@ pub fn init(
     new.layouts = fitted.iter().map(|(l, _, _)| l.clone()).collect();
     if let Some(plan) = &plan {
         new.sources.courses = Some(project::relative_path(&dir, &plan.file));
+        // The date and organiser a course-setting program wrote into the file fill {date} and {organiser}.
+        new.event.date = plan.date;
+        new.event.organiser = plan.organiser.clone();
         // A sheet without a description box (IOF XML) names its course only in the title block.
         new.shared[0].lines[0] = "{event} \u{b7} {course}".into();
         for (name, scale) in &plan.courses {
@@ -409,6 +416,13 @@ fn plan_courses(
             .map(|c| (c.name.clone(), scale_of(c.print_scale_hint)))
             .collect(),
         iof,
+        date: courses
+            .event
+            .source
+            .event_date
+            .as_deref()
+            .and_then(project::parse_event_date),
+        organiser: courses.event.source.organiser.clone(),
     })
 }
 
