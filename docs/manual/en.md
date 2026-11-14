@@ -925,6 +925,8 @@ format has none. Each layout id names its print scale, such as `a4-4000`. In bot
 with `{event} · {course}`, so that each sheet names its course. `init` says where each value came from and names
 the course file as the project file does, relative to the project folder.
 
+For an IOF XML file, `init` also copies the event date and the organiser, if the file names them, into `[event]` as `date` and `organiser`, so that `{date}` and `{organiser}` are filled. A `.ppen` file has neither. Only `init` copies them; later changes in the course file do not reach the project.
+
 Treat the file as a start. `init` picks paper and passe-partout for the layout as a sheet of its own; whether
 each course fits the frame shows in `check`. Change paper and passe-partout to your liking, then run `check`. For
 an IOF XML file the first `check` may report the assumed y axis; confirm it as described above.

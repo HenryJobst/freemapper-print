@@ -964,6 +964,8 @@ Beschreibungskasten, denn das Format hat keine. Jede Layout-ID nennt ihren Druck
 Fällen beginnt der Titelblock mit `{event} · {course}`, damit jedes Blatt seine Bahn nennt. `init` sagt, woher jeder
 Wert stammt, und nennt die Bahndatei wie die Projektdatei, relativ zum Projektordner.
 
+Aus einer IOF-XML-Datei übernimmt `init` außerdem das Datum der Veranstaltung und den Ausrichter, falls die Datei sie nennt, als `date` und `organiser` nach `[event]`, damit `{date}` und `{organiser}` gefüllt sind. Eine `.ppen` hat beides nicht. Nur `init` kopiert sie; spätere Änderungen in der Bahndatei erreichen das Projekt nicht.
+
 Nehmen Sie die Datei als Anfang. `init` wählt Papier und Passepartout für das Layout als Blatt für sich; ob jede
 Bahn in den Ausschnitt passt, zeigt `check`. Ändern Sie Papier und Passepartout nach Wunsch und rufen Sie dann
 `check` auf. Bei einer IOF-XML-Datei meldet das erste `check` vielleicht die angenommene y-Achse; bestätigen Sie
