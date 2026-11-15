@@ -13,6 +13,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- Licence: AGPL-3.0-or-later instead of GPL-3.0-or-later (ADR 0067), like freemapper, freemapper-core and the other app. Whoever runs a modified version as a network service must offer its source. Releases up to now stay GPL-3.0-or-later.
 - freemapper-core goes from v0.25.0 to v0.27.0 (ADR 0034 there). Print output stays the same.
 
 ## [0.10.0] - 2026-11-13

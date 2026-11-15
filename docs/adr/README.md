@@ -42,7 +42,7 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | Number | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-rust-with-a-pure-rust-core.md) | Rust with a pure-Rust core | Accepted | 2026-11-08 |
-| [0002](0002-gpl-3.0-or-later.md) | GPL-3.0-or-later | Accepted | 2026-11-08 |
+| [0002](0002-gpl-3.0-or-later.md) | GPL-3.0-or-later | Superseded by ADR 0067 | 2026-11-08 |
 | [0003](0003-glossary-first-english-code-bilingual-docs.md) | Glossary first, English code, bilingual user docs | Accepted | 2026-11-08 |
 | [0004](0004-mcp-over-stdio-as-a-primary-interface.md) | MCP over stdio as a primary interface | Accepted | 2026-11-08 |
 | [0005](0005-layout-editor-in-a-local-browser-page.md) | Layout editor in a local browser page | Accepted | 2026-11-08 |
@@ -107,3 +107,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0064](0064-examples-on-two-released-maps.md) | Examples on two released maps | Accepted, amends [0062](0062-manual-figures-from-two-released-maps.md) | 2026-11-12 |
 | [0065](0065-contour-interval-from-the-sidecar.md) | The contour interval comes from the sidecar when it has one | Accepted | 2026-11-13 |
 | [0066](0066-event-date-and-organiser-from-the-course-file.md) | Event date and organiser from the course file | Accepted | 2026-11-14 |
+| [0067](0067-agpl-3.0-or-later.md) | AGPL-3.0-or-later | Accepted, supersedes ADR 0002 | 2026-11-15 |

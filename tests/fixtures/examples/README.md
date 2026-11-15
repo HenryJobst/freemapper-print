@@ -9,7 +9,7 @@ reference outputs that the tests compare byte for byte.
 
 All maps come from freemapper 0.8.0 (https://github.com/HenryJobst/freemapper, tag `v0.8.0`, commit `a2b41b4`,
 2026-11-09), copied unchanged from its examples. The templates the maps name (candidates, orthophoto, hillshade)
-are not copied. freemapper itself is GPL-3.0-or-later.
+are not copied. freemapper itself is AGPL-3.0-or-later.
 
 | Folder | Map from the freemapper example | Licence of the map data |
 |---|---|---|
