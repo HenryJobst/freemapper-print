@@ -24,3 +24,8 @@ known vulnerabilities or source.
 - A new dependency with a licence not on the list fails CI until someone decides and adds it here. A new advisory fails
   CI as well, also on a day when nothing in the repository changed; the fix is an upgrade or a reasoned ignore.
 - The rmcp ignores end when rmcp 3.9.0 or later is old enough to take (ADR 0006); the file says so.
+
+## Amendment 2026-11-15
+freemapper-core v0.29.0 reads fonts with skrifa instead of ttf-parser (ADR 0037 there), and print's own
+`ttf-parser` dependency had no use left in the code and is gone. The ignore for RUSTSEC-2026-0192 is removed; two
+ignores remain, both for rmcp.

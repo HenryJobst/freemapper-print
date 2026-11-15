@@ -35,7 +35,6 @@ serde.workspace = true
 simplecss.workspace = true
 subsetter.workspace = true
 svgtypes.workspace = true
-ttf-parser.workspace = true
 usvg.workspace = true
 
 [target.'cfg(not(unix))'.dependencies]
