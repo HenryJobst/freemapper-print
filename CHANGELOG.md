@@ -14,7 +14,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 ### Geändert
 
 - Lizenz: AGPL-3.0-or-later statt GPL-3.0-or-later (ADR 0067), wie freemapper, freemapper-core und das andere Programm. Wer eine geänderte Version als Netzwerkdienst betreibt, muss ihren Quelltext anbieten. Bisherige Veröffentlichungen bleiben GPL-3.0-or-later.
-- freemapper-core wechselt von v0.25.0 auf v0.27.0 (dort Entscheidung 0034). Die Ausgabe von print bleibt gleich.
+- freemapper-core wechselt von v0.25.0 auf v0.28.0 (dort Entscheidung 0034 für das Datum der Bahndatei; die Lizenz ist AGPL-3.0-or-later, dort Entscheidung 0035). Die Ausgabe von print bleibt gleich.
 
 ## [0.10.0] - 2026-11-13
 
