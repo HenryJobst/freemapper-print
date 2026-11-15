@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.11.0] - 2026-11-15
+
 ### Hinzugefügt
 
 - `init --courses` übernimmt das Datum und den Ausrichter aus einer IOF-XML-Bahndatei (`Event/StartTime/Date`, `Event/Organiser/Name`, wie freemapper-courseplan 0.17.0 sie schreibt) nach `[event]`. `{date}` und `{organiser}` brauchen so keine zweite Eingabe (Entscheidung 0066). Ein Datum, das kein reines `JJJJ-MM-TT` ist, bleibt weg.
