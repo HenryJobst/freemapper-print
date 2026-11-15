@@ -377,3 +377,23 @@ jobs:
           expect "${TAG#v}"
           "$exe" update --rollback
           expect "${PREVIOUS#v}"
+
+  # Tells the website (freemapper.de, repository freemapper-site) to build again, so that it shows this release. The
+  # token lives in the secret SITE_DISPATCH_TOKEN; without it the job ends well, and a failed start only warns:
+  # the release is out either way (ADR 0069).
+  website:
+    needs: release
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Start the website build
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "SITE_DISPATCH_TOKEN is not set; the website is not rebuilt."
+            exit 0
+          fi
+          gh workflow run deploy.yml -R HenryJobst/freemapper-site \
+            || echo "::warning::The website build did not start; start deploy.yml in freemapper-site by hand."
