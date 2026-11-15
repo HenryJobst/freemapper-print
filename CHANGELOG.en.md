@@ -11,6 +11,11 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 - `deny.toml` and a CI job that runs `cargo deny check` on the dependencies: licences, known vulnerabilities, sources (ADR 0068). Two advisories about the HTTP and OAuth client of rmcp, which print does not build, and the unmaintained `ttf-parser` are ignored with their reasons in the file.
 
+### Changed
+
+- freemapper-core goes from v0.28.0 to v0.29.0: the core reads fonts with skrifa instead of the unmaintained ttf-parser (ADR 0037 there). Print output stays the same. `deny.toml` loses its ignore for RUSTSEC-2026-0192.
+- The unused direct dependency on `ttf-parser` is removed.
+
 ## [0.11.0] - 2026-11-15
 
 ### Added
@@ -19,8 +24,6 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
-- freemapper-core goes from v0.28.0 to v0.29.0: the core reads fonts with skrifa instead of the unmaintained ttf-parser (ADR 0037 there). Print output stays the same. `deny.toml` loses its ignore for RUSTSEC-2026-0192.
-- The unused direct dependency on `ttf-parser` is removed.
 - Licence: AGPL-3.0-or-later instead of GPL-3.0-or-later (ADR 0067), like freemapper, freemapper-core and the other app. Whoever runs a modified version as a network service must offer its source. Releases up to now stay GPL-3.0-or-later.
 - freemapper-core goes from v0.25.0 to v0.28.0 (ADR 0034 there for the course date, and its licence is AGPL-3.0-or-later, ADR 0035 there). Print output stays the same.
 

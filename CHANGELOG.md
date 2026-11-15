@@ -11,6 +11,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 - `deny.toml` und ein CI-Job, der `cargo deny check` über die Abhängigkeiten laufen lässt: Lizenzen, bekannte Schwachstellen, Quellen (Entscheidung 0068). Zwei Warnungen zum HTTP- und OAuth-Client von rmcp, den print nicht baut, und das nicht mehr gepflegte `ttf-parser` sind mit ihrer Begründung in der Datei ausgenommen.
 
+### Geändert
+
+- freemapper-core wechselt von v0.28.0 auf v0.29.0: Der Core liest Schriften mit skrifa statt mit dem nicht mehr gepflegten ttf-parser (dort Entscheidung 0037). Die Ausgabe von print bleibt gleich. `deny.toml` verliert die Ausnahme für RUSTSEC-2026-0192.
+- Die ungenutzte direkte Abhängigkeit von `ttf-parser` entfällt.
+
 ## [0.11.0] - 2026-11-15
 
 ### Hinzugefügt
@@ -19,8 +24,6 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
-- freemapper-core wechselt von v0.28.0 auf v0.29.0: Der Core liest Schriften mit skrifa statt mit dem nicht mehr gepflegten ttf-parser (dort Entscheidung 0037). Die Ausgabe von print bleibt gleich. `deny.toml` verliert die Ausnahme für RUSTSEC-2026-0192.
-- Die ungenutzte direkte Abhängigkeit von `ttf-parser` entfällt.
 - Lizenz: AGPL-3.0-or-later statt GPL-3.0-or-later (ADR 0067), wie freemapper, freemapper-core und das andere Programm. Wer eine geänderte Version als Netzwerkdienst betreibt, muss ihren Quelltext anbieten. Bisherige Veröffentlichungen bleiben GPL-3.0-or-later.
 - freemapper-core wechselt von v0.25.0 auf v0.28.0 (dort Entscheidung 0034 für das Datum der Bahndatei; die Lizenz ist AGPL-3.0-or-later, dort Entscheidung 0035). Die Ausgabe von print bleibt gleich.
 
