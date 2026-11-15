@@ -109,3 +109,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0066](0066-event-date-and-organiser-from-the-course-file.md) | Event date and organiser from the course file | Accepted | 2026-11-14 |
 | [0067](0067-agpl-3.0-or-later.md) | AGPL-3.0-or-later | Accepted, supersedes ADR 0002 | 2026-11-15 |
 | [0068](0068-cargo-deny.md) | cargo-deny checks the dependencies | Accepted | 2026-11-15 |
+| [0069](0069-release-starts-the-website-build.md) | A release starts the website build | Accepted | 2026-11-15 |

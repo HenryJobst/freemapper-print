@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Die READMEs, das Handbuch und AGENTS.md verlinken die Website der Suite, https://freemapper.de. Ein Release stößt über einen neuen Job in `release.yml` den Bau der Website an (Entscheidung 0069); ohne das Secret `SITE_DISPATCH_TOKEN` tut der Job nichts.
 - `deny.toml` und ein CI-Job, der `cargo deny check` über die Abhängigkeiten laufen lässt: Lizenzen, bekannte Schwachstellen, Quellen (Entscheidung 0068). Zwei Warnungen zum HTTP- und OAuth-Client von rmcp, den print nicht baut, und das nicht mehr gepflegte `ttf-parser` sind mit ihrer Begründung in der Datei ausgenommen.
 
 ### Geändert

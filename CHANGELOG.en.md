@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- The READMEs, the manual and AGENTS.md link to the suite website, https://freemapper.de. A release starts the website build through a new job in `release.yml` (ADR 0069); without the secret `SITE_DISPATCH_TOKEN` the job does nothing.
 - `deny.toml` and a CI job that runs `cargo deny check` on the dependencies: licences, known vulnerabilities, sources (ADR 0068). Two advisories about the HTTP and OAuth client of rmcp, which print does not build, and the unmaintained `ttf-parser` are ignored with their reasons in the file.
 
 ### Changed

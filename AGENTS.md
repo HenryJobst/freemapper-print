@@ -3,7 +3,7 @@
 This file tells an AI agent how to install freemapper-print and how to use it for a person who wants a finished
 orienteering map on paper. It ships in every release archive next to the program. People read
 [README.en.md](README.en.md) (English) or [README.md](README.md) (German); the [user manual](docs/manual/en.md)
-has the details.
+has the details. The suite website is <https://freemapper.de/en/>.
 
 freemapper-print turns a finished OpenOrienteering Mapper map (`.omap`) and, if there are any, the courses from
 Purple Pen (`.ppen`) or from any program that writes IOF XML 3.0 into exact-scale vector PDFs: 1 mm on paper is the
