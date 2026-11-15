@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- `deny.toml` and a CI job that runs `cargo deny check` on the dependencies: licences, known vulnerabilities, sources (ADR 0068). Two advisories about the HTTP and OAuth client of rmcp, which print does not build, and the unmaintained `ttf-parser` are ignored with their reasons in the file.
+
 ## [0.11.0] - 2026-11-15
 
 ### Added

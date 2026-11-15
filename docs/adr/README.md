@@ -108,3 +108,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0065](0065-contour-interval-from-the-sidecar.md) | The contour interval comes from the sidecar when it has one | Accepted | 2026-11-13 |
 | [0066](0066-event-date-and-organiser-from-the-course-file.md) | Event date and organiser from the course file | Accepted | 2026-11-14 |
 | [0067](0067-agpl-3.0-or-later.md) | AGPL-3.0-or-later | Accepted, supersedes ADR 0002 | 2026-11-15 |
+| [0068](0068-cargo-deny.md) | cargo-deny checks the dependencies | Accepted | 2026-11-15 |
