@@ -36,8 +36,6 @@ ignore = [
     { id = "RUSTSEC-2026-0457", reason = "OAuth client of rmcp, not built here" },
     # rmcp's Streamable HTTP client. Same features as above: no HTTP client is built.
     { id = "RUSTSEC-2026-0462", reason = "Streamable HTTP client of rmcp, not built here" },
-    # No safe upgrade; freemapper-render and freemapper-print read fonts with it. Moving to skrifa is a core decision.
-    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained, no replacement in core yet" },
 ]
 
 [bans]
