@@ -34,3 +34,10 @@ jobs:
       # The update command against a stub server: only a debug build with this feature reaches it.
       - run: cargo clippy --locked -p freemapper-print-cli --all-targets --features test-stub -- -D warnings
       - run: cargo test --locked -p freemapper-print-cli --features test-stub
+
+  # Licences, advisories, bans and sources of the dependencies (deny.toml, ADR 0068).
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
