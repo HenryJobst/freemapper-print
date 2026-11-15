@@ -323,8 +323,8 @@ For AI agents there is an [AGENTS.md](AGENTS.md), which also ships in every rele
 
 ## Licence and credit
 
-freemapper-print is licensed [GPL-3.0-or-later](LICENSE), like freemapper. It takes over code from freemapper
-and may take over code from OOM (ADR 0002).
+freemapper-print is licensed [AGPL-3.0-or-later](LICENSE), like freemapper. It takes over code from freemapper
+and may take over code from OOM, which is GPL-3 (ADR 0067).
 
 The program embeds the Arimo font (Arial-compatible, SIL Open Font License 1.1). Its licence is in the release
 archives as `FONT-LICENSE.txt`.

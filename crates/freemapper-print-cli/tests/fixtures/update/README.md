@@ -5,7 +5,7 @@ Manifests for the tests of `freemapper-print update` (`tests/update_cli.rs`).
 - Source: ported on 2026-11-12 from freemapper's fixtures (`crates/freemapper-cli/tests/fixtures/update/` in
   https://github.com/HenryJobst/freemapper), with the app name, URLs and asset names changed to freemapper-print.
 - Date: 2026-11-12.
-- Licence: GPL-3.0-or-later, like the repository.
+- Licence: AGPL-3.0-or-later, like the repository.
 
 | File | Content |
 |---|---|

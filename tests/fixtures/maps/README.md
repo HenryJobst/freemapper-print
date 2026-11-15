@@ -9,7 +9,7 @@ Real OpenOrienteering Mapper maps used by the reader tests (`crates/freemapper-p
   candidates as the template `templates/candidates.omap`; that file is not copied.
 - Licence: the map data come from © OpenStreetMap contributors (ODbL) and © GeoBasis-DE/LVermGeo SH
   (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/, source modified), as the example's `ATTRIBUTION.txt`
-  and the map's `<notes>` say. The file was written by freemapper (GPL-3.0-or-later).
+  and the map's `<notes>` say. The file was written by freemapper (AGPL-3.0-or-later).
 - 2281 objects: the base area alone in the part `base`, 2267 in "default part" (with the nine north lines) and
   13 in "peripheral information" (the information block).
 

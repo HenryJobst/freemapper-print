@@ -1,7 +1,7 @@
 # Third-party material / Fremdmaterial
 
-freemapper-print is licensed under GPL-3.0-or-later (`LICENSE`). The program embeds the following material
-under its own licence. / freemapper-print steht unter GPL-3.0-or-later (`LICENSE`). Das Programm enthält
+freemapper-print is licensed under AGPL-3.0-or-later (`LICENSE`). The program embeds the following material
+under its own licence. / freemapper-print steht unter AGPL-3.0-or-later (`LICENSE`). Das Programm enthält
 folgendes Material unter dessen eigener Lizenz.
 
 ## Arimo

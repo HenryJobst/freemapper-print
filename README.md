@@ -331,8 +331,8 @@ Für KI-Agenten gibt es eine [AGENTS.md](AGENTS.md) (englisch), die auch in jede
 
 ## Lizenz und Namensnennung
 
-freemapper-print steht unter der [GPL-3.0-or-later](LICENSE), wie freemapper. Es übernimmt Code aus freemapper
-und darf Code aus OOM übernehmen (ADR 0002).
+freemapper-print steht unter der [AGPL-3.0-or-later](LICENSE), wie freemapper. Es übernimmt Code aus freemapper
+und darf Code aus OOM übernehmen, der GPL-3 steht (ADR 0067).
 
 Das Programm bettet die Schrift Arimo ein (Arial-kompatibel, SIL Open Font License 1.1). Ihre Lizenz liegt in
 den Release-Archiven als `FONT-LICENSE.txt`.
