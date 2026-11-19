@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Map kinds and the symbol size table live in `freemapper-printrules` (ADR 0056); this module re-exports
 //! them and adds what needs the map file: the `freemapper.toml` next to a map and the guess of the kind.
 

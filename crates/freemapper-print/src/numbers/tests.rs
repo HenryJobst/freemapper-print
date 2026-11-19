@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use super::*;
 use crate::courses::{LoadedCourses, layout_for};
 use crate::omap::MapDocument;

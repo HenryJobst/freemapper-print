@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! North lines for maps that have none (ADR 0027, ADR 0023).
 //!
 //! Pure helpers: which symbol the lines take, how far apart they lie, and where. `render_sheet`

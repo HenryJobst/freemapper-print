@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The server of the editor: the routes on top of `freemapper_web::serve`.
 //!
 //! Routes below the token: `GET /` (the page), `GET /assets/*` (the page's own files), `POST /api/done` (ends

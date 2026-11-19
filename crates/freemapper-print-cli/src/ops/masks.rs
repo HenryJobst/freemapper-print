@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `masks window` and `masks corridor`: append a mask variant to the project file (ADR 0047).
 
 use std::path::PathBuf;

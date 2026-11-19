@@ -7,7 +7,7 @@ version = "0.11.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/HenryJobst/freemapper-print"
-rust-version = "1.88"
+rust-version = "1.99"
 
 [workspace.dependencies]
 freemapper-print = { path = "crates/freemapper-print" }
@@ -39,23 +39,21 @@ miniz_oxide = "0.9.1"
 # Tests only: the key parser of freemapper-update, to check the committed public keys; same pin as in
 # freemapper-core.
 minisign-verify = "=0.3.0"
-pdf-writer = "0.15.0"
-quick-xml = "0.42.0"
 # Pinned: newer releases are younger than two weeks (ADR 0006). rmcp-macros is held at 3.6.0 in
 # Cargo.lock only (rmcp asks for ^3.6.0), so build with --locked. The version freemapper uses.
 rmcp = { version = "=3.6.0", features = ["server", "transport-io", "macros"] }
 # Windows only: the file identity check before restoring permissions (ADR 0041); the version
 # freemapper-fs uses.
 same-file = "=1.0.6"
-schemars = "1.2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.154"
+# The MCP tools derive `JsonSchema`, whose expansion names this crate directly.
+schemars = "1.2.3"
 # Tests only: hashes in the update fixtures; the version freemapper uses.
 sha2 = "0.11.1"
 # Same CSS tokenizer and IRI parser as usvg, so that logo SVGs are checked the way usvg reads them.
 simplecss = "0.2.2"
 svgtypes = "0.16.1"
-subsetter = { version = "0.2.6", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 # The MCP server's runtime: stdio and the in-process tests.

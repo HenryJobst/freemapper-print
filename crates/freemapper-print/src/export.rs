@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Export: the layouts of a project as PDFs, one file `<layout id>.pdf` per layout (design §5), or, with a
 //! course file, the courses: one PDF `<course>.pdf` per course, or all of them as the pages of one PDF.
 //!

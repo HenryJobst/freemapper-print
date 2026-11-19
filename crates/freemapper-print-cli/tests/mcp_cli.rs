@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `freemapper-print mcp` spoken to over stdio, as an agent would: stdout carries JSON-RPC and nothing else.
 
 use std::io::{BufRead, BufReader, Read, Write};

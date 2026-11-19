@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Generated masks (ADR 0047). For window orienteering the windows are circles around the controls of a course;
 //! for corridor orienteering the corridor runs along a polyline the user gives, since no rule says where a corridor
 //! goes. Both are holes in one rectangular outline that covers the map with a margin, so the map shows only in them.
@@ -373,7 +375,7 @@ fn selected(
 /// The window mask `id` for `course`: one circular hole around each selected control, centred on it, with the
 /// radius of `options` in print mm, in one rectangular outline that covers `extent` (the map) and the windows with
 /// [`OUTLINE_MARGIN_MM`]. No two windows come closer than `options.gap_mm`; windows too close for it shrink (see
-/// [`keep_gap`]). Points are rounded to 0.001 mm.
+/// `keep_gap`). Points are rounded to 0.001 mm.
 pub fn windows(
     id: &str,
     course: &Course<MapCoord>,

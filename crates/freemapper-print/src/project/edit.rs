@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Changes to one table of the project file: the keys of a layout ([`set_layout`]), a sheet element
 //! ([`set_element`]) and the assignment of a course ([`set_assignment`]). Like [`super::append_mask`] they edit the
 //! text, so whatever they do not change stays byte for byte as it was, comments included. A key whose value stays

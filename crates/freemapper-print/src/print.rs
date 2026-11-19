@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Exact-scale page output (design §5.2, ADR 0018).
 //!
 //! One millimetre at print scale is one page millimetre, and the page is exactly the paper. When the

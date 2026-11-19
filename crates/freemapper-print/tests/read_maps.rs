@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Reads the two real maps in `tests/fixtures/maps`.
 
 use freemapper_print::omap::read::read_map_file;

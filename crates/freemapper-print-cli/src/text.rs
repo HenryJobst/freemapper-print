@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Program texts from Fluent files (ADR 0024, ADR 0025).
 //!
 //! Every user-facing text lives in `i18n/<language>/freemapper-print.ftl`. The files are embedded

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Compares our PDF with the vector PDF that OpenOrienteering Mapper 0.9.6 exports for the same
 //! map (ADR 0009: conformant, not pixel-identical). The OOM files are made by hand, see
 //! `tests/fixtures/oom/README.md`. Needs `pdftoppm` (poppler). Run with

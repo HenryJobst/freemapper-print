@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Pages without a course have an empty overprint, so the M2 example exports stay byte for byte as
 //! committed (M3 Task 6, ADR 0034). Course sheets without a mask stay byte for byte as committed too (M4 Task 2,
 //! ADR 0045), and so do the `render` outputs of `tests/fixtures/examples/luebeck-scales`, which never have a mask.

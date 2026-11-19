@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Exact-scale page output: one millimetre at print scale is one PDF millimetre, the page is the
 //! paper, and symbols have the size the standard sets for the print scale (ADR 0018).
 

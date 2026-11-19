@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Control descriptions: the IOF description symbols and their texts, and the description box of a course
 //! (ADR 0037). Terms follow `docs/glossary.md`.
 //!

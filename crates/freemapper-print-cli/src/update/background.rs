@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The daily check after the commands that make a person look at the program (spec 3.3, ADR 0060
 //! P3), and in mode `install` the install that follows it (spec 3.4, P5).
 //!

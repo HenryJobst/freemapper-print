@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The project's courses: loading the course file the project names, fitting it to the map and comparing it
 //! with the project file (ADR 0025). Assignments and number corrections that no longer match the course file
 //! are reported, never dropped. This module sits above [`crate::course`], which knows nothing of the project

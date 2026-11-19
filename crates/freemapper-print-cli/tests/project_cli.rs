@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Runs the project commands `init`, `check` and `export` of the `freemapper-print` binary on
 //! projects built in temp dirs around the fixture maps.
 

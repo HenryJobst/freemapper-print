@@ -27,6 +27,8 @@ before changing code.
   SendMessage before changing a core crate. A local `[patch]` to `../freemapper-core` never reaches `main`.
 - `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test` must pass; hooks in
   `.claude/` and `lefthook.yml` run them.
+- `scripts/check.sh` holds the housekeeping gates (licence line, spelling, links, history, dependencies, action
+  pins, ADR index, changelog pair) and `scripts/check.sh doc coverage msrv` the three that build (ADR 0070).
 - Superpowers process: brainstorming, then writing-plans, then subagent-driven development; TDD for readers,
   writers and geometry.
 - Work autonomously once a plan is approved: decide, record decisions, report them afterwards; stop only for

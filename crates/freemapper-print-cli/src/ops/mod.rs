@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The work of the commands without terminal output. Each op takes a plain argument struct (no clap types) and
 //! returns a result struct that serde serialises; `main.rs` words the results for the terminal, the MCP server
 //! returns them as JSON. No program text is made here: notes are typed values ([`Notice`]) that

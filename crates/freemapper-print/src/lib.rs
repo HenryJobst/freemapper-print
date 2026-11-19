@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! freemapper-print turns a finished orienteering map and the courses from a course-setting program into
 //! print PDFs, one sheet per course.
 //!

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The project file's course source, assignments and number corrections (M3 Task 5, ADR 0025).
 
 use std::path::{Path, PathBuf};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `project_info`: what a project holds, read without drawing a sheet. The CLI has no command for it; the MCP
 //! server's `project_info` tool returns it.
 

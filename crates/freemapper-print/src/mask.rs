@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Mask variants for window and corridor orienteering (ADR 0045): polygons in map coordinates, each an outline
 //! with holes. The masked area is the outline minus the union of its holes; the map is hidden there, and a hole
 //! is a window onto the map.

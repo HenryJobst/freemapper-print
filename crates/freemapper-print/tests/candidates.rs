@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! freemapper's candidates stay off the printed page.
 //!
 //! freemapper v0.8.0 keeps its candidates (objects a mapper may still take into the map) in a separate

@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Logos (design §5.2): club and sponsor logos as PNG, JPEG or SVG, `width_mm` wide, the height
 //! from the aspect ratio.
 //!
 //! PNG and JPEG become a [`RasterImage`] and keep their alpha. An SVG must pass an allow-list of
-//! plain shapes ([`svg_check`], ADR 0026); then `usvg` parses it (no text, no fonts) and it is
+//! plain shapes (`svg_check`, ADR 0026); then `usvg` parses it (no text, no fonts) and it is
 //! drawn as fills and strokes in CMYK. What the sheet cannot draw as written is simplified with a
 //! [`SheetNote::LogoSimplified`]. Logo files come from users and may be broken or hostile: the
 //! limits below bound the work (ADR 0019), and a file that breaks one is left out with a
@@ -63,7 +65,7 @@ pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> DirectColour {
 /// placed (ADR 0026). Two logos of the largest size fit.
 pub const MAX_PAGE_LOGO_PIXELS: u64 = 50_000_000;
 /// Most SVG work on one sheet, all SVG logos together, each counted as often as it is placed: the
-/// size of the logo as [`svg_check`] counts it plus the points its curves flatten into (ADR 0026).
+/// size of the logo as `svg_check` counts it plus the points its curves flatten into (ADR 0026).
 pub const MAX_PAGE_SVG_UNITS: u64 = 1_000_000;
 
 /// The logos of one export or `check` run, each distinct file read and decoded once (ADR 0026).
@@ -105,7 +107,7 @@ enum Entry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Cost {
     Pixels(u64),
-    /// [`svg_check`]'s work count; the flattened points are added when it is placed.
+    /// `svg_check`'s work count; the flattened points are added when it is placed.
     SvgWork(u64),
 }
 
@@ -533,7 +535,7 @@ fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<RasterImage, LogoS
     })
 }
 
-/// An SVG parsed into paths, with its work count ([`svg_check::check_svg`]). Entities and the allow-list ([`svg_check`]) are checked on the XML
+/// An SVG parsed into paths, with its work count ([`svg_check::check_svg`]). Entities and the allow-list (`svg_check`) are checked on the XML
 /// before `usvg` resolves it, so a file that is refused never reaches `usvg`. Embedded images are
 /// never loaded, external files never read.
 fn parse_svg(bytes: &[u8]) -> Result<(usvg::Tree, u64), LogoSkipReason> {

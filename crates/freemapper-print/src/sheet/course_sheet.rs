@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Course sheets: one course on its layout (design §5.7). The sheet is the layout's sheet with the frame centred
 //! on the course unless the layout sets `centre_map_mm`, the course placeholders filled, the course overprint
 //! on the map (ADR 0034) and the control description box (ADR 0037).

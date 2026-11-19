@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Placeholders in sheet texts: `{event}`, `{date}`, `{organiser}`, `{print_scale}`, `{map_scale}`,
 //! `{contour_interval}` and `{layout}`, and on a course sheet also `{course}`, `{length_km}`, `{climb_m}` and
 //! `{controls}`. A name that is none of these stays as written and is reported. The course placeholders are

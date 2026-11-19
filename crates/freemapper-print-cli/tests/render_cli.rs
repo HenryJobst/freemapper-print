@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Runs the `freemapper-print` binary on the fixture maps.
 
 use std::path::{Path, PathBuf};

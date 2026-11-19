@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The edits the page can ask for: `POST api/op/{name}` looks the name up in [`EDITOR_OPS`]. Each entry takes the
 //! arguments as JSON and calls an `ops::*` function (ADR 0059); the project file is never named by the page.
 //! Adding an op is one entry in the table and its argument type.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The API of the editor: `GET api/project`, `GET api/revision`, `GET api/preview`, `POST api/hit`,
 //! `GET api/check` and `GET api/export/status` read; `POST api/op/{name}`, `POST api/undo` and `POST api/redo`
 //! write the project file; `POST api/export` writes PDFs and `POST api/export/cancel` stops it.

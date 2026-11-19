@@ -293,6 +293,9 @@ This section is for coding agents in a clone of the repository, not for using th
 - Build and check: `cargo build --release --locked`, `cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace --locked`. The toolchain is
   pinned in `rust-toolchain.toml`. Read [`CLAUDE.md`](CLAUDE.md) first.
+- The housekeeping gates: `scripts/check.sh` runs licence line, spelling, links, history, dependencies, action
+  pins, ADR index and changelog pair; `scripts/check.sh doc coverage msrv` builds the workspace and checks
+  rustdoc, line coverage and the MSRV. CI runs the same commands (ADR 0070).
 - Source code and technical docs are English; terms follow [`docs/glossary.md`](docs/glossary.md). User docs are in
   German and English. German text says "Bundesland" for a state.
 - Decisions are recorded in [`docs/adr/`](docs/adr/README.md); every change gets a changelog entry in

@@ -9,11 +9,17 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- CI checks the repository's own housekeeping: `scripts/check.sh` bundles the gates for the licence line, the spelling of the English documents, internal links, secrets in the history, declared but unused dependencies, action pins, the ADR index, the changelog pair, rustdoc without warnings, line coverage and the MSRV (ADR 0070). `lefthook.yml` runs the fast gates before a commit and `secrets` before a push.
+- Every Rust file carries the line `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - The READMEs, the manual and AGENTS.md link to the suite website, https://freemapper.de. A release starts the website build through a new job in `release.yml` (ADR 0069); without the secret `SITE_DISPATCH_TOKEN` the job does nothing.
 - `deny.toml` and a CI job that runs `cargo deny check` on the dependencies: licences, known vulnerabilities, sources (ADR 0068). Two advisories about the HTTP and OAuth client of rmcp, which print does not build, and the unmaintained `ttf-parser` are ignored with their reasons in the file.
 
 ### Changed
 
+- `deny.toml` ignores `RUSTSEC-2026-0543`: `chrono` is unmaintained but reaches print through rmcp and schemars, and neither can drop it; the advisory names missing maintenance, not a vulnerability (amendment to ADR 0068).
+- The declared MSRV rises from 1.88 to 1.99. The workspace's own code does not need it; the manifest of freemapper-core v0.29.0 does, because cargo rejects a member overriding `default-features` of an inherited workspace dependency until 1.99. A CI job checks the claim with 1.99.0 (ADR 0070).
+- The unused dependencies `pdf-writer`, `quick-xml` and `subsetter` are gone. `schemars` stays with a `cargo-machete` exception, because the `JsonSchema` derive expands to paths in it.
+- Line coverage is measured: 96.6 %. `docs/coverage.json` holds the last measurement, the floor sits at 95.0 %, and a run below it fails.
 - freemapper-core goes from v0.28.0 to v0.29.0: the core reads fonts with skrifa instead of the unmaintained ttf-parser (ADR 0037 there). Print output stays the same. `deny.toml` loses its ignore for RUSTSEC-2026-0192.
 - The unused direct dependency on `ttf-parser` is removed.
 
@@ -113,7 +119,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 - `freemapper-print mcp` starts an MCP server on standard input and output, through which an AI agent such as Claude Code works with the program (ADR 0004, ADR 0054). It has eleven tools: `project_info`, `check_project` and `list_courses` read a project; `init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` and `assign_mask` write into the project file and keep its comments, apart from a few cases the manual lists; `export_project` writes the PDFs. Paths must be absolute. An error comes back with the message the command line prints, and the project file stays as it was. When an export fails at one sheet, the message names the PDFs it wrote before. An input a tool does not know is an error that names it. Calls that write run one after the other, also when the agent sends several at once. The results are JSON. A list of files, sheets, courses, mask variants or assignments has at most 200 entries, plus at most 200 notes; the rest is counted. Where a command-line message names an option, the server names the tool and its input. Chapter 3 of the manual describes the setup with a `.mcp.json` and every tool.
 - `set_layout`, `set_element` and `assign_mask` change layouts, sheet elements and assignments in the project file without editing it by hand. They change only the lines that must change and check the changed file before they write it.
 - When the agent cancels `export_project` or closes the connection, the export stops after the sheet it is drawing. The PDFs before it stay whole, and no partial file is left.
-- Example [`mcp-session`](examples/mcp-session/README.en.md): a recorded session in which an agent turns the Viktoriapark training into window orienteering, checks it and writes the PDF.
+- Example [`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.en.md): a recorded session in which an agent turns the Viktoriapark training into window orienteering, checks it and writes the PDF.
 
 ### Fixed
 

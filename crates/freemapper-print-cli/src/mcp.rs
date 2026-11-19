@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `freemapper-print mcp`: the MCP server on stdio, so an AI agent can read, check, change and export a
 //! project. The tools are thin wrappers over [`crate::ops`]; results are compact JSON, notes and errors carry
 //! the same texts the CLI prints (ADR 0004). Nothing but JSON-RPC goes to stdout. The tools that write hold one
@@ -130,7 +132,7 @@ struct CorridorIn {
     points: String,
     /// Width of the corridor in mm on paper. Default: 10.
     width: Option<f64>,
-    /// The mask id. Default: corridor-<n>.
+    /// The mask id. Default: `corridor-<n>`.
     id: Option<String>,
     /// Print the course named in course with the new mask; needs course.
     #[serde(default)]
@@ -401,7 +403,7 @@ struct AssignIn {
     project: String,
     /// The course of the course file.
     course: String,
-    /// The mask variant: a [[masks]] id or whiteout-<n>. Left out or null: the course prints without one.
+    /// The mask variant: a `[[masks]]` id or `whiteout-<n>`. Left out or null: the course prints without one.
     mask: Option<String>,
     /// The layout the course prints on. Left out: the layout it prints on now.
     layout: Option<String>,

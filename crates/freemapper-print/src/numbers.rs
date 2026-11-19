@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Control number positions on a course sheet (spec §5.7, ADR 0038): the four levels, the course file's
 //! positions turned into placements, the obstacles of a sheet, the automatic placement and the check. The
 //! scoring and the search live in [`crate::placement`], which knows nothing of these types.
