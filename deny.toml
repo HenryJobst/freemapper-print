@@ -36,6 +36,9 @@ ignore = [
     { id = "RUSTSEC-2026-0457", reason = "OAuth client of rmcp, not built here" },
     # rmcp's Streamable HTTP client. Same features as above: no HTTP client is built.
     { id = "RUSTSEC-2026-0462", reason = "Streamable HTTP client of rmcp, not built here" },
+    # `chrono` is unmaintained. It reaches the graph through rmcp and schemars, and neither has a release
+    # without it; the advisory names missing maintenance, not a vulnerability (ADR 0068, amendment 2026-11-19).
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained; reachable through rmcp/schemars, no release without it" },
 ]
 
 [bans]
