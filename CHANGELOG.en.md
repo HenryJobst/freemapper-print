@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- The READMEs carry badges for line coverage, MSRV, ADRs, the number of checks and the licence. `scripts/badges.sh` writes them from the data in the repository, and the check fails when they are out of date (amendment to ADR 0070).
 - CI checks the repository's own housekeeping: `scripts/check.sh` bundles the gates for the licence line, the spelling of the English documents, internal links, secrets in the history, declared but unused dependencies, action pins, the ADR index, the changelog pair, rustdoc without warnings, line coverage and the MSRV (ADR 0070). `lefthook.yml` runs the fast gates before a commit and `secrets` before a push.
 - Every Rust file carries the line `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - The READMEs, the manual and AGENTS.md link to the suite website, https://freemapper.de. A release starts the website build through a new job in `release.yml` (ADR 0069); without the secret `SITE_DISPATCH_TOKEN` the job does nothing.
@@ -16,6 +17,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- The coverage job reports the measurement on every run and catches a `docs/coverage.json` that is not committed yet; both were invisible before.
 - `deny.toml` ignores `RUSTSEC-2026-0543`: `chrono` is unmaintained but reaches print through rmcp and schemars, and neither can drop it; the advisory names missing maintenance, not a vulnerability (amendment to ADR 0068).
 - freemapper-core moves to v0.29.1: its manifest sets `default-features = false` on the workspace entry now, so cargo before 1.99 reads it again. The MSRV therefore stays 1.88 and is checked with 1.88.0 from now on (ADR 0070, amendment).
 - The unused dependencies `pdf-writer`, `quick-xml` and `subsetter` are gone. `schemars` stays with a `cargo-machete` exception, because the `JsonSchema` derive expands to paths in it.

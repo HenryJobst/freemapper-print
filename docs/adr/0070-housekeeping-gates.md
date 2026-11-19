@@ -74,3 +74,17 @@ carries the manifest fix: `default-features = false` stands on freemapper-core's
 instead of on one of its members, so cargo before 1.99 reads it again. print moves to v0.29.1 and
 declares 1.88 again; the `msrv` job checks 1.88.0. The 1.99 floor was a consequence of the tag, not
 of this code.
+
+## Amendment 2026-11-19, badges
+`scripts/badges.sh` writes the block between `<!-- badges:start -->` and `<!-- badges:end -->` in
+both READMEs: line coverage, MSRV, ADRs, the number of gates and the licence. Every number has a
+source in the repository, and `scripts/check.sh badges` fails when a block is out of date, so a
+change that moves a number carries the badge in the same commit. The AI-cost badge beside them
+belongs to its own service and keeps its own markers.
+
+## Amendment 2026-11-19, badges
+`scripts/badges.sh` writes the block between `<!-- badges:start -->` and `<!-- badges:end -->` in
+both READMEs: line coverage, MSRV, ADRs, the number of gates and the licence. Every number has a
+source in the repository, and `scripts/check.sh badges` fails when a block is out of date, so a
+change that moves a number carries the badge in the same commit. The AI-cost badge beside them
+belongs to its own service and keeps its own markers.
