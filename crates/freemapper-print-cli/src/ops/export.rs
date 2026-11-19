@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `export`: writes the PDFs of a project, per layout or per course (ADR 0041 for where they may go).
 
 use std::ops::ControlFlow;

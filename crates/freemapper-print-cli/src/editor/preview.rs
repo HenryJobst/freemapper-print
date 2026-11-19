@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The sheet preview: one sheet drawn by the same code as the PDF, as the renderer's own SVG, and the hit test on
 //! it (ADR 0059, core ADR 0022).
 //!

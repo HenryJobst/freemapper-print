@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Guard for `examples/`: every example project loads, its inputs exist, and the map credit is there.
 //!
 //! The examples are built on maps by Remo Madella (ADR 0064). A folder that loses its map, its course file or

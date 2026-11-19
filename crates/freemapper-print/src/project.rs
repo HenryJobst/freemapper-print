@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The event project file `freemapper-print.toml` (ADR 0025): event, map source, shared sheet elements and any
 //! number of layouts. Editor, CLI and MCP server use this one file (ADR 0008).
 
@@ -1600,7 +1602,7 @@ fn is_file_at(
 /// Appends `correction` as a `[[numbers]]` table to the project file at `path` and loads the result (ADR 0025,
 /// addendum). Everything before the new table stays byte for byte as it was, comments included; the new lines
 /// end as the file's do (CRLF or LF), and directions are written in [0, 360). The file is replaced through a
-/// partial file ([`replace_file`]); a link at `path` is replaced too, not written through. When the result does
+/// partial file (`replace_file`); a link at `path` is replaced too, not written through. When the result does
 /// not load (for example because `numbers` is written as an inline array), the old content is put back and the
 /// load error is returned; a link at `path` stays a regular file then.
 pub fn append_correction(
@@ -1660,7 +1662,7 @@ fn appended(old: &[u8], tables: &str) -> Vec<u8> {
     new
 }
 
-/// Replaces the project file `path` with `new` ([`replace_file`]) and loads it. When it does not load, or `wanted`
+/// Replaces the project file `path` with `new` (`replace_file`) and loads it. When it does not load, or `wanted`
 /// says the result is not what was meant, the old content `old` is put back and the error returned: the load
 /// error, or [`ProjectError::ReadBackDiffers`].
 fn rewrite(
@@ -1891,7 +1893,7 @@ pub fn starter_layout_id(paper: Paper) -> &'static str {
 }
 
 /// The project `init` starts from: `title`, the map at `map` (relative to the project file) of
-/// `kind`, the contour interval [`MapKind::proposed_contour_interval_m`] proposes, and one A4
+/// `kind`, the contour interval [`crate::scale::proposed_contour_interval_m`] proposes, and one A4
 /// layout at the map scale `map_scale` with two shared elements; [`fit_starter`] then picks paper
 /// and passe-partout. The title block, with a white box in the
 /// top-left corner of the map frame, shows the event and `1:{print_scale} · {contour_interval}`.

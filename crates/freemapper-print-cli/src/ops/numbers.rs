@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `numbers accept`: appends a number correction to the project file (ADR 0025, addendum).
 
 use std::path::PathBuf;

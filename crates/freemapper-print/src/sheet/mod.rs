@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Sheets: one layout of the project applied to the map (design §4, §5.2).
 //!
 //! The map is drawn by [`render_page`] at the layout's print scale and clipped to the map frame,

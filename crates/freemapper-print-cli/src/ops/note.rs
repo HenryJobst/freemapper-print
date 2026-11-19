@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Notes as typed values. [`Notice`] holds the note of the library as it came, with the course it is about;
 //! `Notice::describe` (in `main.rs`, next to the formatting functions) turns it into a [`Note`] with the message
 //! the CLI prints. Serialised on its own, a notice gives its kind, severity and course.

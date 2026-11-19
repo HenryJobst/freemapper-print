@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Tests of the editor page: its words in both catalogs and its assets against the suite rules.
 
 use std::collections::BTreeSet;

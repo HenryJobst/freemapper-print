@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The reader side of the suite contract (ADR 0050): what freemapper-print derives from the fixtures of
 //! `freemapper-contract` equals their `expected.toml`. The fixtures are maps and sidecars exactly as
 //! freemapper wrote them. Every test name starts with `contract_`; freemapper-core's CI will run them by

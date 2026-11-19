@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The editor: `freemapper-print edit`, a local server and a browser page (ADR 0005, ADR 0059).
 //!
 //! A third adapter beside the CLI and the MCP server. It follows the suite page rules of freemapper-core

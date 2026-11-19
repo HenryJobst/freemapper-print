@@ -110,3 +110,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0067](0067-agpl-3.0-or-later.md) | AGPL-3.0-or-later | Accepted, supersedes ADR 0002 | 2026-11-15 |
 | [0068](0068-cargo-deny.md) | cargo-deny checks the dependencies | Accepted | 2026-11-15 |
 | [0069](0069-release-starts-the-website-build.md) | A release starts the website build | Accepted | 2026-11-15 |
+| [0070](0070-housekeeping-gates.md) | The repository checks its own housekeeping | Accepted | 2026-11-19 |

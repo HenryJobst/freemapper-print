@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The edits behind the MCP tools `set_layout`, `set_element` and `assign_mask`: each changes one table of the
 //! project file through [`project::set_layout`], [`project::set_element`] or [`project::set_assignment`], which
 //! keep the rest of the file as it was. The CLI has no commands for them.

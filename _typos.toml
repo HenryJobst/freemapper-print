@@ -1,0 +1,29 @@
+# Spelling of the English documents (typos, see `scripts/check.sh typos`).
+#
+# A real misspelling is fixed in the text, not listed here. The entries below
+# are technical terms the dictionary does not know and German words that stand
+# as quotes in English text, each with the place that made it necessary.
+
+[default.extend-words]
+# The International Orienteering Federation, written as IOF in running text and
+# as `iof` in file and element names.
+IOF = "IOF"
+iof = "iof"
+Iof = "Iof"
+# `deflate` and `inflate` shortened in the names of compression levels.
+flate = "flate"
+# A commit hash named in a plan (`afe86cd`) is not a word.
+afe = "afe"
+# `toml::ser::ValueSerializer` in running text.
+ser = "ser"
+# The typo that the manual shows as an example (`{evnet}` must stay unwritten).
+evnet = "evnet"
+# German quotes in English text: the user's wording in an ADR ("für alle",
+# "Symbole unleserlich"), a German sheet name ("- alle Bahnen"), a German
+# glossary entry ("Aktualisierung (des Programms)") and the German sample
+# paragraph in the English manual.
+alle = "alle"
+Symbole = "Symbole"
+Programms = "Programms"
+ein = "ein"
+Sie = "Sie"

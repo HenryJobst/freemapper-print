@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The editor's undo and redo: whole-file snapshots of the project file (core ADR 0030, freemapper-courseplan
 //! ADRs 0043 and 0044).
 //!

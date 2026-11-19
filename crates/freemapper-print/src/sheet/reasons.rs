@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Why a sheet note was given, as values the CLI and the MCP server turn into text in the
 //! program language (ADR 0024). `Display` gives the English text for logs and tests; details
 //! taken from a library or the operating system (`error`, `what`) stay as they come.

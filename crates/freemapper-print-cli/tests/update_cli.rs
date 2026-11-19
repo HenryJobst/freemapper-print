@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `freemapper-print update` (spec 3.4 to 3.6, ADR 0060). The tests that reach the update code need a
 //! build with the `test-stub` feature and talk to the stub of `tests/support`:
 //! `cargo test -p freemapper-print-cli --features test-stub`.

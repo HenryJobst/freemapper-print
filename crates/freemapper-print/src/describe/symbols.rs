@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The IOF control description symbols and their German and English texts. The symbol file, its reader and the
 //! geometry live in freemapper-core's `crate::description_symbols` (core ADR 0017, ours 0049); this
 //! module re-exports them under their old names and keeps the one function that takes the sheet language.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::f64::consts::PI;
 
 use crate::course::model::Offset;

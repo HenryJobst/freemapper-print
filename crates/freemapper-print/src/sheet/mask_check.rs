@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `check` against the masks of a course sheet (ADR 0046): what of the course overprint lies where a mask hides
 //! the map, and masks that hide nothing or the whole frame. The overprint is drawn all the same; the notes exist
 //! because the runner sees such an object without the map under it.

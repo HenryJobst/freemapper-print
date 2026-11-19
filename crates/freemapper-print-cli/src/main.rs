@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The `freemapper-print` binary. Commands come with the milestones in the design
 //! (`docs/superpowers/specs/2026-11-08-freemapper-print-design.md`).
 

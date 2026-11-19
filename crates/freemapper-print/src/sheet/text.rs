@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Text blocks of the sheet layer: the title block, texts, and the footer with the copyright
 //! and credit lines (design §5.2). Sizes come in pt, the page is in mm.
 

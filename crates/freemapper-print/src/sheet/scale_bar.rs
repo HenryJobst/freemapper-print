@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The scale check bar (design §5.4): a bar of round length in metres, printed to scale, so that a
 //! ruler on the printout shows whether the printer scaled the page. Sizes are in mm.
 

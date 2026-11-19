@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! The allow-list for SVG logos (ADR 0026, limits in ADR 0019).
 //!
 //! `usvg` copies whole subtrees while it resolves an SVG: `use`, markers, patterns, masks, clip

@@ -9,11 +9,16 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- CI prüft das eigene Haus: `scripts/check.sh` bündelt die Gates für die Lizenzzeile, die Rechtschreibung der englischen Doku, interne Links, Geheimnisse in der Historie, ungenutzte Abhängigkeiten, Action-Pins, den ADR-Index, das Changelog-Paar, rustdoc ohne Warnungen, die Zeilenabdeckung und die MSRV (Entscheidung 0070). `lefthook.yml` ruft die schnellen Gates vor dem Commit und `secrets` vor dem Push.
+- Jede Rust-Datei trägt die Zeile `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - Die READMEs, das Handbuch und AGENTS.md verlinken die Website der Suite, https://freemapper.de. Ein Release stößt über einen neuen Job in `release.yml` den Bau der Website an (Entscheidung 0069); ohne das Secret `SITE_DISPATCH_TOKEN` tut der Job nichts.
 - `deny.toml` und ein CI-Job, der `cargo deny check` über die Abhängigkeiten laufen lässt: Lizenzen, bekannte Schwachstellen, Quellen (Entscheidung 0068). Zwei Warnungen zum HTTP- und OAuth-Client von rmcp, den print nicht baut, und das nicht mehr gepflegte `ttf-parser` sind mit ihrer Begründung in der Datei ausgenommen.
 
 ### Geändert
 
+- Die deklarierte MSRV steigt von 1.88 auf 1.99. Nicht der eigene Code braucht sie, sondern das Manifest von freemapper-core v0.29.0: Cargo lehnt dort ein `default-features = false` an einer geerbten Workspace-Abhängigkeit ab, bis 1.99. Ein CI-Job prüft die Angabe mit 1.99.0 (Entscheidung 0070).
+- Die ungenutzten Abhängigkeiten `pdf-writer`, `quick-xml` und `subsetter` entfallen. `schemars` bleibt mit einer Ausnahme für `cargo-machete`, weil das `JsonSchema`-Derive Pfade in die Crate schreibt.
+- Die Zeilenabdeckung wird gemessen: 96,6 %. `docs/coverage.json` hält den letzten Messwert, die Schwelle steht bei 95,0 %; ein Lauf darunter scheitert.
 - freemapper-core wechselt von v0.28.0 auf v0.29.0: Der Core liest Schriften mit skrifa statt mit dem nicht mehr gepflegten ttf-parser (dort Entscheidung 0037). Die Ausgabe von print bleibt gleich. `deny.toml` verliert die Ausnahme für RUSTSEC-2026-0192.
 - Die ungenutzte direkte Abhängigkeit von `ttf-parser` entfällt.
 
@@ -113,7 +118,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - `freemapper-print mcp` startet einen MCP-Server auf Standardein- und -ausgabe, über den ein KI-Agent wie Claude Code mit dem Programm arbeitet (ADR 0004, ADR 0054). Er hat elf Werkzeuge: `project_info`, `check_project` und `list_courses` lesen ein Projekt; `init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` und `assign_mask` schreiben in die Projektdatei und lassen ihre Kommentare bis auf wenige Fälle stehen, die das Handbuch nennt; `export_project` schreibt die PDFs. Pfade müssen absolut sein. Ein Fehler kommt mit der Meldung zurück, die auch die Kommandozeile ausgibt, und die Projektdatei bleibt dann, wie sie war. Scheitert ein Export an einem Blatt, nennt die Meldung die PDFs, die er davor geschrieben hat. Eine Eingabe, die ein Werkzeug nicht kennt, ist ein Fehler, der sie nennt. Schreibende Aufrufe laufen nacheinander, auch wenn der Agent mehrere zugleich schickt. Die Ergebnisse sind JSON. Eine Liste von Dateien, Blättern, Bahnen, Abdeckungen oder Zuordnungen hat höchstens 200 Einträge, dazu kommen höchstens 200 Hinweise; der Rest wird gezählt. Wo eine Meldung der Kommandozeile eine Option nennt, nennt der Server das Werkzeug und seine Eingabe. Kapitel 3 des Handbuchs beschreibt die Einrichtung mit einer `.mcp.json` und jedes Werkzeug.
 - `set_layout`, `set_element` und `assign_mask` ändern Layouts, Blattelemente und Zuordnungen in der Projektdatei, ohne dass man sie von Hand bearbeitet. Sie ändern nur die Zeilen, die sich ändern müssen, und prüfen die geänderte Datei, bevor sie sie schreiben.
 - Bricht der Agent `export_project` ab oder schließt er die Verbindung, endet der Export nach dem Blatt, an dem er gerade zeichnet. Die PDFs davor bleiben ganz, eine halbe Datei bleibt nicht zurück.
-- Beispiel [`mcp-session`](examples/mcp-session/README.md): eine aufgezeichnete Sitzung, in der ein Agent aus dem Viktoriapark-Training einen Fenster-OL macht, ihn prüft und das PDF schreibt.
+- Beispiel [`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.md): eine aufgezeichnete Sitzung, in der ein Agent aus dem Viktoriapark-Training einen Fenster-OL macht, ihn prüft und das PDF schreibt.
 
 ### Behoben
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! `check`: every sheet the project prints, drawn in memory, with its notes.
 
 use std::path::PathBuf;

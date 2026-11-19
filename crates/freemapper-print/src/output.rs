@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Safe writing of finished PDFs (ADR 0030, ADR 0041). Free space is checked first. Then
 //! `freemapper-fs` writes the bytes to a new partial file next to the target
 //! (`<file>.<process id>.<counter>.part`, created new, so no existing entry of that name is used),
@@ -67,7 +69,7 @@ pub fn write_pdf_file(path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
 /// folder (`out/` below it, or an `--out-dir` there) goes through [`freemapper_fs::write_inside`]:
 /// it is refused with [`freemapper_fs::OUTSIDE_PROJECT`] when a link leads its folder out of the
 /// project. Any other `path` is written like [`write_pdf_file`]. The folder of `path` must exist,
-/// as for [`write_pdf_file`]. Which paths count as in the project folder: see [`names_inside`].
+/// as for [`write_pdf_file`]. Which paths count as in the project folder: see `names_inside`.
 pub fn write_project_pdf(project_dir: &Path, path: &Path, bytes: &[u8]) -> Result<(), OutputError> {
     if names_inside(project_dir, path) {
         write_checked(path, bytes, free_space, |path, bytes| {
@@ -79,7 +81,7 @@ pub fn write_project_pdf(project_dir: &Path, path: &Path, bytes: &[u8]) -> Resul
 }
 
 /// Refuses the output folder `folder` of the project in `project_dir` when a link leads it out of
-/// the project folder. A folder outside the project ([`names_inside`]), or one that does not exist
+/// the project folder. A folder outside the project (`names_inside`), or one that does not exist
 /// yet, passes. The commands call it once before they write anything.
 pub fn check_out_folder(project_dir: &Path, folder: &Path) -> Result<(), OutputError> {
     if !names_inside(project_dir, &folder.join("file")) {
