@@ -17,7 +17,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 ### Geändert
 
 - `deny.toml` nimmt `RUSTSEC-2026-0543` aus: `chrono` ist nicht mehr gepflegt, kommt aber über rmcp und schemars und ist ohne die beiden nicht zu ersetzen; die Meldung nennt fehlende Pflege, keine Schwachstelle (Nachtrag zu Entscheidung 0068).
-- Die deklarierte MSRV steigt von 1.88 auf 1.99. Nicht der eigene Code braucht sie, sondern das Manifest von freemapper-core v0.29.0: Cargo lehnt dort ein `default-features = false` an einer geerbten Workspace-Abhängigkeit ab, bis 1.99. Ein CI-Job prüft die Angabe mit 1.99.0 (Entscheidung 0070).
+- freemapper-core auf v0.29.1 angehoben: Sein Manifest setzt `default-features = false` jetzt am Workspace-Eintrag, damit liest es wieder Cargo vor 1.99. Die MSRV bleibt deshalb 1.88 und wird ab jetzt mit 1.88.0 geprüft (Entscheidung 0070, Nachtrag).
 - Die ungenutzten Abhängigkeiten `pdf-writer`, `quick-xml` und `subsetter` entfallen. `schemars` bleibt mit einer Ausnahme für `cargo-machete`, weil das `JsonSchema`-Derive Pfade in die Crate schreibt.
 - Die Zeilenabdeckung wird gemessen: 96,6 %. `docs/coverage.json` hält den letzten Messwert, die Schwelle steht bei 95,0 %; ein Lauf darunter scheitert.
 - freemapper-core wechselt von v0.28.0 auf v0.29.0: Der Core liest Schriften mit skrifa statt mit dem nicht mehr gepflegten ttf-parser (dort Entscheidung 0037). Die Ausgabe von print bleibt gleich. `deny.toml` verliert die Ausnahme für RUSTSEC-2026-0192.
