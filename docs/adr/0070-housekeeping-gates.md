@@ -67,3 +67,10 @@ without anyone noticing.
   `_typos.toml` with its reason, not switching the gate off.
 - The MSRV can only fall when freemapper-core releases a tag whose members inherit
   `default-features` without overriding it.
+
+## Amendment 2026-11-19
+The MSRV paragraph above described the state under the pinned freemapper-core v0.29.0 tag. v0.29.1
+carries the manifest fix: `default-features = false` stands on freemapper-core's workspace entry
+instead of on one of its members, so cargo before 1.99 reads it again. print moves to v0.29.1 and
+declares 1.88 again; the `msrv` job checks 1.88.0. The 1.99 floor was a consequence of the tag, not
+of this code.
