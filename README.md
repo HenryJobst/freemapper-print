@@ -77,7 +77,7 @@ Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Der Code, den sie gemeinsam brauchen,
 liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer Bibliothek aus kleinen
 Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren. freemapper-print
-legt alle auf einen Tag fest, jetzt v0.29.0. Es nutzt daraus `freemapper-text` (Programmtexte),
+legt alle auf einen Tag fest, jetzt v0.30.1. Es nutzt daraus `freemapper-text` (Programmtexte),
 `freemapper-rules` (Regelprofile), `freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap`
 (Kartenmodell und Kartenleser) und `freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der
 Renderer (`freemapper-render`) liegt seit core v0.9.0 auch dort, der Seitenaufbau seit v0.13.0, der Bahnaufdruck seit
@@ -138,7 +138,7 @@ Die vollständigen Beispielprojekte mit Projektdatei, Eingabedateien, PDFs und V
 
 ## Status
 
-Die aktuelle Version ist [v0.11.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.11.0) vom 15. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
+Die aktuelle Version ist [v0.12.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.12.0) vom 20. November 2026 (was neu ist, steht in den [Änderungen](CHANGELOG.md)). Sie druckt eine fertige
 OOM-Karte maßstabsgetreu (`freemapper-print render`) und macht aus einer Projektdatei fertige Blätter mit
 Layouts, Titelblock, Logos und Kontrollstrecke (`init`, `check`, `export`). Bahnen, Bahnaufdruck, Postenbeschreibung und
 Postennummern (M3) gehören dazu. Der Meilenstein M4, Abdeckungen für Fenster- und Korridor-OL, gehört
@@ -278,7 +278,9 @@ wichtigsten Optionen:
 - `--kind sprint|schoolyard|forest` gibt die Kartenart vor, falls das Programm sie weder aus `freemapper.toml`
   noch aus der Kartendatei erkennt.
 - `--show-sheet-objects` druckt auch den Informationsblock von freemapper: Titel, Maßstab, Maßstabsleiste und
-  Namensnennung. Die Nordlinien gehören zur Karte und stehen immer im PDF.
+  Namensnennung. Die Nordlinien gehören zur Karte und stehen im PDF, solange keine Trainingsansicht sie weglässt.
+- `--view <Ansicht>` (mehrfach möglich) lässt für ein Training Symbole weg: `no-paths`, `brown-only`, `no-north-lines`,
+  `no:<Code>,…` oder `only:<Code>,…`. Bei `export` landen die PDFs dann in `out/<Ansicht>`.
 - `--lang de|en` wählt die Sprache der Meldungen; ohne die Option entscheiden `FREEMAPPER_LANG` und
   die Spracheinstellung des Systems.
 

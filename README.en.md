@@ -75,7 +75,7 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 
 freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
-takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.29.0. It uses
+takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.30.1. It uses
 `freemapper-text` (program texts), `freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing),
 `freemapper-omap` (map model and reader) and `freemapper-course` (courses, course files and where control numbers
 go) from it. The renderer (`freemapper-render`) lives there too since core v0.9.0, the page builder since v0.13.0,
@@ -136,7 +136,7 @@ The complete example projects with project file, inputs, PDFs and a preview imag
 
 ## Status
 
-The current version is [v0.11.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.11.0) of 15 November 2026 (see the [changes](CHANGELOG.en.md) for what is new). It prints a finished OOM map at the exact scale
+The current version is [v0.12.0](https://github.com/HenryJobst/freemapper-print/releases/tag/v0.12.0) of 20 November 2026 (see the [changes](CHANGELOG.en.md) for what is new). It prints a finished OOM map at the exact scale
 (`freemapper-print render`) and turns a project file into finished sheets with layouts, title block, logos and
 scale check bar (`init`, `check`, `export`). Courses, the course overprint, control descriptions and control
 numbers (M3) are part of it. Milestone M4, masks for window and corridor orienteering, is part of it.
@@ -270,7 +270,9 @@ This writes the sprint map as a PDF on an A3 page at 1:3000, without title or sc
 - `--kind sprint|schoolyard|forest` sets the map kind if the program can tell it neither from `freemapper.toml`
   nor from the map file.
 - `--show-sheet-objects` also prints freemapper's information block: title, scale, scale bar and credits.
-  North lines belong to the map and are always in the PDF.
+  North lines belong to the map and are in the PDF unless a training view leaves them out.
+- `--view <view>` (repeatable) leaves symbols out for a training: `no-paths`, `brown-only`, `no-north-lines`,
+  `no:<code>,…` or `only:<code>,…`. With `export` the PDFs then go to `out/<view>`.
 - `--lang de|en` picks the language of the messages; without it `FREEMAPPER_LANG` and the system's
   language settings decide.
 

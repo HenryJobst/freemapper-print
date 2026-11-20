@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "freemapper-print"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "freemapper-contract",
  "freemapper-course",
@@ -589,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "freemapper-print-cli"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "axum",

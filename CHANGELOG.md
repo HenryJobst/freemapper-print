@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.12.0] - 2026-11-20
+
 ### Hinzugefügt
 
 - Die READMEs tragen Badges für Zeilenabdeckung, MSRV, ADRs, Zahl der Prüfungen und Lizenz. `scripts/badges.sh` schreibt sie aus den Daten im Repository, und die Prüfung scheitert, wenn sie veralten (Nachtrag zu Entscheidung 0070).
@@ -14,10 +16,11 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - CI prüft das eigene Haus: `scripts/check.sh` bündelt die Gates für die Lizenzzeile, die Rechtschreibung der englischen Doku, interne Links, Geheimnisse in der Historie, ungenutzte Abhängigkeiten, Action-Pins, den ADR-Index, das Changelog-Paar, rustdoc ohne Warnungen, die Zeilenabdeckung und die MSRV (Entscheidung 0070). `lefthook.yml` ruft die schnellen Gates vor dem Commit und `secrets` vor dem Push.
 - Jede Rust-Datei trägt die Zeile `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - Die READMEs, das Handbuch und AGENTS.md verlinken die Website der Suite, https://freemapper.de. Ein Release stößt über einen neuen Job in `release.yml` den Bau der Website an (Entscheidung 0069); ohne das Secret `SITE_DISPATCH_TOKEN` tut der Job nichts.
-- `deny.toml` und ein CI-Job, der `cargo deny check` über die Abhängigkeiten laufen lässt: Lizenzen, bekannte Schwachstellen, Quellen (Entscheidung 0068). Zwei Warnungen zum HTTP- und OAuth-Client von rmcp, den print nicht baut, und das nicht mehr gepflegte `ttf-parser` sind mit ihrer Begründung in der Datei ausgenommen.
+- `deny.toml` und ein CI-Job, der `cargo deny check` über die Abhängigkeiten laufen lässt: Lizenzen, bekannte Schwachstellen, Quellen (Entscheidung 0068). Zwei Warnungen zum HTTP- und OAuth-Client von rmcp, den print nicht baut, sind mit ihrer Begründung in der Datei ausgenommen.
 
 ### Geändert
 
+- freemapper-core wechselt auf v0.30.1 (Trainingsansichten, hier Entscheidung 0071). Die Ausgabe von print bleibt gleich.
 - Der Coverage-Job nennt den Messwert in jeder Ausgabe und erkennt auch eine `docs/coverage.json`, die noch nicht versioniert ist; vorher blieb beides unsichtbar.
 - `deny.toml` nimmt `RUSTSEC-2026-0543` aus: `chrono` ist nicht mehr gepflegt, kommt aber über rmcp und schemars und ist ohne die beiden nicht zu ersetzen; die Meldung nennt fehlende Pflege, keine Schwachstelle (Nachtrag zu Entscheidung 0068).
 - freemapper-core auf v0.29.1 angehoben: Sein Manifest setzt `default-features = false` jetzt am Workspace-Eintrag, damit liest es wieder Cargo vor 1.99. Die MSRV bleibt deshalb 1.88 und wird ab jetzt mit 1.88.0 geprüft (Entscheidung 0070, Nachtrag).
