@@ -30,11 +30,11 @@ dropped by that number.
 - **cargo-nextest: rejected.** 731 tests: `cargo test` 8:42 min, `cargo nextest run` 11:33 min
   (10 tests flagged slow). The suite is dominated by a few editor tests and the build, not by
   the harness; nextest runs more processes and is slower. The test budget argues against it.
-- **cargo-hack: adopted as a compile check.** `check --each-feature --no-dev-deps` over the
+- **cargo-hack: adopted as a compile check.** `check --each-feature` over the
   three features (`test-hooks`, `page-rules`, `test-stub`) catches a feature that only builds
   when another is on. It builds, it does not test, and it costs about 10 minutes cold in its own
   job. `--feature-powerset` would test 2^3 combinations of features that exist only for tests;
-  it is not worth the time.
+  it is not worth the time. (`--no-dev-deps` was dropped later so the job can run with `--locked`, ADR 0077.)
 - **Complexity: adopted as a clippy threshold.** `clippy::cognitive_complexity` with the
   baseline `cognitive-complexity-threshold = 35` in `clippy.toml`; today's worst function scores
   35 (five functions are above clippy's default of 25). `scripts/check.sh complexity` fails on

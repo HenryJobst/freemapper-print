@@ -338,8 +338,8 @@ gate_complexity() {
 }
 
 gate_hack() {
-  # No `--locked`: `--no-dev-deps` rewrites the manifests and with them the lock file while it runs.
-  cargo hack check --workspace --each-feature --no-dev-deps ||
+  # No `--no-dev-deps`: it rewrites the manifests and with them the lock file, which `--locked` forbids.
+  cargo hack check --locked --workspace --each-feature ||
     report "the workspace does not check with each feature alone"
 }
 

@@ -13,6 +13,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Das Gate `hack` läuft mit `--locked` und ohne `--no-dev-deps`, das `Cargo.lock` und die Manifeste umschrieb. Es baut dafür auch die Dev-Abhängigkeiten (Entscheidung 0077).
 - rmcp wechselt von 3.6.0 auf 3.9.0 (mit `rmcp-macros` 3.9.0; 3.10.0 und neuer sind jünger als zwei Wochen, Entscheidung 0006). Die Version behebt RUSTSEC-2026-0457 und RUSTSEC-2026-0462, `deny.toml` verliert deshalb beide Ausnahmen (Entscheidung 0068, Nachtrag).
 
 ## [0.13.0] - 2026-11-20
