@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Behoben
+
+- Die Trainingsansichten `no-north-lines` und `brown-only` lassen die Nordlinien jetzt wirklich weg: freemapper-core v0.31.1 kennt die Symbole 601.1 bis 601.4, vorher blieben sie stehen (der Fehler steckte im Core ab v0.30.0). freemapper-core wechselt dafür von v0.30.1 auf v0.31.1.
+
 ### Hinzugefügt
 
 - CI mutiert die Rust-Zeilen, die ein Branch ändert (`cargo-mutants --in-diff`, Job `mutants`), und scheitert, wenn kein Test einen Mutanten fängt; ein Job `hack` prüft den Workspace mit jedem Feature allein; `scripts/check.sh complexity` scheitert oberhalb der kognitiven Komplexität 35 (`clippy.toml`); `scripts/check.sh sbom` vergleicht `docs/sbom.cdx.json`, die CycloneDX-Liste der CLI-Abhängigkeiten, mit einer frischen. `cargo-nextest` wurde gemessen und verworfen: Es ist hier langsamer (Entscheidung 0072).
