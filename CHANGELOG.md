@@ -7,6 +7,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Entscheidung 0077 hält die Erkenntnisse zur Testausführung und zu Mutation-Tests fest: Ein Überlebender wird mit einem Test geschlossen, der den Wert festlegt, `cargo test` läuft in zwei Schritten, der Mutations-Job bleibt beim Diff, `cargo hack` läuft ohne `--locked`, und die Badges entstehen in fester Reihenfolge.
+
 ### Geändert
 
 - rmcp wechselt von 3.6.0 auf 3.9.0 (mit `rmcp-macros` 3.9.0; 3.10.0 und neuer sind jünger als zwei Wochen, Entscheidung 0006). Die Version behebt RUSTSEC-2026-0457 und RUSTSEC-2026-0462, `deny.toml` verliert deshalb beide Ausnahmen (Entscheidung 0068, Nachtrag).
