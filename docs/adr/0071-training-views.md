@@ -25,7 +25,10 @@ test, `file_token`). freemapper-print prints any `.omap`, also one the user edit
   generates no north lines anyway. `export` adds the entries to every layout. Without `--out-dir` it writes to
   `out/<canonical view>` (`View::file_token`, for example `out/no-paths` or `out/brown-only+no-505_506`), so that a
   view never replaces the full sheets; with `--out-dir` the person has chosen the folder.
-- The editor and the MCP tools take no view yet; a project file with `view` loads, prints and is kept by them.
+- The MCP tool `set_layout` and the editor's layout form set `view` (the editor as one field, entries joined by
+  `+`); `export_project` takes `views` for a single export, as `export --view` does, and writes into the `out_dir`
+  the caller names. The editor preview shows the view, because it draws the sheet the way `export` does. The
+  editor's export dialog has no view field: a person who wants a view for one export sets it on the layout.
 
 ## Consequences
 - A layout of a project can carry a view for good, for a training set that always prints without paths.

@@ -39,6 +39,8 @@ pub struct LayoutArgs {
     pub crop: Option<bool>,
     pub north_lines: Option<NorthLines>,
     pub hide_parts: Option<Vec<String>>,
+    /// The training view, as `--view` words (`no-paths`, `no:505.1`, …); an empty list prints the whole map.
+    pub view: Option<Vec<String>>,
     pub hide_shared: Option<Vec<String>>,
 }
 
@@ -131,6 +133,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
         crop,
         north_lines,
         hide_parts,
+        view,
         hide_shared,
     } = args.clone();
     let frame = &mut layout.map_frame;
@@ -144,6 +147,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
     set(&mut frame.crop, crop);
     set(&mut layout.north_lines, north_lines);
     set(&mut layout.hide_parts, hide_parts);
+    set(&mut layout.view, view);
     set(&mut layout.hide_shared, hide_shared);
     let (lp, change) = project::set_layout(&loaded.path, &layout)
         .map_err(|source| edit_error(&loaded.path, source))?;

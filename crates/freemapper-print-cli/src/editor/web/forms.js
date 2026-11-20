@@ -129,9 +129,12 @@ export function layoutForm(spec, onSubmit) {
     t("editor-field-north-lines"),
     select([["auto", t("editor-option-auto")], ["never", t("editor-option-never")]], spec.north_lines),
   );
+  const view = row(t("editor-field-view"), make("input", { type: "text", value: (spec.view ?? []).join("+") }));
+  view.input.placeholder = t("editor-view-placeholder");
   const fields = [free, width, height, scale, margin, border];
   const build = () => {
-    const body = { id: spec.id, orientation: orientation.input.value, north_lines: north.input.value };
+    const words = view.input.value.split("+").map((w) => w.trim()).filter((w) => w !== "");
+    const body = { id: spec.id, orientation: orientation.input.value, north_lines: north.input.value, view: words };
     let good = true;
     if (free.input.checked) {
       const [x, y] = [need(width), need(height)];
@@ -155,7 +158,7 @@ export function layoutForm(spec, onSubmit) {
   };
   return finish(
     t("editor-layout-form-heading", { id: spec.id }),
-    [paper, free, width, height, orientation, scale, margin, border, north].map((f) => f.row),
+    [paper, free, width, height, orientation, scale, margin, border, north, view].map((f) => f.row),
     fields,
     build,
     onSubmit,

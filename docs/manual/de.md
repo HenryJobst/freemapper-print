@@ -138,10 +138,10 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | die ID der Abdeckung und die Meldungen |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` oder `layout_wide`) | `direction` und `gap`, nur zusammen | die eingetragene Korrektur und die Meldung |
-| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
+| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `view`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | das Element und `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
-| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
+| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file`, `views` | die geschriebenen PDFs mit Größe, die Hinweise der Blätter und die Erinnerung, in Originalgröße zu drucken |
 | `check_update` | `update --check` | | | ob es eine neuere Version gibt, mit den Versionsnummern und den Versionshinweisen |
 | `install_update` | `update --yes` | | `confirm` | Installiert nur mit `confirm` auf `true`; ohne gibt das Werkzeug einen Fehler zurück. Installiert das neueste Release und sagt, dass der laufende Server die alte Version behält, bis er neu gestartet wird |
 
@@ -1110,7 +1110,7 @@ Diese Hinweise kommen von `render`, `check` und `export`:
   Karte ab“ (nur `render`): Die Fußzeile liegt unten links auf der Karte. Ein Projekt setzt sie unter die Karte.
 - Den Informationsblock von freemapper (Titel, Maßstab, Maßstabsleiste, Namensnennung) druckt `render` nur mit
   `--show-sheet-objects`. Bei einem anderen Druckmaßstab skaliert er mit der Karte, ein darin gedruckter
-  Maßstab kann also falsch sein. Die Nordlinien gehören zur Karte und stehen immer im PDF.
+  Maßstab kann also falsch sein. Die Nordlinien gehören zur Karte und stehen im PDF, solange keine Trainingsansicht (`--view`) sie weglässt.
 
 ## 10. Meldungen und was zu tun ist
 
@@ -1619,7 +1619,7 @@ einmal je Element und Sitzung „Gemeinsames Element verschieben?“; „Verschi
 denn dort ist es gespeichert.
 
 **Layout oder Element ändern.** Wählen Sie ein Layout im Baum, erscheint das Formular mit Papier oder freier
-Seitengröße, Ausrichtung, Druckmaßstab, Passepartoutbreite, Rahmenlinienbreite und Nordlinien. Ein Element hat
+Seitengröße, Ausrichtung, Druckmaßstab, Passepartoutbreite, Rahmenlinienbreite, Nordlinien und Trainingsansicht (Einträge mit `+` verbunden, etwa `no-paths+no-north-lines`). Ein Element hat
 sein eigenes Formular: Bezug (Seite oder Kartenrahmen), Ecke oder Rand, die beiden Abstände und die Felder seiner
 Art (Zeilen und Schriftgröße, Bilddatei und gedruckte Breite, Zellengröße, weißer Kasten). Die Platzhalter-Knöpfe
 setzen die Platzhalter aus Kapitel 7 ein. „Anwenden“ schreibt die Änderung. Eine Logodatei ist ein Pfad relativ zur

@@ -1112,6 +1112,33 @@ mod tests {
     }
 
     #[test]
+    fn a_layout_form_sets_and_clears_the_training_view() {
+        let dir = crate::ops::testing::luebeck_copy();
+        let file = dir.path().join("freemapper-print.toml");
+        let run = start_on(dir.path().to_path_buf(), true, Some("en"));
+        op(
+            &run,
+            "set_layout",
+            r#"{"id":"a4-4000","view":["no-paths","no:101"]}"#,
+        );
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains(r#"view = ["no-paths", "no:101"]"#), "{text}");
+        // A word the view grammar does not know is refused and leaves the file alone.
+        let revision = revision_of(&run);
+        let (code, answer) = write(
+            &run,
+            "/api/op/set_layout",
+            Some(&revision),
+            r#"{"id":"a4-4000","view":["bogus"]}"#,
+        );
+        assert_ne!(code, 200, "{answer}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        op(&run, "set_layout", r#"{"id":"a4-4000","view":[]}"#);
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("view"));
+        finish(run);
+    }
+
+    #[test]
     fn moving_an_element_shifts_its_offset_for_every_corner_and_both_anchors() {
         use freemapper_print::project::{Anchor, AnchorTarget, Corner};
         let dir = crate::ops::testing::luebeck_copy();
