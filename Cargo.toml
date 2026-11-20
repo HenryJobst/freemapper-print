@@ -59,6 +59,8 @@ thiserror = "2.0.21"
 # The MCP server's runtime: stdio and the in-process tests.
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "sync", "signal"] }
 toml = "1.2.1"
+# Tests only: property tests for the parsers (ADR 0072).
+proptest = { version = "1.7.0", default-features = false, features = ["std"] }
 # The self-update's HTTP client, pinned: newer releases are younger than two weeks (ADR 0006); the version
 # freemapper uses.
 ureq = "=3.4.2"
