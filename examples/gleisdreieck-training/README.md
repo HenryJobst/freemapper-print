@@ -7,7 +7,7 @@ und 2,4 km, Bahn B mit 5 Posten und 1,4 km, beide in 1:4000 auf A4. Jede Bahn be
 Vereinszeichen, Maßstabsbalken und Postenbeschreibung. Die Bahnen sind für das Beispiel erfunden, ebenso die
 Veranstaltung, das Datum und der Verein.
 
-![Blatt der Bahn A, A4 hoch in 1:4000: violette Strecken und Nummern auf der Karte, Titelblock links oben, Vereinszeichen rechts oben, Beschreibungskasten links unten](preview.jpg)
+![Blatt der Bahn A, A4 hoch in 1:4000: violette Strecken und Nummern auf der Karte, Titelblock links oben, Vereinszeichen rechts oben, Beschreibungskasten links unten](preview.webp)
 
 Die Vorschau zeigt das Blatt A. Das Blatt B ist `out/B.pdf`.
 
@@ -20,7 +20,7 @@ Die Vorschau zeigt das Blatt A. Das Blatt B ist `out/B.pdf`.
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
 | `out/A.pdf` | Blatt der Bahn A, A4 hoch, 1:4000 (0,5 MB) |
 | `out/B.pdf` | Blatt der Bahn B, A4 hoch, 1:4000 (0,5 MB) |
-| `preview.jpg` | das Blatt A als Bild |
+| `preview.webp` | das Blatt A als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`).
 
@@ -147,7 +147,7 @@ Die PDFs entstehen aus den Befehlen oben. Die Vorschau stammt vom Blatt A:
 
 ```sh
 pdftoppm -r 105 -png -singlefile out/A.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 80 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 

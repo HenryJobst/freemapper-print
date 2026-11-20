@@ -7,7 +7,7 @@ Bucht, a map and the request: "Turn it into window orienteering with 12 mm windo
 out." It needs six calls. The session really ran, and every request and answer is in `session.jsonl`. The agent
 creates the project itself, and the folder of this example is the result.
 
-![The A3 sheet of the training course T as window orienteering at 1:4000: map only in ten round windows around start, eight controls and finish, white paper with the purple legs between them](preview.jpg)
+![The A3 sheet of the training course T as window orienteering at 1:4000: map only in ten round windows around start, eight controls and finish, white paper with the purple legs between them](preview.webp)
 
 | File | Content |
 |---|---|
@@ -18,7 +18,7 @@ creates the project itself, and the folder of this example is the result.
 | `rummelsburg-training.ppen` | course T as a Purple Pen file from freemapper-courseplan 0.14.1, input of the session |
 | `freemapper-print.toml` | the project file as the session left it |
 | `out/T.pdf` | the PDF of the session, A3 landscape, 1:4000, 0.2 MB |
-| `preview.jpg` | the PDF as an image |
+| `preview.webp` | the PDF as an image |
 | `ATTRIBUTION.txt` | author and permission for the map, origin of the course |
 
 The course is made up and the training is fictitious. Course T has eight controls (31 to 38) and is 2.0 km long.
@@ -142,7 +142,7 @@ it deletes no folder. Without the second argument it makes a new temporary folde
 course file of this example into `/tmp/mcp-session/Verein/rummelsburg-training`, plays the session, writes
 `session.jsonl` again and leaves the project with `freemapper-print.toml` and `out/T.pdf` there. The project file and
 the PDF in this example are copies of those. The preview comes from `pdftoppm -r 110 -png -singlefile` and
-`magick … -quality 82 preview.jpg`. `python3 -I examples/rummelsburg-mcp-session/check_record_session.py` checks
+`magick … -quality 88 -define webp:method=6 preview.webp`. `python3 -I examples/rummelsburg-mcp-session/check_record_session.py` checks
 without a build that the script refuses a folder with content and a file, and leaves both as they were.
 
 ## Credits and licence

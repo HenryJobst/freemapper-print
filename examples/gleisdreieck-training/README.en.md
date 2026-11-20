@@ -7,7 +7,7 @@ A club training on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 
 logo, scale check bar and control descriptions. The courses are made up for the example, and so are the event, the
 date and the club.
 
-![Sheet of course A, A4 portrait at 1:4000: purple legs and numbers on the map, title block at the top left, club logo at the top right, description box at the bottom left](preview.jpg)
+![Sheet of course A, A4 portrait at 1:4000: purple legs and numbers on the map, title block at the top left, club logo at the top right, description box at the bottom left](preview.webp)
 
 The preview shows sheet A. Sheet B is `out/B.pdf`.
 
@@ -20,7 +20,7 @@ The preview shows sheet A. Sheet B is `out/B.pdf`.
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
 | `out/A.pdf` | sheet of course A, A4 portrait, 1:4000 (0.5 MB) |
 | `out/B.pdf` | sheet of course B, A4 portrait, 1:4000 (0.5 MB) |
-| `preview.jpg` | sheet A as an image |
+| `preview.webp` | sheet A as an image |
 
 The sheets are in German (`event.lang = "de"`).
 
@@ -146,7 +146,7 @@ The PDFs come from the commands above. The preview comes from sheet A:
 
 ```sh
 pdftoppm -r 105 -png -singlefile out/A.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 80 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 

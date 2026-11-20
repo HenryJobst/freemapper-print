@@ -487,7 +487,7 @@ ohne Wege dient `no-paths`.
 Das Beispiel [`siebengebirge-views`](../../examples/siebengebirge-views/README.md) druckt eine Waldkarte dreimal,
 vollständig, als Isohypsen-OL und ohne Wege:
 
-![Dieselbe Waldkarte dreimal in 1:7500: vollständig, nur Höhenlinien und ohne Wege](../../examples/siebengebirge-views/preview.jpg)
+![Dieselbe Waldkarte dreimal in 1:7500: vollständig, nur Höhenlinien und ohne Wege](../../examples/siebengebirge-views/preview.webp)
 
 ```toml
 [[layouts]]

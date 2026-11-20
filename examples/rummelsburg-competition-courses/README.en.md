@@ -8,7 +8,7 @@ Lang (long), all on A3 at 1:4000. Each sheet shows the course with control numbe
 out-of-bounds area and a forbidden crossing. Lang also has a marked route to the finish. The folder `iof/` holds
 the same courses as IOF XML 3.0. Those sheets have no control descriptions, because the format has none.
 
-![The sheet of course Lang, A3 landscape at 1:4000, with the description box at the top right](preview.jpg)
+![The sheet of course Lang, A3 landscape at 1:4000, with the description box at the top right](preview.webp)
 
 | File | Content |
 |---|---|
@@ -20,7 +20,7 @@ the same courses as IOF XML 3.0. Those sheets have no control descriptions, beca
 | `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | the sheets of the three courses from `courses.ppen`, 0.2 MB each |
 | `iof/freemapper-print.toml` | the project file for `courses.xml`; it reads the map from the folder above |
 | `iof/out/Kurz.pdf`, `iof/out/Mittel.pdf`, `iof/out/Lang.pdf` | the same courses from `courses.xml` |
-| `preview.jpg` | the sheet of course Lang |
+| `preview.webp` | the sheet of course Lang |
 
 The sheets are in German (`event.lang = "de"`). The courses are made up and the event is fictitious: the title, the
 date and the club do not exist.
@@ -208,7 +208,7 @@ folder:
 ```sh
 tmp=$(mktemp -d)
 pdftoppm -r 110 -png -singlefile out/Lang.pdf "$tmp/lang"
-magick "$tmp/lang.png" -bordercolor gray60 -border 1 -bordercolor white -border 8 -quality 76 preview.jpg
+magick "$tmp/lang.png" -bordercolor gray60 -border 1 -bordercolor white -border 8 -quality 88 -define webp:method=6 preview.webp
 rm -r "$tmp"
 ```
 

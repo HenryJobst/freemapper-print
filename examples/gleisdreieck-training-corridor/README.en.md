@@ -7,7 +7,7 @@ controls on 1.45 km at 1:4000. The map shows only in a narrow band along the rou
 Whoever leaves the band has no map left. The program prints legs, circles, numbers, control descriptions, title and
 footer everywhere. The course is made up for the example, and so are the event and the club.
 
-![The sheet of course C on a tall narrow page: a strip of map 12 mm wide runs from the start at the top right down along the east edge of the map to the finish at the bottom left, white paper elsewhere](preview.jpg)
+![The sheet of course C on a tall narrow page: a strip of map 12 mm wide runs from the start at the top right down along the east edge of the map to the finish at the bottom left, white paper elsewhere](preview.webp)
 
 | File | Content |
 |---|---|
@@ -17,7 +17,7 @@ footer everywhere. The course is made up for the example, and so are the event a
 | `logos/kompass.svg` | the club logo, a compass mark drawn for this example (CC0) |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
 | `out/C.pdf` | the sheet of course C, 170 mm × 380 mm, 1:4000 (0.4 MB) |
-| `preview.jpg` | the same sheet as an image |
+| `preview.webp` | the same sheet as an image |
 
 The sheets are in German (`event.lang = "de"`).
 
@@ -134,7 +134,7 @@ The PDF comes from the commands above. The preview:
 
 ```sh
 pdftoppm -r 110 -png -singlefile out/C.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 82 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 

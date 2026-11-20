@@ -7,7 +7,7 @@ Ein Korridor-OL auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge
 Wer das Band verlässt, hat keine Karte mehr. Strecken, Kreise, Nummern, Postenbeschreibung, Titel und Fußzeile
 druckt das Programm überall. Die Bahn ist für das Beispiel erfunden, ebenso die Veranstaltung und der Verein.
 
-![Das Blatt der Bahn C auf einer hohen, schmalen Seite: ein 12 mm breiter Kartenstreifen läuft vom Start rechts oben am Ostrand der Karte entlang bis zum Ziel links unten, sonst weißes Papier](preview.jpg)
+![Das Blatt der Bahn C auf einer hohen, schmalen Seite: ein 12 mm breiter Kartenstreifen läuft vom Start rechts oben am Ostrand der Karte entlang bis zum Ziel links unten, sonst weißes Papier](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -17,7 +17,7 @@ druckt das Programm überall. Die Bahn ist für das Beispiel erfunden, ebenso di
 | `logos/kompass.svg` | das Vereinszeichen, ein Kompasszeichen, für dieses Beispiel gezeichnet (CC0) |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
 | `out/C.pdf` | das Blatt der Bahn C, 170 mm × 380 mm, 1:4000 (0,4 MB) |
-| `preview.jpg` | dasselbe Blatt als Bild |
+| `preview.webp` | dasselbe Blatt als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`).
 
@@ -137,7 +137,7 @@ Das PDF entsteht aus den Befehlen oben. Die Vorschau:
 
 ```sh
 pdftoppm -r 110 -png -singlefile out/C.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 82 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 

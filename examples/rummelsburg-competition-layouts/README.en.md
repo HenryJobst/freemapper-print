@@ -7,7 +7,7 @@ youngest. Both sheets have a passe-partout, a title block, two logos, a scale ch
 bottom left. There are no courses here yet; they follow in
 [rummelsburg-competition-courses](../rummelsburg-competition-courses/README.en.md).
 
-![The A4 sheet at 1:4000 on the left, the A3 sheet at 1:3000 on the right, shown at the same scale](preview.jpg)
+![The A4 sheet at 1:4000 on the left, the A3 sheet at 1:3000 on the right, shown at the same scale](preview.webp)
 
 | File | Content |
 |---|---|
@@ -16,7 +16,7 @@ bottom left. There are no courses here yet; they follow in
 | `logos/` | two made-up logos, see [logos/README.en.md](logos/README.en.md) |
 | `out/a4-4000.pdf` | sheet for the older classes, A4 landscape, 1:4000, 0.2 MB |
 | `out/a3-3000.pdf` | sheet for the youngest classes, A3 landscape, 1:3000, 0.2 MB |
-| `preview.jpg` | both sheets side by side |
+| `preview.webp` | both sheets side by side |
 | `ATTRIBUTION.txt` | author and permission for the map |
 
 The sheets are in German (`event.lang = "de"`), as for a German event. The event is made up: the title, the date
@@ -137,7 +137,7 @@ pdftoppm -r 60 -png -singlefile out/a3-3000.pdf "$tmp/a3"
 magick "$tmp/a4.png" -bordercolor gray60 -border 1 "$tmp/a4b.png"
 magick "$tmp/a3.png" -bordercolor gray60 -border 1 "$tmp/a3b.png"
 magick "$tmp/a4b.png" \( -size 24x1 xc:white \) "$tmp/a3b.png" -background white -gravity north +append \
-  -bordercolor white -border 8 -quality 80 preview.jpg
+  -bordercolor white -border 8 -quality 88 -define webp:method=6 preview.webp
 rm -r "$tmp"
 ```
 

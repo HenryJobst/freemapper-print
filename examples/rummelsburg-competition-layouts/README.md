@@ -7,7 +7,7 @@ die jüngsten. Beide Blätter haben ein Passepartout, einen Titelblock, zwei Log
 links die Fußzeile. Bahnen gibt es hier noch nicht, sie folgen im Beispiel
 [rummelsburg-competition-courses](../rummelsburg-competition-courses/README.md).
 
-![Das A4-Blatt in 1:4000 links, das A3-Blatt in 1:3000 rechts, im selben Maßstab nebeneinander gezeigt](preview.jpg)
+![Das A4-Blatt in 1:4000 links, das A3-Blatt in 1:3000 rechts, im selben Maßstab nebeneinander gezeigt](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -16,7 +16,7 @@ links die Fußzeile. Bahnen gibt es hier noch nicht, sie folgen im Beispiel
 | `logos/` | zwei erfundene Logos, siehe [logos/README.md](logos/README.md) |
 | `out/a4-4000.pdf` | Blatt für die älteren Klassen, A4 quer, 1:4000, 0,2 MB |
 | `out/a3-3000.pdf` | Blatt für die jüngsten Klassen, A3 quer, 1:3000, 0,2 MB |
-| `preview.jpg` | beide Blätter nebeneinander |
+| `preview.webp` | beide Blätter nebeneinander |
 | `ATTRIBUTION.txt` | Autor und Nutzungserlaubnis der Karte |
 
 Die Blätter sind deutsch (`event.lang = "de"`), wie für einen Wettkampf in Deutschland. Die Veranstaltung ist
@@ -137,7 +137,7 @@ pdftoppm -r 60 -png -singlefile out/a3-3000.pdf "$tmp/a3"
 magick "$tmp/a4.png" -bordercolor gray60 -border 1 "$tmp/a4b.png"
 magick "$tmp/a3.png" -bordercolor gray60 -border 1 "$tmp/a3b.png"
 magick "$tmp/a4b.png" \( -size 24x1 xc:white \) "$tmp/a3b.png" -background white -gravity north +append \
-  -bordercolor white -border 8 -quality 80 preview.jpg
+  -bordercolor white -border 8 -quality 88 -define webp:method=6 preview.webp
 rm -r "$tmp"
 ```
 

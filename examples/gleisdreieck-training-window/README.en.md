@@ -8,7 +8,7 @@ finish. Between them the paper stays white, and runners get from window to windo
 prints legs, circles, numbers, control descriptions, title and footer everywhere. The course is made up for the
 example, and so are the event and the club.
 
-![The sheet of course A, A4 portrait at 1:4000: ten round map windows around start, controls and finish, white paper with the purple legs between them](preview.jpg)
+![The sheet of course A, A4 portrait at 1:4000: ten round map windows around start, controls and finish, white paper with the purple legs between them](preview.webp)
 
 | File | Content |
 |---|---|
@@ -18,7 +18,7 @@ example, and so are the event and the club.
 | `logos/kompass.svg` | the club logo, a compass mark drawn for this example (CC0) |
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
 | `out/A.pdf` | the sheet of course A, A4 portrait, 1:4000 (0.5 MB) |
-| `preview.jpg` | the same sheet as an image |
+| `preview.webp` | the same sheet as an image |
 
 The sheets are in German (`event.lang = "de"`). The project is a copy of
 [gleisdreieck-training](../gleisdreieck-training/README.en.md) with a mask on course A. Course B stays in the
@@ -103,7 +103,7 @@ The PDF comes from the commands above. The preview:
 
 ```sh
 pdftoppm -r 105 -png -singlefile out/A.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 80 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 
