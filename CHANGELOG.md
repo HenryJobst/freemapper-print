@@ -9,7 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
-- Entscheidung 0077 hält die Erkenntnisse zur Testausführung und zu Mutation-Tests fest: Ein Überlebender wird mit einem Test geschlossen, der den Wert festlegt, `cargo test` läuft in zwei Schritten, der Mutations-Job bleibt beim Diff, `cargo hack` läuft ohne `--locked`, und die Badges entstehen in fester Reihenfolge.
+- Entscheidung 0077 hält die Erkenntnisse zur Testausführung und zu Mutation-Tests fest: Ein Überlebender wird mit einem Test geschlossen, der den Wert festlegt, `cargo test` läuft in zwei Schritten, der Mutations-Job bleibt beim Diff, `cargo hack` läuft ohne `--locked`, und die Badges entstehen in fester Reihenfolge. Zwei Messungen kommen dazu: `cargo nextest` bringt auf 723 Tests keinen Gewinn (die frühere Zahl stammte aus einem lauten Lauf, die Ablehnung bleibt), und `opt-level = 3` für Abhängigkeiten senkt den Testlauf von 4:03 auf 0:48 min, verlängert aber den Kaltbau von 4:16 auf 13:05 min, deshalb wird kein Profil eingetragen.
 
 ### Geändert
 

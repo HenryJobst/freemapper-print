@@ -29,7 +29,7 @@ dropped by that number.
   mask checker; a property test there would test the `toml` crate.
 - **cargo-nextest: rejected.** 731 tests: `cargo test` 8:42 min, `cargo nextest run` 11:33 min
   (10 tests flagged slow). The suite is dominated by a few editor tests and the build, not by
-  the harness; nextest runs more processes and is slower. The test budget argues against it.
+  the harness; nextest runs more processes and is slower. The test budget argues against it. (Re-measured later on 723 tests: no gain, the earlier figure came from a noisy run; the decision stands, ADR 0077.)
 - **cargo-hack: adopted as a compile check.** `check --each-feature` over the
   three features (`test-hooks`, `page-rules`, `test-stub`) catches a feature that only builds
   when another is on. It builds, it does not test, and it costs about 10 minutes cold in its own
