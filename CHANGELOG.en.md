@@ -10,6 +10,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 ### Added
 
 - The READMEs carry badges for line coverage, MSRV, ADRs, the number of checks and the licence. `scripts/badges.sh` writes them from the data in the repository, and the check fails when they are out of date (amendment to ADR 0070).
+- Training views (ADR 0071): `render --view` and `export --view` (repeatable) leave a class of symbols out of the map before it is drawn: `no-paths`, `brown-only`, `no-north-lines`, or a list `no:<code>,…` and `only:<code>,…`. The information block, the credit lines, the course overprint and the masks stay. `export` writes the PDFs to `out/<view>` unless you give `--out-dir`. A layout can carry the view for good as `view = [...]` in the project file; a view without north lines also stops the generated ones.
 - CI checks the repository's own housekeeping: `scripts/check.sh` bundles the gates for the licence line, the spelling of the English documents, internal links, secrets in the history, declared but unused dependencies, action pins, the ADR index, the changelog pair, rustdoc without warnings, line coverage and the MSRV (ADR 0070). `lefthook.yml` runs the fast gates before a commit and `secrets` before a push.
 - Every Rust file carries the line `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - The READMEs, the manual and AGENTS.md link to the suite website, https://freemapper.de. A release starts the website build through a new job in `release.yml` (ADR 0069); without the secret `SITE_DISPATCH_TOKEN` the job does nothing.

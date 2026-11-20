@@ -21,7 +21,8 @@ use std::path::PathBuf;
 
 use crate::course::{CourseNote, FitNote};
 use crate::courses::{MaskNote, Stale};
-use crate::omap::{MapCoord, MapDocument, OmapError};
+use crate::omap::view::NORTH_LINE_CODE;
+use crate::omap::{MapCoord, MapDocument, OmapError, SymbolColours, View};
 use crate::print::Orientation;
 use crate::print::{BASE_PART, PrintError, PrintOptions, PrintReport, render_page};
 use crate::project::{
@@ -387,6 +388,14 @@ fn render_body(
     }
     let original = map;
     let map = without_hidden_parts(map, layout, &mut notes);
+    // `load` refuses a bad entry, so a layout built in code is the only way to a view that does not parse.
+    let view = layout.parsed_view().unwrap_or_default();
+    // The colour table is read from the symbol set only when a view needs it; the sheets of a plain export pay nothing.
+    let colours = (!view.is_empty()).then(|| SymbolColours::of(&map.symbol_set));
+    let map = match &colours {
+        Some(colours) => without_view(map, &view, colours),
+        None => map,
+    };
 
     let mut options = PrintOptions {
         print_scale: layout.print_scale,
@@ -403,7 +412,13 @@ fn render_body(
         frame_margin_mm: Some(layout.map_frame.margin_mm),
     };
     let (mut page, mut print) = render_page(&map, &options)?;
-    if layout.north_lines == NorthLines::Auto && !north_lines::has_north_lines(original) {
+    // A view that leaves the north lines out leaves the generated ones out as well (ADR 0071).
+    if layout.north_lines == NorthLines::Auto
+        && !north_lines::has_north_lines(original)
+        && colours
+            .as_ref()
+            .is_none_or(|colours| colours.keeps(&view, NORTH_LINE_CODE))
+    {
         let spacing_m = project.rules.north_line_spacing_m(project.project.map.kind);
         add_north_lines(
             &map,
@@ -633,6 +648,32 @@ fn without_hidden_parts<'a>(
     Cow::Owned(kept)
 }
 
+/// `map` without the objects `view` leaves out (ADR 0071). The frame stays: the objects of the part "peripheral
+/// information" and those tagged `freemapper:source=sheet`. So does the part `base`, the map's ground (ADR 0044);
+/// the view works on the symbols drawn over it.
+pub fn without_view<'a>(
+    map: Cow<'a, MapDocument>,
+    view: &View,
+    colours: &SymbolColours,
+) -> Cow<'a, MapDocument> {
+    if view.is_empty() {
+        return map;
+    }
+    let mut kept = map.into_owned();
+    let set = &kept.symbol_set;
+    for part in &mut kept.parts {
+        if part.name == BASE_PART {
+            continue;
+        }
+        let name = &part.name;
+        part.objects.retain(|object| {
+            View::keeps_frame(name, &object.tags)
+                || colours.keeps(view, set.code_of(object.symbol_id).unwrap_or(""))
+        });
+    }
+    Cow::Owned(kept)
+}
+
 /// North lines for a map that has none (ADR 0023, ADR 0027), over the frame of `page`, the
 /// first drawing of `map`. `page` and `print` are replaced by the redrawn ones or extended.
 ///
@@ -778,6 +819,7 @@ mod tests {
             // Off here, so that tests of other things see only the objects they set up.
             north_lines: NorthLines::Never,
             hide_parts: Vec::new(),
+            view: Vec::new(),
             elements: Vec::new(),
             hide_shared: Vec::new(),
         }
@@ -998,6 +1040,101 @@ mod tests {
         let (page, report) = sheet(&map, &layout);
         assert!(page.primitives.iter().any(|p| p.base));
         assert_eq!(without_missing(&report.notes), []);
+    }
+
+    fn with_view(entries: &[&str]) -> LayoutSpec {
+        LayoutSpec {
+            view: entries.iter().map(|e| e.to_string()).collect(),
+            ..a4()
+        }
+    }
+
+    /// The primitives of `map` on an A4 sheet without a view: what a view must leave of a bigger map.
+    fn plain_primitives(map: &MapDocument) -> usize {
+        sheet(map, &a4()).0.primitives.len()
+    }
+
+    #[test]
+    fn no_paths_view_leaves_out_paths_and_keeps_the_frame() {
+        let sheet_tag = vec![("freemapper:source".to_string(), "sheet".to_string())];
+        let tagged = MapObject {
+            tags: sheet_tag,
+            ..object_of("505.1", (30_000, 30_000))
+        };
+        let frame = object_of("505.1", (40_000, 20_000));
+        let contour = object_of("101", (50_000, 10_000));
+        let parts = |default: Vec<MapObject>| {
+            doc(
+                4000,
+                vec![
+                    ("default part", default),
+                    ("peripheral information", vec![frame.clone()]),
+                    ("other", vec![tagged.clone()]),
+                ],
+            )
+        };
+        let full = parts(vec![object_of("505.1", (50_000, 0)), contour.clone()]);
+        // The path of the default part goes; the contour, the frame part and the sheet-tagged path stay.
+        let expected = plain_primitives(&parts(vec![contour]));
+        assert!(expected < plain_primitives(&full));
+        let (page, report) = sheet(&full, &with_view(&["no-paths"]));
+        assert_eq!(page.primitives.len(), expected);
+        assert_eq!(without_missing(&report.notes), []);
+    }
+
+    #[test]
+    fn brown_only_view_keeps_contours_and_the_frame() {
+        let contour = object_of("101", (50_000, 0));
+        let frame = object_of("501.1", (40_000, 20_000));
+        let parts = |default: Vec<MapObject>| {
+            doc(
+                4000,
+                vec![
+                    ("default part", default),
+                    ("peripheral information", vec![frame.clone()]),
+                ],
+            )
+        };
+        let full = parts(vec![contour.clone(), object_of("501.1", (50_000, 10_000))]);
+        let expected = plain_primitives(&parts(vec![contour]));
+        assert!(expected < plain_primitives(&full));
+        let (page, _) = sheet(&full, &with_view(&["brown-only"]));
+        assert_eq!(page.primitives.len(), expected);
+    }
+
+    #[test]
+    fn views_combine_and_a_list_names_codes() {
+        let (contour, step, path) = (
+            object_of("101", (50_000, 0)),
+            object_of("501.1", (50_000, 10_000)),
+            object_of("505.1", (50_000, 20_000)),
+        );
+        let on = |objects: Vec<MapObject>| doc(4000, vec![("default part", objects)]);
+        let full = on(vec![contour.clone(), step.clone(), path.clone()]);
+        let (page, _) = sheet(&full, &with_view(&["no-paths", "no:101"]));
+        assert_eq!(page.primitives.len(), plain_primitives(&on(vec![step])));
+        let (page, _) = sheet(&full, &with_view(&["only:101,505.1"]));
+        assert_eq!(
+            page.primitives.len(),
+            plain_primitives(&on(vec![contour, path]))
+        );
+    }
+
+    #[test]
+    fn a_view_without_north_lines_generates_none() {
+        let mut layout = auto();
+        layout.view = vec!["no-north-lines".into()];
+        let (page, report) = sheet(&no_lines_map(), &layout);
+        assert!(map_xs(&page).is_empty());
+        assert_eq!(added(&report), None);
+        layout.view = vec!["brown-only".into()];
+        let (page, report) = sheet(&no_lines_map(), &layout);
+        assert!(map_xs(&page).is_empty());
+        assert_eq!(added(&report), None);
+        // Another view leaves the generation alone.
+        layout.view = vec!["no-paths".into()];
+        let (_, report) = sheet(&no_lines_map(), &layout);
+        assert!(added(&report).is_some());
     }
 
     #[test]

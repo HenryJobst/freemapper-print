@@ -404,6 +404,7 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 | `orientation` | `"auto"` | `"portrait"` (hoch), `"landscape"` (quer) oder `"auto"`: die Ausrichtung, in der weniger von der Karte fehlt |
 | `print_scale` | Maßstab der Karte | Nenner des Druckmaßstabs, `3000` für 1:3000 |
 | `north_lines` | `"auto"` | `"auto"` ergänzt Nordlinien, wenn die Karte keine hat; `"never"` nie |
+| `view` | leer | Trainingsansicht: `"no-paths"`, `"brown-only"`, `"no-north-lines"`, `"no:505,506"` oder `"only:101,102"`; mehrere Einträge kombinieren, und eine Ansicht ohne Nordlinien hält auch die erzeugten zurück. Informationsblock, Namensnennung, Kursüberdruck und Abdeckungen bleiben. `render --view` und `export --view` setzen sie auf der Kommandozeile; `export` schreibt dann nach `out/<Ansicht>` |
 | `hide_parts` | leer | Kartenteile, die das Blatt nicht zeigt, mit ihrem genauen Namen aus OOM |
 | `hide_shared` | leer | IDs gemeinsamer Elemente, die dieses Layout nicht zeigt |
 | `elements` | leer | eigene Blattelemente dieses Layouts, Kapitel 7 |

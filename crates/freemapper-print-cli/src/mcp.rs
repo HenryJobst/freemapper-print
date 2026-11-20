@@ -1658,6 +1658,7 @@ impl PrintServer {
                     courses,
                     single_file,
                     out_dir: Some(out_dir),
+                    views: Vec::new(),
                 },
                 &mut |progress| {
                     if let ops::export::ExportProgress::Page { mode, page } = &progress
@@ -3567,6 +3568,7 @@ mod tests {
                 courses: Vec::new(),
                 single_file: false,
                 out_dir: Some(out.path().to_path_buf()),
+                views: Vec::new(),
             },
             &mut |_| ControlFlow::Continue(()),
         )

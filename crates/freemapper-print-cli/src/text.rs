@@ -432,6 +432,8 @@ mod tests {
             "code",
             "metres",
             "reason",
+            "part",
+            "view",
             "crs",
             "control",
             "scope",

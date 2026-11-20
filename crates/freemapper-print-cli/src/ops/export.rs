@@ -30,6 +30,9 @@ pub struct ExportArgs {
     pub single_file: bool,
     /// The output folder, which must exist; `None` for `out` next to the project file, created if missing.
     pub out_dir: Option<PathBuf>,
+    /// Training views (ADR 0071) added to every layout, as `--view` takes them. Without `out_dir` the PDFs go to
+    /// `out/<view>`, so that a view never overwrites the full sheets.
+    pub views: Vec<String>,
 }
 
 /// What an export writes.
@@ -98,7 +101,8 @@ pub fn export(
     args: &ExportArgs,
     progress: &mut dyn FnMut(ExportProgress<'_>) -> ControlFlow<()>,
 ) -> Result<ExportResult, OpError> {
-    let loaded = load_project(&args.project)?;
+    let mut loaded = load_project(&args.project)?;
+    let view_dir = apply_views(&mut loaded, &args.views)?;
     let layouts =
         select_layouts(&loaded, &args.layouts).map_err(|unknown| OpError::UnknownLayout {
             id: unknown.id,
@@ -123,7 +127,7 @@ pub fn export(
         })?),
         None => None,
     };
-    let out_dir = out_dir(args.out_dir.as_deref(), &loaded)?;
+    let out_dir = out_dir(args.out_dir.as_deref(), &loaded, view_dir.as_deref())?;
     let map_scale = map.georef.scale_denominator;
     let kind = loaded.project.map.kind;
     let mode = match (&courses, args.single_file) {
@@ -218,7 +222,29 @@ pub fn export(
 /// The output folder: `given`, which must exist, else `out` next to the project file, created if missing. A
 /// folder inside the project by name that a link leads out of the project stops the export before anything is
 /// written (ADR 0041). Partial files older than an hour that interrupted runs left there are removed.
-fn out_dir(given: Option<&Path>, loaded: &LoadedProject) -> Result<PathBuf, OpError> {
+/// Adds the views of `--view` to every layout of `loaded`. Returns the folder name the canonical view gives under
+/// `out`, or `None` without a view.
+fn apply_views(loaded: &mut LoadedProject, views: &[String]) -> Result<Option<String>, OpError> {
+    if views.is_empty() {
+        return Ok(None);
+    }
+    let text = views.join("+");
+    let view = freemapper_print::omap::View::parse(&text).map_err(|error| OpError::BadView {
+        text: text.clone(),
+        error,
+    })?;
+    for layout in &mut loaded.project.layouts {
+        layout.view.extend(views.iter().cloned());
+    }
+    Ok(Some(view.file_token()))
+}
+
+/// The output folder: the one given, else `out` next to the project file, with `view_dir` below it for a view.
+fn out_dir(
+    given: Option<&Path>,
+    loaded: &LoadedProject,
+    view_dir: Option<&str>,
+) -> Result<PathBuf, OpError> {
     let dir = match given {
         Some(dir) => {
             if !dir.is_dir() {
@@ -230,7 +256,10 @@ fn out_dir(given: Option<&Path>, loaded: &LoadedProject) -> Result<PathBuf, OpEr
             dir.to_path_buf()
         }
         None => {
-            let dir = loaded.dir.join("out");
+            let mut dir = loaded.dir.join("out");
+            if let Some(name) = view_dir {
+                dir.push(name);
+            }
             output::check_out_folder(&loaded.dir, &dir).map_err(OpError::Output)?;
             // The library's writes create no folder (ADR 0041), so `out` is created here, once checked.
             std::fs::create_dir_all(&dir).map_err(|err| OpError::CreateFolder {

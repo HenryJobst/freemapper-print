@@ -110,6 +110,8 @@ struct RenderArgs {
     kind: Option<KindArg>,
     #[arg(long)]
     show_sheet_objects: bool,
+    #[arg(long = "view", value_name = "VIEW")]
+    view: Vec<String>,
 }
 
 #[derive(Args)]
@@ -141,6 +143,8 @@ struct ExportArgs {
     single_file: bool,
     #[arg(long, value_name = "DIR")]
     out_dir: Option<PathBuf>,
+    #[arg(long = "view", value_name = "VIEW")]
+    view: Vec<String>,
 }
 
 #[derive(Args)]
@@ -323,6 +327,24 @@ fn render(texts: &Texts, args: &RenderArgs) -> anyhow::Result<u8> {
             Some(&args!("path" => args.map.display().to_string()))
         ));
     }
+    // A training view leaves objects out of the map before it is drawn (ADR 0071); `render` has no layout, so no
+    // north lines are generated and there is nothing else to switch off.
+    let view = if args.view.is_empty() {
+        freemapper_print::omap::View::default()
+    } else {
+        freemapper_print::omap::View::parse(&args.view.join("+")).map_err(|error| {
+            op_error(
+                texts,
+                ops::OpError::BadView {
+                    text: args.view.join("+"),
+                    error,
+                },
+            )
+        })?
+    };
+    let colours = freemapper_print::omap::SymbolColours::of(&map.symbol_set);
+    let map = freemapper_print::sheet::without_view(std::borrow::Cow::Owned(map), &view, &colours)
+        .into_owned();
     let options = PrintOptions {
         print_scale: args.scale,
         kind,
@@ -413,6 +435,19 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
             Some(&args!("path" => path.display().to_string())),
         )),
         E::Courses(source) => source.context(texts.plain("error-courses")),
+        E::BadView { text, error } => {
+            use freemapper_print::omap::ViewError;
+            let (key, part) = match error {
+                ViewError::UnknownName(part) => ("error-bad-view-name", part),
+                ViewError::EmptyList(part) => ("error-bad-view-empty", part),
+                ViewError::BadCode(part) => ("error-bad-view-code", part),
+            };
+            UsageError(texts.get(
+                key,
+                Some(&args!("part" => printable(&part), "view" => printable(&text))),
+            ))
+            .into()
+        }
         E::UnknownLayout { id, known } => {
             let known: Vec<String> = known.iter().map(|id| printable(id)).collect();
             UsageError(texts.get(
@@ -1352,6 +1387,7 @@ fn export(texts: &Texts, args: &ExportArgs) -> anyhow::Result<u8> {
             courses: args.course.clone(),
             single_file: args.single_file,
             out_dir: args.out_dir.clone(),
+            views: args.view.clone(),
         },
         &mut |progress| {
             match progress {
@@ -2339,6 +2375,7 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 .mut_arg("show_sheet_objects", |a| {
                     a.help(texts.plain("help-show-sheet-objects"))
                 })
+                .mut_arg("view", |a| a.help(texts.plain("help-view")))
         })
         .mut_subcommand("init", |c| {
             c.about(texts.plain("init-about"))
@@ -2370,6 +2407,7 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 .mut_arg("course", |a| a.help(texts.plain("help-course")))
                 .mut_arg("single_file", |a| a.help(texts.plain("help-single-file")))
                 .mut_arg("out_dir", |a| a.help(texts.plain("help-out-dir")))
+                .mut_arg("view", |a| a.help(texts.plain("help-view-export")))
         })
         .mut_subcommand("numbers", |c| {
             c.about(texts.plain("numbers-about"))
