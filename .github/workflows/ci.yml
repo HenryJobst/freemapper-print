@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, probe/base]
   pull_request:
 
 env:
@@ -180,11 +180,11 @@ jobs:
 
   # Mutation tests on the lines the pull request changes, not on the workspace (ADR 0072).
   mutants:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/probe/base'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      MUTANTS_BASE: origin/${{ github.base_ref }}
+      MUTANTS_BASE: origin/${{ github.base_ref || 'main' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,6 +194,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install minisign
         run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: Probe, build the dependencies for the cache (push on probe/base only)
+        if: github.event_name == 'push'
+        run: cargo test --locked --workspace --no-run
       - name: Install cargo-mutants
         run: |
           cargo mutants --version 2>/dev/null | grep -q "$CARGO_MUTANTS_VERSION" ||
