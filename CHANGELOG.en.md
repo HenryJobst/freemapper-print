@@ -7,12 +7,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-11-20
-
 ### Added
 
 - CI mutates the Rust lines a branch changes (`cargo-mutants --in-diff`, job `mutants`) and fails when a test does not catch a mutant; a job `hack` checks the workspace with each feature alone; `scripts/check.sh complexity` fails above the cognitive complexity of 35 (`clippy.toml`); `scripts/check.sh sbom` compares `docs/sbom.cdx.json`, the CycloneDX list of the CLI's dependencies, with a fresh one. `cargo-nextest` was measured and rejected: it is slower here (ADR 0072).
 - A property test with `proptest` for the `--points` parser: written points read back unchanged, and any text is read or refused (ADR 0072).
+
+## [0.12.0] - 2026-11-20
+
+### Added
+
 - The READMEs carry badges for line coverage, MSRV, ADRs, the number of checks and the licence. `scripts/badges.sh` writes them from the data in the repository, and the check fails when they are out of date (amendment to ADR 0070).
 - Training views (ADR 0071): `render --view` and `export --view` (repeatable) leave a class of symbols out of the map before it is drawn: `no-paths`, `brown-only`, `no-north-lines`, or a list `no:<code>,…` and `only:<code>,…`. The information block, the credit lines, the course overprint and the masks stay. `export` writes the PDFs to `out/<view>` unless you give `--out-dir`. A layout can carry the view for good as `view = [...]` in the project file; a view without north lines also stops the generated ones.
 - CI checks the repository's own housekeeping: `scripts/check.sh` bundles the gates for the licence line, the spelling of the English documents, internal links, secrets in the history, declared but unused dependencies, action pins, the ADR index, the changelog pair, rustdoc without warnings, line coverage and the MSRV (ADR 0070). `lefthook.yml` runs the fast gates before a commit and `secrets` before a push.
