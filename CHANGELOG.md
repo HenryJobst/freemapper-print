@@ -13,6 +13,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Zwei Badges in den READMEs: die Zahl der Tests und das Testbudget (10 min). `docs/tests.json` hält beides; `scripts/check.sh tests` zählt die `#[test]` im Quelltext und scheitert bei Abweichung (`tests --fix` schreibt neu), und der Linux-Testlauf in der CI scheitert, wenn er das Budget überschreitet (Entscheidung 0074).
 - CI mutiert die Rust-Zeilen, die ein Branch ändert (`cargo-mutants --in-diff`, Job `mutants`), und scheitert, wenn kein Test einen Mutanten fängt; ein Job `hack` prüft den Workspace mit jedem Feature allein; `scripts/check.sh complexity` scheitert oberhalb der kognitiven Komplexität 35 (`clippy.toml`); `scripts/check.sh sbom` vergleicht `docs/sbom.cdx.json`, die CycloneDX-Liste der CLI-Abhängigkeiten, mit einer frischen. `cargo-nextest` wurde gemessen und verworfen: Es ist hier langsamer (Entscheidung 0072).
 - Ein Property-Test mit `proptest` für den `--points`-Parser: geschriebene Punkte lesen sich unverändert zurück, und jeder Text wird gelesen oder abgewiesen (Entscheidung 0072).
 
