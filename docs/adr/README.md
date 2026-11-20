@@ -113,3 +113,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0070](0070-housekeeping-gates.md) | The repository checks its own housekeeping | Accepted | 2026-11-19 |
 | [0071](0071-training-views.md) | Training views | Accepted | 2026-11-20 |
 | [0072](0072-mutation-properties-sbom-complexity.md) | Mutation tests on the diff, property tests, SBOM and a complexity limit | Accepted | 2026-11-20 |
+| [0073](0073-crate-layers-as-a-gate.md) | The crate layers are a gate | Accepted | 2026-11-20 |

@@ -29,7 +29,8 @@ before changing code.
   `.claude/` and `lefthook.yml` run them.
 - `scripts/check.sh` holds the housekeeping gates (licence line, spelling, links, history, dependencies, action
   pins, ADR index, changelog pair) and `scripts/check.sh doc coverage msrv complexity hack mutants` the ones that build; `sbom` compares
-  `docs/sbom.cdx.json` and `sbom --fix` rewrites it (ADR 0070, 0072).
+  `docs/sbom.cdx.json` and `sbom --fix` rewrites it; `architecture` fails when the library crate depends on
+  the CLI or on a crate only the CLI may use (ADR 0070, 0072, 0073).
 - Superpowers process: brainstorming, then writing-plans, then subagent-driven development; TDD for readers,
   writers and geometry.
 - Work autonomously once a plan is approved: decide, record decisions, report them afterwards; stop only for

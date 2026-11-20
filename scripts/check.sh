@@ -17,6 +17,7 @@
 #   changelog  `CHANGELOG.md` and `CHANGELOG.en.md` match `Cargo.toml`
 #   badges     the README badges match the repository's data
 #   sbom       `docs/sbom.cdx.json` is the CycloneDX list of the CLI's dependencies
+#   architecture the library crate depends on neither the CLI nor a front-end or network crate
 #   badges     the README badges match the data in the repository
 #   doc        rustdoc builds without warnings
 #   coverage   line coverage is not below its floor or its snapshot
@@ -366,7 +367,48 @@ gate_mutants() {
   esac
 }
 
-cheap=(spdx typos links secrets machete actions adr changelog badges sbom)
+# The library is the part of freemapper-print other programs may build on: it reads, draws and
+# writes, and it knows no command line, no server, no network client and no user settings.
+# Those belong to the CLI, which depends on the library and never the other way round (ADR 0073).
+# Every workspace member must be placed in a layer here, so a new crate is a decision.
+gate_architecture() {
+  cargo metadata --format-version 1 --no-deps --locked | python3 -c '
+import json
+import sys
+
+LAYERS = {"freemapper-print": "library", "freemapper-print-cli": "driver"}
+# What only the driver may use: argument parsing, the MCP and web servers, the async runtime,
+# the update client and its settings folders, and the CLI texts.
+DRIVER_ONLY = {
+    "anyhow", "axum", "clap", "dirs", "fluent-bundle", "freemapper-text", "freemapper-update",
+    "rmcp", "rust-embed", "schemars", "tokio", "ureq",
+}
+
+problems = []
+for package in json.load(sys.stdin)["packages"]:
+    name = package["name"]
+    layer = LAYERS.get(name)
+    if layer is None:
+        problems.append(f"{name} is in no layer; place it in LAYERS in gate_architecture")
+        continue
+    if layer != "library":
+        continue
+    for dependency in package["dependencies"]:
+        if dependency["kind"] == "dev":
+            continue
+        target = dependency["name"]
+        if LAYERS.get(target) == "driver":
+            problems.append(f"{name} depends on the driver {target}")
+        elif target in DRIVER_ONLY:
+            problems.append(f"{name} depends on {target}, which only the driver may use")
+
+for problem in problems:
+    print(problem, file=sys.stderr)
+sys.exit(1 if problems else 0)
+' || report "the crate layers are violated (ADR 0073)"
+}
+
+cheap=(spdx typos links secrets machete actions adr changelog badges sbom architecture)
 gates=()
 spdx_fix=0
 
@@ -385,7 +427,7 @@ for gate in "${gates[@]}"; do
   case "$gate" in
   spdx) gate_spdx "$spdx_fix" ;;
   sbom) gate_sbom "$spdx_fix" ;;
-  typos | links | secrets | machete | actions | adr | changelog | badges | doc | coverage | msrv | complexity | hack | mutants)
+  typos | links | secrets | machete | actions | adr | changelog | badges | architecture | doc | coverage | msrv | complexity | hack | mutants)
     "gate_$gate"
     ;;
   *)
