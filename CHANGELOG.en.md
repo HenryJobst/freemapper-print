@@ -14,6 +14,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- `scripts/check.sh architecture` fails when the library `freemapper-print` depends on the CLI or on a crate only the CLI may use (command line, servers, network client, settings folders); a new crate has to be placed in a layer (ADR 0073).
 - The mutation gate counts a mutant that runs into the timeout (exit code 3, for example an endless loop) as caught, as in the other three repositories; surviving mutants and a failed baseline still fail it (amendment to ADR 0072).
 
 ## [0.12.0] - 2026-11-20

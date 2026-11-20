@@ -14,6 +14,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- `scripts/check.sh architecture` scheitert, wenn die Bibliothek `freemapper-print` von der CLI oder von einem Crate abhängt, das nur die CLI nutzen darf (Befehlszeile, Server, Netzwerk-Client, Einstellungsordner); ein neues Crate muss einer Schicht zugeordnet werden (Entscheidung 0073).
 - Das Mutations-Gate wertet einen Mutanten, der in die Zeitgrenze läuft (Exit-Code 3, etwa eine Endlosschleife), als gefangen, wie in den anderen drei Repositories; übrig gebliebene Mutanten und eine gescheiterte Basislinie lassen es weiter scheitern (Nachtrag zu Entscheidung 0072).
 
 ## [0.12.0] - 2026-11-20
