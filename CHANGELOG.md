@@ -12,6 +12,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 - CI mutiert die Rust-Zeilen, die ein Branch ändert (`cargo-mutants --in-diff`, Job `mutants`), und scheitert, wenn kein Test einen Mutanten fängt; ein Job `hack` prüft den Workspace mit jedem Feature allein; `scripts/check.sh complexity` scheitert oberhalb der kognitiven Komplexität 35 (`clippy.toml`); `scripts/check.sh sbom` vergleicht `docs/sbom.cdx.json`, die CycloneDX-Liste der CLI-Abhängigkeiten, mit einer frischen. `cargo-nextest` wurde gemessen und verworfen: Es ist hier langsamer (Entscheidung 0072).
 - Ein Property-Test mit `proptest` für den `--points`-Parser: geschriebene Punkte lesen sich unverändert zurück, und jeder Text wird gelesen oder abgewiesen (Entscheidung 0072).
 
+### Geändert
+
+- Das Mutations-Gate wertet einen Mutanten, der in die Zeitgrenze läuft (Exit-Code 3, etwa eine Endlosschleife), als gefangen, wie in den anderen drei Repositories; übrig gebliebene Mutanten und eine gescheiterte Basislinie lassen es weiter scheitern (Nachtrag zu Entscheidung 0072).
+
 ## [0.12.0] - 2026-11-20
 
 ### Hinzugefügt

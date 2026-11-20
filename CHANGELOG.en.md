@@ -12,6 +12,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 - CI mutates the Rust lines a branch changes (`cargo-mutants --in-diff`, job `mutants`) and fails when a test does not catch a mutant; a job `hack` checks the workspace with each feature alone; `scripts/check.sh complexity` fails above the cognitive complexity of 35 (`clippy.toml`); `scripts/check.sh sbom` compares `docs/sbom.cdx.json`, the CycloneDX list of the CLI's dependencies, with a fresh one. `cargo-nextest` was measured and rejected: it is slower here (ADR 0072).
 - A property test with `proptest` for the `--points` parser: written points read back unchanged, and any text is read or refused (ADR 0072).
 
+### Changed
+
+- The mutation gate counts a mutant that runs into the timeout (exit code 3, for example an endless loop) as caught, as in the other three repositories; surviving mutants and a failed baseline still fail it (amendment to ADR 0072).
+
 ## [0.12.0] - 2026-11-20
 
 ### Added
