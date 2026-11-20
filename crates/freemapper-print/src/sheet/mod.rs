@@ -1138,6 +1138,28 @@ mod tests {
     }
 
     #[test]
+    fn a_view_without_north_lines_drops_drawn_601_variants() {
+        // The symbols of a real map are 601.1 to 601.4, never plain 601 (freemapper-core v0.31.1); 601.5 is one that draws.
+        let contour = object_of("101", (50_000, 10_000));
+        let with_lines = doc(
+            4000,
+            vec![(
+                "default part",
+                vec![contour.clone(), object_of("601.5", (0, 50_000))],
+            )],
+        );
+        let without = doc(4000, vec![("default part", vec![contour])]);
+        let view = with_view(&["no-north-lines"]);
+        let (page, report) = sheet(&with_lines, &view);
+        assert_eq!(
+            page.primitives.len(),
+            sheet(&without, &view).0.primitives.len()
+        );
+        assert!(page.primitives.len() < plain_primitives(&with_lines));
+        assert_eq!(added(&report), None);
+    }
+
+    #[test]
     fn unknown_part_noted() {
         let map = doc(4000, vec![("default part", vec![line((50_000, 0))])]);
         let mut layout = a4();
