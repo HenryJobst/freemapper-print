@@ -1075,6 +1075,7 @@ pub(super) async fn post_export(
                 courses: request.courses,
                 single_file: request.single_file,
                 out_dir: Some(out_dir),
+                views: Vec::new(),
             },
             &mut |progress| {
                 if let ops::export::ExportProgress::Page { page, .. } = &progress {

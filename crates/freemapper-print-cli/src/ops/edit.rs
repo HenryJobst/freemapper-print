@@ -114,6 +114,7 @@ pub fn set_layout(args: &LayoutArgs) -> Result<LayoutResult, OpError> {
             map_frame: MapFrameSpec::default(),
             north_lines: NorthLines::Auto,
             hide_parts: Vec::new(),
+            view: Vec::new(),
             elements: Vec::new(),
             hide_shared: Vec::new(),
         });

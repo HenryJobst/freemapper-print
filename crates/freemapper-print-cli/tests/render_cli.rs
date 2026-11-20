@@ -492,3 +492,27 @@ fn version_prints_the_contract_line() {
         assert_eq!(String::from_utf8_lossy(&out.stdout), expected, "{args:?}");
     }
 }
+
+#[test]
+fn render_with_a_view_leaves_symbols_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let (full, brown) = (dir.path().join("full.pdf"), dir.path().join("brown.pdf"));
+    assert!(render(LUEBECK, &full, &[]).status.success());
+    let o = render(LUEBECK, &brown, &["--view", "brown-only"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let (full, brown) = (
+        std::fs::read(&full).unwrap(),
+        std::fs::read(&brown).unwrap(),
+    );
+    // Less is drawn, and the sheet stays a PDF of the same page.
+    assert!(
+        brown.len() < full.len(),
+        "{} vs {}",
+        brown.len(),
+        full.len()
+    );
+    assert!(brown.starts_with(b"%PDF"));
+    let o = render(LUEBECK, &dir.path().join("x.pdf"), &["--view", "no:abc"]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    assert!(stderr(&o).contains("abc"), "{}", stderr(&o));
+}

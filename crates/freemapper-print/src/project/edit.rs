@@ -452,6 +452,7 @@ fn layout_keys(l: &LayoutSpec) -> Result<Keys, ProjectError> {
         map_frame,
         north_lines,
         hide_parts,
+        view,
         elements: _,
         hide_shared,
     } = l;
@@ -464,6 +465,7 @@ fn layout_keys(l: &LayoutSpec) -> Result<Keys, ProjectError> {
         ("map_frame", Some(value(map_frame)?)),
         ("north_lines", Some(value(north_lines)?)),
         ("hide_parts", list(hide_parts)?),
+        ("view", list(view)?),
         ("hide_shared", list(hide_shared)?),
     ])
 }
@@ -1012,6 +1014,7 @@ layout = "a4"
             map_frame: MapFrameSpec::default(),
             north_lines: NorthLines::Auto,
             hide_parts: Vec::new(),
+            view: Vec::new(),
             elements: vec![element("note", ElementKind::Text)],
             hide_shared: vec!["title".into()],
         };

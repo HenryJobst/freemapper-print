@@ -616,6 +616,46 @@ fn export_one_layout() {
 }
 
 #[test]
+fn export_with_a_view_goes_to_its_own_folder() {
+    let ws = Workspace::new(FOREST);
+    let path = ws.write_project(
+        "forest",
+        "contour_interval_m = 5.0",
+        &layouts(&[("a", "A4", "auto")]),
+    );
+    let o = run(
+        "en",
+        &["export", path.to_str().unwrap(), "--view", "no-paths"],
+    );
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    let out = ws.event().join("out");
+    // The views never replace the full sheets: they sit in a folder named after the canonical view.
+    assert_eq!(files_in(&out), ["no-paths"]);
+    assert_eq!(files_in(&out.join("no-paths")), ["a.pdf"]);
+    let o = run(
+        "en",
+        &[
+            "export",
+            path.to_str().unwrap(),
+            "--view",
+            "no:505,506",
+            "--view",
+            "brown-only",
+        ],
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(files_in(&out.join("brown-only+no-505_506")), ["a.pdf"]);
+
+    for (lang, word) in [("en", "is no view"), ("de", "ist keine Ansicht")] {
+        let o = run(lang, &["export", path.to_str().unwrap(), "--view", "nope"]);
+        let err = stderr(&o);
+        assert_eq!(o.status.code(), Some(2), "{lang}: {err}");
+        assert!(err.contains(word) && err.contains("nope"), "{lang}: {err}");
+    }
+}
+
+#[test]
 fn runs_from_other_cwd() {
     let ws = Workspace::new(FOREST);
     let rest = format!(

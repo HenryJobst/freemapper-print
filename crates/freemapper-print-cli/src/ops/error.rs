@@ -30,6 +30,11 @@ pub enum OpError {
     },
     /// The course file could not be read or fitted to the map.
     Courses(anyhow::Error),
+    /// A `--view` that does not parse (usage).
+    BadView {
+        text: String,
+        error: freemapper_print::omap::ViewError,
+    },
     /// A layout id the project does not have (usage).
     UnknownLayout { id: String, known: Vec<String> },
     /// A course name the course file does not have (usage).

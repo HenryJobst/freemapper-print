@@ -251,6 +251,10 @@ pub struct LayoutSpec {
     pub north_lines: NorthLines,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hide_parts: Vec<String>,
+    /// Training views (ADR 0071): `no-paths`, `brown-only`, `no-north-lines`, `no:<code>,…` or `only:<code>,…`.
+    /// Several entries combine; an object stays when every one keeps it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub view: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub elements: Vec<ElementSpec>,
     /// Ids of shared elements this layout does not show.
@@ -259,6 +263,14 @@ pub struct LayoutSpec {
 }
 
 impl LayoutSpec {
+    /// The training view of the layout: its `view` entries combined. An empty list leaves nothing out.
+    pub fn parsed_view(&self) -> Result<crate::omap::View, crate::omap::ViewError> {
+        if self.view.is_empty() {
+            return Ok(crate::omap::View::default());
+        }
+        crate::omap::View::parse(&self.view.join("+"))
+    }
+
     /// The page size in portrait (mm): `page_mm` when the layout sets it, else the paper's.
     pub fn portrait_mm(&self) -> (f64, f64) {
         self.page_mm
@@ -741,6 +753,18 @@ fn field_offset(text: &str, field: &str) -> Option<usize> {
         }
     }
     best
+}
+
+/// Why a `view` entry is refused, in a sentence for the error message.
+fn view_problem(err: &crate::omap::ViewError) -> String {
+    use crate::omap::ViewError;
+    match err {
+        ViewError::UnknownName(name) => format!(
+            "\"{name}\" is no view; use no-paths, brown-only, no-north-lines, no:<code>,… or only:<code>,…"
+        ),
+        ViewError::EmptyList(part) => format!("\"{part}\" lists no symbol code"),
+        ViewError::BadCode(code) => format!("\"{code}\" is no symbol code"),
+    }
 }
 
 fn invalid(file: &str, field: String, message: &str) -> ProjectError {
@@ -1269,6 +1293,15 @@ fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError
     }
     if let Some(problem) = file_name_problem(&l.id) {
         return Err(invalid(file, format!("layouts[{i}].id"), problem));
+    }
+    for (j, entry) in l.view.iter().enumerate() {
+        if let Err(err) = crate::omap::View::parse(entry) {
+            return Err(invalid(
+                file,
+                format!("layouts[{i}].view[{j}]"),
+                &view_problem(&err),
+            ));
+        }
     }
     let f = &l.map_frame;
     let margin = format!("layouts[{i}].map_frame.margin_mm");
@@ -1958,6 +1991,7 @@ pub fn starter(
             map_frame: MapFrameSpec::default(),
             north_lines: NorthLines::Auto,
             hide_parts: vec![],
+            view: vec![],
             elements: vec![],
             hide_shared: vec![],
         }],
@@ -2303,6 +2337,32 @@ mod tests {
         assert!(
             msg.contains("hide_shared[0]") && msg.contains("nope"),
             "{msg}"
+        );
+    }
+
+    #[test]
+    fn a_view_entry_must_parse() {
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\nview = [\"no-paths\", \"nope\"]\n"
+        ));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(msg.contains("view[1]") && msg.contains("nope"), "{msg}");
+        // A good list loads and combines.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\nview = [\"no-paths\", \"no:101\"]\n"
+        ));
+        let loaded = load(&path).unwrap();
+        let view = loaded.project.layouts[0].parsed_view().unwrap();
+        assert_eq!(view.to_string(), "no-paths+no:101");
+        // No entry is the empty view, not an error.
+        assert!(
+            LayoutSpec {
+                view: vec![],
+                ..loaded.project.layouts[0].clone()
+            }
+            .parsed_view()
+            .unwrap()
+            .is_empty()
         );
     }
 
@@ -2674,6 +2734,7 @@ mod tests {
                     },
                     north_lines: NorthLines::Never,
                     hide_parts: vec!["north".into()],
+                    view: vec![],
                     elements: vec![logo],
                     hide_shared: vec!["bar".into()],
                 },
@@ -2686,6 +2747,7 @@ mod tests {
                     map_frame: MapFrameSpec::default(),
                     north_lines: NorthLines::Auto,
                     hide_parts: vec![],
+                    view: vec![],
                     elements: vec![],
                     hide_shared: vec![],
                 },
