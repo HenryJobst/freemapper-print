@@ -578,6 +578,25 @@ pub fn parse_points(text: &str) -> Result<Vec<[f64; 2]>, BuildError> {
     let bad = || BuildError::BadPoints {
         text: text.to_string(),
     };
+    // probe note 1: artificial comment line, no behaviour change.
+    // probe note 2: artificial comment line, no behaviour change.
+    // probe note 3: artificial comment line, no behaviour change.
+    // probe note 4: artificial comment line, no behaviour change.
+    // probe note 5: artificial comment line, no behaviour change.
+    // probe note 6: artificial comment line, no behaviour change.
+    // probe note 7: artificial comment line, no behaviour change.
+    // probe note 8: artificial comment line, no behaviour change.
+    // probe note 9: artificial comment line, no behaviour change.
+    // probe note 10: artificial comment line, no behaviour change.
+    // probe note 11: artificial comment line, no behaviour change.
+    // probe note 12: artificial comment line, no behaviour change.
+    // probe note 13: artificial comment line, no behaviour change.
+    // probe note 14: artificial comment line, no behaviour change.
+    // probe note 15: artificial comment line, no behaviour change.
+    // probe note 16: artificial comment line, no behaviour change.
+    // probe note 17: artificial comment line, no behaviour change.
+    // probe note 18: artificial comment line, no behaviour change.
+    // probe note 19: artificial comment line, no behaviour change.
     let mut items: Vec<&str> = text.split(';').map(str::trim).collect();
     if items.len() > 1 && items.last() == Some(&"") {
         items.pop();
