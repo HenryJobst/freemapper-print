@@ -222,7 +222,7 @@
       "version": "0.31.1"
     },
     {
-      "bom-ref": "path+file://./crates/freemapper-print#0.12.0",
+      "bom-ref": "path+file://./crates/freemapper-print#0.12.1",
       "description": "Print layouts for orienteering maps: map, course overprint, control descriptions, masks",
       "externalReferences": [
         {
@@ -236,10 +236,10 @@
         }
       ],
       "name": "freemapper-print",
-      "purl": "pkg:cargo/freemapper-print@0.12.0?download_url=file://../freemapper-print",
+      "purl": "pkg:cargo/freemapper-print@0.12.1?download_url=file://../freemapper-print",
       "scope": "required",
       "type": "library",
-      "version": "0.12.0"
+      "version": "0.12.1"
     },
     {
       "author": "Jonas Schievink <jonasschievink@gmail.com>, oyvindln <oyvindln@users.noreply.github.com>",
@@ -7357,7 +7357,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#toml@1.2.1+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index#usvg@0.49.0"
       ],
-      "ref": "path+file://./crates/freemapper-print#0.12.0"
+      "ref": "path+file://./crates/freemapper-print#0.12.1"
     },
     {
       "dependsOn": [
@@ -7366,7 +7366,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#clap@4.6.7",
         "registry+https://github.com/rust-lang/crates.io-index#dirs@7.0.0",
         "registry+https://github.com/rust-lang/crates.io-index#fluent-bundle@0.16.0",
-        "path+file://./crates/freemapper-print#0.12.0",
+        "path+file://./crates/freemapper-print#0.12.1",
         "git+https://github.com/HenryJobst/freemapper-core?tag=v0.31.1#freemapper-text@0.31.1",
         "git+https://github.com/HenryJobst/freemapper-core?tag=v0.31.1#freemapper-update@0.31.1",
         "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.6.0",
@@ -7377,7 +7377,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#tokio@1.54.1",
         "registry+https://github.com/rust-lang/crates.io-index#ureq@3.4.2"
       ],
-      "ref": "path+file://./crates/freemapper-print-cli#0.12.0"
+      "ref": "path+file://./crates/freemapper-print-cli#0.12.1"
     },
     {
       "ref": "registry+https://github.com/rust-lang/crates.io-index#adler2@2.0.1"
@@ -8851,19 +8851,19 @@
   ],
   "metadata": {
     "component": {
-      "bom-ref": "path+file://./crates/freemapper-print-cli#0.12.0",
+      "bom-ref": "path+file://./crates/freemapper-print-cli#0.12.1",
       "components": [
         {
-          "bom-ref": "path+file://./crates/freemapper-print-cli#0.12.0 bin-target-0",
+          "bom-ref": "path+file://./crates/freemapper-print-cli#0.12.1 bin-target-0",
           "licenses": [
             {
               "expression": "AGPL-3.0-or-later"
             }
           ],
           "name": "freemapper-print",
-          "purl": "pkg:cargo/freemapper-print-cli@0.12.0?download_url=file://.#src/main.rs",
+          "purl": "pkg:cargo/freemapper-print-cli@0.12.1?download_url=file://.#src/main.rs",
           "type": "application",
-          "version": "0.12.0"
+          "version": "0.12.1"
         }
       ],
       "description": "CLI, MCP server and layout editor for freemapper-print",
@@ -8879,10 +8879,10 @@
         }
       ],
       "name": "freemapper-print-cli",
-      "purl": "pkg:cargo/freemapper-print-cli@0.12.0?download_url=file://.",
+      "purl": "pkg:cargo/freemapper-print-cli@0.12.1?download_url=file://.",
       "scope": "required",
       "type": "application",
-      "version": "0.12.0"
+      "version": "0.12.1"
     },
     "properties": [
       {

@@ -7,9 +7,15 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-20
+
 ### Fixed
 
 - The training views `no-north-lines` and `brown-only` now really leave the north lines out: freemapper-core v0.31.1 knows the symbols 601.1 to 601.4, which stayed on the map before (the bug sat in the core from v0.30.0). freemapper-core moves from v0.30.1 to v0.31.1 for it.
+
+### Changed
+
+- Version 0.12.0 was tagged but never published, because the north-line bug above came to light during the release. This version carries its content (see the 0.12.0 entry) and the fix.
 
 ### Added
 

@@ -7,9 +7,15 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.12.1] - 2026-11-20
+
 ### Behoben
 
 - Die Trainingsansichten `no-north-lines` und `brown-only` lassen die Nordlinien jetzt wirklich weg: freemapper-core v0.31.1 kennt die Symbole 601.1 bis 601.4, vorher blieben sie stehen (der Fehler steckte im Core ab v0.30.0). freemapper-core wechselt dafür von v0.30.1 auf v0.31.1.
+
+### Geändert
+
+- Die Version 0.12.0 ist getaggt, aber nie veröffentlicht worden, weil der Fehler mit den Nordlinien (siehe oben) beim Release auffiel. Diese Version trägt ihren Inhalt (siehe Eintrag 0.12.0) und die Korrektur.
 
 ### Hinzugefügt
 
