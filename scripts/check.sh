@@ -320,6 +320,7 @@ gate_sbom() {
   if [ "$fix" = 1 ]; then
     cp "$fresh" "$sbom_file"
   elif ! diff -q "$fresh" "$sbom_file" >/dev/null 2>&1; then
+    diff "$sbom_file" "$fresh" | head -n 40 >&2 || true
     report "$sbom_file is out of date; run scripts/check.sh sbom --fix"
   fi
   rm -f "$fresh"
@@ -333,7 +334,8 @@ gate_complexity() {
 }
 
 gate_hack() {
-  cargo hack check --locked --workspace --each-feature --no-dev-deps ||
+  # No `--locked`: `--no-dev-deps` rewrites the manifests and with them the lock file while it runs.
+  cargo hack check --workspace --each-feature --no-dev-deps ||
     report "the workspace does not check with each feature alone"
 }
 
