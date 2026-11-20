@@ -19,7 +19,9 @@ dropped by that number.
   `cargo-mutants` copies the tree without `.git`: a test that reads the repository's history, or
   a path above the workspace, fails the baseline there (exit code 4) and is a bug in the test.
   The tests here read only fixtures under the tree and pass. A mutant that survives is fixed
-  with a test, not with an exclusion; `mutants.out/missed.txt` names it.
+  with a test, not with an exclusion; `mutants.out/missed.txt` names it. A mutant that ends in
+  the timeout (exit code 3, for example an endless loop) counts as caught, as in the other three
+  repositories; exit codes 2 (missed) and 4 (baseline failed) fail the gate.
 - **Property tests: adopted at one place.** `proptest` checks `parse_points`, the `--points`
   parser: text written from any finite points reads back unchanged, and arbitrary text is read
   or refused with `BadPoints`, never a panic or a non-finite value. The parser is the one place
