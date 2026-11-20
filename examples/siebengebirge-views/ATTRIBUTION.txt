@@ -1,0 +1,25 @@
+Map: Siebengebirge (siebengebirge.omap)
+Source: freemapper, https://github.com/HenryJobst/freemapper, example nordrhein-westfalen-siebengebirge
+        (commit 02275869 of 2026-11-16, data fetched on 2026-11-16), copied unchanged
+
+© OpenStreetMap contributors, ODbL, https://www.openstreetmap.org/copyright
+Geobasisdaten © Geobasis NRW (Bezirksregierung Köln) 2026, dl-de/zero-2-0,
+https://www.govdata.de/dl-de/zero-2-0
+
+The map file was written by freemapper (AGPL-3.0-or-later). It is generated from open data and has not been
+checked in the field.
+
+Created with freemapper-print – https://github.com/HenryJobst/freemapper-print
+
+Karte: Siebengebirge (siebengebirge.omap)
+Quelle: freemapper, https://github.com/HenryJobst/freemapper, Beispiel nordrhein-westfalen-siebengebirge
+        (Commit 02275869 vom 16.11.2026, Daten vom 16.11.2026 geholt), unverändert kopiert
+
+© OpenStreetMap-Mitwirkende, ODbL, https://www.openstreetmap.org/copyright
+Geobasisdaten © Geobasis NRW (Bezirksregierung Köln) 2026, dl-de/zero-2-0,
+https://www.govdata.de/dl-de/zero-2-0
+
+Die Kartendatei hat freemapper geschrieben (AGPL-3.0-or-later). Sie ist aus offenen Daten erzeugt und im Gelände
+nicht geprüft.
+
+Erstellt mit freemapper-print – https://github.com/HenryJobst/freemapper-print

@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Ein Waldbeispiel, `examples/siebengebirge-views`: eine erzeugte Waldkarte vollständig, als Isohypsen-OL (nur Höhenlinien) und als Ultimate-OL (ohne Wege) gedruckt, mit Vergleichsbild. Das Handbuch zeigt die Trainingsansichten in Kapitel 6 damit (Entscheidung 0075).
 - Editor und MCP-Server kennen Trainingsansichten (Entscheidung 0071, Nachtrag): Das Layout-Formular des Editors hat ein Feld für die Ansicht, `set_layout` nimmt `view`, und `export_project` nimmt `views` für einen einzelnen Export, wie `export --view`.
 - Zwei Badges in den READMEs: die Zahl der Tests und das Testbudget (10 min). `docs/tests.json` hält beides; `scripts/check.sh tests` zählt die `#[test]` im Quelltext und scheitert bei Abweichung (`tests --fix` schreibt neu), und der Linux-Testlauf in der CI scheitert, wenn er das Budget überschreitet (Entscheidung 0074).
 

@@ -3,7 +3,7 @@
 [English](README.en.md)
 
 Hier liegen sieben fertige Veranstaltungen auf zwei Karten von Remo Madella, gezeichnet für die MOO Challenge
-Berlin 2025: „Gleisdreieck“ und „Rummelsburger Bucht“. Jedes Beispiel hat die Projektdatei, die Eingabedateien,
+Berlin 2025: „Gleisdreieck“ und „Rummelsburger Bucht“, dazu ein Beispiel auf einer erzeugten Waldkarte. Jedes Beispiel hat die Projektdatei, die Eingabedateien,
 die erzeugten PDFs und ein Vorschaubild. Die README jedes Beispiels erklärt, was auf dem Blatt zu sehen ist und
 wie es entstand.
 
@@ -16,6 +16,7 @@ wie es entstand.
 | [`gleisdreieck-training-window`](gleisdreieck-training-window/) | ein Fenster-OL: Karte nur in runden Fenstern um Start, Posten und Ziel, gebaut mit `masks window`, ein Fenster größer als die anderen | Gleisdreieck |
 | [`gleisdreieck-training-corridor`](gleisdreieck-training-corridor/) | ein Korridor-OL: Karte nur in einem 12 mm breiten Korridor, die Linie von Hand gewählt und mit `masks corridor` gebaut | Gleisdreieck |
 | [`rummelsburg-mcp-session`](rummelsburg-mcp-session/) | eine aufgezeichnete Sitzung mit dem MCP-Server: Ein KI-Agent macht aus einer Trainingsbahn einen Fenster-OL mit Fenstern von 12 mm, prüft das Blatt und schreibt das PDF, in sechs Werkzeugaufrufen | Rummelsburger Bucht |
+| [`siebengebirge-views`](siebengebirge-views/) | dieselbe Waldkarte vollständig, als Isohypsen-OL (nur Höhenlinien) und als Ultimate-OL (ohne Wege), mit `view` | Siebengebirge (von freemapper erzeugt) |
 
 ## Karten und Bahnen
 
@@ -23,6 +24,9 @@ Remo Madella hat beide Karten am 12. November 2026 für die freemapper-Suite fre
 Beispielkarten in diesem öffentlichen Projekt zugestimmt. Das ist eine Erlaubnis für die Suite, keine offene
 Lizenz. Die `ATTRIBUTION.txt` in jedem Beispiel hat den Wortlaut, deutsch und englisch. Wer die Karten anders
 nutzen will, fragt Remo Madella.
+
+Die Karte „Siebengebirge“ hat freemapper aus offenen Daten erzeugt (OpenStreetMap, Geobasis NRW). Ihre Lizenzen stehen in der
+`ATTRIBUTION.txt` des Beispiels. Sie ist im Gelände nicht geprüft; eine fertige Waldkarte aus OCAD lag nicht vor.
 
 Die Bahnen sind erfunden, ebenso Veranstaltungen, Daten und Vereine. Sie wurden mit freemapper-courseplan 0.14.1
 gemacht und liegen als Purple-Pen-Datei oder als IOF-XML bei. Die Vereinszeichen sind für die Beispiele gezeichnet
@@ -40,4 +44,4 @@ Die früheren Beispiele auf Lübecker und Berliner Karten aus freemapper 0.8.0 s
 [`tests/fixtures/examples/`](../tests/fixtures/examples/README.md) umgezogen. Sie sind Testdaten, und die Tests
 vergleichen ihre PDFs Byte für Byte.
 
-Blätter für Postensetzer, Mannschafts-OL, eine Schulhofkarte und eine Waldkarte folgen später.
+Blätter für Postensetzer, Mannschafts-OL und eine Schulhofkarte folgen später, ebenso Bahnen auf einer Waldkarte.

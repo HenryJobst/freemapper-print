@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- A forest example, `examples/siebengebirge-views`: one generated forest map printed complete, as contour orienteering (contours only) and as ultimate orienteering (no paths), with a comparison image. The manual shows training views in chapter 6 with it (ADR 0075).
 - The editor and the MCP server know training views (ADR 0071, amendment): the layout form of the editor has a field for the view, `set_layout` takes `view`, and `export_project` takes `views` for a single export, as `export --view` does.
 - Two badges in the READMEs: the number of tests and the test budget (10 min). `docs/tests.json` holds both; `scripts/check.sh tests` counts the `#[test]` in the sources and fails on a difference (`tests --fix` rewrites it), and the Linux test run in CI fails when it exceeds the budget (ADR 0074).
 

@@ -1,0 +1,83 @@
+# freemapper-print event project file, format 1
+# Paths are relative to this file.
+
+format = 1
+
+[event]
+title = "Siebengebirge"
+lang = "de"
+
+[sources]
+map = "siebengebirge.omap"
+
+[map]
+kind = "forest"
+# Der Informationsblock der Karte nennt 5 m.
+contour_interval_m = 5.0
+
+# Quellenangaben und Namensnennung stehen in der Fußzeile links unten, unter dem Kartenausschnitt.
+[print]
+copyright = """
+Karte: freemapper, © OpenStreetMap-Mitwirkende (ODbL), Geobasisdaten © Geobasis NRW 2026 (dl-de/zero-2-0)
+"""
+
+[[shared]]
+id = "title"
+kind = "title_block"
+lines = [
+    "{event}",
+    "1:{print_scale} · Äquidistanz {contour_interval}",
+]
+anchor = { to = "map_frame", corner = "top_left", offset_mm = [2.0, 2.0] }
+
+[[shared]]
+id = "scale_check_bar"
+kind = "scale_check_bar"
+anchor = { to = "map_frame", corner = "bottom_right", offset_mm = [2.0, 2.0] }
+
+# Drei Layouts auf demselben Kartenausschnitt. Sie unterscheiden sich nur in `view` und in der Zeile, die das Blatt
+# benennt. `view` lässt Symbole weg, bevor die Karte gezeichnet wird (ADR 0071).
+
+[[layouts]]
+id = "vollstaendig"
+paper = "A4"
+orientation = "landscape"
+print_scale = 7500
+map_frame = { margin_mm = 12.0 }
+
+[[layouts.elements]]
+id = "variant"
+kind = "text"
+lines = ["Vollständige Karte"]
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+# Isohypsen-OL: nur die Höhenlinien (101 Höhenlinie, 102 Zählkurve, 103 Hilfshöhenlinie) und die Nordlinien (601.1), kein Weg, kein Wasser, keine
+# Vegetation. Rahmen, Namensnennung, Titelblock und Maßstabsbalken bleiben.
+[[layouts]]
+id = "isohypsen"
+paper = "A4"
+orientation = "landscape"
+print_scale = 7500
+view = ["only:101,102,103,601.1"]
+map_frame = { margin_mm = 12.0 }
+
+[[layouts.elements]]
+id = "variant"
+kind = "text"
+lines = ["Isohypsen-OL: nur Höhenlinien"]
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }
+
+# Ultimate-OL: die Karte ohne Wege (502 bis 507 und die Unterarten). Straßen, Gelände, Wasser und Vegetation bleiben.
+[[layouts]]
+id = "ultimate"
+paper = "A4"
+orientation = "landscape"
+print_scale = 7500
+view = ["no-paths"]
+map_frame = { margin_mm = 12.0 }
+
+[[layouts.elements]]
+id = "variant"
+kind = "text"
+lines = ["Ultimate-OL: ohne Wege"]
+anchor = { to = "map_frame", corner = "top_right", offset_mm = [2.0, 2.0] }

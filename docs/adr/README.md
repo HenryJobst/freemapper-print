@@ -115,3 +115,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0072](0072-mutation-properties-sbom-complexity.md) | Mutation tests on the diff, property tests, SBOM and a complexity limit | Accepted | 2026-11-20 |
 | [0073](0073-crate-layers-as-a-gate.md) | The crate layers are a gate | Accepted | 2026-11-20 |
 | [0074](0074-test-count-and-budget.md) | The test count and the test budget are data | Accepted | 2026-11-20 |
+| [0075](0075-forest-example-on-a-generated-map.md) | A forest example on a generated map | Accepted | 2026-11-20 |
