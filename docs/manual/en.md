@@ -137,10 +137,10 @@ project folder or the file `freemapper-print.toml` in it.
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | the mask id and the messages |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` or `layout_wide`) | `direction` and `gap`, only together | the correction written and the message |
-| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `hide_shared` | the layout as the file now holds it, and `change` |
+| `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `view`, `hide_shared` | the layout as the file now holds it, and `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | the element and `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
-| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
+| `export_project` | `export` | `project`, `out_dir` | `courses`, `layouts`, `single_file`, `views` | the PDFs written with their size, the notes of the sheets and the reminder to print at actual size |
 | `check_update` | `update --check` | | | whether a newer version exists, with the version numbers and the release notes |
 | `install_update` | `update --yes` | | `confirm` | Installs only with `confirm` set to `true`; without it the tool returns an error. Installs the newest release and says that the running server keeps the old version until it is restarted |
 
@@ -396,7 +396,7 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 | `north_lines` | `"auto"` | `"auto"` adds north lines when the map has none; `"never"` never does |
 | `hide_parts` | empty | map parts the sheet leaves out, by their exact name in OOM |
 | `hide_shared` | empty | ids of shared elements this layout does not show |
-| `view` | empty | training view: `"no-paths"`, `"brown-only"`, `"no-north-lines"`, `"no:505,506"` or `"only:101,102"`; several entries combine, and a view without north lines also stops the generated ones. The information block, the credit lines, the course overprint and the masks stay. `render --view` and `export --view` set it from the command line; `export` then writes to `out/<view>` |
+| `view` | empty | training view: `"no-paths"`, `"brown-only"`, `"no-north-lines"`, `"no:505,506"` or `"only:101,102"`; several entries combine, and a view without north lines also stops the generated ones. The information block, the credit lines, the course overprint and the masks stay. `render --view` and `export --view` set it from the command line; `export` then writes to `out/<view>`. The MCP tool `set_layout` and the editor form set the key; `export_project` takes `views` for one export |
 | `elements` | empty | this layout's own sheet elements, chapter 7 |
 | `map_frame.margin_mm` | 8 | width of the passe-partout in mm, the same on every side; less than half the shorter paper side |
 | `map_frame.border_mm` | 0.25 | width of the frame line in mm, at most 20; 0 draws none |
@@ -1067,7 +1067,7 @@ These notes come from `render`, `check` and `export`:
   only): the footer lies on the map in the bottom-left corner. Use a project to put it below the map.
 - `render` prints freemapper's information block (title, scale, scale bar, credits) only with
   `--show-sheet-objects`. At another print scale it scales with the map, so a scale printed in it can be wrong.
-  North lines belong to the map and are always in the PDF.
+  North lines belong to the map and are in the PDF unless a training view (`--view`) leaves them out.
 
 ## 10. Messages and what to do
 
@@ -1553,7 +1553,7 @@ belongs to every layout. If you move one, the page asks once per element and ses
 "Move it" moves it in all layouts, because that is where it is stored.
 
 **Change a layout or an element.** Select a layout in the tree for the form with paper or free page size,
-orientation, print scale, passe-partout width, frame line width and north lines. Select an element for its form:
+orientation, print scale, passe-partout width, frame line width, north lines and training view (entries joined with `+`, for example `no-paths+no-north-lines`). Select an element for its form:
 anchor (Page or Map frame), corner or edge, the two distances, and the keys of its kind (lines and text size,
 image file and printed width, cell size, white box). The placeholder buttons insert the placeholders of chapter 7.
 Apply writes the change. A logo file is a path relative to the project file and must lie inside the project

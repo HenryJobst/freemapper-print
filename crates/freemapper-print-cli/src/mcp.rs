@@ -284,6 +284,9 @@ struct LayoutIn {
     north_lines: Option<NorthLinesIn>,
     /// Map parts the layout does not print, by name.
     hide_parts: Option<Vec<String>>,
+    /// Training view: words such as no-paths, brown-only, no-north-lines, no:505.1,506.1 or only:101,102. The layout
+    /// prints the map without the symbols the words leave out; an empty list prints it whole.
+    view: Option<Vec<String>>,
     /// Ids of shared elements the layout does not show.
     hide_shared: Option<Vec<String>>,
     /// Language of the messages: "de" or "en". Default: the language the server started with.
@@ -428,6 +431,10 @@ struct ExportIn {
     /// All courses as the pages of one PDF.
     #[serde(default)]
     single_file: bool,
+    /// Training view for this export only, as for set_layout's view; the words combine. It comes on top of the
+    /// view a layout carries.
+    #[serde(default)]
+    views: Vec<String>,
     /// Language of the messages: "de" or "en". Default: the language the server started with.
     lang: Option<String>,
 }
@@ -1451,7 +1458,7 @@ impl PrintServer {
     #[tool(
         description = "Add a layout to the project file, or change the layout with this id. A key left \
                        out keeps its value, or takes the default for a new layout. The elements of the \
-                       layout stay as they are; set_element changes them. Returns the layout as the \
+                       layout stay as they are; view sets a training view that leaves symbols out; set_element changes them. Returns the layout as the \
                        file now reads, and change: added, changed or unchanged."
     )]
     async fn set_layout(
@@ -1472,6 +1479,7 @@ impl PrintServer {
             crop,
             north_lines,
             hide_parts,
+            view,
             hide_shared,
             lang,
         } = args;
@@ -1489,6 +1497,7 @@ impl PrintServer {
                 crop,
                 north_lines: north_lines.map(NorthLines::from),
                 hide_parts,
+                view,
                 hide_shared,
             })
             .map_err(|e| op_message(texts, e))?;
@@ -1602,7 +1611,8 @@ impl PrintServer {
                        instead. layouts prints the named layouts without courses and does not go \
                        with courses or single_file. The tool replaces a PDF of the same name in \
                        out_dir. Returns the files with their size, the notes of the sheets and the \
-                       reminder to print at actual size. At most 200 files and 200 notes come \
+                       reminder to print at actual size. views adds a training view for this export, as the layout's \
+                       view key does (see set_layout). At most 200 files and 200 notes come \
                        back; more_files and more count the rest. When the client cancels the call, the export stops after the sheet \
                        it is drawing."
     )]
@@ -1617,6 +1627,7 @@ impl PrintServer {
             courses,
             layouts,
             single_file,
+            views,
             lang,
         } = args;
         let (texts, path) = match self.prepare(lang.as_deref(), &project) {
@@ -1658,7 +1669,7 @@ impl PrintServer {
                     courses,
                     single_file,
                     out_dir: Some(out_dir),
-                    views: Vec::new(),
+                    views,
                 },
                 &mut |progress| {
                     if let ops::export::ExportProgress::Page { mode, page } = &progress
@@ -2986,6 +2997,66 @@ mod tests {
         assert_eq!(layouts["files"][0]["layout"], "a3-3000", "{layouts}");
         assert!(layouts["files"][0].get("course").is_none(), "{layouts}");
         assert_eq!(only_whole_pdfs(out.path()), 4);
+    }
+
+    #[tokio::test]
+    async fn a_training_view_is_set_on_a_layout_and_given_to_an_export() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        let set = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "view": ["no-paths", "no-north-lines"] }),
+            )
+            .await;
+        assert_eq!(
+            set["layout"]["view"],
+            json!(["no-paths", "no-north-lines"]),
+            "{set}"
+        );
+        // Keys left out keep the view.
+        let kept = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "margin_mm": 9.0 }),
+            )
+            .await;
+        assert_eq!(
+            kept["layout"]["view"],
+            json!(["no-paths", "no-north-lines"]),
+            "{kept}"
+        );
+        let cleared = client
+            .ok(
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "view": [] }),
+            )
+            .await;
+        assert!(cleared["layout"].get("view").is_none(), "{cleared}");
+        let message = client
+            .refused(
+                "set_layout",
+                json!({ "project": project, "id": "a4-4000", "view": ["bogus"] }),
+            )
+            .await;
+        assert!(message.contains("bogus"), "{message}");
+        let out = tempfile::tempdir().unwrap();
+        let message = client
+            .refused(
+                "export_project",
+                json!({ "project": project, "out_dir": out.path(), "layouts": ["a4-4000"], "views": ["bogus"] }),
+            )
+            .await;
+        assert!(message.contains("bogus"), "{message}");
+        let exported = client
+            .ok(
+                "export_project",
+                json!({ "project": project, "out_dir": out.path(), "layouts": ["a4-4000"], "views": ["brown-only"] }),
+            )
+            .await;
+        assert_eq!(exported["files"][0]["layout"], "a4-4000", "{exported}");
+        assert_eq!(only_whole_pdfs(out.path()), 1);
     }
 
     #[tokio::test]

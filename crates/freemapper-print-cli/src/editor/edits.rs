@@ -101,6 +101,7 @@ struct LayoutBody {
     crop: Option<bool>,
     north_lines: Option<NorthLines>,
     hide_parts: Option<Vec<String>>,
+    view: Option<Vec<String>>,
     hide_shared: Option<Vec<String>>,
 }
 
@@ -124,6 +125,7 @@ fn set_layout(
             crop: a.crop,
             north_lines: a.north_lines,
             hide_parts: a.hide_parts,
+            view: a.view,
             hide_shared: a.hide_shared,
         })?)
     })
