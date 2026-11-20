@@ -9,7 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order.
+- ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order. Two measurements are added: `cargo nextest` gains nothing on 723 tests (the earlier figure came from a noisy run, the rejection stands), and `opt-level = 3` for dependencies cuts the test run from 4:03 to 0:48 min but lengthens the cold build from 4:16 to 13:05 min, so no profile is added.
 
 ### Changed
 
