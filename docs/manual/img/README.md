@@ -20,7 +20,7 @@ Every caption in the manual names the map author.
 ## How they were made
 
 Nothing here is a photograph or a drawing. Each sheet is a PDF from `freemapper-print export` (or `render` for the
-first figure), converted with `pdftoppm` at 110 to 200 dpi and saved as JPEG (quality 80 to 84) or PNG. The detail
+first figure), converted with `pdftoppm` at 110 to 200 dpi and saved first as JPEG (quality 80 to 84) or PNG and then converted to WebP (ADR 0076): lossy at quality 88 for the sheets, lossless for the description box and the editor screenshot. The detail
 figures are crops of such pages. The two editor figures are 1400 × 900 pixel screenshots of
 `freemapper-print edit --no-browser` with the German interface, driven with `playwright-cli`.
 
@@ -44,21 +44,21 @@ The project files and the course file are not in the repository. The settings th
   millimetres beyond start and finish. The second hole is copied into the polygon of the first.
 - Scale figure: the same section at `print_scale` 4000 and 3000, each cropped to 80 mm × 60 mm on paper.
 - Plain map figure: `render rummelsburg.omap --paper a3` without a project.
-- Layout figures (`sheet-passe-partout.jpg`, `sheet-elements.jpg`) show layout sheets without a course. Their
+- Layout figures (`sheet-passe-partout.webp`, `sheet-elements.webp`) show layout sheets without a course. Their
   event names ("Park am Gleisdreieck", "Stadtsprint Rummelsburg") and the logo are made up.
 
 ## Files
 
 | File | Chapter | Content |
 |---|---|---|
-| `render-map.jpg` | 9 | `render`, whole Rummelsburg map on A3 |
-| `sheet-passe-partout.jpg` | 6 | passe-partout, frame line and credit line |
-| `sheet-elements.jpg` | 7 | title block, logo, scale check bar, credit line |
-| `scale-comparison.jpg` | 9 | 1:4000 next to 1:3000 |
-| `course-sheet.jpg` | 8 | course "A" sheet with overprint and description box |
-| `description-box.png` | 8 | the description box of course "A" |
-| `course-detail.jpg` | 8 | circles, legs and control numbers 4 to 6 |
-| `mask-window.jpg` | 11 | window mask, default windows, course "A" |
-| `mask-corridor.jpg` | 11 | corridor mask, course "B" |
-| `editor-element.jpg` | 12 | the editor with an element form |
-| `editor-window-mask.png` | 12 | the editor after adding a window mask |
+| `render-map.webp` | 9 | `render`, whole Rummelsburg map on A3 |
+| `sheet-passe-partout.webp` | 6 | passe-partout, frame line and credit line |
+| `sheet-elements.webp` | 7 | title block, logo, scale check bar, credit line |
+| `scale-comparison.webp` | 9 | 1:4000 next to 1:3000 |
+| `course-sheet.webp` | 8 | course "A" sheet with overprint and description box |
+| `description-box.webp` | 8 | the description box of course "A" |
+| `course-detail.webp` | 8 | circles, legs and control numbers 4 to 6 |
+| `mask-window.webp` | 11 | window mask, default windows, course "A" |
+| `mask-corridor.webp` | 11 | corridor mask, course "B" |
+| `editor-element.webp` | 12 | the editor with an element form |
+| `editor-window-mask.webp` | 12 | the editor after adding a window mask |

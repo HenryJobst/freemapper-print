@@ -1,10 +1,10 @@
-# 0076. Example preview images as WebP
+# 0076. Example previews and manual figures as WebP
 
 Date: 2026-11-20
 Status: Accepted
 
 ## Context
-Each example in `examples/` has a `preview.jpg` of its sheet. The sibling project freemapper uses WebP for its
+Each example in `examples/` has a `preview.jpg` of its sheet, and the manual has eleven figures as JPEG or PNG. The sibling project freemapper uses WebP for its
 previews. WebP shows the sharp text and thin lines of a map sheet in a smaller file, and GitHub renders it in a
 README.
 
@@ -14,7 +14,8 @@ README.
   smaller than the JPEGs at quality 80 to 82.
 - The READMEs and the manual point to the WebP files, and the commands in the READMEs that made the JPEGs now write
   WebP. A new preview is made from its PDF with `pdftoppm` and `magick`, as before.
-- The figures of the manual in `docs/manual/img/` stay as they are; this decision covers the example previews.
+- The figures of the manual in `docs/manual/img/` are WebP as well: lossy at quality 88 for the sheets (from the
+  JPEG files), lossless for the two PNG files (`description-box`, `editor-window-mask`). The README of that folder says so.
 - Logos in test projects stay PNG and JPEG, because the PDF writer embeds those formats.
 
 ## Consequences

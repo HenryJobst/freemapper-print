@@ -15,7 +15,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
-- Die Vorschaubilder der Beispiele sind WebP (`preview.webp`) statt JPEG, und die READMEs und das Handbuch verweisen darauf (Entscheidung 0076).
+- Die Vorschaubilder der Beispiele und die Abbildungen des Handbuchs sind WebP statt JPEG und PNG, und die READMEs und das Handbuch verweisen darauf (Entscheidung 0076).
 
 ## [0.12.1] - 2026-11-20
 
