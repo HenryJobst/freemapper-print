@@ -414,7 +414,7 @@ because that would falsify the scale. If the map reaches beyond it, `check` says
 (chapter 9). The frame line is centred on the edge of the map frame: one half covers the cut edge of the map,
 the other lies on the passe-partout.
 
-![An A4 landscape sheet with a wide white passe-partout around the map frame, a title block at the top left and the credit line below the frame](img/sheet-passe-partout.jpg)
+![An A4 landscape sheet with a wide white passe-partout around the map frame, a title block at the top left and the credit line below the frame](img/sheet-passe-partout.webp)
 
 *An A4 sheet with a 30 mm passe-partout and `crop = true`: the map ends at the frame line, and the credit line sits below it in the passe-partout. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -522,7 +522,7 @@ reaches into the map frame gets a note, and so does an element that reaches past
 
 Other keys apply only to some kinds. A key on the wrong kind is an error.
 
-![An A4 sheet with a title block at the top left, a round logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame](img/sheet-elements.jpg)
+![An A4 sheet with a title block at the top left, a round logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame](img/sheet-elements.webp)
 
 *A layout sheet with title block, logo, scale check bar and credit line (the logo is a mark drawn for this example). Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -766,7 +766,7 @@ bad file never produces a sheet. The exit code is 1.
 
 ### Course sheets and the overprint
 
-![An A4 portrait sheet with the map, the purple course A with eight controls and numbers, the title block at the top left and the description box at the top right](img/course-sheet.jpg)
+![An A4 portrait sheet with the map, the purple course A with eight controls and numbers, the title block at the top left and the description box at the top right](img/course-sheet.webp)
 
 *The sheet of course "A" (2.4 km, eight controls) at 1:4000 with overprint, numbers, title block and description box. The course was made with freemapper-courseplan 0.14.1. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -821,7 +821,7 @@ climb, the start, one row per control with number, code and the symbols for the 
 routes and map exchanges with their length, and the finish. The secondary title of a course from Purple Pen gets
 its own row, and a map flip the row 15.6. A score course lists its controls by code, the way Purple Pen does.
 
-![A table with the title, course A with 2.4 km, the start, eight rows with number, code and symbol, and the finish row](img/description-box.png)
+![A table with the title, course A with 2.4 km, the start, eight rows with number, code and symbol, and the finish row](img/description-box.webp)
 
 *The description box of course "A" with title, length (2.4 km), start, eight controls and finish. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -882,7 +882,7 @@ When the program places a number itself, it follows four rules. The user rules o
    outer bisector, between the two legs on their outer side.
 4. If the preferred place is blocked, the free place that deviates least from it wins.
 
-![A detail of the sheet with controls 4, 5 and 6, their circles, the purple legs between them and the numbers beside them](img/course-detail.jpg)
+![A detail of the sheet with controls 4, 5 and 6, their circles, the purple legs between them and the numbers beside them](img/course-detail.webp)
 
 *Controls 4 to 6 of course "A" with circle, leg and number. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -996,7 +996,7 @@ them below the map. If the box covers part of the map, `render` says so; a proje
 puts the footer below the map. First the program writes a line with the paper, the print scale and the factors,
 then come notes and a reminder to print at actual size.
 
-![An A3 landscape page with the whole map of Rummelsburg in the middle and the credit line in small type at the bottom left](img/render-map.jpg)
+![An A3 landscape page with the whole map of Rummelsburg in the middle and the credit line in small type at the bottom left](img/render-map.webp)
 
 *Output of `render` for the Rummelsburg map: A3 landscape at 1:4000, the whole map on one page. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -1038,7 +1038,7 @@ symbol. A sprint map at 1:3000, which the standard recommends for the youngest a
 133 %: a small footpath is 0.36 mm wide instead of 0.27 mm. A forest map grows to 150 % at 1:10000, 200 % at
 1:7500 and 300 % at 1:5000. The map needs correspondingly more paper.
 
-![Two map sections side by side, 1:4000 on the left and 1:3000 on the right; symbols and lines are larger on the right](img/scale-comparison.jpg)
+![Two map sections side by side, 1:4000 on the left and 1:3000 on the right; symbols and lines are larger on the right](img/scale-comparison.webp)
 
 *The same spot on the map at 1:4000 (left) and 1:3000 (right), each 80 mm × 60 mm from an A4 sheet at actual size. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -1353,7 +1353,7 @@ Control 34 has a window of 19.73 mm radius instead of 30 mm, to keep the gap.
 The finish has a window of 19.73 mm radius instead of 30 mm, to keep the gap.
 ```
 
-![An A4 portrait sheet where the map shows only in ten separate round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.jpg)
+![An A4 portrait sheet where the map shows only in ten separate round windows around start, controls and finish, with white paper and the purple legs between them](img/mask-window.webp)
 
 *Course "A" with a mask for window orienteering (`masks window --course A --assign`, defaults otherwise): ten windows of 15 mm radius on paper around start, controls and finish. None touches another, and white paper lies between them. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -1391,7 +1391,7 @@ command does not write a branch or a second corridor for the same course. For th
 an `--id` for each piece, then copy the second ring (the hole) of one piece into the polygon of the other. Holes
 may overlap. Delete the table you no longer need.
 
-![A landscape sheet with a narrow strip of map that runs along the legs through all five controls and crosses itself, white paper elsewhere and the description box at the top right](img/mask-corridor.jpg)
+![A landscape sheet with a narrow strip of map that runs along the legs through all five controls and crosses itself, white paper elsewhere and the description box at the top right](img/mask-corridor.webp)
 
 *Course "B" with a corridor mask (`masks corridor --width 12`) on a sheet of 190 mm × 160 mm (`page_mm`). Legs 1 to 2 and 4 to 5 of the course cross, so the corridor was made in two pieces and merged, as described above. Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -1552,7 +1552,7 @@ gone." and offers a Reload button.
   (Zoom in, Zoom out, Fit the page), Export (This sheet as PDF, All sheets as PDFs, All courses as one PDF).
 - **Status bar** (bottom): the last message, the project, the print scale and the page size.
 
-![The editor in the browser: the project tree on the left, the sheet preview in the middle, the form of the title block on the right and the notes below the preview](img/editor-element.jpg)
+![The editor in the browser: the project tree on the left, the sheet preview in the middle, the form of the title block on the right and the notes below the preview](img/editor-element.webp)
 
 *The editor with the title block selected: project tree on the left, sheet preview in the middle, form on the right, notes below the preview (German interface). Map: Remo Madella, MOO Challenge Berlin 2025.*
 
@@ -1595,7 +1595,7 @@ own radii (`35=20`), the gap between windows, "No window at the start", "No wind
 millimetres on paper. A window mask
 needs a course file.
 
-![The editor after adding a window mask: the preview shows the map only in round windows, the mask window-A is in the tree and its properties are on the right](img/editor-window-mask.png)
+![The editor after adding a window mask: the preview shows the map only in round windows, the mask window-A is in the tree and its properties are on the right](img/editor-window-mask.webp)
 
 *The editor after "Add the window mask" ("Fenstermaske anlegen" in the German interface): the preview shows the windows, and the mask "window-A" is in the tree. Map: Remo Madella, MOO Challenge Berlin 2025.*
 

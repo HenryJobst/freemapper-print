@@ -15,7 +15,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
-- The preview images of the examples are WebP (`preview.webp`) instead of JPEG, and the READMEs and the manual point to them (ADR 0076).
+- The preview images of the examples and the figures of the manual are WebP instead of JPEG and PNG, and the READMEs and the manual point to them (ADR 0076).
 
 ## [0.12.1] - 2026-11-20
 

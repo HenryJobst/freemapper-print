@@ -12,7 +12,7 @@
 <!-- claude-cost:end -->
 [Was die Zahl bedeutet](docs/ai-cost/README.md)
 
-<p align="center"><a href="examples/README.md"><img src="docs/manual/img/sheet-elements.jpg" alt="Ein A4-Blatt in 1:4000 auf der Karte Gleisdreieck mit Titelblock links oben, Kompass-Logo links unten, Kontrollstrecke rechts unten und der Namensnennung unter dem Rahmen" width="760"></a><br><sub>Ein Blatt auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge Berlin 2025): A4 quer in 1:4000 mit Titelblock, Logo, Kontrollstrecke und Namensnennung. Ein Klick öffnet die <a href="examples/README.md">Beispiele</a>.</sub></p>
+<p align="center"><a href="examples/README.md"><img src="docs/manual/img/sheet-elements.webp" alt="Ein A4-Blatt in 1:4000 auf der Karte Gleisdreieck mit Titelblock links oben, Kompass-Logo links unten, Kontrollstrecke rechts unten und der Namensnennung unter dem Rahmen" width="760"></a><br><sub>Ein Blatt auf der Karte „Gleisdreieck“ von Remo Madella (MOO Challenge Berlin 2025): A4 quer in 1:4000 mit Titelblock, Logo, Kontrollstrecke und Namensnennung. Ein Klick öffnet die <a href="examples/README.md">Beispiele</a>.</sub></p>
 
 freemapper-print macht aus einer fertigen OL-Karte und den Bahnen aus einem Bahnlegungsprogramm die
 druckfertigen Kartenblätter, ein Blatt je Bahn. Es ist das Gegenstück zu
@@ -92,7 +92,7 @@ und Rummelsburg (MOO Challenge Berlin 2025), die hier mit seiner Erlaubnis stehe
 mit freemapper-courseplan 0.14.1 gemacht, Datum und Verein auf den Blättern sind erfunden. Ein Klick auf ein Bild
 öffnet das Kapitel, das es erklärt.
 
-<a href="docs/manual/de.md#fenster-um-die-posten-masks-window"><img src="docs/manual/img/mask-window.jpg" width="440"
+<a href="docs/manual/de.md#fenster-um-die-posten-masks-window"><img src="docs/manual/img/mask-window.webp" width="440"
 alt="Fenster-OL auf der Karte Gleisdreieck, A4 hochkant in 1:4000: die Karte nur in zehn getrennten runden Fenstern um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken"></a>
 
 **Fenster-OL** (Gleisdreieck, Remo Madella): `masks window --course A --assign` mit den Voreinstellungen legt zehn
@@ -100,27 +100,27 @@ Fenster von 15 mm Radius auf dem Papier um Start, Posten und Ziel. Zwischen zwei
 weißes Papier; wo zwei Posten nah beieinander liegen, werden die Fenster kleiner. Hier liegt kein Postenpaar so nah.
 Mehr im Kapitel [Fenster um die Posten](docs/manual/de.md#fenster-um-die-posten-masks-window).
 
-<a href="docs/manual/de.md#ein-korridor-entlang-einer-linie-masks-corridor"><img src="docs/manual/img/mask-corridor.jpg" width="640"
+<a href="docs/manual/de.md#ein-korridor-entlang-einer-linie-masks-corridor"><img src="docs/manual/img/mask-corridor.webp" width="640"
 alt="Korridor-OL auf der Karte Gleisdreieck: ein schmaler Streifen Karte entlang der Strecken durch alle fünf Posten, sonst weißes Papier, oben rechts die Postenbeschreibung"></a>
 
 **Korridor-OL** (Gleisdreieck, Remo Madella): Bahn B mit fünf Posten (1,4 km) in einem Korridor von 12 mm Breite
 entlang ihrer Strecken. Zwei Strecken kreuzen sich, deshalb entsteht der Korridor aus zwei Stücken. Mehr im Kapitel
 [Ein Korridor entlang einer Linie](docs/manual/de.md#ein-korridor-entlang-einer-linie-masks-corridor).
 
-<a href="docs/manual/de.md#wie-groß-die-symbole-sind"><img src="docs/manual/img/scale-comparison.jpg" width="640"
+<a href="docs/manual/de.md#wie-groß-die-symbole-sind"><img src="docs/manual/img/scale-comparison.webp" width="640"
 alt="Dieselbe Stelle der Karte Gleisdreieck in 1:4000 links und in 1:3000 rechts; rechts sind Symbole und Linien größer"></a>
 
 **Zwei Maßstäbe** (Gleisdreieck, Remo Madella): dieselbe Stelle in 1:4000 und in 1:3000, je 80 mm × 60 mm in
 Originalgröße. Bei 1:3000 wachsen alle Symbole nach ISSprOM auf 133 %. Mehr im Kapitel
 [Wie groß die Symbole sind](docs/manual/de.md#wie-groß-die-symbole-sind).
 
-<a href="docs/manual/de.md#das-pdf-erzeugen"><img src="docs/manual/img/render-map.jpg" width="640"
+<a href="docs/manual/de.md#das-pdf-erzeugen"><img src="docs/manual/img/render-map.webp" width="640"
 alt="Die ganze Karte Rummelsburg auf einer A3-Seite quer in 1:4000, in der Mitte, mit der Namensnennung in kleiner Schrift unten links"></a>
 
 **Nur die Karte** (Rummelsburg, Remo Madella): `render` schreibt die ganze Karte als PDF auf eine A3-Seite in 1:4000,
 ohne Projektdatei. Mehr im Kapitel [Das PDF erzeugen](docs/manual/de.md#das-pdf-erzeugen).
 
-<a href="docs/manual/de.md#12-der-editor-im-browser"><img src="docs/manual/img/editor-window-mask.png" width="640"
+<a href="docs/manual/de.md#12-der-editor-im-browser"><img src="docs/manual/img/editor-window-mask.webp" width="640"
 alt="Der Editor im Browser: links der Projektbaum, in der Mitte die Blattvorschau mit der Karte Gleisdreieck in runden Fenstern, rechts die Eigenschaften der Abdeckung window-A"></a>
 
 **Der Editor** (Gleisdreieck, Remo Madella): die Blattvorschau ist genau das spätere PDF. Hier steht die Fenstermaske

@@ -12,7 +12,7 @@
 <!-- claude-cost:end -->
 [What the number means](docs/ai-cost/README.md#english)
 
-<p align="center"><a href="examples/README.en.md"><img src="docs/manual/img/sheet-elements.jpg" alt="An A4 sheet at 1:4000 on the Gleisdreieck map with a title block at the top left, a compass logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame" width="760"></a><br><sub>A sheet on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 2025): A4 landscape at 1:4000 with title block, logo, scale check bar and credit line. Click to open the <a href="examples/README.en.md">examples</a>.</sub></p>
+<p align="center"><a href="examples/README.en.md"><img src="docs/manual/img/sheet-elements.webp" alt="An A4 sheet at 1:4000 on the Gleisdreieck map with a title block at the top left, a compass logo at the bottom left, a scale check bar at the bottom right and the credit line below the frame" width="760"></a><br><sub>A sheet on the map "Gleisdreieck" by Remo Madella (MOO Challenge Berlin 2025): A4 landscape at 1:4000 with title block, logo, scale check bar and credit line. Click to open the <a href="examples/README.en.md">examples</a>.</sub></p>
 
 freemapper-print turns a finished orienteering map and the courses from a course-setting program into
 ready-to-print sheets, one sheet per course. It is the counterpart to
@@ -90,7 +90,7 @@ Rummelsburg (MOO Challenge Berlin 2025), used here with his permission. The cour
 freemapper-courseplan 0.14.1; the date and the club on the sheets are made up. A click on a picture opens the
 chapter that explains it.
 
-<a href="docs/manual/en.md#windows-around-the-controls-masks-window"><img src="docs/manual/img/mask-window.jpg" width="440"
+<a href="docs/manual/en.md#windows-around-the-controls-masks-window"><img src="docs/manual/img/mask-window.webp" width="440"
 alt="Window orienteering on the Gleisdreieck map, A4 portrait at 1:4000: the map only in ten separate round windows around start, controls and finish, white paper with the purple legs between them"></a>
 
 **Window orienteering** (Gleisdreieck, Remo Madella): `masks window --course A --assign` with its defaults puts ten
@@ -98,27 +98,27 @@ windows of 15 mm radius on paper around start, controls and finish. At least 3 m
 windows, and windows get smaller where two controls lie close together; here no pair does. More in the chapter
 [Windows around the controls](docs/manual/en.md#windows-around-the-controls-masks-window).
 
-<a href="docs/manual/en.md#a-corridor-along-a-line-masks-corridor"><img src="docs/manual/img/mask-corridor.jpg" width="640"
+<a href="docs/manual/en.md#a-corridor-along-a-line-masks-corridor"><img src="docs/manual/img/mask-corridor.webp" width="640"
 alt="Corridor orienteering on the Gleisdreieck map: a narrow strip of map along the legs through all five controls, white paper elsewhere, the control descriptions at the top right"></a>
 
 **Corridor orienteering** (Gleisdreieck, Remo Madella): course B with five controls (1.4 km) in a corridor 12 mm
 wide along its legs. Two legs cross, so the corridor is made in two pieces. More in the chapter
 [A corridor along a line](docs/manual/en.md#a-corridor-along-a-line-masks-corridor).
 
-<a href="docs/manual/en.md#how-large-the-symbols-are"><img src="docs/manual/img/scale-comparison.jpg" width="640"
+<a href="docs/manual/en.md#how-large-the-symbols-are"><img src="docs/manual/img/scale-comparison.webp" width="640"
 alt="The same spot on the Gleisdreieck map at 1:4000 on the left and at 1:3000 on the right; symbols and lines are larger on the right"></a>
 
 **Two scales** (Gleisdreieck, Remo Madella): the same spot at 1:4000 and at 1:3000, each 80 mm × 60 mm at actual
 size. At 1:3000 every symbol grows to 133 % as ISSprOM requires. More in the chapter
 [How large the symbols are](docs/manual/en.md#how-large-the-symbols-are).
 
-<a href="docs/manual/en.md#creating-the-pdf"><img src="docs/manual/img/render-map.jpg" width="640"
+<a href="docs/manual/en.md#creating-the-pdf"><img src="docs/manual/img/render-map.webp" width="640"
 alt="The whole Rummelsburg map on an A3 landscape page at 1:4000, with the credit line in small type at the bottom left"></a>
 
 **The map alone** (Rummelsburg, Remo Madella): `render` writes the whole map as a PDF on an A3 page at 1:4000, without
 a project file. More in the chapter [Creating the PDF](docs/manual/en.md#creating-the-pdf).
 
-<a href="docs/manual/en.md#12-the-editor-in-the-browser"><img src="docs/manual/img/editor-window-mask.png" width="640"
+<a href="docs/manual/en.md#12-the-editor-in-the-browser"><img src="docs/manual/img/editor-window-mask.webp" width="640"
 alt="The editor in the browser: the project tree on the left, the sheet preview with the Gleisdreieck map in round windows in the middle, the properties of the mask window-A on the right"></a>
 
 **The editor** (Gleisdreieck, Remo Madella; German interface): the sheet preview is exactly what the PDF will show.
