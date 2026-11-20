@@ -7,7 +7,7 @@ Wege). Die Karte „Siebengebirge“ um den Drachenfels bei Königswinter hat fr
 im Gelände nicht geprüft. Die Beispiele auf den Karten von Remo Madella sind Sprintkarten, eine fertige Waldkarte aus
 OCAD lag nicht vor.
 
-![Links die vollständige Karte, in der Mitte der Isohypsen-OL, rechts der Ultimate-OL, alle in 1:7500 auf A4 quer](preview.jpg)
+![Links die vollständige Karte, in der Mitte der Isohypsen-OL, rechts der Ultimate-OL, alle in 1:7500 auf A4 quer](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -17,7 +17,7 @@ OCAD lag nicht vor.
 | `out/vollstaendig.pdf` | die ganze Karte (0,15 MB) |
 | `out/isohypsen.pdf` | nur Höhenlinien und Nordlinien (0,07 MB) |
 | `out/ultimate.pdf` | die Karte ohne Wege (0,12 MB) |
-| `preview.jpg` | die drei Blätter nebeneinander |
+| `preview.webp` | die drei Blätter nebeneinander |
 
 ## Warum dieses Gebiet
 

@@ -473,7 +473,7 @@ a sheet without paths use `no-paths`.
 The example [`siebengebirge-views`](../../examples/siebengebirge-views/README.en.md) prints one forest map three
 times, complete, as contour orienteering and without paths:
 
-![The same forest map three times at 1:7500: complete, contours only and without paths](../../examples/siebengebirge-views/preview.jpg)
+![The same forest map three times at 1:7500: complete, contours only and without paths](../../examples/siebengebirge-views/preview.webp)
 
 ```toml
 [[layouts]]

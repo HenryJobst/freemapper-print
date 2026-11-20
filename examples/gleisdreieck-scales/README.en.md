@@ -6,7 +6,7 @@ The same section of one sprint map printed twice: at 1:4000 on A4 and at 1:3000 
 Remo Madella, made for the MOO Challenge Berlin 2025. There are no courses. The event data is made up for the
 example.
 
-![1:4000 on A4 left, 1:3000 on A3 right, shown at the same scale](preview.jpg)
+![1:4000 on A4 left, 1:3000 on A3 right, shown at the same scale](preview.webp)
 
 | File | Content |
 |---|---|
@@ -15,7 +15,7 @@ example.
 | `ATTRIBUTION.txt` | author, event and the terms of use, German and English |
 | `out/a4-4000.pdf` | print at 1:4000 on A4 portrait (0.5 MB) |
 | `out/a3-3000.pdf` | print at 1:3000 on A3 portrait (0.7 MB) |
-| `preview.jpg` | both pages side by side, with a grey page frame |
+| `preview.webp` | both pages side by side, with a grey page frame |
 
 ## What the example shows
 
@@ -104,7 +104,7 @@ magick "$tmp/p4.png" -bordercolor gray60 -border 1 -background white -gravity no
   -font "$FONT" -pointsize 28 -annotate +0+4 "1:4000, A4" -bordercolor white -border 8 "$tmp/l4.png"
 magick "$tmp/p3.png" -bordercolor gray60 -border 1 -background white -gravity north -splice 0x40 \
   -font "$FONT" -pointsize 28 -annotate +0+4 "1:3000, A3" -bordercolor white -border 8 "$tmp/l3.png"
-magick "$tmp/l4.png" "$tmp/l3.png" -background white -gravity south +append -strip -quality 82 preview.jpg
+magick "$tmp/l4.png" "$tmp/l3.png" -background white -gravity south +append -strip -quality 88 -define webp:method=6 preview.webp
 rm -r "$tmp"
 ```
 

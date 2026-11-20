@@ -8,7 +8,7 @@ und das Ziel zu sehen. Dazwischen bleibt das Papier weiß, und die Läufer finde
 Kompass und Strecke. Strecken, Kreise, Nummern, Postenbeschreibung, Titel und Fußzeile druckt das Programm überall.
 Die Bahn ist für das Beispiel erfunden, ebenso die Veranstaltung und der Verein.
 
-![Das Blatt der Bahn A, A4 hoch in 1:4000: zehn runde Kartenfenster um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken](preview.jpg)
+![Das Blatt der Bahn A, A4 hoch in 1:4000: zehn runde Kartenfenster um Start, Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -18,7 +18,7 @@ Die Bahn ist für das Beispiel erfunden, ebenso die Veranstaltung und der Verein
 | `logos/kompass.svg` | das Vereinszeichen, ein Kompasszeichen, für dieses Beispiel gezeichnet (CC0) |
 | `ATTRIBUTION.txt` | Autor, Veranstaltung und Nutzungsbedingungen, deutsch und englisch |
 | `out/A.pdf` | das Blatt der Bahn A, A4 hoch, 1:4000 (0,5 MB) |
-| `preview.jpg` | dasselbe Blatt als Bild |
+| `preview.webp` | dasselbe Blatt als Bild |
 
 Die Blätter sind deutsch (`event.lang = "de"`). Das Projekt ist eine Kopie von
 [gleisdreieck-training](../gleisdreieck-training/README.md) mit einer Abdeckung auf Bahn A. Bahn B bleibt ohne
@@ -106,7 +106,7 @@ Das PDF entsteht aus den Befehlen oben. Die Vorschau:
 
 ```sh
 pdftoppm -r 105 -png -singlefile out/A.pdf preview
-magick preview.png -strip -sampling-factor 4:2:0 -quality 80 preview.jpg
+magick preview.png -strip -sampling-factor 4:2:0 -quality 88 -define webp:method=6 preview.webp
 rm preview.png
 ```
 

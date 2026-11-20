@@ -7,7 +7,7 @@ orienteering sheet (no paths). The map "Siebengebirge" around the Drachenfels ne
 freemapper from open data and has not been checked in the field. The examples on Remo Madella's maps are sprint maps,
 and no finished forest map from OCAD was at hand.
 
-![Left the complete map, in the middle the contour sheet, right the ultimate sheet, all at 1:7500 on A4 landscape](preview.jpg)
+![Left the complete map, in the middle the contour sheet, right the ultimate sheet, all at 1:7500 on A4 landscape](preview.webp)
 
 | File | Content |
 |---|---|
@@ -17,7 +17,7 @@ and no finished forest map from OCAD was at hand.
 | `out/vollstaendig.pdf` | the whole map (0.15 MB) |
 | `out/isohypsen.pdf` | contours and north lines only (0.07 MB) |
 | `out/ultimate.pdf` | the map without paths (0.12 MB) |
-| `preview.jpg` | the three sheets side by side |
+| `preview.webp` | the three sheets side by side |
 
 ## Why this area
 

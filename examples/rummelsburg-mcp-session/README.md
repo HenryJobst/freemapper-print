@@ -7,7 +7,7 @@ die Rummelsburger Bucht, eine Karte und die Bitte: „Mach daraus einen Fenster-
 das PDF in den Ordner out.“ Er braucht sechs Aufrufe. Die Sitzung lief wirklich, jede Anfrage und jede Antwort
 steht in `session.jsonl`. Der Agent legt das Projekt selbst an, und der Ordner dieses Beispiels ist das Ergebnis.
 
-![Das A3-Blatt der Trainingsbahn T als Fenster-OL in 1:4000: Karte nur in zehn runden Fenstern um Start, acht Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken](preview.jpg)
+![Das A3-Blatt der Trainingsbahn T als Fenster-OL in 1:4000: Karte nur in zehn runden Fenstern um Start, acht Posten und Ziel, dazwischen weißes Papier mit den violetten Strecken](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -18,7 +18,7 @@ steht in `session.jsonl`. Der Agent legt das Projekt selbst an, und der Ordner d
 | `rummelsburg-training.ppen` | die Bahn T als Purple-Pen-Datei von freemapper-courseplan 0.14.1, Eingabe der Sitzung |
 | `freemapper-print.toml` | die Projektdatei, wie die Sitzung sie hinterlassen hat |
 | `out/T.pdf` | das PDF der Sitzung, A3 quer, 1:4000, 0,2 MB |
-| `preview.jpg` | das PDF als Bild |
+| `preview.webp` | das PDF als Bild |
 | `ATTRIBUTION.txt` | Autor und Nutzungserlaubnis der Karte, Herkunft der Bahn |
 
 Die Bahn ist ausgedacht und das Training erfunden. Die Bahn T hat acht Posten (31 bis 38) und ist 2,0 km lang. Je
@@ -147,7 +147,7 @@ Meldung an und löscht keinen Ordner. Ohne das zweite Argument legt es einen neu
 legt Karte und Bahndatei dieses Beispiels nach `/tmp/mcp-session/Verein/rummelsburg-training`, spielt die Sitzung
 ab, schreibt `session.jsonl` neu und lässt das Projekt mit `freemapper-print.toml` und `out/T.pdf` dort zurück. Die
 Projektdatei und das PDF in diesem Beispiel sind Kopien davon. Die Vorschau kommt aus
-`pdftoppm -r 110 -png -singlefile` und `magick … -quality 82 preview.jpg`.
+`pdftoppm -r 110 -png -singlefile` und `magick … -quality 88 -define webp:method=6 preview.webp`.
 `python3 -I examples/rummelsburg-mcp-session/check_record_session.py` prüft ohne Build, dass das Skript einen Ordner
 mit Inhalt und eine Datei ablehnt und beide so lässt, wie sie waren.
 

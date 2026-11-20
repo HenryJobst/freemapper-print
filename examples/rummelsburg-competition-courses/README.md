@@ -8,7 +8,7 @@ in 1:4000. Jedes Blatt zeigt die Bahn mit Postennummern, die Postenbeschreibung,
 Querung. Lang hat dazu eine markierte Strecke ins Ziel. Der Ordner `iof/` enthält dieselben Bahnen als IOF-XML 3.0.
 Diese Blätter haben keine Postenbeschreibung, weil das Format keine kennt.
 
-![Das Blatt der Bahn Lang, A3 quer in 1:4000, mit dem Beschreibungskasten oben rechts](preview.jpg)
+![Das Blatt der Bahn Lang, A3 quer in 1:4000, mit dem Beschreibungskasten oben rechts](preview.webp)
 
 | Datei | Inhalt |
 |---|---|
@@ -20,7 +20,7 @@ Diese Blätter haben keine Postenbeschreibung, weil das Format keine kennt.
 | `out/Kurz.pdf`, `out/Mittel.pdf`, `out/Lang.pdf` | die Blätter der drei Bahnen aus `courses.ppen`, je 0,2 MB |
 | `iof/freemapper-print.toml` | die Projektdatei für `courses.xml`, sie liest die Karte aus dem Ordner darüber |
 | `iof/out/Kurz.pdf`, `iof/out/Mittel.pdf`, `iof/out/Lang.pdf` | dieselben Bahnen aus `courses.xml` |
-| `preview.jpg` | das Blatt der Bahn Lang |
+| `preview.webp` | das Blatt der Bahn Lang |
 
 Die Blätter sind deutsch (`event.lang = "de"`). Die Bahnen sind ausgedacht und die Veranstaltung ist erfunden:
 Titel, Datum und Verein gibt es nicht.
@@ -207,7 +207,7 @@ Die PDFs kommen aus `export`. Die Vorschau entsteht mit `pdftoppm` und ImageMagi
 ```sh
 tmp=$(mktemp -d)
 pdftoppm -r 110 -png -singlefile out/Lang.pdf "$tmp/lang"
-magick "$tmp/lang.png" -bordercolor gray60 -border 1 -bordercolor white -border 8 -quality 76 preview.jpg
+magick "$tmp/lang.png" -bordercolor gray60 -border 1 -bordercolor white -border 8 -quality 88 -define webp:method=6 preview.webp
 rm -r "$tmp"
 ```
 
