@@ -2329,6 +2329,55 @@ mod tests {
     }
 
     #[test]
+    fn a_logo_with_a_file_still_needs_a_width() {
+        let el = "[[shared]]\nid=\"lg\"\nkind=\"logo\"\nfile=\"l.svg\"\n[shared.anchor]\nto=\"page\"\ncorner=\"top\"\n";
+        let (_d, path) = temp_project(&format!("{HEAD}\n[[layouts]]\nid = \"a\"\n{el}"));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains("shared[0].width_mm") && msg.contains("a logo needs a `width_mm`"),
+            "{msg}"
+        );
+        assert!(!msg.contains("shared[0].file"), "{msg}");
+    }
+
+    #[test]
+    fn duplicate_shared_id() {
+        let el = |id: &str| {
+            format!(
+                "[[shared]]\nid=\"{id}\"\nkind=\"credit_line\"\n[shared.anchor]\nto=\"page\"\ncorner=\"top\"\n"
+            )
+        };
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n{}{}",
+            el("x"),
+            el("x")
+        ));
+        let err = load(&path).unwrap_err();
+        assert!(
+            matches!(&err, ProjectError::DuplicateId { field, id, .. } if field == "shared[1].id" && id == "x"),
+            "{err}"
+        );
+        // Two different ids load: the check is on the id, not on the number of elements.
+        let (_d, path) = temp_project(&format!(
+            "{HEAD}\n[[layouts]]\nid = \"a\"\n{}{}",
+            el("x"),
+            el("y")
+        ));
+        assert_eq!(load(&path).unwrap().project.shared.len(), 2);
+    }
+
+    #[test]
+    fn an_empty_courses_path_is_refused() {
+        let body = HEAD.replace("map = \"m.omap\"", "map = \"m.omap\"\ncourses = \"\"");
+        let (_d, path) = temp_project(&format!("{body}\n[[layouts]]\nid = \"a\"\n"));
+        let msg = load(&path).unwrap_err().to_string();
+        assert!(
+            msg.contains("sources.courses") && msg.contains("must not be empty"),
+            "{msg}"
+        );
+    }
+
+    #[test]
     fn hide_shared_must_exist() {
         let (_d, path) = temp_project(&format!(
             "{HEAD}\n[[layouts]]\nid = \"a\"\nhide_shared = [\"nope\"]\n"

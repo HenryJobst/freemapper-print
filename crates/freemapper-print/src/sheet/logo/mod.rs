@@ -1896,6 +1896,50 @@ mod tests {
         }
     }
 
+    /// A logo with every construct the pre-scan reads: declaration, comment, DOCTYPE with an
+    /// entity, character and entity references, both quote styles, a clip path and a `use`.
+    /// It ends at the closing tag, so no strict prefix is a whole document.
+    const SCANNED_SVG: &str = concat!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>"#,
+        r#"<!-- a logo -->"#,
+        r#"<!DOCTYPE svg [<!ENTITY fill "red">]>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width='100' height="100" viewBox="0 0 100 100">"#,
+        r#"<defs><clipPath id="c"><rect width="50" height="50"/></clipPath><path id="p" d="M0 0L10 0L10 10Z"/></defs>"#,
+        r##"<g clip-path="url(#c)" fill="&fill;"><use xlink:href="#p"/><rect x="&#x41;" width="5" height="5"/></g>"##,
+        r#"</svg>"#
+    );
+
+    #[test]
+    fn every_truncation_of_a_scanned_svg_is_refused() {
+        parse_svg(SCANNED_SVG.as_bytes()).expect("the whole logo is accepted");
+        for end in 0..SCANNED_SVG.len() {
+            let reason = parse_svg(&SCANNED_SVG.as_bytes()[..end]);
+            assert!(
+                reason.is_err(),
+                "a logo cut at byte {end} ({:?}) was accepted",
+                &SCANNED_SVG[end.saturating_sub(12)..end]
+            );
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn arbitrary_text_is_read_or_refused_never_a_panic(text in "\\PC{0,300}") {
+            // Only the outcome matters: a refusal is a reason, an acceptance a tree.
+            let _ = parse_svg(text.as_bytes());
+        }
+
+        #[test]
+        fn a_scanned_svg_with_one_byte_changed_is_read_or_refused(
+            at in 0..SCANNED_SVG.len(),
+            byte in proptest::sample::select(b"<>&;\"'/!?-[]#= \n".to_vec()),
+        ) {
+            let mut bytes = SCANNED_SVG.as_bytes().to_vec();
+            bytes[at] = byte;
+            let _ = parse_svg(&bytes);
+        }
+    }
+
     #[test]
     fn svg_deep_clip_paths_refused_before_parsing() {
         // Q1: groups with a clip path nested 300 deep. The byte scan refuses them, so no check
