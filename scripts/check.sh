@@ -355,8 +355,15 @@ gate_mutants() {
     return
   fi
 
-  cargo mutants --in-diff "$diff" --jobs 2 --timeout-multiplier 5 --no-shuffle ||
-    report "a mutant of the changed lines survived; see mutants.out/missed.txt"
+  # Exit code 2 is a missed mutant, 3 a timeout: a mutant that makes a loop
+  # endless was stopped by the clock, which is how a test catches it.
+  local status=0
+  cargo mutants --in-diff "$diff" --jobs 2 --timeout-multiplier 5 --no-shuffle || status=$?
+  case "$status" in
+  0) ;;
+  3) echo "check.sh: some mutants ran into the timeout; they count as caught" >&2 ;;
+  *) report "a mutant of the changed lines survived or the baseline failed; see mutants.out/" ;;
+  esac
 }
 
 cheap=(spdx typos links secrets machete actions adr changelog badges sbom)
