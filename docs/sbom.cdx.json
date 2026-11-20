@@ -3985,7 +3985,7 @@
       "version": "0.17.14"
     },
     {
-      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.6.0",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.9.0",
       "description": "Rust SDK for Model Context Protocol macros library",
       "externalReferences": [
         {
@@ -4004,7 +4004,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "2f55ef2d84752d676d735604548fcb65811504e23330d85670b0eff5f8735144"
+          "content": "b3140f24a766f80f9ec1607bde85680959a69b83d46fa9ce87dadab7e67ab029"
         }
       ],
       "licenses": [
@@ -4013,13 +4013,13 @@
         }
       ],
       "name": "rmcp-macros",
-      "purl": "pkg:cargo/rmcp-macros@3.6.0",
+      "purl": "pkg:cargo/rmcp-macros@3.9.0",
       "scope": "required",
       "type": "library",
-      "version": "3.6.0"
+      "version": "3.9.0"
     },
     {
-      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.6.0",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.9.0",
       "description": "Rust SDK for Model Context Protocol",
       "externalReferences": [
         {
@@ -4038,7 +4038,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "ceb42e9e47443cd83a834dea57b5816d35481417bae72ade5dc5615c59122e26"
+          "content": "d24a7e92f4bcaa36b97fa93c4fa7ca8f3e669eced949345b3462dba333c7f909"
         }
       ],
       "licenses": [
@@ -4047,10 +4047,10 @@
         }
       ],
       "name": "rmcp",
-      "purl": "pkg:cargo/rmcp@3.6.0",
+      "purl": "pkg:cargo/rmcp@3.9.0",
       "scope": "required",
       "type": "library",
-      "version": "3.6.0"
+      "version": "3.9.0"
     },
     {
       "author": "Yevhenii Reizner <razrfalcon@gmail.com>",
@@ -7369,7 +7369,7 @@
         "path+file://./crates/freemapper-print#0.13.0",
         "git+https://github.com/HenryJobst/freemapper-core?tag=v0.31.1#freemapper-text@0.31.1",
         "git+https://github.com/HenryJobst/freemapper-core?tag=v0.31.1#freemapper-update@0.31.1",
-        "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.6.0",
+        "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.9.0",
         "registry+https://github.com/rust-lang/crates.io-index#rust-embed@8.13.0",
         "registry+https://github.com/rust-lang/crates.io-index#schemars@1.2.3",
         "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
@@ -7655,7 +7655,7 @@
     {
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.191",
-        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.52.0"
+        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.61.2"
       ],
       "ref": "registry+https://github.com/rust-lang/crates.io-index#errno@0.3.14"
     },
@@ -8149,7 +8149,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.154",
         "registry+https://github.com/rust-lang/crates.io-index#syn@3.0.9"
       ],
-      "ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.6.0"
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.9.0"
     },
     {
       "dependsOn": [
@@ -8160,17 +8160,18 @@
         "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.191",
         "registry+https://github.com/rust-lang/crates.io-index#pastey@0.2.3",
         "registry+https://github.com/rust-lang/crates.io-index#pin-project-lite@0.2.17",
-        "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.6.0",
+        "registry+https://github.com/rust-lang/crates.io-index#rmcp-macros@3.9.0",
         "registry+https://github.com/rust-lang/crates.io-index#schemars@1.2.3",
         "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.154",
+        "registry+https://github.com/rust-lang/crates.io-index#sha2@0.11.1",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index#tokio@1.54.1",
         "registry+https://github.com/rust-lang/crates.io-index#tokio-util@0.7.20",
         "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
         "registry+https://github.com/rust-lang/crates.io-index#uuid@1.26.1"
       ],
-      "ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.6.0"
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.9.0"
     },
     {
       "dependsOn": [
@@ -8214,7 +8215,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#errno@0.3.14",
         "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.191",
         "registry+https://github.com/rust-lang/crates.io-index#linux-raw-sys@0.12.1",
-        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.52.0"
+        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.61.2"
       ],
       "ref": "registry+https://github.com/rust-lang/crates.io-index#rustix@1.1.6"
     },
@@ -8694,7 +8695,7 @@
     },
     {
       "dependsOn": [
-        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.52.0"
+        "registry+https://github.com/rust-lang/crates.io-index#windows-sys@0.61.2"
       ],
       "ref": "registry+https://github.com/rust-lang/crates.io-index#winapi-util@0.1.11"
     },

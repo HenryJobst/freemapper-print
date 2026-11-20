@@ -30,6 +30,11 @@ freemapper-core v0.29.0 reads fonts with skrifa instead of ttf-parser (ADR 0037 
 `ttf-parser` dependency had no use left in the code and is gone. The ignore for RUSTSEC-2026-0192 is removed; two
 ignores remain, both for rmcp.
 
+## Amendment 2026-11-20
+rmcp 3.9.0 fixes RUSTSEC-2026-0457 and RUSTSEC-2026-0462 and is two weeks old (ADR 0006). Print takes it (with
+`rmcp-macros` 3.9.0, held in `Cargo.lock` because 3.10.0 and 3.11.0 are younger), and both ignores are gone. Only the
+ignore for RUSTSEC-2026-0543 remains.
+
 ## Amendment 2026-11-19
 RUSTSEC-2026-0543 reports `chrono` as unmaintained. `chrono` reaches print through rmcp and schemars,
 and neither has a release without it; the advisory names missing maintenance, not a vulnerability,

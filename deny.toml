@@ -31,11 +31,6 @@ allow = [
 yanked = "deny"
 # Each ignore names the advisory, why it does not reach this program, and when to look again.
 ignore = [
-    # rmcp's OAuth client. freemapper-print builds rmcp with `server`, `transport-io` and `macros` only: a server on
-    # stdin and stdout, no HTTP, no OAuth client. Fixed in rmcp 3.9.0; take it, and drop both rmcp ignores, once it is two weeks old (ADR 0006).
-    { id = "RUSTSEC-2026-0457", reason = "OAuth client of rmcp, not built here" },
-    # rmcp's Streamable HTTP client. Same features as above: no HTTP client is built.
-    { id = "RUSTSEC-2026-0462", reason = "Streamable HTTP client of rmcp, not built here" },
     # `chrono` is unmaintained. It reaches the graph through rmcp and schemars, and neither has a release
     # without it; the advisory names missing maintenance, not a vulnerability (ADR 0068, amendment 2026-11-19).
     { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained; reachable through rmcp/schemars, no release without it" },

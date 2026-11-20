@@ -39,9 +39,8 @@ miniz_oxide = "0.9.1"
 # Tests only: the key parser of freemapper-update, to check the committed public keys; same pin as in
 # freemapper-core.
 minisign-verify = "=0.3.0"
-# Pinned: newer releases are younger than two weeks (ADR 0006). rmcp-macros is held at 3.6.0 in
-# Cargo.lock only (rmcp asks for ^3.6.0), so build with --locked. The version freemapper uses.
-rmcp = { version = "=3.6.0", features = ["server", "transport-io", "macros"] }
+# Pinned: 3.10.0 and newer are younger than two weeks (ADR 0006). 3.9.0 fixes RUSTSEC-2026-0457 and -0462.
+rmcp = { version = "=3.9.0", features = ["server", "transport-io", "macros"] }
 # Windows only: the file identity check before restoring permissions (ADR 0041); the version
 # freemapper-fs uses.
 same-file = "=1.0.6"
