@@ -459,6 +459,35 @@ layer instead, and those stay visible across the masked white paper.
 name the map does not have gives a note. freemapper's information block (title, scale, scale bar) never prints
 on a layout's sheet; the sheet elements take its place.
 
+### Training views: contour and ultimate orienteering
+
+A layout can leave a class of symbols out of the map before it is drawn. `view` takes the words of `--view`:
+`no-paths` leaves out all paths (502 to 507), `brown-only` keeps the brown symbols, `no-north-lines` the north lines,
+`no:<codes>` leaves the listed codes out and `only:<codes>` keeps only them. Several entries combine. The title block,
+the credit lines, the frame, the course overprint and the masks stay.
+
+For a contour orienteering sheet (only the contours), `only:101,102,103` keeps contour, index contour and form line;
+add `601.1` to keep the north lines of the map (a list names exact codes, `601` does not take in `601.1`). For
+a sheet without paths use `no-paths`.
+
+The example [`siebengebirge-views`](../../examples/siebengebirge-views/README.en.md) prints one forest map three
+times, complete, as contour orienteering and without paths:
+
+![The same forest map three times at 1:7500: complete, contours only and without paths](../../examples/siebengebirge-views/preview.jpg)
+
+```toml
+[[layouts]]
+id = "isohypsen"
+view = ["only:101,102,103,601.1"]
+
+[[layouts]]
+id = "ultimate"
+view = ["no-paths"]
+```
+
+Without a project file, `render --view` does the same for one map, and `export --view` adds a view to every layout and
+writes into `out/<view>`, so that the full sheets stay as they are.
+
 ### The base area of sprint maps
 
 Newer sprint maps from freemapper lie on a base area: one area in the colour "walkable area", a light brown like

@@ -473,6 +473,35 @@ einfache schwarze Linien auf der Blattebene, und die bleiben auch über dem abge
 zählt. Ein Name, den die Karte nicht hat, gibt einen Hinweis. Den Informationsblock von freemapper (Titel,
 Maßstab, Maßstabsleiste) druckt ein Layout ohnehin nie, die Blattelemente treten an seine Stelle.
 
+### Trainingsansichten: Isohypsen-OL und Ultimate-OL
+
+Ein Layout kann vor dem Zeichnen eine Klasse von Symbolen aus der Karte weglassen. `view` nimmt die Wörter von
+`--view`: `no-paths` lässt alle Wege weg (502 bis 507), `brown-only` behält die braunen Symbole, `no-north-lines`
+die Nordlinien, `no:<Codes>` lässt die genannten Codes weg und `only:<Codes>` behält nur sie. Mehrere Einträge
+verbinden sich. Titelblock, Namensnennung, Rahmen, Kursüberdruck und Abdeckungen bleiben.
+
+Für einen Isohypsen-OL (nur Höhenlinien) behält `only:101,102,103` Höhenlinie, Zählkurve und Hilfshöhenlinie; mit
+`601.1` bleiben die Nordlinien der Karte (eine Liste nennt genaue Codes, `601` nimmt `601.1` nicht mit). Für ein Blatt
+ohne Wege dient `no-paths`.
+
+Das Beispiel [`siebengebirge-views`](../../examples/siebengebirge-views/README.md) druckt eine Waldkarte dreimal,
+vollständig, als Isohypsen-OL und ohne Wege:
+
+![Dieselbe Waldkarte dreimal in 1:7500: vollständig, nur Höhenlinien und ohne Wege](../../examples/siebengebirge-views/preview.jpg)
+
+```toml
+[[layouts]]
+id = "isohypsen"
+view = ["only:101,102,103,601.1"]
+
+[[layouts]]
+id = "ultimate"
+view = ["no-paths"]
+```
+
+Ohne Projektdatei macht `render --view` dasselbe für eine einzelne Karte, und `export --view` hängt eine Ansicht an
+jedes Layout und schreibt nach `out/<Ansicht>`, damit die vollständigen Blätter bleiben, wie sie sind.
+
 ### Die Grundfläche von Sprintkarten
 
 Neuere Sprintkarten von freemapper liegen auf einer Grundfläche: einer Fläche in der Farbe „belaufbare Fläche“,

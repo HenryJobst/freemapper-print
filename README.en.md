@@ -131,8 +131,9 @@ The complete example projects with project file, inputs, PDFs and a preview imag
 [`rummelsburg-competition-courses`](examples/rummelsburg-competition-courses/README.en.md),
 [`gleisdreieck-training`](examples/gleisdreieck-training/README.en.md),
 [`gleisdreieck-training-window`](examples/gleisdreieck-training-window/README.en.md),
-[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.en.md) and
-[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.en.md).
+[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.en.md),
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.en.md) and, on a generated forest map,
+[`siebengebirge-views`](examples/siebengebirge-views/README.en.md) (contour and ultimate orienteering).
 
 ## Status
 

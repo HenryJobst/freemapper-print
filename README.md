@@ -133,8 +133,9 @@ Die vollständigen Beispielprojekte mit Projektdatei, Eingabedateien, PDFs und V
 [`rummelsburg-competition-courses`](examples/rummelsburg-competition-courses/README.md),
 [`gleisdreieck-training`](examples/gleisdreieck-training/README.md),
 [`gleisdreieck-training-window`](examples/gleisdreieck-training-window/README.md),
-[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.md) und
-[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.md).
+[`gleisdreieck-training-corridor`](examples/gleisdreieck-training-corridor/README.md),
+[`rummelsburg-mcp-session`](examples/rummelsburg-mcp-session/README.md) sowie, auf einer erzeugten Waldkarte,
+[`siebengebirge-views`](examples/siebengebirge-views/README.md) (Isohypsen-OL und Ultimate-OL).
 
 ## Status
 

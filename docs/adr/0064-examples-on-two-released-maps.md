@@ -1,7 +1,7 @@
 # 0064. Examples on two released maps
 
 Date: 2026-11-12
-Status: Accepted, amends [0062](0062-manual-figures-from-two-released-maps.md)
+Status: Accepted, amends [0062](0062-manual-figures-from-two-released-maps.md); amended by [0075](0075-forest-example-on-a-generated-map.md)
 
 ## Context
 
