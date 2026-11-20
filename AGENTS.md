@@ -113,10 +113,10 @@ freemapper-print export <folder> --out-dir /path/to/pdfs
 
 | Command | Purpose |
 |---|---|
-| `render <map> --out <file.pdf>` | The map alone as one PDF. `--scale`, `--paper a4\|a3`, `--orientation auto\|portrait\|landscape`, `--kind`, `--show-sheet-objects`. |
+| `render <map> --out <file.pdf>` | The map alone as one PDF. `--scale`, `--paper a4\|a3`, `--orientation auto\|portrait\|landscape`, `--kind`, `--show-sheet-objects`, `--view` (training view: `no-paths`, `brown-only`, `no-north-lines`, `no:<code>,…`, `only:<code>,…`; repeat to combine). |
 | `init <folder> --map <file>` | Creates the project file. `--title`, `--kind sprint\|schoolyard\|forest`, `--courses <.ppen or .xml>`. |
 | `check <project>` | Draws every layout or course without writing a file and lists the notes. |
-| `export <project>` | One PDF per layout, or per course with a course file. `--layout <id>`, `--course <name>` (repeatable), `--single-file`, `--out-dir <dir>` (default: `out` next to the project file, created if missing). |
+| `export <project>` | One PDF per layout, or per course with a course file. `--layout <id>`, `--course <name>` (repeatable), `--single-file`, `--view <view>` (as for `render`; the PDFs then go to `out/<view>` unless you give `--out-dir`), `--out-dir <dir>` (default: `out` next to the project file, created if missing). |
 | `masks window <project> --course <name>` | `--controls`, `--radius`, `--radius-for CODE=MM`, `--gap`, `--no-start`, `--no-finish`, `--id`, `--assign`. Windows never overlap: `--gap` mm on paper (default 3) stay between two, and windows too close for that get a smaller radius, down to 5 mm. |
 | `masks corridor <project> --points "x,y;x,y"` | `--width`, `--id`, `--course`, `--assign`. |
 | `numbers accept <project> --course <name> --control <code> --layout-wide\|--sheet` | With `--direction` and `--gap`, or the proposal of `check`. |

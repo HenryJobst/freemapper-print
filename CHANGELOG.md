@@ -9,6 +9,10 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Hinzugefügt
 
+- Trainingsansichten (Entscheidung 0071): `render --view` und `export --view` (mehrfach) lassen vor dem Zeichnen eine Klasse von Symbolen weg: `no-paths`, `brown-only`, `no-north-lines` oder eine Liste `no:<Code>,…` und `only:<Code>,…`. Informationsblock, Namensnennung, Kursüberdruck und Abdeckungen bleiben. `export` schreibt die PDFs nach `out/<Ansicht>`, wenn Sie kein `--out-dir` angeben. Ein Layout kann die Ansicht dauerhaft als `view = [...]` in der Projektdatei tragen; eine Ansicht ohne Nordlinien hält auch die erzeugten zurück.
+
+### Hinzugefügt
+
 - CI prüft das eigene Haus: `scripts/check.sh` bündelt die Gates für die Lizenzzeile, die Rechtschreibung der englischen Doku, interne Links, Geheimnisse in der Historie, ungenutzte Abhängigkeiten, Action-Pins, den ADR-Index, das Changelog-Paar, rustdoc ohne Warnungen, die Zeilenabdeckung und die MSRV (Entscheidung 0070). `lefthook.yml` ruft die schnellen Gates vor dem Commit und `secrets` vor dem Push.
 - Jede Rust-Datei trägt die Zeile `// SPDX-License-Identifier: AGPL-3.0-or-later`.
 - Die READMEs, das Handbuch und AGENTS.md verlinken die Website der Suite, https://freemapper.de. Ein Release stößt über einen neuen Job in `release.yml` den Bau der Website an (Entscheidung 0069); ohne das Secret `SITE_DISPATCH_TOKEN` tut der Job nichts.

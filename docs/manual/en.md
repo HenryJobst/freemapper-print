@@ -396,6 +396,7 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 | `north_lines` | `"auto"` | `"auto"` adds north lines when the map has none; `"never"` never does |
 | `hide_parts` | empty | map parts the sheet leaves out, by their exact name in OOM |
 | `hide_shared` | empty | ids of shared elements this layout does not show |
+| `view` | empty | training view: `"no-paths"`, `"brown-only"`, `"no-north-lines"`, `"no:505,506"` or `"only:101,102"`; several entries combine, and a view without north lines also stops the generated ones. The information block, the credit lines, the course overprint and the masks stay. `render --view` and `export --view` set it from the command line; `export` then writes to `out/<view>` |
 | `elements` | empty | this layout's own sheet elements, chapter 7 |
 | `map_frame.margin_mm` | 8 | width of the passe-partout in mm, the same on every side; less than half the shorter paper side |
 | `map_frame.border_mm` | 0.25 | width of the frame line in mm, at most 20; 0 draws none |
