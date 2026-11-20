@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- Two badges in the READMEs: the number of tests and the test budget (10 min). `docs/tests.json` holds both; `scripts/check.sh tests` counts the `#[test]` in the sources and fails on a difference (`tests --fix` rewrites it), and the Linux test run in CI fails when it exceeds the budget (ADR 0074).
+
 ## [0.12.1] - 2026-11-20
 
 ### Fixed
@@ -19,7 +23,6 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
-- Two badges in the READMEs: the number of tests and the test budget (10 min). `docs/tests.json` holds both; `scripts/check.sh tests` counts the `#[test]` in the sources and fails on a difference (`tests --fix` rewrites it), and the Linux test run in CI fails when it exceeds the budget (ADR 0074).
 - CI mutates the Rust lines a branch changes (`cargo-mutants --in-diff`, job `mutants`) and fails when a test does not catch a mutant; a job `hack` checks the workspace with each feature alone; `scripts/check.sh complexity` fails above the cognitive complexity of 35 (`clippy.toml`); `scripts/check.sh sbom` compares `docs/sbom.cdx.json`, the CycloneDX list of the CLI's dependencies, with a fresh one. `cargo-nextest` was measured and rejected: it is slower here (ADR 0072).
 - A property test with `proptest` for the `--points` parser: written points read back unchanged, and any text is read or refused (ADR 0072).
 
