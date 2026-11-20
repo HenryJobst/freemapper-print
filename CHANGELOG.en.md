@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-20
+
 ### Added
 
 - A forest example, `examples/siebengebirge-views`: one generated forest map printed complete, as contour orienteering (contours only) and as ultimate orienteering (no paths), with a comparison image. The manual shows training views in chapter 6 with it (ADR 0075).

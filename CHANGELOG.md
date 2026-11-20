@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.13.0] - 2026-11-20
+
 ### Hinzugefügt
 
 - Ein Waldbeispiel, `examples/siebengebirge-views`: eine erzeugte Waldkarte vollständig, als Isohypsen-OL (nur Höhenlinien) und als Ultimate-OL (ohne Wege) gedruckt, mit Vergleichsbild. Das Handbuch zeigt die Trainingsansichten in Kapitel 6 damit (Entscheidung 0075).
