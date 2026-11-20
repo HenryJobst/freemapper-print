@@ -41,6 +41,7 @@ same-file.workspace = true
 freemapper-contract = { workspace = true, features = ["fixtures"] }
 freemapper-printrules = { workspace = true, features = ["test-support"] }
 freemapper-render = { workspace = true, features = ["test-support"] }
+proptest.workspace = true
 tempfile.workspace = true
 
 [lints]

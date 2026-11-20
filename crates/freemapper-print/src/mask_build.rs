@@ -1479,6 +1479,32 @@ mod tests {
         }
     }
 
+    proptest::proptest! {
+        /// `--points` text written from any finite points reads back as the same points: Rust's `Display` for
+        /// `f64` is the shortest text that parses to the same value.
+        #[test]
+        fn written_points_read_back_unchanged(
+            points in proptest::collection::vec(
+                (proptest::num::f64::NORMAL | proptest::num::f64::ZERO, proptest::num::f64::NORMAL | proptest::num::f64::ZERO),
+                1..20,
+            )
+        ) {
+            let text = points.iter().map(|(x, y)| format!("{x},{y}")).collect::<Vec<_>>().join(";");
+            let expected: Vec<[f64; 2]> = points.iter().map(|&(x, y)| [x, y]).collect();
+            proptest::prop_assert_eq!(parse_points(&text), Ok(expected));
+        }
+
+        /// Any text is either read or refused with `BadPoints`; it never panics and never yields a non-finite value.
+        #[test]
+        fn arbitrary_text_is_read_or_refused(text in "\\PC{0,60}") {
+            match parse_points(&text) {
+                Ok(points) => proptest::prop_assert!(points.iter().flatten().all(|v| v.is_finite())),
+                Err(BuildError::BadPoints { .. }) => {}
+                Err(other) => proptest::prop_assert!(false, "{other:?}"),
+            }
+        }
+    }
+
     #[test]
     fn ids_are_made_unique() {
         assert_eq!(window_id("A", &[]), "window-A");

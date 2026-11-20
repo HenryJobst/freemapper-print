@@ -28,7 +28,8 @@ before changing code.
 - `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test` must pass; hooks in
   `.claude/` and `lefthook.yml` run them.
 - `scripts/check.sh` holds the housekeeping gates (licence line, spelling, links, history, dependencies, action
-  pins, ADR index, changelog pair) and `scripts/check.sh doc coverage msrv` the three that build (ADR 0070).
+  pins, ADR index, changelog pair) and `scripts/check.sh doc coverage msrv complexity hack mutants` the ones that build; `sbom` compares
+  `docs/sbom.cdx.json` and `sbom --fix` rewrites it (ADR 0070, 0072).
 - Superpowers process: brainstorming, then writing-plans, then subagent-driven development; TDD for readers,
   writers and geometry.
 - Work autonomously once a plan is approved: decide, record decisions, report them afterwards; stop only for
