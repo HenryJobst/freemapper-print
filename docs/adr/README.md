@@ -117,3 +117,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0074](0074-test-count-and-budget.md) | The test count and the test budget are data | Accepted | 2026-11-20 |
 | [0075](0075-forest-example-on-a-generated-map.md) | A forest example on a generated map | Accepted | 2026-11-20 |
 | [0076](0076-example-previews-as-webp.md) | Example previews and manual figures as WebP | Accepted | 2026-11-20 |
+| [0077](0077-findings-on-running-tests-and-mutation-tests.md) | Findings on running tests and mutation tests | Accepted, supplements [0072](0072-mutation-properties-sbom-complexity.md) and [0074](0074-test-count-and-budget.md) | 2026-11-20 |

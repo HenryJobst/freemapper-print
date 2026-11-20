@@ -7,6 +7,10 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order.
+
 ### Changed
 
 - rmcp goes from 3.6.0 to 3.9.0 (with `rmcp-macros` 3.9.0; 3.10.0 and later are younger than two weeks, ADR 0006). The release fixes RUSTSEC-2026-0457 and RUSTSEC-2026-0462, so `deny.toml` loses both ignores (ADR 0068, amendment).
