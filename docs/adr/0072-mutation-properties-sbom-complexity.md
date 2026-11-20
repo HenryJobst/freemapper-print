@@ -41,7 +41,8 @@ dropped by that number.
 - **SBOM: adopted.** `scripts/check.sh sbom` renders a CycloneDX 1.5 list of the CLI with
   `cargo-cyclonedx` 0.5.10 and compares it with `docs/sbom.cdx.json`; `sbom --fix` rewrites it.
   The tool writes a random serial number, a time stamp, the build host and absolute paths; they
-  are removed, so the same dependencies give the same bytes. The gate needs only `cargo metadata`
+  are removed, so the same dependencies give the same bytes. `--target all` lists the dependencies of every platform: without it
+  macOS and Linux disagree (`core-foundation-sys`, `linux-raw-sys`). The gate needs only `cargo metadata`
   and runs with the cheap ones.
 
 ## Consequences

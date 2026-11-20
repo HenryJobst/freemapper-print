@@ -284,7 +284,7 @@ sbom_render() {
   raw=$(mktemp -d)
 
   cargo cyclonedx --manifest-path crates/freemapper-print-cli/Cargo.toml \
-    --format json --spec-version 1.5 --all-features --override-filename sbom \
+    --format json --spec-version 1.5 --all-features --target all --override-filename sbom \
     >/dev/null 2>&1 || return 1
   mv crates/freemapper-print-cli/sbom.json "$raw/sbom.json"
   # The tool writes one file per workspace member; only the CLI is the product.
