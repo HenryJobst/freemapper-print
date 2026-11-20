@@ -27,9 +27,13 @@ normalisation stay there.
 - **The mutation job stays on pull requests and on the diff.** The baseline costs about 100 s of
   tests plus 280 s of build, and 9 mutants took 20 min with two jobs (0072). That is too much
   for every push, so the job runs on pull requests only.
-- **cargo-hack and `--locked` do not mix.** `--no-dev-deps` rewrites the manifests and with them
-  `Cargo.lock` while it runs, so `scripts/check.sh hack` runs without `--locked`. Everything else
-  keeps `--locked`.
+- **cargo-hack runs with `--locked`, without `--no-dev-deps`.** `--no-dev-deps` rewrites the
+  manifests and with them `Cargo.lock` while it runs, and that does not mix with `--locked`.
+  Decision: the flag is gone, `scripts/check.sh hack` and the `hack` job run
+  `cargo hack check --locked --workspace --each-feature`, and every gate keeps `--locked`. Cost:
+  the job also builds the dev dependencies, so it no longer proves that each feature checks
+  without them; a feature that only builds thanks to a dev dependency would pass. Time: 44 s
+  locally with a warm cache; the `hack` job took 43 s on the last run of `main` before the change.
 - **The SBOM is reproducible only normalised and with `--target all`** (details in 0072); a diff
   of `docs/sbom.cdx.json` after a lock file change is expected, not a flaw.
 - **Badges: order matters.** After a change to tests or ADRs run `scripts/check.sh tests --fix`
