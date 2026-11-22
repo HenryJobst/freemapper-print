@@ -9,6 +9,7 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ### Geändert
 
+- Core-Pin v0.31.1 → v0.32.0 (die Seitenschriften werden dort öffentlich; an den PDFs von freemapper-print ändert sich nichts).
 - rmcp wechselt von 3.6.0 auf 3.9.0 (mit `rmcp-macros` 3.9.0; 3.10.0 und neuer sind jünger als zwei Wochen, Entscheidung 0006). Die Version behebt RUSTSEC-2026-0457 und RUSTSEC-2026-0462, `deny.toml` verliert deshalb beide Ausnahmen (Entscheidung 0068, Nachtrag).
 
 ## [0.13.0] - 2026-11-20

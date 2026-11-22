@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Changed
 
+- Core pin v0.31.1 → v0.32.0 (the page fonts become public there; nothing changes in the PDFs of freemapper-print).
 - rmcp goes from 3.6.0 to 3.9.0 (with `rmcp-macros` 3.9.0; 3.10.0 and later are younger than two weeks, ADR 0006). The release fixes RUSTSEC-2026-0457 and RUSTSEC-2026-0462, so `deny.toml` loses both ignores (ADR 0068, amendment).
 
 ## [0.13.0] - 2026-11-20
