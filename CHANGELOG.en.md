@@ -7,9 +7,14 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+### Added
+
+- ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order. Two measurements are added: `cargo nextest` gains nothing on 723 tests (the earlier figure came from a noisy run, the rejection stands), and `opt-level = 3` for dependencies cuts the test run from 4:03 to 0:48 min but lengthens the cold build from 4:16 to 13:05 min, so no profile is added.
+
 ### Changed
 
 - Core pin v0.31.1 → v0.32.0 (the page fonts become public there; nothing changes in the PDFs of freemapper-print).
+- The `hack` gate runs with `--locked` and without `--no-dev-deps`, which rewrote `Cargo.lock` and the manifests. It now also builds the dev dependencies (ADR 0077).
 - rmcp goes from 3.6.0 to 3.9.0 (with `rmcp-macros` 3.9.0; 3.10.0 and later are younger than two weeks, ADR 0006). The release fixes RUSTSEC-2026-0457 and RUSTSEC-2026-0462, so `deny.toml` loses both ignores (ADR 0068, amendment).
 
 ## [0.13.0] - 2026-11-20

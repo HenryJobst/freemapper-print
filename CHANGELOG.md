@@ -7,9 +7,14 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- Entscheidung 0077 hält die Erkenntnisse zur Testausführung und zu Mutation-Tests fest: Ein Überlebender wird mit einem Test geschlossen, der den Wert festlegt, `cargo test` läuft in zwei Schritten, der Mutations-Job bleibt beim Diff, `cargo hack` läuft ohne `--locked`, und die Badges entstehen in fester Reihenfolge. Zwei Messungen kommen dazu: `cargo nextest` bringt auf 723 Tests keinen Gewinn (die frühere Zahl stammte aus einem lauten Lauf, die Ablehnung bleibt), und `opt-level = 3` für Abhängigkeiten senkt den Testlauf von 4:03 auf 0:48 min, verlängert aber den Kaltbau von 4:16 auf 13:05 min, deshalb wird kein Profil eingetragen.
+
 ### Geändert
 
 - Core-Pin v0.31.1 → v0.32.0 (die Seitenschriften werden dort öffentlich; an den PDFs von freemapper-print ändert sich nichts).
+- Das Gate `hack` läuft mit `--locked` und ohne `--no-dev-deps`, das `Cargo.lock` und die Manifeste umschrieb. Es baut dafür auch die Dev-Abhängigkeiten (Entscheidung 0077).
 - rmcp wechselt von 3.6.0 auf 3.9.0 (mit `rmcp-macros` 3.9.0; 3.10.0 und neuer sind jünger als zwei Wochen, Entscheidung 0006). Die Version behebt RUSTSEC-2026-0457 und RUSTSEC-2026-0462, `deny.toml` verliert deshalb beide Ausnahmen (Entscheidung 0068, Nachtrag).
 
 ## [0.13.0] - 2026-11-20
