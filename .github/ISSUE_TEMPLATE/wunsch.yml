@@ -1,0 +1,11 @@
+name: Wunsch / Feature request
+description: Eine Idee oder etwas, das beim Drucken fehlt. / An idea, or something that is missing when you print.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: wish
+    attributes:
+      label: Was soll freemapper-print können? / What should freemapper-print do?
+      description: Wofür brauchst du es (Schule, Park, Sprint, Wald)? / What do you need it for?
+    validations:
+      required: true

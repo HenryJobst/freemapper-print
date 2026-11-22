@@ -1,0 +1,23 @@
+name: Fehler / Bug
+description: Etwas funktioniert nicht oder liefert ein falsches Ergebnis. / Something does not work or gives a wrong result.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Ausgabe von `freemapper-print --version`. / Output of `freemapper-print --version`.
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Karte und Ereignis / Map and event
+      description: Welche Karte, welche Bahnen, welches Papier und welcher Maßstab? / Which map, which courses, which paper and scale?
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert? / What happened?
+      description: Befehl, Meldung und was du erwartet hast. / The command, the message and what you expected.
+    validations:
+      required: true
