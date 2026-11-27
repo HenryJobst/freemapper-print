@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::preview;
-use crate::ops::{self, OpError, edit, masks, numbers};
+use crate::ops::{self, OpError, edit, frames, masks, numbers};
 use crate::text::{Lang, Texts};
 
 /// Why an edit did not happen.
@@ -46,6 +46,7 @@ pub(super) type Sheets<'a> =
 pub(super) const EDITOR_OPS: &[(&str, Run)] = &[
     ("set_layout", set_layout),
     ("set_element", set_element),
+    ("add_frame_layouts", add_frame_layouts),
     ("assign_mask", assign_mask),
     ("move_element", move_element),
     ("mask_window", mask_window),
@@ -127,6 +128,27 @@ fn set_layout(
             hide_parts: a.hide_parts,
             view: a.view,
             hide_shared: a.hide_shared,
+        })?)
+    })
+}
+
+/// The arguments of `add_frame_layouts`: none.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoArgs {}
+
+/// Adds a layout for each paper frame of the map that no layout prints yet (ADR 0079). The page shows what was
+/// found; undo takes the layouts back.
+fn add_frame_layouts(
+    project: &Path,
+    args: Value,
+    _lang: &Lang,
+    _sheets: Sheets<'_>,
+) -> Result<Value, EditError> {
+    apply(args, |_: NoArgs| {
+        Ok(frames::frames(&frames::FramesArgs {
+            project: project.to_path_buf(),
+            dry_run: false,
         })?)
     })
 }

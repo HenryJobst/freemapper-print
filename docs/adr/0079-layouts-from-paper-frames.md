@@ -28,7 +28,8 @@ The frame says what the course setter wants on one sheet; freemapper-print shoul
   nothing, and the program never changes or replaces a layout, so a layout the user edited stays as it is.
 - The summary of `check`, `export` and `render` names a page by its size: `A5` for 148 × 210 mm, and `148 × 200 mm`
   for a size that is no paper, instead of the paper key, which is `A4` for every free page.
-- The editor gets no button for it yet; its layout list shows the layouts these commands wrote.
+- The editor has a button for it in the layout panel (the edit `add_frame_layouts`). It runs the same operation and
+  says what it found and added; undo takes the new layouts back, so it needs no preview step.
 
 ## Consequences
 - A project made from a map with frames starts with the sheets the course setter chose. Moving a frame in freemapper

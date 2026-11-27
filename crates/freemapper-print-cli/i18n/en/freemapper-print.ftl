@@ -864,3 +864,11 @@ init-frames = The map has paper frames. Added { $count ->
         [one] 1 layout
        *[other] { $count } layouts
     } for them: { $layouts }.
+editor-frames-button = Add the paper frames as layouts
+editor-frames-hint = Adds a layout for each paper frame freemapper keeps for the map. A layout that prints a frame already stays as it is. Undo takes the new layouts back.
+editor-frames-none = The map has no paper frames.
+editor-frames-result = { $added ->
+        [0] No new layout; every one of the { $found } paper frames is printed already.
+        [one] Added 1 layout for the { $found } paper frames: { $layouts }.
+       *[other] Added { $added } layouts for the { $found } paper frames: { $layouts }.
+    }

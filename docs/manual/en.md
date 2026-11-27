@@ -499,6 +499,8 @@ printed sheet is the frame.
 - `init` adds these layouts next to the first one, as `frame-a4-portrait`, `frame-a5-landscape` and so on. With a
   course file they stay without an assignment; assign a course to one with the project file, or print them with
   `export --layout`.
+- In the editor, the button "Add the paper frames as layouts" under the layout form does the same as `frames`;
+  undo takes the new layouts back.
 - `freemapper-print frames <project>` adds the layouts a project lacks, for example after you placed a new frame
   in freemapper. `--dry-run` only says what it would add. The MCP tool `add_frame_layouts` does the same.
 - The command never changes or replaces a layout. A frame that a layout prints already (same page, orientation and

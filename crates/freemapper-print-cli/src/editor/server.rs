@@ -941,6 +941,39 @@ mod tests {
     }
 
     #[test]
+    fn the_frames_op_adds_the_missing_layouts_and_undo_takes_them_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let (folder, _) = crate::ops::testing::paper_frames_project(dir.path());
+        let file = folder.join(freemapper_print::project::FILE_NAME);
+        crate::ops::testing::remove_layout(&file, "frame-a5-landscape");
+        let before = std::fs::read_to_string(&file).unwrap();
+        let run = start_on(folder, true, None);
+        let revision = revision_of(&run);
+        let (code, answer) = write(&run, "/api/op/add_frame_layouts", Some(&revision), "{}");
+        assert_eq!(code, 200, "{answer}");
+        let result = body_json(&answer)["result"].clone();
+        assert_eq!(result["found"], 2);
+        assert_eq!(result["added"][0]["id"], "frame-a5-landscape");
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("frame-a5-landscape")
+        );
+        let revision = body_json(&answer)["revision"].as_str().unwrap().to_owned();
+        let (code, _) = undo_or_redo(&run, "undo", &revision);
+        assert_eq!(code, 200);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+        let (code, _) = write(
+            &run,
+            "/api/op/add_frame_layouts",
+            Some(&revision_of(&run)),
+            "{\"x\":1}",
+        );
+        assert_eq!(code, 400, "unknown arguments are a form error");
+        finish(run);
+    }
+
+    #[test]
     fn an_edit_is_undone_to_the_exact_bytes_and_redone() {
         let dir = crate::ops::testing::luebeck_copy();
         let file = dir.path().join("freemapper-print.toml");
