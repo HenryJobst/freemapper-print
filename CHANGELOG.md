@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.14.0] - 2026-11-27
+
 ### Hinzugefügt
 
 - Papierrahmen: `init` und der neue Befehl `frames` (MCP-Werkzeug `add_frame_layouts`, Schaltfläche im Editor) machen aus den Rahmen, die freemapper in `templates/paper-frame.omap` führt (A6 bis A2, quer oder hoch), Layouts, auf den Rahmen zentriert und im Kartenmaßstab gedruckt; A6, A5 und A2 sind freie Seiten. Ein Layout, das einen Rahmen schon druckt, bleibt unberührt (Entscheidung 0079). Die Zusammenfassung von `check` und `export` nennt eine freie Seite nach ihrer Größe, nicht als A4.
