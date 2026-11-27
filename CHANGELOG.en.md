@@ -9,6 +9,7 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- The README shows version, downloads, commits and CI as badges in three groups, like freemapper. A daily workflow counts the downloads of the program archives (not the checksums or update files) and keeps the result on the branch `badges` (as in freemapper, ADR 0177).
 - Issues of users stand out: a workflow sets the label `von-nutzer` on every issue that does not come from the owner or a collaborator; two forms (bug, request) ask for the version, the map and what happened (ADR 0078).
 - ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order. Two measurements are added: `cargo nextest` gains nothing on 723 tests (the earlier figure came from a noisy run, the rejection stands), and `opt-level = 3` for dependencies cuts the test run from 4:03 to 0:48 min but lengthens the cold build from 4:16 to 13:05 min, so no profile is added.
 
