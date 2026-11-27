@@ -6,7 +6,7 @@
 <!-- badges:start -->
 [![Version](https://img.shields.io/github/v/release/HenryJobst/freemapper-print?label=version)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HenryJobst/freemapper-print/badges/downloads.en.json)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Commits](https://img.shields.io/github/commit-activity/t/HenryJobst/freemapper-print?label=Commits)](https://github.com/HenryJobst/freemapper-print/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/HenryJobst/freemapper-print/ci.yml?branch=main&label=CI)](https://github.com/HenryJobst/freemapper-print/actions/workflows/ci.yml)
 
-[![Tests](https://img.shields.io/badge/Tests-750-blue)](docs/tests.json) [![Test budget](https://img.shields.io/badge/Test_budget-10_min-blue)](docs/tests.json) [![Line coverage](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
+[![Tests](https://img.shields.io/badge/Tests-751-blue)](docs/tests.json) [![Test budget](https://img.shields.io/badge/Test_budget-10_min-blue)](docs/tests.json) [![Line coverage](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
 
 [![MSRV](https://img.shields.io/badge/MSRV-1.88-blue)](Cargo.toml) [![ADRs](https://img.shields.io/badge/ADRs-78-blue)](docs/adr/README.md) [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue)](LICENSE)
 <!-- badges:end -->
@@ -44,6 +44,8 @@ What it does already:
   project;
 - `init --courses` creates a project from a course file; `export` writes one PDF per course, with `--course`
   only chosen courses, with `--single-file` one PDF with all courses;
+- `init` and `frames` turn the paper frames freemapper keeps for a map (A6 to A2) into layouts, one per frame, centred on
+  the frame and printed at the map scale;
 - the course symbols at the size the standard sets for the print scale, such as control circles of 7.5 mm on a
   forest map at 1:10000;
 - check that the course fits the map: the program reads Purple Pen with the y axis up and detects it in IOF XML,
@@ -59,7 +61,7 @@ What it does already:
   of the courses it applies to;
 - `check` warns about controls, mandatory legs, out-of-bounds areas and other course overprint that lie under a
   mask;
-- an MCP server (`freemapper-print mcp`) with thirteen tools, through which an AI agent such as Claude Code reads
+- an MCP server (`freemapper-print mcp`) with fourteen tools, through which an AI agent such as Claude Code reads
   and checks a project, enters masks, number positions, layouts and sheet elements, and writes the PDFs;
 - messages and help in German and English; a full disk leaves no half-written PDF, and the program never writes
   through a link at the target.
@@ -79,7 +81,7 @@ The program needs no OCAD and runs on macOS, Linux and Windows.
 
 freemapper-print is one of several programs around the same maps. The code that they share lives in
 [freemapper-core](https://github.com/HenryJobst/freemapper-core), a library of small Rust crates that each program
-takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.32.0. It uses
+takes in a fixed version instead of copying it. freemapper-print pins one tag for all of them, now v0.33.0. It uses
 `freemapper-text` (program texts), `freemapper-rules` (rule profiles), `freemapper-fs` (safe file writing),
 `freemapper-omap` (map model and reader) and `freemapper-course` (courses, course files and where control numbers
 go) from it. The renderer (`freemapper-render`) lives there too since core v0.9.0, the page builder since v0.13.0,
@@ -309,7 +311,7 @@ the project file at once. Ctrl+C ends the editor. The manual explains all of it 
 
 `freemapper-print mcp` starts an MCP server on standard input and output. Through it an AI agent such as Claude
 Code runs the same steps as the command line: `project_info`, `check_project` and `list_courses` read,
-`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` and `assign_mask`
+`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `add_frame_layouts`, `set_element` and `assign_mask`
 write into the project file, and `export_project` writes the PDFs. For Claude Code a file `.mcp.json` in the
 folder you start Claude Code in is enough:
 

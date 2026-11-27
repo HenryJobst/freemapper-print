@@ -182,3 +182,29 @@ fn contract_bounds() {
         }
     });
 }
+
+/// The paper frames of the template map are the ones `expected.toml` lists, with the middle of their box as the
+/// centre (freemapper-core ADR 0046, freemapper-print ADR 0079). A fixture without a template has none.
+#[test]
+fn contract_paper_frames_are_read_with_their_centres() {
+    each(|read| {
+        let found = crate::frames::read_paper_frames(&read.path).unwrap();
+        assert_eq!(found.skipped, 0, "{}", read.name);
+        assert_eq!(
+            found.frames.len(),
+            read.expected.paper_frames.len(),
+            "{}",
+            read.name
+        );
+        for (frame, want) in found.frames.iter().zip(&read.expected.paper_frames) {
+            let [x0, y0, x1, y1] = want.bbox.map(f64::from);
+            assert_eq!(frame.paper.name(), want.paper, "{}", read.name);
+            assert_eq!(
+                frame.centre_map_mm,
+                [(x0 + x1) / 2000.0, -(y0 + y1) / 2000.0],
+                "{}",
+                read.name
+            );
+        }
+    });
+}

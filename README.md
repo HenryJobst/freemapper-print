@@ -6,7 +6,7 @@
 <!-- badges:start -->
 [![Version](https://img.shields.io/github/v/release/HenryJobst/freemapper-print?label=Version)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HenryJobst/freemapper-print/badges/downloads.json)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Commits](https://img.shields.io/github/commit-activity/t/HenryJobst/freemapper-print?label=Commits)](https://github.com/HenryJobst/freemapper-print/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/HenryJobst/freemapper-print/ci.yml?branch=main&label=CI)](https://github.com/HenryJobst/freemapper-print/actions/workflows/ci.yml)
 
-[![Tests](https://img.shields.io/badge/Tests-750-blue)](docs/tests.json) [![Testbudget](https://img.shields.io/badge/Testbudget-10_min-blue)](docs/tests.json) [![Zeilenabdeckung](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
+[![Tests](https://img.shields.io/badge/Tests-751-blue)](docs/tests.json) [![Testbudget](https://img.shields.io/badge/Testbudget-10_min-blue)](docs/tests.json) [![Zeilenabdeckung](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
 
 [![MSRV](https://img.shields.io/badge/MSRV-1.88-blue)](Cargo.toml) [![ADRs](https://img.shields.io/badge/ADRs-78-blue)](docs/adr/README.md) [![Lizenz](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)](LICENSE)
 <!-- badges:end -->
@@ -44,6 +44,8 @@ Das kann es schon:
   schreibt ihn ins Projekt;
 - `init --courses` legt ein Projekt aus einer Bahndatei an; `export` schreibt ein PDF je Bahn, mit `--course` nur
   gewählte Bahnen, mit `--single-file` ein PDF mit allen Bahnen;
+- `init` und `frames` machen aus den Papierrahmen, die freemapper zu einer Karte führt (A6 bis A2), Layouts, eines je
+  Rahmen, auf den Rahmen zentriert und im Kartenmaßstab gedruckt;
 - die Bahnsymbole in der Größe, die die Norm für den Druckmaßstab vorgibt, etwa Postenkreise von 7,5 mm auf einer
   Waldkarte in 1:10000;
 - prüfen, ob die Bahn zur Karte passt: Das Programm liest Purple Pen mit der y-Achse nach oben und erkennt sie bei
@@ -61,7 +63,7 @@ Das kann es schon:
   Abdeckung der Bahnen, für die es gilt;
 - `check` warnt vor Posten, Pflichtstrecken, Sperrgebieten und anderem Bahnaufdruck, die unter einer Abdeckung
   liegen;
-- einen MCP-Server (`freemapper-print mcp`) mit dreizehn Werkzeugen, über den ein KI-Agent wie Claude Code ein Projekt
+- einen MCP-Server (`freemapper-print mcp`) mit vierzehn Werkzeugen, über den ein KI-Agent wie Claude Code ein Projekt
   liest, prüft, Abdeckungen, Postennummern, Layouts und Blattelemente einträgt und die PDFs schreibt;
 - Meldungen und Hilfe auf Deutsch und Englisch; ein volles Laufwerk hinterlässt kein halbes PDF, und das Programm
   schreibt nie durch einen Link am Ziel.
@@ -81,7 +83,7 @@ Das Programm braucht kein OCAD und läuft auf macOS, Linux und Windows.
 freemapper-print ist eines von mehreren Programmen rund um dieselben Karten. Der Code, den sie gemeinsam brauchen,
 liegt in [freemapper-core](https://github.com/HenryJobst/freemapper-core), einer Bibliothek aus kleinen
 Rust-Crates, die jedes Programm in einer festen Version einbindet, statt den Code zu kopieren. freemapper-print
-legt alle auf einen Tag fest, jetzt v0.32.0. Es nutzt daraus `freemapper-text` (Programmtexte),
+legt alle auf einen Tag fest, jetzt v0.33.0. Es nutzt daraus `freemapper-text` (Programmtexte),
 `freemapper-rules` (Regelprofile), `freemapper-fs` (sicheres Schreiben von Dateien), `freemapper-omap`
 (Kartenmodell und Kartenleser) und `freemapper-course` (Bahnen, Bahndateien und die Lage der Postennummern). Der
 Renderer (`freemapper-render`) liegt seit core v0.9.0 auch dort, der Seitenaufbau seit v0.13.0, der Bahnaufdruck seit
@@ -317,7 +319,7 @@ alles im Kapitel [Der Editor im Browser](docs/manual/de.md#12-der-editor-im-brow
 
 `freemapper-print mcp` startet einen MCP-Server auf Standardein- und -ausgabe. Ein KI-Agent wie Claude Code ruft
 darüber dieselben Schritte auf wie die Kommandozeile: `project_info`, `check_project` und `list_courses` lesen,
-`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `set_element` und `assign_mask`
+`init_project`, `masks_window`, `masks_corridor`, `numbers_accept`, `set_layout`, `add_frame_layouts`, `set_element` und `assign_mask`
 schreiben in die Projektdatei, `export_project` schreibt die PDFs. Für Claude Code genügt eine Datei `.mcp.json`
 im Ordner, in dem Sie Claude Code starten:
 

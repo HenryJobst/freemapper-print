@@ -113,7 +113,7 @@ starten, zum Beispiel den Ordner mit Ihren Veranstaltungen:
 Bei `command` steht der absolute Pfad zum Programm, dort, wohin Sie es entpackt haben (README, Abschnitt „Installation“). Unter Windows
 lautet er etwa `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, mit doppelten Backslashes, weil die
 Datei JSON ist. `--lang de` wählt deutsche Meldungen; ohne die Option gilt die Sprache des Systems wie bei der
-Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen dreizehn Werkzeugen.
+Kommandozeile. Nach dem nächsten Start von Claude Code zeigt `/mcp` den Server mit seinen vierzehn Werkzeugen.
 
 ### Einrichten lassen
 
@@ -138,6 +138,7 @@ Jedes Werkzeug nimmt dazu `lang` (`"de"` oder `"en"`), um für diesen einen Aufr
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | die ID der Abdeckung, die Fenster und die Meldungen |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | die ID der Abdeckung und die Meldungen |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` oder `layout_wide`) | `direction` und `gap`, nur zusammen | die eingetragene Korrektur und die Meldung |
+| `add_frame_layouts` | `frames` | `project` | `dry_run` | `found`, `skipped`, die angelegten Layouts (mit `dry_run`: die angelegt würden) und `present` |
 | `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `view`, `hide_shared` | das Layout, wie es jetzt in der Datei steht, und `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | das Element und `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | die Zuordnung und `change` |
@@ -501,6 +502,26 @@ view = ["no-paths"]
 
 Ohne Projektdatei macht `render --view` dasselbe für eine einzelne Karte, und `export --view` hängt eine Ansicht an
 jedes Layout und schreibt nach `out/<Ansicht>`, damit die vollständigen Blätter bleiben, wie sie sind.
+
+### Papierrahmen aus freemapper
+
+freemapper kann zu einer Karte Papierrahmen führen: Blätter in A6, A5, A4, A3 oder A2, quer oder hoch, die die
+Bahnleger auf der Karte setzen. Es schreibt sie neben die Karte als `templates/paper-frame.omap`. freemapper-print
+macht aus jedem Rahmen ein Layout mit demselben Papier und derselben Ausrichtung, auf den Rahmen zentriert und im
+Kartenmaßstab gedruckt, sodass das gedruckte Blatt der Rahmen ist.
+
+- `init` legt diese Layouts neben dem ersten an, als `frame-a4-portrait`, `frame-a5-landscape` und so weiter. Mit
+  einer Bahndatei bleiben sie ohne Zuordnung; ordnen Sie einem eine Bahn in der Projektdatei zu, oder drucken Sie
+  sie mit `export --layout`.
+- `freemapper-print frames <Projekt>` legt die Layouts an, die einem Projekt fehlen, etwa nachdem Sie in freemapper
+  einen neuen Rahmen gesetzt haben. `--dry-run` sagt nur, was es anlegen würde. Das MCP-Werkzeug
+  `add_frame_layouts` tut dasselbe.
+- Der Befehl ändert oder ersetzt nie ein Layout. Ein Rahmen, den ein Layout schon druckt (gleiche Seite,
+  Ausrichtung und Mitte), legt nichts an. Haben Sie einen Rahmen in freemapper verschoben, löschen Sie das alte
+  Layout und rufen `frames` noch einmal auf, oder ändern Sie `map_frame.centre_map_mm`.
+- A4 und A3 sind die Papiere des Layouts. A6, A5 und A2 werden freie Seiten mit `page_mm`, wie in der Tabelle oben.
+  Das Layout übernimmt das Passepartout Ihres ersten Layouts und `crop = true`, weil der Rahmen die Karte mit Absicht
+  beschneidet.
 
 ### Die Grundfläche von Sprintkarten
 

@@ -9,12 +9,14 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ### Added
 
+- Paper frames: `init` and the new command `frames` (MCP tool `add_frame_layouts`) turn the frames freemapper keeps in `templates/paper-frame.omap` (A6 to A2, landscape or portrait) into layouts, centred on the frame and printed at the map scale; A6, A5 and A2 are free pages. A layout that prints a frame already is left alone (ADR 0079). The summary of `check` and `export` names a free page by its size, not as A4.
 - The README shows version, downloads, commits and CI as badges in three groups, like freemapper. A daily workflow counts the downloads of the program archives (not the checksums or update files) and keeps the result on the branch `badges` (as in freemapper, ADR 0177).
 - Issues of users stand out: a workflow sets the label `von-nutzer` on every issue that does not come from the owner or a collaborator; two forms (bug, request) ask for the version, the map and what happened (ADR 0078).
 - ADR 0077 records the findings on running tests and mutation tests: a survivor is closed by a test that pins the value, `cargo test` runs in two steps, the mutation job stays on the diff, `cargo hack` runs without `--locked`, and the badges are written in a fixed order. Two measurements are added: `cargo nextest` gains nothing on 723 tests (the earlier figure came from a noisy run, the rejection stands), and `opt-level = 3` for dependencies cuts the test run from 4:03 to 0:48 min but lengthens the cold build from 4:16 to 13:05 min, so no profile is added.
 
 ### Changed
 
+- Core pin v0.32.0 → v0.33.0 (the contract reserves the words of the paper frames).
 - Core pin v0.31.1 → v0.32.0 (the page fonts become public there; nothing changes in the PDFs of freemapper-print).
 - The `hack` gate runs with `--locked` and without `--no-dev-deps`, which rewrote `Cargo.lock` and the manifests. It now also builds the dev dependencies (ADR 0077).
 - rmcp goes from 3.6.0 to 3.9.0 (with `rmcp-macros` 3.9.0; 3.10.0 and later are younger than two weeks, ADR 0006). The release fixes RUSTSEC-2026-0457 and RUSTSEC-2026-0462, so `deny.toml` loses both ignores (ADR 0068, amendment).

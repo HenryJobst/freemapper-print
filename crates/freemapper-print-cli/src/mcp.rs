@@ -251,6 +251,18 @@ where
     Option::<T>::deserialize(d).map(Some)
 }
 
+/// The arguments of `add_frame_layouts`.
+#[derive(Deserialize, rmcp::schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct FramesIn {
+    /// Absolute path of freemapper-print.toml or of the folder that holds it.
+    project: String,
+    /// Only report which layouts would be added; write nothing. Default: false.
+    dry_run: Option<bool>,
+    /// Language of the messages: "de" or "en". Default: the language the server started with.
+    lang: Option<String>,
+}
+
 /// The arguments of `set_layout`: the keys of a `[[layouts]]` table. A key left out keeps its value, or takes the
 /// default for a new layout.
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
@@ -1507,6 +1519,35 @@ impl PrintServer {
     }
 
     #[tool(
+        description = "Add a layout for each paper frame freemapper keeps for the map \
+                       (templates/paper-frame.omap next to the map), as the frames command does. A \
+                       layout takes the paper, orientation and centre of its frame and prints at the \
+                       map scale. A frame that a layout prints already adds nothing; no layout is \
+                       changed or replaced. With dry_run nothing is written. Returns found, skipped, \
+                       the layouts added (or, with dry_run, that would be), and present."
+    )]
+    async fn add_frame_layouts(
+        &self,
+        Parameters(args): Parameters<FramesIn>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let FramesIn {
+            project,
+            dry_run,
+            lang,
+        } = args;
+        self.write(&context, lang.as_deref(), &project, move |texts, path| {
+            let result = ops::frames::frames(&ops::frames::FramesArgs {
+                project: path.to_path_buf(),
+                dry_run: dry_run.unwrap_or(false),
+            })
+            .map_err(|e| op_message(texts, e))?;
+            json(texts, &result)
+        })
+        .await
+    }
+
+    #[tool(
         description = "Add a sheet element to a layout, or to the shared elements when layout is left \
                        out, or replace the element with the same id there. Which fields apply depends \
                        on kind: lines for title_block and text, size_pt for those and for credit_line \
@@ -2073,6 +2114,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "add_frame_layouts",
                 "assign_mask",
                 "check_project",
                 "check_update",

@@ -119,3 +119,4 @@ Keep an ADR between 10 and 30 lines. Write it in English, like all technical doc
 | [0076](0076-example-previews-as-webp.md) | Example previews and manual figures as WebP | Accepted | 2026-11-20 |
 | [0077](0077-findings-on-running-tests-and-mutation-tests.md) | Findings on running tests and mutation tests | Accepted, supplements [0072](0072-mutation-properties-sbom-complexity.md) and [0074](0074-test-count-and-budget.md) | 2026-11-20 |
 | [0078](0078-issues-of-users-are-labelled.md) | Issues of users are labelled | Accepted | 2026-11-22 |
+| [0079](0079-layouts-from-paper-frames.md) | Layouts from paper frames | Accepted | 2026-11-27 |
