@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-27
+
 ### Added
 
 - Paper frames: `init` and the new command `frames` (MCP tool `add_frame_layouts`, button in the editor) turn the frames freemapper keeps in `templates/paper-frame.omap` (A6 to A2, landscape or portrait) into layouts, centred on the frame and printed at the map scale; A6, A5 and A2 are free pages. A layout that prints a frame already is left alone (ADR 0079). The summary of `check` and `export` names a free page by its size, not as A4.
