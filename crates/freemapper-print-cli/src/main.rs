@@ -1285,9 +1285,6 @@ fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck]) -> usize {
     with_notes
 }
 
-/// `check`: without a course file every layout; with one, the notes of the file once, then every course on its
-/// layout, then every layout sheet without a course, as `export --layout` writes it (ruling R40). Exit code 1
-/// when the file, a course or a layout sheet has notes that count.
 /// `frames`: one layout per paper frame of the map that no layout prints yet (ADR 0079).
 fn frames(texts: &Texts, args: &FramesArgs) -> anyhow::Result<u8> {
     let result = ops::frames::frames(&ops::frames::FramesArgs {
@@ -1336,6 +1333,9 @@ fn frames(texts: &Texts, args: &FramesArgs) -> anyhow::Result<u8> {
     Ok(0)
 }
 
+/// `check`: without a course file every layout; with one, the notes of the file once, then every course on its
+/// layout, then every layout sheet without a course, as `export --layout` writes it (ruling R40). Exit code 1
+/// when the file, a course or a layout sheet has notes that count.
 fn check(texts: &Texts, args: &CheckArgs) -> anyhow::Result<u8> {
     let result = ops::check::check(&ops::check::CheckArgs {
         project: args.project.clone(),

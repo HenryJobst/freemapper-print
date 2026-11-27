@@ -241,7 +241,7 @@ pub fn plan_layouts(
             .chain(&plan.add)
             .find(|l| prints(l, frame, scale));
         if let Some(layout) = already {
-            if existing.iter().any(|l| l.id == layout.id) {
+            if existing.iter().any(|l| l.id == layout.id) && !plan.present.contains(&layout.id) {
                 plan.present.push(layout.id.clone());
             }
             continue;
@@ -331,6 +331,15 @@ mod tests {
         let again = plan_layouts(&found.frames, &first.add, scale, 12.0);
         assert!(again.add.is_empty());
         assert_eq!(again.present, ["frame-a4-portrait", "frame-a5-landscape"]);
+    }
+
+    #[test]
+    fn two_equal_frames_name_their_layout_once() {
+        let (_dir, found, scale) = read_fixture();
+        let first = plan_layouts(&found.frames[..1], &[], scale, 12.0);
+        let twice = [found.frames[0], found.frames[0]];
+        let again = plan_layouts(&twice, &first.add, scale, 12.0);
+        assert_eq!(again.present, ["frame-a4-portrait"]);
     }
 
     #[test]
