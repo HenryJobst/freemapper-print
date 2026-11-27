@@ -28,6 +28,11 @@ pub enum OpError {
         path: PathBuf,
         source: anyhow::Error,
     },
+    /// The template map with the paper frames could not be read.
+    ReadFrames {
+        path: PathBuf,
+        source: anyhow::Error,
+    },
     /// The course file could not be read or fitted to the map.
     Courses(anyhow::Error),
     /// A `--view` that does not parse (usage).

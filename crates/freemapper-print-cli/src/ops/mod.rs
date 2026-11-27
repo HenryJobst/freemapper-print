@@ -11,6 +11,7 @@ pub mod check;
 pub mod edit;
 pub mod error;
 pub mod export;
+pub mod frames;
 pub mod init;
 pub mod masks;
 pub mod note;

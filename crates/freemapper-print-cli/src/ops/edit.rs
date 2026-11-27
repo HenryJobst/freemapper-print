@@ -248,7 +248,7 @@ pub fn assign_mask(args: &AssignArgs) -> Result<AssignResult, OpError> {
 }
 
 /// A refusal of the project file as an [`OpError`]: a failed write, or a change that was not made.
-fn edit_error(path: &std::path::Path, source: ProjectError) -> OpError {
+pub(super) fn edit_error(path: &std::path::Path, source: ProjectError) -> OpError {
     match source {
         err @ ProjectError::Write { .. } => OpError::WriteFile {
             path: path.to_path_buf(),

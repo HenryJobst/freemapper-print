@@ -9,6 +9,7 @@
 pub mod courses;
 pub mod describe;
 pub mod export;
+pub mod frames;
 pub mod mask;
 pub mod mask_build;
 pub mod numbers;

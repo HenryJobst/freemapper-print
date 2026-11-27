@@ -44,6 +44,7 @@ enum Commands {
     Render(RenderArgs),
     Init(InitArgs),
     Check(CheckArgs),
+    Frames(FramesArgs),
     Export(ExportArgs),
     Numbers(NumbersArgs),
     Masks(MasksArgs),
@@ -130,6 +131,13 @@ struct InitArgs {
 #[derive(Args)]
 struct CheckArgs {
     project: PathBuf,
+}
+
+#[derive(Args)]
+struct FramesArgs {
+    project: PathBuf,
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[derive(Args)]
@@ -432,6 +440,10 @@ fn op_error(texts: &Texts, err: ops::OpError) -> anyhow::Error {
         )),
         E::ReadMap { path, source } => source.context(texts.get(
             "error-read-map",
+            Some(&args!("path" => path.display().to_string())),
+        )),
+        E::ReadFrames { path, source } => source.context(texts.get(
+            "error-read-frames",
             Some(&args!("path" => path.display().to_string())),
         )),
         E::Courses(source) => source.context(texts.plain("error-courses")),
@@ -762,6 +774,15 @@ fn init_written_lines(texts: &Texts, result: &ops::init::InitResult) -> Vec<Stri
         ),
         None => texts.plain("init-no-contour-hint"),
     });
+    if !result.frame_layouts.is_empty() {
+        lines.push(texts.get(
+            "init-frames",
+            Some(&args!(
+                "count" => result.frame_layouts.len(),
+                "layouts" => result.frame_layouts.join(", "),
+            )),
+        ));
+    }
     let next = if result.fits() {
         "init-next"
     } else {
@@ -1223,14 +1244,7 @@ fn sheet_lines(
     keys: &[(&'static str, String)],
     sheet: &ops::Sheet,
 ) -> Vec<String> {
-    let mut lines = vec![summary_line(
-        texts,
-        id,
-        keys,
-        sheet.paper,
-        &sheet.print,
-        sheet.map_scale,
-    )];
+    let mut lines = vec![summary_line(texts, id, keys, &sheet.print, sheet.map_scale)];
     lines.extend(sheet.notes.iter().map(|n| n.describe(texts).message));
     lines
 }
@@ -1269,6 +1283,54 @@ fn print_checks(texts: &Texts, sheets: &[ops::check::SheetCheck]) -> usize {
         with_notes += usize::from(sheet.needs_attention());
     }
     with_notes
+}
+
+/// `frames`: one layout per paper frame of the map that no layout prints yet (ADR 0079).
+fn frames(texts: &Texts, args: &FramesArgs) -> anyhow::Result<u8> {
+    let result = ops::frames::frames(&ops::frames::FramesArgs {
+        project: args.project.clone(),
+        dry_run: args.dry_run,
+    })
+    .map_err(|e| op_error(texts, e))?;
+    if result.found == 0 && result.skipped == 0 {
+        eprintln!("{}", texts.plain("frames-none"));
+        return Ok(0);
+    }
+    for layout in &result.added {
+        let page = layout.portrait_mm();
+        eprintln!(
+            "{}",
+            texts.get(
+                if args.dry_run {
+                    "frames-would-add"
+                } else {
+                    "frames-added"
+                },
+                Some(&args!(
+                    "layout" => layout.id.clone(),
+                    "width" => page.0,
+                    "height" => page.1,
+                    "scale" => result.map_scale,
+                )),
+            )
+        );
+    }
+    if !result.present.is_empty() {
+        eprintln!(
+            "{}",
+            texts.get(
+                "frames-present",
+                Some(&args!("layouts" => result.present.join(", "))),
+            )
+        );
+    }
+    if result.skipped > 0 {
+        eprintln!(
+            "{}",
+            texts.get("frames-skipped", Some(&args!("count" => result.skipped)))
+        );
+    }
+    Ok(0)
 }
 
 /// `check`: without a course file every layout; with one, the notes of the file once, then every course on its
@@ -1528,6 +1590,24 @@ fn mm(texts: &Texts, value: f64) -> String {
     texts.decimal(&format!("{:.1}", value.max(0.1)))
 }
 
+/// The page named by its size: "A4" for a standard paper, else "148 × 210 mm" (a free page, ADR 0058, such as
+/// the sheet of a paper frame).
+fn page_word((w, h): (f64, f64)) -> String {
+    let (short, long) = if w <= h { (w, h) } else { (h, w) };
+    for (name, [pw, ph]) in [
+        ("A6", [105.0, 148.0]),
+        ("A5", [148.0, 210.0]),
+        ("A4", [210.0, 297.0]),
+        ("A3", [297.0, 420.0]),
+        ("A2", [420.0, 594.0]),
+    ] {
+        if (short - pw).abs() < 0.5 && (long - ph).abs() < 0.5 {
+            return name.to_string();
+        }
+    }
+    format!("{short} \u{d7} {long} mm")
+}
+
 fn paper_name(paper: Paper) -> &'static str {
     match paper {
         Paper::A4 => "A4",
@@ -1564,7 +1644,6 @@ fn summary_line(
     texts: &Texts,
     id: &str,
     keys: &[(&'static str, String)],
-    paper: Paper,
     report: &ops::PrintFacts,
     map_scale: u32,
 ) -> String {
@@ -1575,7 +1654,7 @@ fn summary_line(
         "word-portrait"
     });
     let mut a = args!(
-        "paper" => paper_name(paper),
+        "paper" => page_word(report.page_mm),
         "orientation" => orientation,
         "print_scale" => report.print_scale.to_string(),
         "map_scale" => map_scale.to_string(),
@@ -1602,7 +1681,6 @@ fn report_lines(
         texts,
         "report-summary",
         &[("out", out.display().to_string())],
-        paper.into(),
         &ops::PrintFacts::from(report),
         map_scale,
     )];
@@ -2395,6 +2473,12 @@ fn localised_command(texts: &Texts) -> clap::Command {
                 .after_long_help(texts.plain("check-after-exit-codes"))
                 .mut_arg("project", |a| a.help(texts.plain("help-project")))
         })
+        .mut_subcommand("frames", |c| {
+            c.about(texts.plain("frames-about"))
+                .after_long_help(texts.plain("frames-after-content"))
+                .mut_arg("project", |a| a.help(texts.plain("help-project")))
+                .mut_arg("dry_run", |a| a.help(texts.plain("help-frames-dry-run")))
+        })
         .mut_subcommand("export", |c| {
             c.about(texts.plain("export-about"))
                 .after_long_help(format!(
@@ -2540,6 +2624,7 @@ fn main() -> std::process::ExitCode {
         Commands::Render(args) => render(&texts, &args),
         Commands::Init(args) => init(&texts, &args),
         Commands::Check(args) => check(&texts, &args),
+        Commands::Frames(args) => frames(&texts, &args),
         Commands::Export(args) => export(&texts, &args),
         Commands::Numbers(args) => match args.command {
             NumbersCommand::Accept(args) => numbers_accept(&texts, &args),

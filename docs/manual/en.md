@@ -112,7 +112,7 @@ put a file `.mcp.json` into the folder you start Claude Code in, for example the
 `command` is the absolute path of the program, wherever you unpacked it (README, section "Installation"). On
 Windows it reads like `C:\\Users\\name\\freemapper-print\\freemapper-print.exe`, with double backslashes because
 the file is JSON. `--lang en` picks English messages; without it the system language applies, as on the command
-line. After the next start of Claude Code, `/mcp` shows the server with its thirteen tools.
+line. After the next start of Claude Code, `/mcp` shows the server with its fourteen tools.
 
 ### Let the agent set it up
 
@@ -137,6 +137,7 @@ project folder or the file `freemapper-print.toml` in it.
 | `masks_window` | `masks window` | `project`, `course` | `controls`, `radius`, `radius_for`, `gap`, `no_start`, `no_finish`, `id`, `assign` | the mask id, the windows and the messages |
 | `masks_corridor` | `masks corridor` | `project`, `points` | `width`, `id`, `assign`, `course` | the mask id and the messages |
 | `numbers_accept` | `numbers accept` | `project`, `course`, `control`, `scope` (`sheet` or `layout_wide`) | `direction` and `gap`, only together | the correction written and the message |
+| `add_frame_layouts` | `frames` | `project` | `dry_run` | `found`, `skipped`, the layouts added (with `dry_run`: that would be) and `present` |
 | `set_layout` | | `project`, `id` | `paper`, `page_mm`, `orientation`, `print_scale`, `centre_map_mm`, `margin_mm`, `border_mm`, `crop`, `north_lines`, `hide_parts`, `view`, `hide_shared` | the layout as the file now holds it, and `change` |
 | `set_element` | | `project`, `id`, `kind`, `anchor` | `layout`, `lines`, `size_pt`, `box_white`, `file`, `width_mm`, `cell_mm` | the element and `change` |
 | `assign_mask` | | `project`, `course` | `mask`, `layout` | the assignment and `change` |
@@ -487,6 +488,25 @@ view = ["no-paths"]
 
 Without a project file, `render --view` does the same for one map, and `export --view` adds a view to every layout and
 writes into `out/<view>`, so that the full sheets stay as they are.
+
+### Paper frames from freemapper
+
+freemapper can keep paper frames for a map: sheets of A6, A5, A4, A3 or A2, landscape or portrait, which the course
+setter places on the map. It writes them next to the map as `templates/paper-frame.omap`. freemapper-print turns each
+frame into a layout of the same paper and orientation, centred on the frame and printed at the map scale, so the
+printed sheet is the frame.
+
+- `init` adds these layouts next to the first one, as `frame-a4-portrait`, `frame-a5-landscape` and so on. With a
+  course file they stay without an assignment; assign a course to one with the project file, or print them with
+  `export --layout`.
+- `freemapper-print frames <project>` adds the layouts a project lacks, for example after you placed a new frame
+  in freemapper. `--dry-run` only says what it would add. The MCP tool `add_frame_layouts` does the same.
+- The command never changes or replaces a layout. A frame that a layout prints already (same page, orientation and
+  centre) adds nothing. If you moved a frame in freemapper, delete the old layout and run `frames` again, or change
+  `map_frame.centre_map_mm`.
+- A4 and A3 are the papers of the layout. A6, A5 and A2 become free pages with `page_mm`, as in the table above.
+  The layout keeps the passe-partout of your first layout, and `crop = true`, because the frame cuts the map on
+  purpose.
 
 ### The base area of sprint maps
 

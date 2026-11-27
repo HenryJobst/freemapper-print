@@ -110,6 +110,8 @@ pub struct InitResult {
     pub contour_interval_m: Option<f64>,
     /// Whether `contour_interval_m` comes from the map's `freemapper.toml` and not from the proposal for the kind.
     pub contour_from_sidecar: bool,
+    /// The layouts `init` added for the paper frames of the map, at the map scale.
+    pub frame_layouts: Vec<String>,
     /// Without a course file, when the layout does not fit: what `check` says about its sheet.
     pub check: Option<SheetCheck>,
 }
@@ -290,6 +292,21 @@ pub fn init(
             }
         }
     }
+    // The paper frames freemapper keeps for the map each get a layout at the map scale (ADR 0079).
+    let frames = freemapper_print::frames::read_paper_frames(&map_path).map_err(|err| {
+        OpError::ReadFrames {
+            path: map_path.clone(),
+            source: anyhow::Error::new(err),
+        }
+    })?;
+    let frame_plan = freemapper_print::frames::plan_layouts(
+        &frames.frames,
+        &new.layouts,
+        map_scale,
+        new.layouts[0].map_frame.margin_mm,
+    );
+    let frame_layouts: Vec<String> = frame_plan.add.iter().map(|l| l.id.clone()).collect();
+    new.layouts.extend(frame_plan.add);
     // A contour interval in the map's `freemapper.toml` (the contract's `[contours] interval_m`) was computed
     // for this map and beats the proposal for the kind; an unusable file counts as missing.
     let sidecar_contour = freemapper_print::scale::read_sidecar_contour_interval(&map_path)
@@ -376,6 +393,7 @@ pub fn init(
         course_file,
         contour_interval_m: contour,
         contour_from_sidecar,
+        frame_layouts,
         check,
     })
 }

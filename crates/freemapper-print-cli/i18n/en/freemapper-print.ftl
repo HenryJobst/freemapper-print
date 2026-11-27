@@ -848,3 +848,19 @@ agent-update-notice = Note for the person: freemapper-print { $new } is availabl
 agent-update-note-manual = Note for the person: freemapper-print { $new } is available (this is { $old }), but install_update cannot install it. Install { $needed } or newer by hand, see { $notes }
 agent-update-note-bad-signature = Note for the person: the newest freemapper-print release could not be verified ({ $error }). Nothing was installed. Tell them, and do not install it some other way.
 update-no-config-dir = no configuration folder on this system; set FREEMAPPER_PRINT_CONFIG_DIR
+
+## Paper frames
+
+frames-about = Add a layout for each paper frame freemapper keeps for the map, and report what it did.
+frames-after-content = The frames come from templates/paper-frame.omap next to the map. Each one becomes a layout of its paper and orientation, centred on the frame and printed at the map scale, so the printed sheet is the frame. A layout that prints a frame already is left alone; no layout is changed or replaced. Papers other than A4 and A3 become free pages.
+help-frames-dry-run = Only say which layouts would be added; write nothing.
+frames-none = The map has no paper frames.
+frames-added = Added layout { $layout }: { $width } × { $height } mm in portrait, print scale 1:{ $scale }.
+frames-would-add = Would add layout { $layout }: { $width } × { $height } mm in portrait, print scale 1:{ $scale }.
+frames-present = Already printed by a layout: { $layouts }.
+frames-skipped = Paper frames left out because their tags or their line are unusable: { $count }.
+error-read-frames = could not read the paper frames in { $path }
+init-frames = The map has paper frames. Added { $count ->
+        [one] 1 layout
+       *[other] { $count } layouts
+    } for them: { $layouts }.

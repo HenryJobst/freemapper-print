@@ -848,3 +848,19 @@ agent-update-notice = Hinweis für die Nutzerin oder den Nutzer: freemapper-prin
 agent-update-note-manual = Hinweis für die Nutzerin oder den Nutzer: freemapper-print { $new } ist verfügbar (dies ist { $old }), aber install_update kann es nicht installieren. Installieren Sie { $needed } oder neuer von Hand, siehe { $notes }
 agent-update-note-bad-signature = Hinweis für die Nutzerin oder den Nutzer: Die neueste freemapper-print-Version ließ sich nicht verifizieren ({ $error }). Es wurde nichts installiert. Sagen Sie das der Person, und installieren Sie die Version nicht auf anderem Weg.
 update-no-config-dir = Dieses System hat keinen Ordner für Einstellungen; setzen Sie FREEMAPPER_PRINT_CONFIG_DIR.
+
+## Papierrahmen
+
+frames-about = Legt für jeden Papierrahmen, den freemapper zur Karte führt, ein Layout an und meldet, was es getan hat.
+frames-after-content = Die Rahmen stehen in templates/paper-frame.omap neben der Karte. Jeder wird zu einem Layout mit seinem Papier und seiner Ausrichtung, auf den Rahmen zentriert und im Kartenmaßstab gedruckt, sodass das gedruckte Blatt der Rahmen ist. Ein Layout, das einen Rahmen schon druckt, bleibt unberührt; kein Layout wird geändert oder ersetzt. Andere Papiere als A4 und A3 werden freie Seiten.
+help-frames-dry-run = Nur nennen, welche Layouts angelegt würden; nichts schreiben.
+frames-none = Die Karte hat keine Papierrahmen.
+frames-added = Layout { $layout } angelegt: { $width } × { $height } mm hoch, Druckmaßstab 1:{ $scale }.
+frames-would-add = Würde Layout { $layout } anlegen: { $width } × { $height } mm hoch, Druckmaßstab 1:{ $scale }.
+frames-present = Schon von einem Layout gedruckt: { $layouts }.
+frames-skipped = Papierrahmen ohne brauchbare Tags oder Linie ausgelassen: { $count }.
+error-read-frames = Die Papierrahmen in { $path } konnten nicht gelesen werden
+init-frames = Die Karte hat Papierrahmen. Dafür { $count ->
+        [one] wurde 1 Layout
+       *[other] wurden { $count } Layouts
+    } angelegt: { $layouts }.
