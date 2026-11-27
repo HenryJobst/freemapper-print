@@ -864,3 +864,11 @@ init-frames = Die Karte hat Papierrahmen. Dafür { $count ->
         [one] wurde 1 Layout
        *[other] wurden { $count } Layouts
     } angelegt: { $layouts }.
+editor-frames-button = Papierrahmen als Layouts anlegen
+editor-frames-hint = Legt für jeden Papierrahmen, den freemapper zur Karte führt, ein Layout an. Ein Layout, das einen Rahmen schon druckt, bleibt unverändert. Mit „Rückgängig“ verschwinden die neuen Layouts wieder.
+editor-frames-none = Die Karte hat keine Papierrahmen.
+editor-frames-result = { $added ->
+        [0] Kein neues Layout; alle { $found } Papierrahmen werden schon gedruckt.
+        [one] 1 Layout für die { $found } Papierrahmen angelegt: { $layouts }.
+       *[other] { $added } Layouts für die { $found } Papierrahmen angelegt: { $layouts }.
+    }

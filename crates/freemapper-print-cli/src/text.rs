@@ -411,6 +411,8 @@ mod tests {
             "shown",
             "total",
             "applied",
+            "added",
+            "found",
             "reason",
             "value",
             "scale",

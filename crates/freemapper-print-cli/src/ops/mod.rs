@@ -170,6 +170,45 @@ pub(crate) mod testing {
         ))
     }
 
+    /// A project over the contract fixture `paper-frames` (an A4 portrait and an A5 landscape frame) in `dir`: the
+    /// project file and its folder, and the map.
+    pub fn paper_frames_project(dir: &std::path::Path) -> (PathBuf, PathBuf) {
+        use crate::ops::init::{FileComments, InitArgs, init};
+        use freemapper_print::project::SheetLang;
+
+        let fixture = freemapper_contract::fixture("paper-frames").unwrap();
+        std::fs::create_dir_all(dir.join("map")).unwrap();
+        let map = fixture.write_into(&dir.join("map")).unwrap();
+        let folder = dir.join("project");
+        init(
+            &InitArgs {
+                folder: folder.clone(),
+                map: map.clone(),
+                title: None,
+                kind: None,
+                courses: None,
+                sheet_lang: SheetLang::En,
+            },
+            &|_, _, _| FileComments {
+                contour: String::new(),
+                footer: String::new(),
+            },
+            &mut |_| {},
+        )
+        .unwrap();
+        (folder, map)
+    }
+
+    /// Takes the `[[layouts]]` table with this id out of the project file's text.
+    pub fn remove_layout(file: &std::path::Path, id: &str) {
+        let text = std::fs::read_to_string(file).unwrap();
+        let cut = text.find(&format!("[[layouts]]\nid = \"{id}\"")).unwrap();
+        let end = text[cut + 1..]
+            .find("[[")
+            .map_or(text.len(), |i| cut + 1 + i);
+        std::fs::write(file, format!("{}{}", &text[..cut], &text[end..])).unwrap();
+    }
+
     /// The folder of the Lübeck layouts example (no course file).
     pub fn luebeck() -> PathBuf {
         PathBuf::from(concat!(

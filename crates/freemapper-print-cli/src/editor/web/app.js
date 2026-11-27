@@ -198,7 +198,9 @@ function propsFor(key) {
   if (type === "layout") {
     const spec = state.spec.layouts.find((l) => l.id === id);
     state.selected = null;
-    if (spec) $("props").replaceChildren(layoutForm(spec, (body) => write("set_layout", body)));
+    if (spec) {
+      $("props").replaceChildren(layoutForm(spec, (body) => write("set_layout", body)), framesSection());
+    }
   } else if (type === "mask") {
     const mask = info.masks.find((m) => m.id === id);
     showProps([
@@ -729,6 +731,48 @@ async function refresh() {
 }
 
 // One change: `POST api/op/{name}` with the revision the page last saw. Returns whether it was made.
+// What the last click on the frames button did, in words.
+let framesMessage = null;
+
+// The paper frames of the map as layouts (ADR 0079): a button and, after a click, what it did.
+function framesSection() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = t("editor-frames-button");
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = framesMessage ?? t("editor-frames-hint");
+  button.addEventListener("click", async () => {
+    if (state.writing) return;
+    state.writing = true;
+    try {
+      const answer = await post("api/op/add_frame_layouts", {}, state.revision);
+      const result = answer.ok ? answer.data.result : null;
+      if (result) {
+        // Kept for the next time the form is built: a refresh after the write may build it again.
+        framesMessage =
+          result.found === 0
+            ? t("editor-frames-none")
+            : t("editor-frames-result", {
+                added: result.added.length,
+                layouts: result.added.map((l) => l.id).join(", "),
+                found: result.found,
+              });
+        hint.textContent = framesMessage;
+      }
+      await afterWrite(answer, "editor-status-changed");
+      hint.textContent = framesMessage ?? hint.textContent;
+    } catch {
+      lost();
+    } finally {
+      state.writing = false;
+    }
+  });
+  const section = document.createElement("section");
+  section.append(button, hint);
+  return section;
+}
+
 async function write(name, body) {
   state.writing = true;
   try {

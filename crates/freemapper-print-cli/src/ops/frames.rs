@@ -91,34 +91,9 @@ pub fn frames(args: &FramesArgs) -> Result<FramesResult, OpError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ops::init::{FileComments, InitArgs, init};
-    use freemapper_print::project::SheetLang;
     use std::path::Path;
 
-    /// A project over the contract fixture with two paper frames (an A4 portrait and an A5 landscape).
-    fn project(dir: &Path) -> (PathBuf, PathBuf) {
-        let fixture = freemapper_contract::fixture("paper-frames").unwrap();
-        std::fs::create_dir_all(dir.join("map")).unwrap();
-        let map = fixture.write_into(&dir.join("map")).unwrap();
-        let folder = dir.join("project");
-        init(
-            &InitArgs {
-                folder: folder.clone(),
-                map: map.clone(),
-                title: None,
-                kind: None,
-                courses: None,
-                sheet_lang: SheetLang::En,
-            },
-            &|_, _, _| FileComments {
-                contour: String::new(),
-                footer: String::new(),
-            },
-            &mut |_| {},
-        )
-        .unwrap();
-        (folder, map)
-    }
+    use crate::ops::testing::paper_frames_project as project;
 
     #[test]
     fn init_adds_a_layout_per_frame() {
@@ -153,14 +128,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (folder, _) = project(dir.path());
         let file = project_file_of(&folder);
-        let text = std::fs::read_to_string(&file).unwrap();
-        let cut = text
-            .find("[[layouts]]\nid = \"frame-a5-landscape\"")
-            .unwrap();
-        let end = text[cut + 1..]
-            .find("[[")
-            .map_or(text.len(), |i| cut + 1 + i);
-        std::fs::write(&file, format!("{}{}", &text[..cut], &text[end..])).unwrap();
+        crate::ops::testing::remove_layout(&file, "frame-a5-landscape");
 
         let dry = frames(&FramesArgs {
             project: folder.clone(),

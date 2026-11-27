@@ -513,6 +513,8 @@ Kartenmaßstab gedruckt, sodass das gedruckte Blatt der Rahmen ist.
 - `init` legt diese Layouts neben dem ersten an, als `frame-a4-portrait`, `frame-a5-landscape` und so weiter. Mit
   einer Bahndatei bleiben sie ohne Zuordnung; ordnen Sie einem eine Bahn in der Projektdatei zu, oder drucken Sie
   sie mit `export --layout`.
+- Im Editor tut die Schaltfläche „Papierrahmen als Layouts anlegen“ unter dem Layout-Formular dasselbe wie `frames`;
+  mit „Rückgängig“ verschwinden die neuen Layouts wieder.
 - `freemapper-print frames <Projekt>` legt die Layouts an, die einem Projekt fehlen, etwa nachdem Sie in freemapper
   einen neuen Rahmen gesetzt haben. `--dry-run` sagt nur, was es anlegen würde. Das MCP-Werkzeug
   `add_frame_layouts` tut dasselbe.
