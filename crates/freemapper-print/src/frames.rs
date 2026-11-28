@@ -52,15 +52,21 @@ impl FramePaper {
             .find(|p| p.name() == word)
     }
 
+    /// The paper of a layout that prints this frame.
+    pub fn paper(self) -> Paper {
+        match self {
+            FramePaper::A6 => Paper::A6,
+            FramePaper::A5 => Paper::A5,
+            FramePaper::A4 => Paper::A4,
+            FramePaper::A3 => Paper::A3,
+            FramePaper::A2 => Paper::A2,
+        }
+    }
+
     /// Width and height in portrait (mm).
     pub fn size_mm(self) -> [f64; 2] {
-        match self {
-            FramePaper::A6 => [105.0, 148.0],
-            FramePaper::A5 => [148.0, 210.0],
-            FramePaper::A4 => [210.0, 297.0],
-            FramePaper::A3 => [297.0, 420.0],
-            FramePaper::A2 => [420.0, 594.0],
-        }
+        let (w, h) = self.paper().size_mm();
+        [w, h]
     }
 }
 
@@ -170,19 +176,13 @@ fn base_id(frame: &PaperFrame) -> String {
 }
 
 /// The layout that prints `frame` at `scale`: its paper in its orientation, the map centred on the frame, the
-/// frame cutting the map on purpose. A4 and A3 are papers of the layout; the other papers are free pages
-/// (`page_mm`). `margin_mm` is the passe-partout; the caller takes the one its first layout has, which leaves room for
+/// frame cutting the map on purpose. `margin_mm` is the passe-partout; the caller takes the one its first layout has, which leaves room for
 /// the footer.
 pub fn layout_for(frame: &PaperFrame, id: String, scale: u32, margin_mm: f64) -> LayoutSpec {
-    let (paper, page_mm) = match frame.paper {
-        FramePaper::A4 => (Paper::A4, None),
-        FramePaper::A3 => (Paper::A3, None),
-        other => (Paper::A4, Some(other.size_mm())),
-    };
     LayoutSpec {
         id,
-        paper,
-        page_mm,
+        paper: frame.paper.paper(),
+        page_mm: None,
         orientation: frame.orientation,
         print_scale: Some(scale),
         map_frame: MapFrameSpec {
@@ -319,7 +319,7 @@ mod tests {
         );
         let a5 = &plan.add[1];
         assert_eq!(a5.id, "frame-a5-landscape");
-        assert_eq!(a5.page_mm, Some([148.0, 210.0]));
+        assert_eq!((a5.paper, a5.page_mm), (Paper::A5, None));
         assert_eq!(a5.orientation, Orientation::Landscape);
         assert_eq!(a5.portrait_mm(), (148.0, 210.0));
     }
@@ -331,6 +331,17 @@ mod tests {
         let again = plan_layouts(&found.frames, &first.add, scale, 12.0);
         assert!(again.add.is_empty());
         assert_eq!(again.present, ["frame-a4-portrait", "frame-a5-landscape"]);
+    }
+
+    #[test]
+    fn a_free_page_of_version_0_14_counts_as_the_paper() {
+        let (_dir, found, scale) = read_fixture();
+        let mut old = plan_layouts(&found.frames[1..], &[], scale, 12.0).add;
+        old[0].paper = Paper::A4;
+        old[0].page_mm = Some([148.0, 210.0]);
+        let again = plan_layouts(&found.frames, &old, scale, 12.0);
+        assert_eq!(again.present, ["frame-a5-landscape"]);
+        assert_eq!(again.add.len(), 1);
     }
 
     #[test]

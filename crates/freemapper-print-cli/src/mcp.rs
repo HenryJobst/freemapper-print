@@ -195,15 +195,21 @@ impl From<KindIn> for MapKind {
 
 #[derive(Deserialize, rmcp::schemars::JsonSchema)]
 enum PaperIn {
+    A6,
+    A5,
     A4,
     A3,
+    A2,
 }
 
 impl From<PaperIn> for Paper {
     fn from(p: PaperIn) -> Self {
         match p {
+            PaperIn::A6 => Paper::A6,
+            PaperIn::A5 => Paper::A5,
             PaperIn::A4 => Paper::A4,
             PaperIn::A3 => Paper::A3,
+            PaperIn::A2 => Paper::A2,
         }
     }
 }

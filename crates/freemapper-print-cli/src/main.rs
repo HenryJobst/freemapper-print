@@ -236,8 +236,11 @@ struct CorridorArgs {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum PaperArg {
+    A6,
+    A5,
     A4,
     A3,
+    A2,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -257,8 +260,11 @@ enum KindArg {
 impl From<PaperArg> for Paper {
     fn from(p: PaperArg) -> Self {
         match p {
+            PaperArg::A6 => Paper::A6,
+            PaperArg::A5 => Paper::A5,
             PaperArg::A4 => Paper::A4,
             PaperArg::A3 => Paper::A3,
+            PaperArg::A2 => Paper::A2,
         }
     }
 }
@@ -1610,8 +1616,11 @@ fn page_word((w, h): (f64, f64)) -> String {
 
 fn paper_name(paper: Paper) -> &'static str {
     match paper {
+        Paper::A6 => "A6",
+        Paper::A5 => "A5",
         Paper::A4 => "A4",
         Paper::A3 => "A3",
+        Paper::A2 => "A2",
     }
 }
 
@@ -2320,7 +2329,7 @@ fn print_note_line(texts: &Texts, note: &ops::note::PrintNote) -> String {
         } => {
             let cut = cut_text(texts, *x_mm, *y_mm);
             let mut hints = Vec::new();
-            if *paper == Paper::A4 {
+            if matches!(paper, Paper::A6 | Paper::A5 | Paper::A4) {
                 hints.push(texts.plain("hint-paper-a3"));
             }
             // Auto already took the orientation that cuts off less.

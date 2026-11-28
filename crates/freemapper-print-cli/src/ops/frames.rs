@@ -91,6 +91,7 @@ pub fn frames(args: &FramesArgs) -> Result<FramesResult, OpError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use freemapper_print::print::Paper;
     use std::path::Path;
 
     use crate::ops::testing::paper_frames_project as project;
@@ -146,7 +147,10 @@ mod tests {
         .unwrap();
         assert!(done.written);
         assert_eq!(done.added[0].id, "frame-a5-landscape");
-        assert_eq!(done.added[0].page_mm, Some([148.0, 210.0]));
+        assert_eq!(
+            (done.added[0].paper, done.added[0].page_mm),
+            (Paper::A5, None)
+        );
         assert_eq!(load_project(&folder).unwrap().project.layouts.len(), 3);
     }
 

@@ -6,7 +6,7 @@
 <!-- badges:start -->
 [![Version](https://img.shields.io/github/v/release/HenryJobst/freemapper-print?label=version)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HenryJobst/freemapper-print/badges/downloads.en.json)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Commits](https://img.shields.io/github/commit-activity/t/HenryJobst/freemapper-print?label=Commits)](https://github.com/HenryJobst/freemapper-print/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/HenryJobst/freemapper-print/ci.yml?branch=main&label=CI)](https://github.com/HenryJobst/freemapper-print/actions/workflows/ci.yml)
 
-[![Tests](https://img.shields.io/badge/Tests-762-blue)](docs/tests.json) [![Test budget](https://img.shields.io/badge/Test_budget-10_min-blue)](docs/tests.json) [![Line coverage](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
+[![Tests](https://img.shields.io/badge/Tests-764-blue)](docs/tests.json) [![Test budget](https://img.shields.io/badge/Test_budget-10_min-blue)](docs/tests.json) [![Line coverage](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
 
 [![MSRV](https://img.shields.io/badge/MSRV-1.88-blue)](Cargo.toml) [![ADRs](https://img.shields.io/badge/ADRs-79-blue)](docs/adr/README.md) [![License](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue)](LICENSE)
 <!-- badges:end -->
@@ -25,7 +25,7 @@ OpenOrienteering Mapper (OOM), and freemapper-print puts the finished map on pap
 
 What it does already:
 
-- print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A4, A3 or a page size of your choice, also at a different scale
+- print a finished OOM map (`.omap`) at the exact scale as a vector PDF, on A6 to A2 or a page size of your choice, also at a different scale
   with the symbol sizes the standard prescribes (for example 1:3000 for the youngest classes with symbols at
   133 %);
 - one project file per event with any number of layouts: created with `init`, checked with `check`, written as

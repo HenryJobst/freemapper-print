@@ -400,8 +400,8 @@ map_frame = { margin_mm = 10.0, border_mm = 0.25 }
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
 | `id` | | Name des Layouts und des PDFs (`a3-3000.pdf`), Pflicht |
-| `paper` | `"A4"` | `"A4"` oder `"A3"` |
-| `page_mm` | Papier | stattdessen eine Seite beliebiger Größe, `[Breite, Höhe]` im Hochformat, jede Seite 10 bis 5080 mm: `page_mm = [500.0, 700.0]`. Für eine Karte, die im Kartenmaßstab größer als A3 ist. Die Ausrichtung gilt auch dafür. Über A3 sagt `check` das, weil ein Bürodrucker so ein Blatt nicht annimmt |
+| `paper` | `"A4"` | `"A6"`, `"A5"`, `"A4"`, `"A3"` oder `"A2"` |
+| `page_mm` | Papier | stattdessen eine Seite beliebiger Größe, `[Breite, Höhe]` im Hochformat, jede Seite 10 bis 5080 mm: `page_mm = [500.0, 700.0]`. Für eine Karte, die zu keinem der Papiere passt. Die Ausrichtung gilt auch dafür. Über A3 sagt `check` das, weil ein Bürodrucker so ein Blatt nicht annimmt |
 | `orientation` | `"auto"` | `"portrait"` (hoch), `"landscape"` (quer) oder `"auto"`: die Ausrichtung, in der weniger von der Karte fehlt |
 | `print_scale` | Maßstab der Karte | Nenner des Druckmaßstabs, `3000` für 1:3000 |
 | `north_lines` | `"auto"` | `"auto"` ergänzt Nordlinien, wenn die Karte keine hat; `"never"` nie |
@@ -521,8 +521,7 @@ Kartenmaßstab gedruckt, sodass das gedruckte Blatt der Rahmen ist.
 - Der Befehl ändert oder ersetzt nie ein Layout. Ein Rahmen, den ein Layout schon druckt (gleiche Seite,
   Ausrichtung und Mitte), legt nichts an. Haben Sie einen Rahmen in freemapper verschoben, löschen Sie das alte
   Layout und rufen `frames` noch einmal auf, oder ändern Sie `map_frame.centre_map_mm`.
-- A4 und A3 sind die Papiere des Layouts. A6, A5 und A2 werden freie Seiten mit `page_mm`, wie in der Tabelle oben.
-  Das Layout übernimmt das Passepartout Ihres ersten Layouts und `crop = true`, weil der Rahmen die Karte mit Absicht
+- Jeder Rahmen wird ein Layout mit seinem Papier (`paper = "A5"` und so weiter). Das Layout übernimmt das Passepartout Ihres ersten Layouts und `crop = true`, weil der Rahmen die Karte mit Absicht
   beschneidet.
 
 ### Die Grundfläche von Sprintkarten
@@ -1180,7 +1179,7 @@ Exit-Code 1 enden; eine Zeile, die mit „Zur Information:“ beginnt, nicht.
 | „Die Fußzeile … ragt über den Blattrand“ | Die Fußzeile reicht über das Blatt hinaus. Passepartout und Quellenangaben prüfen. |
 | „Das Element … ragt über den Blattrand“ | Anker oder Abstand des Elements prüfen; ein Logo eventuell schmaler machen. |
 | „Das Element … hängt am Blatt und deckt einen Teil des Kartenausschnitts ab“ | Ein Element am Blatt (`to = "page"`) liegt über der Karte. Ans Passepartout rücken oder an den Kartenausschnitt hängen, wenn es auf der Karte stehen soll. |
-| „Das Papier ist größer als A3“ | Nur bei einer `page_mm` über A3. Eine Druckerei nimmt sie an, ein Bürodrucker nicht. |
+| „Das Papier ist größer als A3“ | Nur bei einem Papier über A3 (A2) oder einer `page_mm` über A3. Eine Druckerei nimmt sie an, ein Bürodrucker nicht. |
 | „Im Layout … fehlt ein Text mit {print_scale} …“ | Maßstab oder Äquidistanz stehen auf keinem Blattelement, oder `map.contour_interval_m` fehlt. Einen Titelblock oder Text mit dem Platzhalter ergänzen, den Wert eintragen. |
 | „Layout … hat keine Kontrollstrecke“ | Das Layout zeigt kein Element `scale_check_bar`. Eines ergänzen (gemeinsam oder im Layout), damit ein Lineal am Ausdruck zeigt, ob der Drucker skaliert hat. |
 | „Zur Information: Die Karte hat keine Nordlinien, deshalb wurden … Linien ergänzt“ | Nur zur Information, siehe Kapitel 6. `north_lines = "never"` schaltet das ab. |

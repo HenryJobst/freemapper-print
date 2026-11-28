@@ -1323,8 +1323,11 @@ fn check_layout(file: &str, i: usize, l: &LayoutSpec) -> Result<(), ProjectError
     if f.margin_mm >= half {
         let paper = match (l.page_mm, l.paper) {
             (Some(_), _) => "the page",
+            (None, Paper::A6) => "A6",
+            (None, Paper::A5) => "A5",
             (None, Paper::A4) => "A4",
             (None, Paper::A3) => "A3",
+            (None, Paper::A2) => "A2",
         };
         return Err(invalid(
             file,
@@ -1917,11 +1920,14 @@ pub fn relative_path(from: &Path, to: &Path) -> PathBuf {
     PathBuf::from(parts.join("/"))
 }
 
-/// The layout id for `paper`: `a4`, `a3`.
+/// The layout id for `paper`: `a6` to `a2`.
 pub fn starter_layout_id(paper: Paper) -> &'static str {
     match paper {
+        Paper::A6 => "a6",
+        Paper::A5 => "a5",
         Paper::A4 => "a4",
         Paper::A3 => "a3",
+        Paper::A2 => "a2",
     }
 }
 
@@ -3291,6 +3297,15 @@ mod tests {
                 .unwrap()
                 .contains("# confirm")
         );
+    }
+
+    #[test]
+    fn every_din_paper_has_a_starter_id_and_a_portrait_size() {
+        let papers = [Paper::A6, Paper::A5, Paper::A4, Paper::A3, Paper::A2];
+        let ids = papers.map(starter_layout_id);
+        assert_eq!(ids, ["a6", "a5", "a4", "a3", "a2"]);
+        assert_eq!(Paper::A5.size_mm(), (148.0, 210.0));
+        assert_eq!(Paper::A2.size_mm(), (420.0, 594.0));
     }
 
     #[test]

@@ -103,7 +103,7 @@ function finish(heading, rows, fields, build, onSubmit) {
 
 // The form of a layout (`spec` as `api/spec` gives it).
 export function layoutForm(spec, onSubmit) {
-  const paper = row(t("editor-field-paper"), select([["A4", "A4"], ["A3", "A3"]], spec.paper));
+  const paper = row(t("editor-field-paper"), select([["A6", "A6"], ["A5", "A5"], ["A4", "A4"], ["A3", "A3"], ["A2", "A2"]], spec.paper));
   const free = row(t("editor-field-free-page"), make("input", { type: "checkbox", checked: Boolean(spec.page_mm) }));
   const [w0, h0] = spec.page_mm ?? PAPER_MM[spec.paper] ?? PAPER_MM.A4;
   const width = row(t("editor-field-page-width"), numberInput(w0));

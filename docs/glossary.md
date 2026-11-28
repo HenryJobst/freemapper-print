@@ -47,7 +47,7 @@ Standard 3.0, **OOM** = OpenOrienteering Mapper.
 |---|---|---|---|
 | Layout | layout | Vorlage für Kartenblätter: Blattformat, Ausrichtung, Druckmaßstab, Kartenausschnitt und Blattelemente. Eine Veranstaltung hat meist 1 bis 5. Die Layout-ID benennt die PDF-Datei; sie darf daher kein `/ \ : * ? " < > |` und keine Steuerzeichen enthalten, nicht mit einem Punkt beginnen oder enden, kein Windows-Gerätename sein und sich von den anderen IDs nicht nur in Groß- und Kleinschreibung unterscheiden. | `Layout` |
 | Kartenblatt, Blatt | sheet | Eine gedruckte Seite: eine Bahn mit ihrem Layout und ihrer Abdeckungsvariante. | `Sheet` |
-| Blattformat | paper size | Papiergröße, z. B. A4 oder A3. | `Paper` |
+| Blattformat | paper size | Papiergröße: A6, A5, A4, A3 oder A2. | `Paper` |
 | Ausrichtung | orientation | Hoch- oder Querformat. | `Orientation` |
 | Kartenausschnitt | map frame | Der Teil der Karte, der auf dem Blatt erscheint, und das Rechteck, das er auf dem Blatt füllt: das Blatt ohne das Passepartout. Die Karte wird darauf beschnitten; der Überstand wird an ihm gemessen. Mit `centre_map_mm` liegt dieser Kartenpunkt in seiner Mitte, in den Koordinaten, die OOM in der Statusleiste zeigt (mm, y nach oben), sonst die Mitte dessen, was gezeichnet wird. | `MapFrameSpec`, `RenderedPage::clip`, `frame_box` |
 | gewollter Beschnitt | intended crop | `map_frame.crop = true`: Der Kartenausschnitt schneidet die Karte mit Absicht ab. Der Überstand ist dann ein Hinweis zur Information und lässt `check` nicht scheitern. | `MapFrameSpec::crop`, `SheetNote::MapCropped` |
