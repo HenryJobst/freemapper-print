@@ -2516,6 +2516,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_din_paper_is_a_paper_of_set_layout() {
+        let dir = viktoriapark_copy();
+        let project = folder(&dir);
+        let mut client = Client::start().await;
+        for paper in ["A6", "A5", "A4", "A3", "A2"] {
+            let id = paper.to_lowercase();
+            let added = client
+                .ok(
+                    "set_layout",
+                    json!({ "project": project, "id": id, "paper": paper }),
+                )
+                .await;
+            assert_eq!(added["layout"]["paper"], paper, "{added}");
+        }
+    }
+
+    #[tokio::test]
     async fn layouts_and_elements_are_added_and_changed_and_the_project_still_checks() {
         let dir = viktoriapark_copy();
         let project = folder(&dir);

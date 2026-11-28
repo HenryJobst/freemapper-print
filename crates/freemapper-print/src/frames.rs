@@ -301,6 +301,22 @@ mod tests {
     }
 
     #[test]
+    fn every_frame_paper_is_a_paper_of_its_size() {
+        let all = [
+            (FramePaper::A6, Paper::A6, "A6"),
+            (FramePaper::A5, Paper::A5, "A5"),
+            (FramePaper::A4, Paper::A4, "A4"),
+            (FramePaper::A3, Paper::A3, "A3"),
+            (FramePaper::A2, Paper::A2, "A2"),
+        ];
+        for (frame, paper, name) in all {
+            assert_eq!((frame.paper(), frame.name()), (paper, name));
+            let (w, h) = paper.size_mm();
+            assert_eq!(frame.size_mm(), [w, h]);
+        }
+    }
+
+    #[test]
     fn a_frame_becomes_a_layout_of_its_paper_at_the_map_scale() {
         let (_dir, found, scale) = read_fixture();
         let plan = plan_layouts(&found.frames, &[], scale, 12.0);

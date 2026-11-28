@@ -2668,6 +2668,27 @@ mod tests {
                 "148.5",
             ),
             (
+                "",
+                String::new(),
+                "paper = \"A6\"\n[layouts.map_frame]\nmargin_mm = 52.5",
+                "layouts[0].map_frame.margin_mm",
+                "A6",
+            ),
+            (
+                "",
+                String::new(),
+                "paper = \"A5\"\n[layouts.map_frame]\nmargin_mm = 74.0",
+                "layouts[0].map_frame.margin_mm",
+                "A5",
+            ),
+            (
+                "",
+                String::new(),
+                "paper = \"A2\"\n[layouts.map_frame]\nmargin_mm = 210.0",
+                "layouts[0].map_frame.margin_mm",
+                "A2",
+            ),
+            (
                 "contour_interval_m = 100.5\n",
                 String::new(),
                 "",

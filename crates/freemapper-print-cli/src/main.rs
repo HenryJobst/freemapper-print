@@ -2697,6 +2697,19 @@ fn main() -> std::process::ExitCode {
 mod tests {
     use super::*;
 
+    #[test]
+    fn every_din_paper_has_its_name_and_its_switch() {
+        let switches = [
+            PaperArg::A6,
+            PaperArg::A5,
+            PaperArg::A4,
+            PaperArg::A3,
+            PaperArg::A2,
+        ];
+        let names = switches.map(|s| paper_name(Paper::from(s)));
+        assert_eq!(names, ["A6", "A5", "A4", "A3", "A2"]);
+    }
+
     fn report() -> PrintReport {
         PrintReport {
             page_mm: (297.0, 210.0),
