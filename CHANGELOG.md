@@ -7,6 +7,8 @@ Hier stehen alle wichtigen Änderungen an freemapper-print, die neueste zuerst. 
 
 ## [Unveröffentlicht]
 
+## [0.15.0] - 2026-11-28
+
 ### Geändert
 
 - Papier: A6, A5 und A2 kommen zu A4 und A3 dazu. Ein Layout nimmt `paper = "A5"`, `render` nimmt `--paper a5`, und das MCP-Werkzeug `set_layout` und der Editor bieten alle fünf an. Die Layouts, die Papierrahmen erzeugen, benutzen ihr Papier statt `page_mm`. Projekte mit einer freien Seite funktionieren weiter (Entscheidung 0080, Core v0.34.0).
