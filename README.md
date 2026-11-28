@@ -6,7 +6,7 @@
 <!-- badges:start -->
 [![Version](https://img.shields.io/github/v/release/HenryJobst/freemapper-print?label=Version)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HenryJobst/freemapper-print/badges/downloads.json)](https://github.com/HenryJobst/freemapper-print/releases/latest) [![Commits](https://img.shields.io/github/commit-activity/t/HenryJobst/freemapper-print?label=Commits)](https://github.com/HenryJobst/freemapper-print/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/HenryJobst/freemapper-print/ci.yml?branch=main&label=CI)](https://github.com/HenryJobst/freemapper-print/actions/workflows/ci.yml)
 
-[![Tests](https://img.shields.io/badge/Tests-762-blue)](docs/tests.json) [![Testbudget](https://img.shields.io/badge/Testbudget-10_min-blue)](docs/tests.json) [![Zeilenabdeckung](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
+[![Tests](https://img.shields.io/badge/Tests-764-blue)](docs/tests.json) [![Testbudget](https://img.shields.io/badge/Testbudget-10_min-blue)](docs/tests.json) [![Zeilenabdeckung](https://img.shields.io/badge/Coverage-96.6%25-brightgreen)](docs/coverage.json) [![Hygiene](https://img.shields.io/badge/Hygiene-19-brightgreen)](scripts/check.sh)
 
 [![MSRV](https://img.shields.io/badge/MSRV-1.88-blue)](Cargo.toml) [![ADRs](https://img.shields.io/badge/ADRs-79-blue)](docs/adr/README.md) [![Lizenz](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)](LICENSE)
 <!-- badges:end -->
@@ -25,7 +25,7 @@ gezeichnet wird in OpenOrienteering Mapper (OOM), und freemapper-print bringt di
 
 Das kann es schon:
 
-- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A4, A3 oder einer frei gewählten Seitengröße, auch in
+- eine fertige Karte aus OOM (`.omap`) im exakten Druckmaßstab als Vektor-PDF ausgeben, auf A6 bis A2 oder einer frei gewählten Seitengröße, auch in
   einem anderen Maßstab mit den Symbolgrößen, die die Norm vorschreibt (zum Beispiel 1:3000 für die jüngsten
   Klassen mit Symbolen auf 133 %);
 - eine Projektdatei je Veranstaltung mit beliebig vielen Layouts: angelegt mit `init`, geprüft mit `check`, als

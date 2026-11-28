@@ -2,7 +2,7 @@
   "bomFormat": "CycloneDX",
   "components": [
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-contract@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-contract@0.34.0",
       "description": "The contract between freemapper's map and sidecar and the programs that read them: map kinds, the sidecar reader, object classes, census, vocabulary and rules",
       "externalReferences": [
         {
@@ -16,13 +16,13 @@
         }
       ],
       "name": "freemapper-contract",
-      "purl": "pkg:cargo/freemapper-contract@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-contract@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-course@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-course@0.34.0",
       "description": "Orienteering courses: course model, Purple Pen and IOF XML readers, a Purple Pen writer with patch mode, fitting to the map, number placement, the control description symbols",
       "externalReferences": [
         {
@@ -36,13 +36,13 @@
         }
       ],
       "name": "freemapper-course",
-      "purl": "pkg:cargo/freemapper-course@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-course@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-fs@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-fs@0.34.0",
       "description": "Writes, copies and removals inside a project folder that never follow a link",
       "externalReferences": [
         {
@@ -56,13 +56,13 @@
         }
       ],
       "name": "freemapper-fs",
-      "purl": "pkg:cargo/freemapper-fs@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-fs@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-georef@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-georef@0.34.0",
       "description": "Coordinate reference systems for the freemapper suite: UTM (Transverse Mercator), EPSG:25832/25833, bounding boxes and tile ids",
       "externalReferences": [
         {
@@ -76,13 +76,13 @@
         }
       ],
       "name": "freemapper-georef",
-      "purl": "pkg:cargo/freemapper-georef@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-georef@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0",
       "description": "OpenOrienteering Mapper files: map model, .omap reader, embedded symbol sets",
       "externalReferences": [
         {
@@ -96,13 +96,13 @@
         }
       ],
       "name": "freemapper-omap",
-      "purl": "pkg:cargo/freemapper-omap@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-omap@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-printrules@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-printrules@0.34.0",
       "description": "Print rules for orienteering maps as data profiles: map kinds, symbol size table by print scale, north-line spacing, course symbol sizes",
       "externalReferences": [
         {
@@ -116,13 +116,13 @@
         }
       ],
       "name": "freemapper-printrules",
-      "purl": "pkg:cargo/freemapper-printrules@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-printrules@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-render@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-render@0.34.0",
       "description": "Renderer for OpenOrienteering Mapper maps: symbol drawing, the page builder, the render page model, PDF and SVG backends, Arimo text metrics",
       "externalReferences": [
         {
@@ -136,13 +136,13 @@
         }
       ],
       "name": "freemapper-render",
-      "purl": "pkg:cargo/freemapper-render@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-render@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-rules@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-rules@0.34.0",
       "description": "Rule profiles for checks: TOML files validated against an app schema and merged into a rule set",
       "externalReferences": [
         {
@@ -156,13 +156,13 @@
         }
       ],
       "name": "freemapper-rules",
-      "purl": "pkg:cargo/freemapper-rules@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-rules@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-text@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-text@0.34.0",
       "description": "Program texts from Fluent catalogs: language detection, lookup with English fallback, catalog checks",
       "externalReferences": [
         {
@@ -176,13 +176,13 @@
         }
       ],
       "name": "freemapper-text",
-      "purl": "pkg:cargo/freemapper-text@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-text@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-update@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-update@0.34.0",
       "description": "The pure parts of a self-update for the freemapper suite: manifest, signature, versions, host rule, check record, binary swap",
       "externalReferences": [
         {
@@ -196,13 +196,13 @@
         }
       ],
       "name": "freemapper-update",
-      "purl": "pkg:cargo/freemapper-update@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-update@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
-      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-web@0.33.0",
+      "bom-ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-web@0.34.0",
       "description": "Shell for the local web pages of the suite: guarded 127.0.0.1 server, token path, embedded assets",
       "externalReferences": [
         {
@@ -216,10 +216,10 @@
         }
       ],
       "name": "freemapper-web",
-      "purl": "pkg:cargo/freemapper-web@0.33.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%4002e3abe141faa6b17af91e7cf4dae32b8e3c061f",
+      "purl": "pkg:cargo/freemapper-web@0.34.0?vcs_url=git%2Bhttps://github.com/HenryJobst/freemapper-core%40e2fd3e8a45cfa546c8129ea9012cc6d9c0f10b9b",
       "scope": "required",
       "type": "library",
-      "version": "0.33.0"
+      "version": "0.34.0"
     },
     {
       "bom-ref": "path+file://./crates/freemapper-print#0.14.0",
@@ -7240,53 +7240,53 @@
   "dependencies": [
     {
       "dependsOn": [
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index#toml@1.2.1+spec-1.1.0"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-contract@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-contract@0.34.0"
     },
     {
       "dependsOn": [
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-georef@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-georef@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#quick-xml@0.42.0",
         "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-course@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-course@0.34.0"
     },
     {
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#same-file@1.0.6"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-fs@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-fs@0.34.0"
     },
     {
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-georef@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-georef@0.34.0"
     },
     {
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#quick-xml@0.42.0",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0"
     },
     {
       "dependsOn": [
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-contract@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-course@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-render@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-rules@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-contract@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-course@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-render@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-rules@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-printrules@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-printrules@0.34.0"
     },
     {
       "dependsOn": [
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-course@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-course@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#image@0.25.10",
         "registry+https://github.com/rust-lang/crates.io-index#miniz_oxide@0.9.1",
         "registry+https://github.com/rust-lang/crates.io-index#pdf-writer@0.15.0",
@@ -7296,14 +7296,14 @@
         "registry+https://github.com/rust-lang/crates.io-index#subsetter@0.2.6",
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-render@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-render@0.34.0"
     },
     {
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index#toml@1.2.1+spec-1.1.0"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-rules@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-rules@0.34.0"
     },
     {
       "dependsOn": [
@@ -7311,12 +7311,12 @@
         "registry+https://github.com/rust-lang/crates.io-index#fluent-syntax@0.12.0",
         "registry+https://github.com/rust-lang/crates.io-index#unic-langid@0.9.6"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-text@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-text@0.34.0"
     },
     {
       "dependsOn": [
         "registry+https://github.com/rust-lang/crates.io-index#flate2@1.1.11",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-fs@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-fs@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#minisign-verify@0.3.0",
         "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.154",
@@ -7324,7 +7324,7 @@
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index#toml@1.2.1+spec-1.1.0"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-update@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-update@0.34.0"
     },
     {
       "dependsOn": [
@@ -7334,18 +7334,18 @@
         "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index#tokio@1.54.1"
       ],
-      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-web@0.33.0"
+      "ref": "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-web@0.34.0"
     },
     {
       "dependsOn": [
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-contract@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-course@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-fs@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-omap@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-printrules@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-render@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-rules@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-web@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-contract@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-course@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-fs@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-omap@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-printrules@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-render@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-rules@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-web@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#fs4@1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index#image@0.25.10",
         "registry+https://github.com/rust-lang/crates.io-index#miniz_oxide@0.9.1",
@@ -7367,8 +7367,8 @@
         "registry+https://github.com/rust-lang/crates.io-index#dirs@7.0.0",
         "registry+https://github.com/rust-lang/crates.io-index#fluent-bundle@0.16.0",
         "path+file://./crates/freemapper-print#0.14.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-text@0.33.0",
-        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.33.0#freemapper-update@0.33.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-text@0.34.0",
+        "git+https://github.com/HenryJobst/freemapper-core?tag=v0.34.0#freemapper-update@0.34.0",
         "registry+https://github.com/rust-lang/crates.io-index#rmcp@3.9.0",
         "registry+https://github.com/rust-lang/crates.io-index#rust-embed@8.13.0",
         "registry+https://github.com/rust-lang/crates.io-index#schemars@1.2.3",

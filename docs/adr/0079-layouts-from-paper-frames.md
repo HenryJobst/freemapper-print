@@ -1,7 +1,7 @@
 # 0079. Layouts from paper frames
 
 Date: 2026-11-27
-Status: Accepted
+Status: Accepted, the paper bullet amended by [0080](0080-paper-sizes-a6-to-a2.md)
 
 ## Context
 freemapper lets a project keep paper frames: sheets of A6, A5, A4, A3 or A2, landscape or portrait, placed on the
@@ -20,7 +20,8 @@ The frame says what the course setter wants on one sheet; freemapper-print shoul
   purpose, and the passe-partout of the project's first layout, which leaves room for the footer. The printed map
   frame is the sheet less the passe-partout, so it is smaller than the helper frame.
 - A4 and A3 are papers of the layout. A6, A5 and A2 are free pages (`page_mm`, ADR 0058) with their portrait size, so
-  no paper is added to the core and the page size limits of ADR 0058 apply.
+  no paper is added to the core and the page size limits of ADR 0058 apply. Replaced by ADR 0080: every frame
+  paper is a paper of the layout.
 - The layout ids are `frame-<paper>-<orientation>`, such as `frame-a4-portrait`, with `-2`, `-3` for a taken id.
 - `init` adds the layouts of all frames next to the starter layout, at the map scale. With a course file they stay
   without an assignment. The command `frames <project>` (MCP tool `add_frame_layouts`) adds the layouts a project
