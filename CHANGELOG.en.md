@@ -7,6 +7,8 @@ All notable changes to freemapper-print are listed here, newest first. The forma
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-28
+
 ### Changed
 
 - Paper: A6, A5 and A2 join A4 and A3. A layout takes `paper = "A5"`, `render` takes `--paper a5`, and the MCP tool `set_layout` and the editor offer all five. The layouts that paper frames create use their paper, not `page_mm`. Projects with a free page keep working (ADR 0080, core v0.34.0).
